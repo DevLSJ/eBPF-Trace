@@ -29,7 +29,7 @@ RUNNER_TOKEN="$2"
 RUNNER_VERSION="2.317.0"          # 안정 버전 (필요 시 최신으로 교체)
 RUNNER_DIR="$HOME/actions-runner"
 RUNNER_NAME="ebpf-linux-vm"       # GitHub Actions에서 표시될 runner 이름
-RUNNER_LABELS="self-hosted,Linux,X64,ebpf"  # 워크플로우 runs-on 레이블과 일치
+RUNNER_LABELS="self-hosted,Linux,ARM64,ebpf"  # 워크플로우 runs-on 레이블과 일치
 
 echo "========================================================"
 echo " eBPF-trace GitHub Actions Self-Hosted Runner 설치"
@@ -121,7 +121,7 @@ echo "[5/7] GitHub Actions Runner v${RUNNER_VERSION} 다운로드 중..."
 mkdir -p "$RUNNER_DIR"
 cd "$RUNNER_DIR"
 
-RUNNER_ARCHIVE="actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
+RUNNER_ARCHIVE="actions-runner-linux-arm64-${RUNNER_VERSION}.tar.gz"
 if [ ! -f "$RUNNER_ARCHIVE" ]; then
   curl -fsSL \
     "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${RUNNER_ARCHIVE}" \
