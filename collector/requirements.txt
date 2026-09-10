@@ -1,0 +1,12 @@
+# eBPF ring_buffer 읽기
+# bcc 는 pip 설치 불가 — VM에서 아래 명령으로 설치
+# sudo apt-get install python3-bcc
+
+# 네트워크 인터페이스 관리
+pyroute2==0.7.12
+
+# Redis 슬라이딩 윈도우 캐싱
+redis==5.0.4
+
+# WebSocket 백엔드 전송
+websockets==12.0
