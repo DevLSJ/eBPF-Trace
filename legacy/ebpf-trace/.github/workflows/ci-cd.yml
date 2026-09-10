@@ -60,7 +60,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          # cache: "pip"  # requirements.txt 생성 후 활성화
+          cache: "pip"
 
       # -----------------------------------------------------------------------
       # 3. Backend — 의존성 설치 및 린트
