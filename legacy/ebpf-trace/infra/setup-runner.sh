@@ -2,7 +2,7 @@
 # =============================================================================
 # setup-runner.sh — GitHub Actions Self-Hosted Runner 설치 스크립트
 #
-# 대상 서버 : Linux VM Ubuntu (192.168.64.255)
+# 대상 서버 : Linux VM Ubuntu (192.168.64.2)
 # 실행 방법 :
 #   chmod +x setup-runner.sh
 #   ./setup-runner.sh <GITHUB_REPO_URL> <RUNNER_TOKEN>
