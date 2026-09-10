@@ -1,0 +1,297 @@
+# =============================================================================
+# eBPF 기반 이상 트래픽 탐지 시스템 — GitHub Actions CI/CD Pipeline
+#
+# 실행 흐름:
+#   push/PR → [CI] 린트·빌드·테스트 → [CD] Docker 이미지 빌드·푸시 → EC2 배포
+#
+# Runner 구성:
+#   - CI 잡  : self-hosted (Linux VM 192.168.64.255) — eBPF 환경 직접 검증 가능
+#   - CD 잡  : self-hosted (Linux VM) → SSH로 EC2(52.62.165.10)에 배포
+#
+# 필요한 GitHub Secrets (Settings → Secrets and variables → Actions):
+#   DOCKERHUB_USERNAME    Docker Hub 사용자 이름
+#   DOCKERHUB_TOKEN       Docker Hub Access Token
+#   EC2_HOST              52.62.165.10
+#   EC2_USER              ubuntu
+#   EC2_SSH_KEY           EC2 .pem 파일의 전체 내용 (-----BEGIN RSA PRIVATE KEY----- 포함)
+# =============================================================================
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+
+# 동일 브랜치에 연속 push 시 이전 실행 자동 취소
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOCKER_IMAGE_BACKEND:  ${{ secrets.DOCKERHUB_USERNAME }}/ebpf-ids-backend
+  DOCKER_IMAGE_FRONTEND: ${{ secrets.DOCKERHUB_USERNAME }}/ebpf-ids-frontend
+  DOCKER_IMAGE_COLLECTOR: ${{ secrets.DOCKERHUB_USERNAME }}/ebpf-ids-collector
+
+# =============================================================================
+# JOB 1 : CI — 코드 품질 검사 및 빌드 검증
+# =============================================================================
+jobs:
+  ci:
+    name: CI — Lint & Build & Test
+    runs-on: self-hosted          # Linux VM (192.168.64.255) self-hosted runner
+    timeout-minutes: 20
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. 소스 코드 체크아웃
+      # -----------------------------------------------------------------------
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 2. Python 환경 설정 (backend / collector / ml / ebpf-agent)
+      # -----------------------------------------------------------------------
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # -----------------------------------------------------------------------
+      # 3. Backend — 의존성 설치 및 린트
+      # -----------------------------------------------------------------------
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "requirements.txt not found — skipping"
+          fi
+
+      - name: Lint backend (ruff)
+        working-directory: backend
+        run: |
+          pip install ruff
+          ruff check . --output-format=github || true   # 경고만, 실패 처리 안 함
+
+      # -----------------------------------------------------------------------
+      # 4. Collector — 의존성 설치 및 린트
+      # -----------------------------------------------------------------------
+      - name: Install collector dependencies
+        working-directory: collector
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "requirements.txt not found — skipping"
+          fi
+
+      - name: Lint collector (ruff)
+        working-directory: collector
+        run: ruff check . --output-format=github || true
+
+      # -----------------------------------------------------------------------
+      # 5. ML 모듈 — 의존성 설치
+      # -----------------------------------------------------------------------
+      - name: Install ML dependencies
+        working-directory: ml
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "requirements.txt not found — skipping"
+          fi
+
+      # -----------------------------------------------------------------------
+      # 6. Frontend — Node.js 설정 및 빌드 검증
+      # -----------------------------------------------------------------------
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: |
+          if [ -f package.json ]; then
+            npm ci --prefer-offline
+          else
+            echo "package.json not found — skipping"
+          fi
+
+      - name: Build frontend (TypeScript + Vite)
+        working-directory: frontend
+        run: |
+          if [ -f package.json ]; then
+            npm run build
+          else
+            echo "Build script not found — skipping"
+          fi
+
+      # -----------------------------------------------------------------------
+      # 7. Backend 단위 테스트
+      # -----------------------------------------------------------------------
+      - name: Run backend tests
+        working-directory: backend
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"   # 테스트용 인메모리 SQLite
+          REDIS_URL:    "redis://localhost:6379"
+        run: |
+          pip install pytest pytest-asyncio httpx
+          if [ -d tests ]; then
+            pytest tests/ -v --tb=short
+          else
+            echo "No tests directory found — skipping"
+          fi
+
+  # =============================================================================
+  # JOB 2 : Docker Build & Push — CI 통과 후 이미지 빌드
+  # =============================================================================
+  docker-build:
+    name: Docker Build & Push
+    runs-on: self-hosted
+    needs: ci                    # CI 잡이 성공해야 실행
+    timeout-minutes: 30
+    # main 브랜치 push 시에만 Docker 빌드 & 푸시 실행
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # Docker 로그인
+      # -----------------------------------------------------------------------
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # -----------------------------------------------------------------------
+      # Docker Buildx 설정 (멀티 플랫폼 빌드 지원)
+      # -----------------------------------------------------------------------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # -----------------------------------------------------------------------
+      # 이미지 태그 계산 (커밋 SHA 7자리 + latest)
+      # -----------------------------------------------------------------------
+      - name: Set image tag
+        id: tag
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # -----------------------------------------------------------------------
+      # Backend 이미지 빌드 & 푸시
+      # -----------------------------------------------------------------------
+      - name: Build & push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE_BACKEND }}:latest
+            ${{ env.DOCKER_IMAGE_BACKEND }}:${{ steps.tag.outputs.SHORT_SHA }}
+          cache-from: type=registry,ref=${{ env.DOCKER_IMAGE_BACKEND }}:cache
+          cache-to:   type=registry,ref=${{ env.DOCKER_IMAGE_BACKEND }}:cache,mode=max
+
+      # -----------------------------------------------------------------------
+      # Frontend 이미지 빌드 & 푸시
+      # -----------------------------------------------------------------------
+      - name: Build & push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE_FRONTEND }}:latest
+            ${{ env.DOCKER_IMAGE_FRONTEND }}:${{ steps.tag.outputs.SHORT_SHA }}
+          cache-from: type=registry,ref=${{ env.DOCKER_IMAGE_FRONTEND }}:cache
+          cache-to:   type=registry,ref=${{ env.DOCKER_IMAGE_FRONTEND }}:cache,mode=max
+
+      # -----------------------------------------------------------------------
+      # Collector 이미지 빌드 & 푸시
+      # -----------------------------------------------------------------------
+      - name: Build & push collector image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./collector
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE_COLLECTOR }}:latest
+            ${{ env.DOCKER_IMAGE_COLLECTOR }}:${{ steps.tag.outputs.SHORT_SHA }}
+          cache-from: type=registry,ref=${{ env.DOCKER_IMAGE_COLLECTOR }}:cache
+          cache-to:   type=registry,ref=${{ env.DOCKER_IMAGE_COLLECTOR }}:cache,mode=max
+
+  # =============================================================================
+  # JOB 3 : CD — AWS EC2 배포
+  # =============================================================================
+  deploy:
+    name: Deploy to EC2
+    runs-on: self-hosted
+    needs: docker-build           # 이미지 빌드 후 실행
+    timeout-minutes: 15
+    if: github.ref == 'refs/heads/main'   # main 브랜치 push 시에만 배포
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # EC2에 SSH로 접속하여 배포
+      # 순서: docker pull → docker-compose up -d → 미사용 이미지 정리
+      # -----------------------------------------------------------------------
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:        ${{ secrets.EC2_HOST }}
+          username:    ${{ secrets.EC2_USER }}
+          key:         ${{ secrets.EC2_SSH_KEY }}
+          timeout:     120s
+          script: |
+            set -e
+
+            echo "=== [1/4] 프로젝트 디렉토리 이동 ==="
+            cd ~/ebpf-project || { echo "디렉토리 없음 — 최초 배포 진행"; mkdir -p ~/ebpf-project && cd ~/ebpf-project; }
+
+            echo "=== [2/4] 최신 docker-compose.yml 복사 ==="
+            # GITHUB_TOKEN을 사용하여 private 레포도 인증 가능
+            if [ -d .git ]; then
+              git pull origin main
+            else
+              git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
+            fi
+
+            echo "=== [3/4] 최신 이미지 pull 및 서비스 재시작 ==="
+            docker compose pull
+            docker compose up -d --remove-orphans
+
+            echo "=== [4/4] 미사용 이미지 및 컨테이너 정리 ==="
+            docker image prune -f
+            docker container prune -f
+
+            echo "✅ 배포 완료"
+            docker compose ps
+
+      # -----------------------------------------------------------------------
+      # 배포 결과 요약 출력
+      # -----------------------------------------------------------------------
+      - name: Deployment summary
+        run: |
+          echo "### 🚀 배포 완료" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 항목 | 값 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-----|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 브랜치 | \`${{ github.ref_name }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 커밋 | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 배포 서버 | EC2 (${{ secrets.EC2_HOST }}) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| 트리거 | ${{ github.actor }} |" >> "$GITHUB_STEP_SUMMARY"
