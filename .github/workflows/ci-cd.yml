@@ -5,7 +5,7 @@
 #   push/PR → [CI] 린트·빌드·테스트 → [CD] Docker 이미지 빌드·푸시 → EC2 배포
 #
 # Runner 구성:
-#   - CI 잡  : self-hosted (Linux VM 192.168.64.255) — eBPF 환경 직접 검증 가능
+#   - CI 잡  : self-hosted (Linux VM 192.168.64.2) — eBPF 환경 직접 검증 가능
 #   - CD 잡  : self-hosted (Linux VM) → SSH로 EC2(52.62.165.10)에 배포
 #
 # 필요한 GitHub Secrets (Settings → Secrets and variables → Actions):
@@ -43,7 +43,7 @@ env:
 jobs:
   ci:
     name: CI — Lint & Build & Test
-    runs-on: self-hosted          # Linux VM (192.168.64.255) self-hosted runner
+    runs-on: self-hosted          # Linux VM (192.168.64.2) self-hosted runner
     timeout-minutes: 20
 
     steps:

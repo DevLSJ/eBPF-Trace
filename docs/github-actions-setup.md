@@ -14,7 +14,7 @@ Secrets 등록과 Self-Hosted Runner 연결 방법을 단계별로 설명합니�
 [GitHub] ci-cd.yml 트리거
      │
      ▼
-[Linux VM 192.168.64.255] ← self-hosted runner
+[Linux VM 192.168.64.2] ← self-hosted runner
      │  CI (린트/빌드/테스트)
      │  Docker 이미지 빌드 & Docker Hub 푸시
      │
@@ -70,7 +70,7 @@ cat "don forget.pem" | pbcopy
 ### 2-2. Linux VM에 SSH 접속
 
 ```bash
-ssh ubuntu@192.168.64.255
+ssh ubuntu@192.168.64.2
 ```
 
 ### 2-3. 설치 스크립트 실행
@@ -85,8 +85,8 @@ chmod +x infra/setup-runner.sh
 ./infra/setup-runner.sh https://github.com/YourOrg/eBPF-trace <RUNNER_TOKEN>
 
 # 방법 B: scp로 스크립트만 복사
-scp infra/setup-runner.sh ubuntu@192.168.64.255:~/
-ssh ubuntu@192.168.64.255 "chmod +x setup-runner.sh && ./setup-runner.sh https://github.com/YourOrg/eBPF-trace <RUNNER_TOKEN>"
+scp infra/setup-runner.sh ubuntu@192.168.64.2:~/
+ssh ubuntu@192.168.64.2 "chmod +x setup-runner.sh && ./setup-runner.sh https://github.com/YourOrg/eBPF-trace <RUNNER_TOKEN>"
 ```
 
 > `YourOrg/eBPF-trace` 부분을 실제 GitHub 레포 경로로 교체하세요.
@@ -151,7 +151,7 @@ push 후 GitHub 레포 → **Actions** 탭에서 실행 상태를 확인합니�
 ### Runner가 Offline 상태인 경우
 
 ```bash
-ssh ubuntu@192.168.64.255
+ssh ubuntu@192.168.64.2
 
 # 서비스 상태 확인
 sudo systemctl status actions.runner.*.service
