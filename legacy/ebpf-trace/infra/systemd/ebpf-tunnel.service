@@ -1,0 +1,14 @@
+[Unit]
+Description=eBPF Trace encrypted connection to EC2
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+EnvironmentFile=/home/ubuntu/ebpf-project/.env.tunnel
+ExecStart=/usr/bin/ssh -NT -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/home/ubuntu/ebpf-project/.secrets/ec2_known_hosts -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -i /home/ubuntu/ebpf-project/.secrets/tunnel -L 127.0.0.1:18000:127.0.0.1:80 -L 127.0.0.1:16379:127.0.0.1:16379 ubuntu@${EC2_HOST}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
