@@ -1,0 +1,24 @@
+[Unit]
+Description=eBPF Trace native XDP collector
+After=network-online.target ebpf-tunnel.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/ebpf-project
+EnvironmentFile=/home/ubuntu/ebpf-project/.env.collector
+ExecStart=/home/ubuntu/ebpf-project/.venv-collector/bin/python -m collector.main
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+LimitMEMLOCK=infinity
+CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_PERFMON
+AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_PERFMON
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

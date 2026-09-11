@@ -1,9 +1,4 @@
-# Isolation Forest 모델
-scikit-learn==1.5.0
-numpy==1.26.4
-
-# 데이터셋 처리 (CIC-IDS-2017)
-pandas==2.2.2
-
-# 모델 저장/로드
-joblib==1.4.2
+scikit-learn>=1.8,<2
+numpy>=2.3,<3
+pandas>=2.3,<4
+joblib>=1.5,<2

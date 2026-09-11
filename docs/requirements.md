@@ -104,7 +104,7 @@
 | ID | 요구사항 | 우선순위 | 측정 기준 |
 |---|---|---|---|
 | NF-S01 | eBPF 에이전트 컨테이너는 CAP_BPF + CAP_NET_ADMIN 최소 권한만 부여하고, 불필요한 privileged 권한을 제거해야 한다 | 🟡 Should | Docker inspect로 capabilities 확인 |
-| NF-S02 | EC2 Security Group은 필요한 포트(80, 443, 8000, 5432)만 허용하고 0.0.0.0/0 인바운드 전면 개방을 금지해야 한다 | 🔴 Must | Terraform 코드 및 AWS 콘솔에서 SG 규칙 확인 |
+| NF-S02 | EC2 Security Group은 웹(80, 443)과 관리자 IP의 SSH(22)만 허용하며 8000, 5432, 6379는 외부에 개방하지 않아야 한다 | 🔴 Must | Terraform 코드 및 AWS 콘솔에서 SG 규칙 확인 |
 | NF-S03 | PostgreSQL은 외부 접근을 차단하고 Docker 내부 네트워크에서만 접근 가능해야 한다 | 🔴 Must | 외부에서 5432 포트 접근 불가 확인 |
 | NF-S04 | Slack Webhook URL 등 민감 정보는 환경 변수(.env)로 관리하고 Git에 커밋되어서는 안 된다 | 🔴 Must | `.gitignore`에 `.env` 포함 여부 및 Git 히스토리 확인 |
 

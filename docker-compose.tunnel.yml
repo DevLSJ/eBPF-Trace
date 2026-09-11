@@ -1,0 +1,4 @@
+# Optional EC2 loopback endpoint for an SSH tunnel from the VM. Never bind 0.0.0.0.
+services:
+  redis:
+    ports: ["127.0.0.1:16379:6379"]

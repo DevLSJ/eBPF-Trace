@@ -3,6 +3,11 @@
 eBPF-trace 레포지토리에서 CI/CD 파이프라인을 실행하기 위해 필요한
 Secrets 등록과 Self-Hosted Runner 연결 방법을 단계별로 설명합니다.
 
+> 2026-09-11 반영: Docker는 EC2에 있습니다. VM runner에서 Python 3.14 테스트와 Node 24 프론트 빌드를 수행한 뒤 EC2에 소스를 업로드하여 amd64 Docker 이미지를 빌드·푸시·배포합니다.
+> `DOCKERHUB_USERNAME` 또는 기존 `DOCKERHUB` Secret을 지원하며 `EC2_KNOWN_HOSTS`로 SSH 호스트 키를 고정합니다.
+> 배포 경로는 `/home/ubuntu/ebpf-releases/<commit SHA>`, 비밀값은 `/home/ubuntu/ebpf-project/.env`, Compose 이름은 `ebpf-trace-app`입니다.
+> 아래 최초 설정 예제와 다른 실제 운영 명령은 루트 `README.md`를 따릅니다. 기존 PostgreSQL 16 볼륨은 별도로 보존합니다.
+
 ---
 
 ## 전체 구조 요약
