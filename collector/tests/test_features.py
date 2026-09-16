@@ -1,8 +1,10 @@
+import random
+from collections import Counter, deque
 from dataclasses import replace
 
 import pytest
 
-from collector.features import FeatureCalculator, Snapshot, entropy
+from collector.features import FeatureCalculator, Snapshot, SourceWindow, entropy
 
 
 def snapshot(**kwargs):
@@ -50,3 +52,22 @@ def test_eviction_and_counter_generation_reset():
         snapshot(dst_port=82, first_seen_ns=3_000_000_000, pkt_cnt=1, byte_cnt=60, syn_cnt=1), 83
     )
     assert fresh["pkt_rate"] == 1
+
+
+def test_incremental_source_window_matches_full_history():
+    rng, history, window = random.Random(42), deque(), SourceWindow()
+    now = 0
+    for _ in range(3000):
+        now += rng.choice([0, 0.001, 0.1, 1, 11])
+        port, count, syns = rng.randrange(500), rng.randrange(1, 100), rng.randrange(2)
+        history.append((now, port, count, syns))
+        while history[0][0] <= now - 10:
+            history.popleft()
+        window.add(now, port, count, syns)
+        ports = Counter()
+        for _, p, n, _ in history:
+            ports[p] += n
+        assert window.ports == ports
+        assert window.entropy == pytest.approx(entropy(ports.values()), abs=1e-10)
+        assert window.packets == sum(n for ts, _, n, _ in history if ts > now - 1)
+        assert window.syns == sum(s for ts, _, _, s in history if ts > now - 1)

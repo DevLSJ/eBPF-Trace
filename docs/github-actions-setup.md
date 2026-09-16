@@ -3,7 +3,7 @@
 eBPF-trace 레포지토리에서 CI/CD 파이프라인을 실행하기 위해 필요한
 Secrets 등록과 Self-Hosted Runner 연결 방법을 단계별로 설명합니다.
 
-> 2026-09-11 반영: Docker는 EC2에 있습니다. VM runner에서 Python 3.14 테스트와 Node 24 프론트 빌드를 수행한 뒤 EC2에 소스를 업로드하여 amd64 Docker 이미지를 빌드·푸시·배포합니다.
+> 2026-09-16 반영: GitHub Ubuntu runner에서 Python 3.14·실 PostgreSQL/Redis·Node 24·브라우저 E2E·eBPF 컴파일과 amd64 Docker 빌드/push를 수행합니다. VM runner는 배포 SSH만 담당합니다. EC2에서 이미지 빌드를 하지 않습니다.
 > `DOCKERHUB_USERNAME` 또는 기존 `DOCKERHUB` Secret을 지원하며 `EC2_KNOWN_HOSTS`로 SSH 호스트 키를 고정합니다.
 > 배포 경로는 `/home/ubuntu/ebpf-releases/<commit SHA>`, 비밀값은 `/home/ubuntu/ebpf-project/.env`, Compose 이름은 `ebpf-trace-app`입니다.
 > 아래 최초 설정 예제와 다른 실제 운영 명령은 루트 `README.md`를 따릅니다. 기존 PostgreSQL 16 볼륨은 별도로 보존합니다.
@@ -16,16 +16,17 @@ Secrets 등록과 Self-Hosted Runner 연결 방법을 단계별로 설명합니�
 [Mac 로컬] git push
      │
      ▼
-[GitHub] ci-cd.yml 트리거
+[GitHub Ubuntu runner] ci-cd.yml
+     │  실 DB/Redis · 프론트 빌드 · 브라우저 E2E · eBPF 컴파일
+     │  amd64 Docker 이미지 빌드 & Docker Hub 푸시
      │
      ▼
 [Linux VM 192.168.64.2] ← self-hosted runner
-     │  CI (린트/빌드/테스트)
-     │  Docker 이미지 빌드 & Docker Hub 푸시
+     │  검증된 소스 archive 전송 · SSH 배포 요청
      │
      ▼ SSH 접속
 [AWS EC2 52.62.165.10]
-     docker compose pull & up
+     디스크 검사 → docker compose pull → up --no-build → health
 ```
 
 ---
@@ -69,7 +70,7 @@ cat "don forget.pem" | pbcopy
 
 1. GitHub 레포 → **Settings** → **Actions** → **Runners**
 2. **New self-hosted runner** 클릭
-3. OS: **Linux**, Architecture: **x64** 선택
+3. OS: **Linux**, Architecture: **ARM64** 선택 (현재 Ubuntu VM 기준)
 4. **"Configure"** 섹션의 `--token` 값 복사 (약 30분 유효)
 
 ### 2-2. Linux VM에 SSH 접속
@@ -134,14 +135,14 @@ nano .env   # 실제 값으로 수정
 | 이벤트 | CI | Docker Build | EC2 배포 |
 |---|---|---|---|
 | `main` 브랜치 push | ✅ | ✅ | ✅ |
-| `develop` 브랜치 push | ✅ | ✅ | ❌ |
+| `develop` 브랜치 push | ✅ | ❌ | ❌ |
 | PR (→ main) | ✅ | ❌ | ❌ |
 
 ### 첫 번째 push 테스트
 
 ```bash
 # Mac 로컬에서
-cd /Users/ineb_lsj/Documents/eBPF-project
+cd /Users/ineb_lsj/Documents/캡스톤/eBPF-project
 git add .github/workflows/ci-cd.yml
 git commit -m "ci: GitHub Actions CI/CD 파이프라인 추가"
 git push origin main
@@ -177,8 +178,8 @@ sudo ./svc.sh restart
 ### Docker 이미지 푸시 실패
 
 ```bash
-# Linux VM에서 Docker 로그인 상태 확인
-docker login
+# GitHub images 작업 로그에서 Docker Hub 인증 오류 확인
+gh run view --repo DevLSJ/eBPF-Trace --log-failed
 ```
 
 `DOCKERHUB_USERNAME` 과 `DOCKERHUB_TOKEN` 이 일치하는지 재확인합니다.

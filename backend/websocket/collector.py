@@ -76,11 +76,12 @@ async def collector(ws: WebSocket):
                     return
             if event:
                 await ws.app.state.manager.broadcast(event)
-                task = asyncio.create_task(
-                    send_alert(ws.app.state.settings.slack_webhook_url.get_secret_value(), event)
-                )
-                ws.app.state.alert_tasks.add(task)
-                task.add_done_callback(ws.app.state.alert_tasks.discard)
+                if ws.app.state.settings.slack_enabled:
+                    task = asyncio.create_task(
+                        send_alert(ws.app.state.settings.slack_webhook_url.get_secret_value(), event)
+                    )
+                    ws.app.state.alert_tasks.add(task)
+                    task.add_done_callback(ws.app.state.alert_tasks.discard)
             await ws.app.state.manager.broadcast(
                 {
                     "type": "traffic",

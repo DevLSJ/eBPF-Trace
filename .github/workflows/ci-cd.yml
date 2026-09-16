@@ -15,13 +15,29 @@ concurrency:
 jobs:
   ci:
     name: Test Python and build dashboard
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ebpf_test
+          POSTGRES_PASSWORD: ci-test-only
+          POSTGRES_DB: ebpf_test
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: --health-cmd 'redis-cli ping' --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://ebpf_test:ci-test-only@127.0.0.1:5432/ebpf_test
+      TEST_REDIS_URL: redis://127.0.0.1:6379/0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.14'
           cache: pip
@@ -36,7 +52,7 @@ jobs:
           .venv/bin/pip install -r requirements-dev.txt
           .venv/bin/ruff check backend collector ml infra
           .venv/bin/pytest -q
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
@@ -46,13 +62,44 @@ jobs:
         run: |
           npm ci
           npm run build
-      - name: Compile eBPF on the configured VM
-        if: runner.arch == 'ARM64'
-        run: make -C ebpf-agent
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+      - name: Compile eBPF
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang libbpf-dev
+          make -C ebpf-agent
+
+  images:
+    name: Build images off the production server
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      REGISTRY: ${{ secrets.DOCKERHUB_USERNAME || secrets.DOCKERHUB }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build and push amd64 release images
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY"
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$REGISTRY" --password-stdin
+          docker build --pull -f backend/Dockerfile -t "$REGISTRY/ebpf-ids-backend:$GITHUB_SHA" .
+          docker build --pull -t "$REGISTRY/ebpf-ids-frontend:$GITHUB_SHA" frontend
+          docker push "$REGISTRY/ebpf-ids-backend:$GITHUB_SHA"
+          docker push "$REGISTRY/ebpf-ids-frontend:$GITHUB_SHA"
+      - name: Remove registry credentials
+        if: always()
+        run: docker logout
 
   deploy:
-    name: Build and deploy on EC2
-    needs: ci
+    name: Deploy verified images on EC2
+    needs: images
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: self-hosted
     timeout-minutes: 20
@@ -65,7 +112,7 @@ jobs:
       REGISTRY: ${{ secrets.DOCKERHUB_USERNAME || secrets.DOCKERHUB }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Configure pinned SSH host and release archive
@@ -88,7 +135,7 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$DOCKERHUB_TOKEN" | ssh -i "$RUNNER_TEMP/ebpf-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/ebpf-ssh/known_hosts" -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" "docker login -u '$REGISTRY' --password-stdin"
-      - name: Build amd64 images and deploy the exact commit
+      - name: Pull images and deploy the exact commit
         run: |
           set -euo pipefail
           ssh -i "$RUNNER_TEMP/ebpf-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/ebpf-ssh/known_hosts" -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" bash -s -- "$GITHUB_SHA" "$REGISTRY" <<'REMOTE'
@@ -101,8 +148,8 @@ jobs:
           mkdir -p ml
           ln -sfn /home/ubuntu/ebpf-project/ml/models ml/models
           docker compose -p ebpf-trace-app -f docker-compose.yml -f docker-compose.tunnel.yml config --quiet
-          docker compose -p ebpf-trace-app -f docker-compose.yml -f docker-compose.tunnel.yml build
-          docker compose -p ebpf-trace-app -f docker-compose.yml -f docker-compose.tunnel.yml push backend frontend
+          python3 infra/check_disk.py --minimum-mib 900
+          docker compose -p ebpf-trace-app -f docker-compose.yml -f docker-compose.tunnel.yml pull backend frontend
           bash infra/deploy.sh
           ln -sfn "/home/ubuntu/ebpf-releases/$IMAGE_TAG" /home/ubuntu/ebpf-current
           REMOTE

@@ -24,10 +24,9 @@ class RuleEngine:
         ratio = syn_rate / source_packets if source_packets else 0
         if syn_rate >= t.syn_pps_threshold and ratio >= t.syn_ratio_threshold:
             return "SYN_FLOOD"
-        if (
-            features["port_entropy"] >= t.port_entropy_threshold
-            and features.get("port_cnt", 0) >= t.port_cnt_threshold
-        ):
+        # F-M03: destination diversity alone must detect a scan, even when one
+        # busy port makes the distribution's entropy low.
+        if features.get("port_cnt", 0) >= t.port_cnt_threshold:
             return "PORT_SCAN"
         if features["pkt_rate"] >= t.baseline_pps * t.spike_threshold_multiplier:
             return "TRAFFIC_SPIKE"

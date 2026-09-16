@@ -4,6 +4,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 
+from ml.artifacts import verify_artifacts
 from ml.rule_engine import RuleEngine
 
 logger = logging.getLogger(__name__)
@@ -21,15 +22,23 @@ class DetectionEngine:
     def __init__(self, model_path: str = "", scaler_path: str = "", thresholds=None):
         self.rules = RuleEngine(thresholds)
         self.model = self.scaler = None
+        self.model_status = "not_configured"
+        self.metadata = None
         if model_path and scaler_path:
             try:
                 if not Path(model_path).is_file() or not Path(scaler_path).is_file():
                     raise FileNotFoundError("Model/scaler artifacts not available")
                 # Only load deployment-owned artifacts, never uploaded pickle files.
+                self.metadata = verify_artifacts(model_path, scaler_path, FEATURE_NAMES)
                 self.model, self.scaler = joblib.load(model_path), joblib.load(scaler_path)
-                self.scaler.transform(np.zeros((1, 6)))
+                probe = self.model.decision_function(self.scaler.transform(np.zeros((1, 6))))
+                if not np.isfinite(probe).all():
+                    raise ValueError("Invalid inference result")
+                self.model_status = "validated"
             except Exception:
                 self.model = self.scaler = None
+                self.metadata = None
+                self.model_status = "unavailable_or_unvalidated"
                 logger.warning("ML artifacts unavailable; rule-based detection active")
 
     @property

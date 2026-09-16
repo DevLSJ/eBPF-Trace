@@ -18,13 +18,14 @@ def test_training_uses_benign_only_and_held_out_evaluation(tmp_path):
     frame["Label"] = ["BENIGN"] * 300 + ["SYN_FLOOD"] * 100
     path = tmp_path / "synthetic_fixture.csv"
     frame.to_csv(path, index=False)
-    summary = preprocess(path, tmp_path)
+    summary = preprocess(path, tmp_path, allow_random_split=True)
     assert summary["training_rows"] == 210
     assert summary["held_out_rows"] == 120
     train_model(tmp_path)
     metrics = validate(tmp_path)
     assert metrics["tp"] + metrics["fn"] == 30
     assert 0 <= metrics["fpr"] <= 1
+    assert metrics["deployment_eligible"] is False
 
 
 def test_incompatible_cic_features_fail_explicitly(tmp_path):

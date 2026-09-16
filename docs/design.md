@@ -2,16 +2,18 @@
 
 > 작성 기준일: 2026-09-09  
 > 참조 문서: requirements.md, context.md  
-> 버전: v1.1 (2026-09-11 구현 반영)
+> 버전: v1.2 (2026-09-16 구현 반영)
 >
 > 구현 기준: Python 3.14 / Node 24 / PostgreSQL 17. BCC Collector는 Ubuntu 시스템 Python 3.10 사용.
-> Docker 빌드·운영은 EC2, VM runner는 테스트와 프론트 빌드를 담당한다.
+> CI·브라우저 E2E·이미지 빌드는 GitHub Ubuntu runner, VM runner는 EC2에 pull/배포를 요청한다.
 > 이하 초기 예제는 개념 설명이며 실제 실행 명령과 환경은 `README.md` 및 `verification-2026-09-11.md`를 따른다.
 >
 > 5-tuple 포트 배열만으로는 출발지 전체 스캔을 탐지할 수 없어 10초 포트 분포를 Collector에서 집계한다.
 > 바이트율은 bytes/s, 모델 점수는 `clip(decision_function - 0.1, -1, 0)`이며 모델 부재 시 null이다.
 > XDP는 파일 디스크립터 소유 BPF link로 연결한다. Collector는 ACK 기반 영속 전송 큐를 사용한다.
 > Redis 및 Collector 인증 트래픽은 SSH 터널을 통과하고 공개 DB/API 직접 포트는 열지 않는다.
+> PCAP/PCAPNG replay·레이블 결합·시간 분리, 검증된 모델 세트만 로드하는 경로를 추가했다.
+> 홈페이지는 이벤트 상세·유형 필터·PCAP 선택·관리자 설정을 제공한다. 현재 실행 방법과 API는 README를 따른다.
 
 ---
 

@@ -1,7 +1,7 @@
 FROM python:3.14-slim AS builder
 WORKDIR /build
 COPY backend/requirements.txt requirements.txt
-RUN python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+RUN python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir --no-compile -r requirements.txt
 
 FROM python:3.14-slim
 RUN useradd --create-home --uid 10001 app

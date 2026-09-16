@@ -6,9 +6,17 @@ import joblib
 import numpy as np
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 
+from ml.artifacts import sha256
+
 
 def validate(directory):
     directory = Path(directory)
+    version_path = directory / "model_version.json"
+    version = json.loads(version_path.read_text())
+    for name, filename in (("model", "isolation_forest.pkl"), ("scaler", "scaler.pkl"),
+                           ("split", "split.npz")):
+        if version.get("sha256", {}).get(name) != sha256(directory / filename):
+            raise ValueError("Training artifacts changed before validation")
     data = np.load(directory / "split.npz")
     predicted = joblib.load(directory / "isolation_forest.pkl").decision_function(data["test"]) < 0
     precision, recall, f1, _ = precision_recall_fscore_support(
@@ -27,9 +35,8 @@ def validate(directory):
         "tp": int(tp),
         "passed": bool(f1 >= 0.8 and fpr <= 0.05),
     }
-    version_path = directory / "model_version.json"
-    version = json.loads(version_path.read_text())
-    version.update(performance=result, validated=result["passed"])
+    result["deployment_eligible"] = bool(version.get("deployment_eligible"))
+    version.update(performance=result, validated=result["passed"] and result["deployment_eligible"])
     version_path.write_text(json.dumps(version, indent=2))
     return result
 

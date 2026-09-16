@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     collector_token: SecretStr = SecretStr("")
     admin_token: SecretStr = SecretStr("")
     slack_webhook_url: SecretStr = SecretStr("")
+    slack_enabled: bool = False
     metrics_collect_interval_sec: float = Field(default=10, ge=1)
     metrics_enabled: bool = True
     auto_create_schema: bool = False

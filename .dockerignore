@@ -18,6 +18,9 @@
 **/*.db*
 **/tests
 ml/data
+pcap
+**/*.pcap
+**/*.pcapng
 ml/models
 artifacts
 docs

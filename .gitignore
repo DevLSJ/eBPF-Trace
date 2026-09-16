@@ -19,6 +19,9 @@ venv/
 *.npz
 ml/data/
 ml/models/
+pcap/
+*.pcap
+*.pcapng
 frontend/dist/
 frontend/test-results/
 frontend/playwright-report/
