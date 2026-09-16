@@ -1,10 +1,14 @@
+import json
+
 import joblib
 import numpy as np
 import pytest
+import sklearn
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
 from backend.core.schemas import Thresholds
+from ml.artifacts import sha256
 from ml.engine import FEATURE_NAMES, DetectionEngine
 from ml.rule_engine import RuleEngine
 
@@ -31,6 +35,7 @@ def features(**overrides):
         ({"pkt_rate": 1250, "syn_ratio": 0.79}, None),
         ({"source_pkt_rate": 1200, "source_syn_rate": 1200}, "SYN_FLOOD"),
         ({"port_cnt": 20, "port_entropy": 4.32}, "PORT_SCAN"),
+        ({"port_cnt": 20, "port_entropy": 0.01}, "PORT_SCAN"),
         ({"port_cnt": 19, "port_entropy": 4.25}, None),
         ({"pkt_rate": 10000, "syn_ratio": 0}, "TRAFFIC_SPIKE"),
         ({"byte_rate": 12500000}, "LARGE_FLOW"),
@@ -54,6 +59,14 @@ def test_real_model_score_range_and_boundary(tmp_path):
     model = IsolationForest(random_state=42).fit(scaler.transform(data))
     joblib.dump(model, tmp_path / "model.pkl")
     joblib.dump(scaler, tmp_path / "scaler.pkl")
+    # Fixture metadata exercises the loader contract, not real CIC performance.
+    metadata = {"validated": True, "deployment_eligible": True,
+                "performance": {"passed": True, "f1": 0.9, "fpr": 0.01},
+                "features": FEATURE_NAMES, "sklearn_version": sklearn.__version__,
+                "validation_threshold": -0.1,
+                "sha256": {"model": sha256(tmp_path / "model.pkl"),
+                           "scaler": sha256(tmp_path / "scaler.pkl")}}
+    (tmp_path / "model_version.json").write_text(json.dumps(metadata))
     engine = DetectionEngine(str(tmp_path / "model.pkl"), str(tmp_path / "scaler.pkl"))
     for sample in (data[0], np.full(6, 1000)):
         values = dict(zip(FEATURE_NAMES, np.abs(sample)))
@@ -63,3 +76,10 @@ def test_real_model_score_range_and_boundary(tmp_path):
             model.decision_function(scaler.transform([np.abs(sample)]))[0] - 0.1, -1, 0
         )
         assert result["anomaly_score"] == pytest.approx(expected)
+    metadata["validated"] = False
+    (tmp_path / "model_version.json").write_text(json.dumps(metadata))
+    assert DetectionEngine(str(tmp_path / "model.pkl"), str(tmp_path / "scaler.pkl")).mode == "rules_only"
+    metadata["validated"] = True
+    metadata["sha256"]["scaler"] = "incorrect"
+    (tmp_path / "model_version.json").write_text(json.dumps(metadata))
+    assert DetectionEngine(str(tmp_path / "model.pkl"), str(tmp_path / "scaler.pkl")).mode == "rules_only"

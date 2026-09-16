@@ -1,13 +1,20 @@
+from datetime import timezone
+
 from sqlalchemy import func, select
 
 from backend.db.models import DetectionEvent, SystemMetric
+
+
+def utc_iso(value):
+    # SQLite strips timezone information; persisted timestamps are always UTC.
+    return (value if value.tzinfo else value.replace(tzinfo=timezone.utc)).isoformat()
 
 
 def event_dict(event):
     return {
         "type": "detection_event",
         "event_id": event.id,
-        "detected_at": event.detected_at.isoformat(),
+        "detected_at": utc_iso(event.detected_at),
         "attack_type": event.attack_type,
         "severity": event.severity,
         "anomaly_score": event.anomaly_score,
@@ -21,7 +28,7 @@ def event_dict(event):
 
 def metric_dict(metric):
     return {
-        key: value.isoformat() if key == "collected_at" else value
+        key: utc_iso(value) if key == "collected_at" else value
         for key in (column.name for column in SystemMetric.__table__.columns)
         if (value := getattr(metric, key)) is not None
     }

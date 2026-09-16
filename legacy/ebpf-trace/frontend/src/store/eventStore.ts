@@ -18,7 +18,8 @@ export const useEventStore = create<Store>((set) => ({
     const timestamp = Math.floor(message.timestamp / 1000) * 1000;
     // Replayed historical traffic must not replace the latest live bucket.
     if (timestamp < Date.now() - 300000) return {};
-    const flows = new Map([...state.flows].filter(([, point]) => point.timestamp >= timestamp - 1000));
+    if (timestamp < (state.traffic.at(-1)?.timestamp ?? 0)) return {};
+    const flows = new Map([...state.flows].filter(([, point]) => point.timestamp > timestamp - 1000));
     const key = Object.values(message.flow).join(':');
     flows.set(key, { timestamp, ...message.features, anomaly_score: message.anomaly_score });
     let pkt_rate = 0, byte_rate = 0;

@@ -8,6 +8,7 @@ AUTH = {"authorization": "Bearer test-collector-token"}
 
 def test_health_and_validation(client):
     assert client.get("/health").json()["detection_mode"] == "rules_only"
+    assert client.get("/health").json()["model_status"] == "unavailable_or_unvalidated"
     for path in ("/api/events?page=0", "/api/events?page_size=101", "/api/events?severity=invalid"):
         response = client.get(path)
         assert response.status_code == 422
@@ -16,6 +17,34 @@ def test_health_and_validation(client):
     assert client.get("/api/metrics").json() is None
     assert client.get("/api/metrics/history").json() == {"items": []}
     assert client.get("/missing").json()["error"]["code"] == "NOT_FOUND"
+
+
+def test_capture_reports_have_provenance_and_no_invented_performance(client):
+    response = client.get("/api/analysis/pcap")
+    assert response.status_code == 200
+    reports = response.json()["items"]
+    assert {item["source"] for item in reports} == {
+        "Friday-WorkingHours.pcap", "Thursday-WorkingHours.pcap"
+    }
+    for report in reports:
+        assert report["complete"] and len(report["sha256"]) == 64
+        assert report["label_status"] == "unavailable"
+        assert report["model_validated"] is False
+        assert sum(report["protocols"].values()) == report["counts"]["eligible_packets"]
+
+
+def test_stored_webhook_does_not_enable_notifications(client, message, monkeypatch):
+    from pydantic import SecretStr
+
+    def forbidden_send(*args):
+        raise AssertionError("Slack must require explicit activation")
+
+    monkeypatch.setattr("backend.websocket.collector.send_alert", forbidden_send)
+    client.app.state.settings.slack_webhook_url = SecretStr("https://hooks.slack.com/test")
+    with client.websocket_connect("/ws/collector", headers=AUTH) as ws:
+        ws.send_json(message)
+        assert ws.receive_json()["type"] == "ack"
+    assert not client.app.state.alert_tasks
 
 
 def test_detect_persist_broadcast_ack_and_duplicate(client, message):
@@ -27,6 +56,7 @@ def test_detect_persist_broadcast_ack_and_duplicate(client, message):
             assert event["type"] == "detection_event"
             assert event["severity"] == "critical"
             assert event["anomaly_score"] is None
+            assert event["detected_at"].endswith("+00:00")
             assert dashboard.receive_json()["type"] == "traffic"
             assert collector.receive_json() == {"type": "ack", "message_id": message["message_id"]}
             # ACK follows commit: the event is immediately available through REST.

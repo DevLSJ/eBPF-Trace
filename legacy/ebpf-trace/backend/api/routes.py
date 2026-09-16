@@ -1,5 +1,7 @@
+import json
 import secrets
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
@@ -25,7 +27,21 @@ async def health(request: Request):
         "redis": "ok" if request.app.state.redis_available else "degraded",
         "detection_mode": request.app.state.detector.mode,
         "collector_connected": request.app.state.collector_connections > 0,
+        "model_status": request.app.state.detector.model_status,
+        "model_validation_threshold": (
+            request.app.state.detector.metadata.get("validation_threshold")
+            if request.app.state.detector.metadata else None
+        ),
     }
+
+
+@router.get("/api/analysis/pcap")
+async def pcap_report():
+    directory = Path(__file__).resolve().parents[2] / "ml" / "reports"
+    reports = [json.loads(path.read_text()) for path in sorted(directory.glob("*.json"))]
+    if not reports:
+        raise HTTPException(404, "No offline capture report available")
+    return {"items": reports}
 
 
 @router.get("/api/events")

@@ -9,6 +9,7 @@ import numpy as np
 import sklearn
 from sklearn.ensemble import IsolationForest
 
+from ml.artifacts import sha256
 from ml.engine import FEATURE_NAMES
 
 
@@ -18,6 +19,7 @@ def train_model(directory, contamination=0.05):
     model = IsolationForest(n_estimators=100, contamination=contamination, random_state=42)
     model.fit(data["train"])
     joblib.dump(model, directory / "isolation_forest.pkl")
+    preprocessing = json.loads((directory / "preprocessing.json").read_text())
     version = {
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "sklearn_version": sklearn.__version__,
@@ -28,6 +30,12 @@ def train_model(directory, contamination=0.05):
         "score_definition": "clip(decision_function - 0.1, -1, 0)",
         "performance": None,
         "validated": False,
+        "deployment_eligible": preprocessing.get("deployment_eligible", False),
+        "split_policy": preprocessing.get("split_policy"),
+        "validation_threshold": -0.1,
+        "sha256": {"model": sha256(directory / "isolation_forest.pkl"),
+                   "scaler": sha256(directory / "scaler.pkl"),
+                   "split": sha256(directory / "split.npz")},
     }
     (directory / "model_version.json").write_text(json.dumps(version, indent=2))
     return version
