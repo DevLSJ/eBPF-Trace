@@ -5,5 +5,5 @@ cd "$(dirname "$0")/.."
 test -s .env
 docker compose -p ebpf-trace-app -f docker-compose.yml -f docker-compose.tunnel.yml config --quiet
 docker compose -p ebpf-trace-app -f docker-compose.yml -f docker-compose.tunnel.yml up -d --no-build --wait --wait-timeout 120
-docker compose -p ebpf-trace-app -f docker-compose.yml -f docker-compose.tunnel.yml exec -T nginx nginx -s reload
+docker compose -p ebpf-trace-app -f docker-compose.yml -f docker-compose.tunnel.yml exec -T --interactive=false nginx nginx -s reload
 curl --fail --silent --show-error --max-time 10 http://127.0.0.1/health
