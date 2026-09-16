@@ -43,7 +43,7 @@
 | EC2 전용 테스트 PostgreSQL/Redis 포함 전체 | **43 passed**, skip 없음 (Slack opt-in 회귀 포함) |
 | Ruff | 통과 |
 | TypeScript / Vite | 통과; 차트 청크 분리로 기존 500 kB 경고 해소 |
-| 실제 로컬 FastAPI + Chrome E2E | **8 passed** (1440×1000, 390×844) |
+| 프론트 검증 | **8 passed**: 실제 FastAPI+Chrome UI 6개, 상태 스토어 회귀 2개 (1440×1000, 390×844) |
 | PCAP 전체 분석 | 두 파일 EOF 완료·SHA-256 기록 |
 | Git diff / 배포 shell 문법 | 통과 |
 | VM 기동 후 상태 | GitHub runner online/idle, 운영 Collector 연결 true |
@@ -66,9 +66,15 @@ npm run test:e2e
 
 ## 배포 및 남은 조건
 
-`main` 푸시·Actions 결과와 운영 이미지 SHA 확인은 실행 후 여기에 추가한다. VM 수집기 소스는 웹/API 자동 배포 범위 밖이다. 현재 기존 수집기가 보내는 피처 형식은 호환된다.
+첫 구현 커밋 `684a752`를 main에 푸시했다. Actions의 Redis health 명령 인수 따옴표 처리 오류를 수정한 `71a367c`는 [검사·빌드·배포 모두 성공](https://github.com/DevLSJ/eBPF-Trace/actions/runs/35069687423)했다. 운영 브라우저에서 두 캡처 선택·이벤트 상세·데스크톱/모바일 화면을 확인했으며 JS 오류와 가로 넘침은 없었다. 운영 DB/Redis는 9월 11일 생성된 기존 컨테이너와 볼륨을 유지했다.
+
+배포 후 `/home/ubuntu/ebpf-current` 링크 누락을 확인해 컨테이너 exec의 대화형 입력을 끄고 배포 subprocess stdin을 `/dev/null`로 분리했다. 후속 커밋 `2eae69b`는 링크 생성 뒤 실제 대상까지 검사한다. VM 수집기 소스는 웹/API 자동 배포 범위 밖이며 기존 피처 형식은 호환된다.
 
 배포 전 `.env`에는 Webhook이 있었으나 실행 컨테이너에는 없음을 값 노출 없이 확인했다. 기존 미활성 상태를 보존하도록 `SLACK_ENABLED=false`를 기본값으로 추가했으며 회귀 테스트로 저장된 URL만으로 발송되지 않음을 확인했다. 실제 발송은 수행하지 않았다.
+
+최종 `2eae69beb6f220828ccdf7166ea04e12c8f8d751`의 [Actions 실행 35070522692](https://github.com/DevLSJ/eBPF-Trace/actions/runs/35070522692)는 검사·이미지 빌드·배포 모두 성공했다. backend/frontend 실행 이미지 태그와 `/home/ubuntu/ebpf-current`가 같은 SHA를 가리키는 것을 SSH로 확인했다. 공개 주소 `http://52.62.165.10`에서 재검증한 결과 DB/Redis ok, Collector 연결 true, rules_only, 두 PCAP 보고서 정상, JS 오류 0개, 모바일 가로 넘침 없음이었다. 정답 CSV 부재에 따른 rules_only 상태는 의도된 결과다.
+
+배포 후 여유 공간이 686 MiB로 줄어 이번 작업의 중간 SHA `71a367c` backend/frontend 이미지가 어떤 컨테이너에서도 사용되지 않음을 확인하고 해당 2개만 `docker image rm`으로 제거했다. 여유는 약 1.1 GiB로 복구했다. Docker Hub에서 같은 SHA를 다시 받을 수 있으며 기존 dev 이미지, 현재 실행 이미지, 컨테이너, DB/Redis 볼륨은 삭제하지 않았다. 다음 이미지 크기에 따라 사전 디스크 검사가 배포를 중단할 수 있으므로 장기적인 용량 계획은 여전히 필요하다.
 
 실제 CIC 정답 CSV, 모델 성능, Slack 실제 전송, Terraform 기존 자원 편입/SG 확인, HTTPS, 최종 격리망·부하·장애복구 재검증은 남아 있다. 과거 커널 실측을 이번 재검증으로 표시하지 않는다. 릴리즈 `v1.0.0`은 발행하지 않았다.
 
