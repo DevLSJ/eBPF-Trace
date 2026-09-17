@@ -24,9 +24,10 @@ test('filters, pagination, detail, export and capture selection', async ({ page 
   await page.getByLabel('심각도', { exact: true }).selectOption('low');
   await expect(page.locator('.pagination')).toContainText('0개 기록');
   await expect(page.getByText('조건에 맞는 탐지 이벤트가 없습니다.')).toBeVisible();
+  await page.goto('/#capture');
   await expect(page.getByLabel('캡처 파일')).toBeVisible();
   await page.getByLabel('캡처 파일').selectOption('Thursday-WorkingHours.pcap');
-  await expect(page.locator('#capture')).toContainText('정답 레이블이 없어');
+  await expect(page.locator('#capture')).toContainText('정답 레이블 분포');
   await expect(page.locator('#capture')).toContainText('전체 파일 분석');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
   await page.screenshot({ path: `test-results/dashboard-${test.info().project.name}.png`, fullPage: true });
@@ -48,6 +49,7 @@ test('threshold authentication, persistence and chart threshold', async ({ page,
     expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('browser-admin');
     await page.reload();
     await expect(page.getByLabel('ML 이상 점수 임계값')).toHaveValue('-0.2');
+    await page.goto('/#overview');
     await expect(page.getByText('임계값 -0.2', { exact: true })).toBeVisible();
   } finally {
     await request.put('/api/config/thresholds', { data: original, headers: { Authorization: 'Bearer browser-admin' } });
@@ -68,4 +70,54 @@ test('API error recovery and websocket reconnect restore events', async ({ page 
   await page.context().setOffline(false);
   await expect(page.getByText('실시간 연결됨', { exact: true })).toBeVisible({ timeout: 15000 });
   await expect(page.locator('tbody tr')).toHaveCount(20);
+});
+
+
+test('analysis evidence, capture switching, download and navigation', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/#capture');
+  await expect(page.getByRole('heading', { name: 'CIC-IDS-2017 분석 워크스페이스' })).toBeVisible();
+  await expect(page.locator('.capture-stats')).toContainText('3,357,642');
+  await expect(page.locator('.label-bars')).toContainText('DDoS');
+  await expect(page.locator('.model-runtime')).toContainText('현재 운영 엔진: 규칙 기반');
+  await expect(page.locator('.evaluation-status')).toContainText('운영 미승인');
+  await page.getByLabel('캡처 파일').selectOption('Thursday-WorkingHours.pcap');
+  await expect(page.locator('.capture-stats')).toContainText('2,599,785');
+  await expect(page.locator('.label-bars')).toContainText('Infiltration');
+  await expect(page.locator('.label-bars')).not.toContainText('DDoS');
+  const pending = page.waitForEvent('download');
+  await page.getByRole('button', { name: '분석 JSON' }).click();
+  const download = await pending;
+  expect(download.suggestedFilename()).toBe('Thursday-WorkingHours-analysis.json');
+  const stream = await download.createReadStream();
+  let body = '';
+  for await (const chunk of stream!) body += chunk;
+  const exported = JSON.parse(body);
+  expect(exported.capture.source).toBe('Thursday-WorkingHours.pcap');
+  expect(exported.capture.labels.counts.matched).toBe(281933);
+  expect(exported.model.evaluation.deployment_approved).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  await page.screenshot({ path: `test-results/analysis-${test.info().project.name}.png`, fullPage: true });
+  expect(errors).toEqual([]);
+});
+
+test('IP search, reset and independent analysis error recovery', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('IP 주소 검색').fill('192.0.2.99');
+  await page.getByRole('button', { name: '검색', exact: true }).click();
+  await expect(page.locator('.pagination')).toContainText('0개 기록');
+  await page.getByRole('button', { name: '초기화', exact: true }).click();
+  await expect(page.locator('.pagination')).toContainText('25개 기록');
+  await page.getByLabel('IP 주소 검색').fill('192.0.2.2');
+  await page.getByRole('button', { name: '검색', exact: true }).click();
+  await expect(page.locator('.pagination')).toContainText('25개 기록');
+  let failed = true;
+  await page.route('**/api/analysis/model', route => failed ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { message: '평가 조회 테스트 오류' } }) }) : route.continue());
+  await page.goto('/#capture');
+  await expect(page.locator('.model-panel [role=alert]')).toContainText('평가 조회 테스트 오류');
+  await expect(page.locator('.label-bars')).toContainText('DDoS');
+  failed = false;
+  await page.locator('.model-panel').getByRole('button', { name: '다시 시도' }).click();
+  await expect(page.locator('.evaluation-metrics')).toBeVisible();
 });

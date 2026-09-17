@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { CaptureReport, DetectionEvent, EventPage, Health, SystemMetric, Thresholds } from '../types';
+import type { CaptureReport, DetectionEvent, EventPage, Health, ModelAnalysis, SystemMetric, Thresholds } from '../types';
 
 export const api = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || '', timeout: 10000 });
 export function errorMessage(error: unknown): string {
@@ -13,3 +13,4 @@ export const getEvent = (id: number, signal?: AbortSignal) => api.get<DetectionE
 export const getThresholds = () => api.get<Thresholds>('/api/config/thresholds').then(r => r.data);
 export const saveThresholds = (value: Thresholds, token: string) => api.put<Thresholds>('/api/config/thresholds', value, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.data);
 export const getCaptureReport = () => api.get<{ items: CaptureReport[] }>('/api/analysis/pcap').then(r => r.data.items);
+export const getModelAnalysis = () => api.get<ModelAnalysis>('/api/analysis/model').then(r => r.data);

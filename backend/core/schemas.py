@@ -55,6 +55,7 @@ class Thresholds(BaseModel):
 
 
 class EventQuery(BaseModel):
+    ip: IPvAnyAddress | None = None
     severity: Severity | None = None
     attack_type: (
         Literal["SYN_FLOOD", "PORT_SCAN", "ANOMALY", "TRAFFIC_SPIKE", "LARGE_FLOW"] | None

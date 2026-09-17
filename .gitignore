@@ -20,6 +20,7 @@ venv/
 ml/data/
 ml/models/
 pcap/
+label/
 *.pcap
 *.pcapng
 frontend/dist/

@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-17T00:10:08.310103+00:00",
+  "dataset": "CIC-IDS-2017 \u00b7 Thursday + Friday",
+  "status": "below_target",
+  "deployment_approved": false,
+  "scope": "conservatively matched feature windows only",
+  "sources": [
+    {
+      "file": "thursday-labeled.csv.gz",
+      "sha256": "96bedff2a9f5947c7a5fb50034a9425597425f67872715d867524b17b52c291c",
+      "timestamp_uncertainty_seconds": 60
+    },
+    {
+      "file": "friday-labeled.csv.gz",
+      "sha256": "5140623d1c92c41559ccb68eb206a091f44a0bce7a3a8fc57748b2b9765776ce",
+      "timestamp_uncertainty_seconds": 60
+    }
+  ],
+  "model": "Isolation Forest",
+  "n_estimators": 100,
+  "contamination": 0.05,
+  "threshold": -0.1,
+  "features": [
+    "pkt_rate",
+    "byte_rate",
+    "syn_ratio",
+    "port_entropy",
+    "flow_duration",
+    "avg_pkt_size"
+  ],
+  "performance": {
+    "precision": 0.027530364372469637,
+    "recall": 0.028862478777589132,
+    "f1": 0.02818068794032325,
+    "fpr": 0.01507742717075406,
+    "tn": 156909,
+    "fp": 2402,
+    "fn": 2288,
+    "tp": 68,
+    "passed": false,
+    "deployment_eligible": false
+  },
+  "split": {
+    "rows": 543252,
+    "benign": 533907,
+    "attacks": 9345,
+    "training_rows": 373239,
+    "held_out_rows": 161667,
+    "split_policy": "purged_time_10s_new_flows",
+    "cut_timestamp": 1499437266.6388407,
+    "purged_rows": 1357,
+    "rounded_timestamp_rows": 3
+  },
+  "targets": {
+    "f1_min": 0.8,
+    "fpr_max": 0.05
+  },
+  "limitations": [
+    "Minute-resolution timestamps exclude short or uncertain flows; this subset is biased toward long flows.",
+    "Scores describe matched held-out feature windows, not all attacks or the full CICIDS2017 benchmark.",
+    "This evaluation does not approve deployment; live detection remains independent."
+  ]
+}

@@ -15,9 +15,26 @@ export interface Thresholds {
   large_flow_threshold: number; anomaly_threshold: number;
 }
 export interface CaptureReport {
+  labels: LabelReport | null;
   source: string; source_bytes: number; sha256: string | null; complete: boolean;
   started_at: number; ended_at: number; counts: Record<string, number>;
   protocols: Record<string, number>; rule_detections: Record<string, number>;
   label_status: string; model_validated: boolean;
   traffic_minutes: { timestamp: number; packets: number; bytes: number }[];
+}
+
+export interface LabelReport {
+  counts: Record<string, number>; sources: string[]; coverage: number;
+  distribution: Record<string, number>; source_distribution: Record<string, number>;
+  timezone: string; timestamp_uncertainty_seconds: number; generated_at: string;
+}
+export interface ModelAnalysis {
+  runtime: { mode: string; status: string };
+  evaluation: null | {
+    dataset: string; status: string; deployment_approved: boolean; generated_at: string;
+    model: string; threshold: number; features: string[];
+    performance: { precision: number; recall: number; f1: number; fpr: number; tn: number; fp: number; fn: number; tp: number; passed: boolean };
+    split: { rows: number; benign: number; attacks: number; training_rows: number; held_out_rows: number; purged_rows: number; cut_timestamp: number; split_policy: string };
+    targets: { f1_min: number; fpr_max: number }; limitations: string[];
+  };
 }
