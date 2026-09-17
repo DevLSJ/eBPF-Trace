@@ -19,6 +19,7 @@
 **/tests
 ml/data
 pcap
+label
 **/*.pcap
 **/*.pcapng
 ml/models

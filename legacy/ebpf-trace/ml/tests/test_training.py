@@ -33,3 +33,36 @@ def test_incompatible_cic_features_fail_explicitly(tmp_path):
     pd.DataFrame({"Flow Bytes/s": [3], "Label": ["BENIGN"]}).to_csv(path, index=False)
     with pytest.raises(ValueError, match="Missing live-compatible features"):
         load_features(path)
+
+
+def test_minute_resolution_evaluation_never_approves_runtime(tmp_path):
+    import json
+
+    from ml.artifacts import sha256
+    from ml.evaluate_dataset import evaluate
+
+    rng = np.random.default_rng(42)
+    values = np.abs(rng.normal(1, 0.1, (600, 6)))
+    values[:, 2] = 0.1
+    values[1::2, :] = [100, 100, 1, 6, 100, 100]
+    frame = pd.DataFrame(values, columns=FEATURE_NAMES)
+    frame['timestamp'] = 1499385600 + np.arange(600, dtype=float)
+    frame['flow_started_at'] = frame.timestamp
+    frame.loc[0, 'flow_started_at'] += 0.0000002384185791015625
+    frame['Label'] = ['BENIGN', 'DDoS'] * 300
+    frame['label_status'] = 'matched_time_5tuple'
+    source = tmp_path / 'labeled.csv.gz'
+    frame.to_csv(source, index=False)
+    evidence = {'output_sha256': sha256(source), 'timestamp_uncertainty_seconds': 60}
+    (tmp_path / 'labeled.csv.gz.labels.json').write_text(json.dumps(evidence))
+    result = evaluate([source], tmp_path / 'model', tmp_path / 'report.json')
+    assert result['performance']['f1'] > 0.8
+    assert result['deployment_approved'] is False
+    assert result['performance']['deployment_eligible'] is False
+    assert result['split']['rounded_timestamp_rows'] == 1
+    version = json.loads((tmp_path / 'model' / 'model_version.json').read_text())
+    assert version['validated'] is False
+    evidence['output_sha256'] = 'changed'
+    (tmp_path / 'labeled.csv.gz.labels.json').write_text(json.dumps(evidence))
+    with pytest.raises(ValueError, match='join evidence'):
+        evaluate([source], tmp_path / 'other', tmp_path / 'other.json')

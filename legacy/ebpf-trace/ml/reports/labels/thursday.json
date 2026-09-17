@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-17T00:00:12.546661+00:00",
+  "counts": {
+    "label_rows": 747570,
+    "invalid_label_rows": 15,
+    "empty_label_rows": 288602,
+    "unlabeled": 2306793,
+    "uncertain_time_rows": 2306451,
+    "matched": 281933,
+    "rounded_window_rows": 29,
+    "ambiguous": 11059
+  },
+  "sources": [
+    "Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv",
+    "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv"
+  ],
+  "timezone": "America/Halifax",
+  "timestamp_format": "%d/%m/%Y %H:%M; working-hours 12h clock",
+  "timestamp_uncertainty_seconds": 60,
+  "profile": "cicids2017",
+  "policy": "full window guaranteed coverage; bidirectional tuple",
+  "distribution": {
+    "BENIGN": 274944,
+    "Web Attack \u2013 XSS": 411,
+    "Infiltration": 6578
+  },
+  "source_distribution": {
+    "BENIGN": 456737,
+    "Infiltration": 36,
+    "Web Attack \u2013 Brute Force": 1507,
+    "Web Attack \u2013 XSS": 652,
+    "Web Attack \u2013 Sql Injection": 21
+  },
+  "features_sha256": "169c19a83e0b9f06d60f1aaac81f5f35de689d06807640e589e0cdb52694a17b",
+  "output_sha256": "96bedff2a9f5947c7a5fb50034a9425597425f67872715d867524b17b52c291c",
+  "source_sha256": {
+    "Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv": "d74238e054023c8bd4d8056650463cadb25c100fb0e26ebd4272c07b5c022c4b",
+    "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv": "e3deaff483d18b53b100a441dff9b8919416df8876b4edcc0f0d1e4bf48397d0"
+  }
+}

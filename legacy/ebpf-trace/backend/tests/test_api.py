@@ -28,7 +28,11 @@ def test_capture_reports_have_provenance_and_no_invented_performance(client):
     }
     for report in reports:
         assert report["complete"] and len(report["sha256"]) == 64
-        assert report["label_status"] == "unavailable"
+        assert report["label_status"] == "joined_conservative"
+        labels = report["labels"]
+        assert 0 < labels["coverage"] < 1
+        assert sum(labels["distribution"].values()) == labels["counts"]["matched"]
+        assert labels["timestamp_uncertainty_seconds"] == 60
         assert report["model_validated"] is False
         assert sum(report["protocols"].values()) == report["counts"]["eligible_packets"]
 
@@ -115,3 +119,45 @@ def test_postgres_real_persistence(postgres_client, message):
         assert ws.receive_json()["type"] == "ack"
     events = client.get("/api/events").json()
     assert any(event["flow"]["src_ip"] == "192.168.64.1" for event in events["items"])
+
+
+def test_event_ip_search_matches_both_endpoints_and_validates(client, message):
+    with client.websocket_connect('/ws/collector', headers=AUTH) as collector:
+        collector.send_json(message)
+        assert collector.receive_json()['type'] == 'ack'
+    for address in ('192.168.64.1', '192.168.64.2'):
+        assert client.get('/api/events', params={'ip': address}).json()['total'] == 1
+    assert client.get('/api/events?ip=192.0.2.99').json()['total'] == 0
+    assert client.get('/api/events?ip=192.168.64.1&severity=low').json()['total'] == 0
+    assert client.get('/api/events?ip=invalid').status_code == 422
+
+
+def test_model_evaluation_is_separate_from_runtime_and_can_be_absent(client, tmp_path, monkeypatch):
+    import json
+
+    from backend.services import analysis
+
+    monkeypatch.setattr(analysis, 'REPORT_DIRECTORY', tmp_path)
+    assert client.get('/api/analysis/pcap').status_code == 404
+    body = client.get('/api/analysis/model').json()
+    assert body['evaluation'] is None and body['runtime']['mode'] == 'rules_only'
+    (tmp_path / 'evaluation').mkdir()
+    (tmp_path / 'evaluation' / 'combined.json').write_text(json.dumps({'status': 'below_target'}))
+    body = client.get('/api/analysis/model').json()
+    assert body['evaluation']['status'] == 'below_target'
+    assert body['runtime']['mode'] == 'rules_only'
+
+
+def test_inconsistent_capture_evidence_is_not_served(client, tmp_path, monkeypatch):
+    import json
+
+    from backend.services import analysis
+
+    monkeypatch.setattr(analysis, 'REPORT_DIRECTORY', tmp_path)
+    (tmp_path / 'labels').mkdir()
+    (tmp_path / 'friday.json').write_text(json.dumps({'source': 'Friday.pcap',
+        'traffic_minutes': [], 'counts': {'feature_rows': 10}}))
+    (tmp_path / 'labels' / 'friday.json').write_text(json.dumps({'counts': {'matched': 11}}))
+    response = client.get('/api/analysis/pcap')
+    assert response.status_code == 500
+    assert response.json()['error']['message'] == 'An internal error occurred'

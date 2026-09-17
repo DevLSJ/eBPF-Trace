@@ -1,7 +1,5 @@
-import json
 import secrets
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
@@ -10,6 +8,7 @@ from sqlalchemy import select, text
 from backend.core.schemas import EventQuery, Thresholds
 from backend.db import crud
 from backend.db.models import RuntimeConfig, SystemMetric
+from backend.services.analysis import capture_reports, model_evaluation
 
 router = APIRouter()
 
@@ -36,12 +35,20 @@ async def health(request: Request):
 
 
 @router.get("/api/analysis/pcap")
-async def pcap_report():
-    directory = Path(__file__).resolve().parents[2] / "ml" / "reports"
-    reports = [json.loads(path.read_text()) for path in sorted(directory.glob("*.json"))]
+def pcap_report():
+    reports = capture_reports()
     if not reports:
         raise HTTPException(404, "No offline capture report available")
     return {"items": reports}
+
+
+@router.get("/api/analysis/model")
+def analysis_model(request: Request):
+    detector = request.app.state.detector
+    return {
+        "runtime": {"mode": detector.mode, "status": detector.model_status},
+        "evaluation": model_evaluation(),
+    }
 
 
 @router.get("/api/events")

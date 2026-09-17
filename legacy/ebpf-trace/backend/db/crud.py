@@ -1,6 +1,6 @@
 from datetime import timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from backend.db.models import DetectionEvent, SystemMetric
 
@@ -54,6 +54,9 @@ async def create_event(session, message, result):
 
 async def get_events(session, query):
     conditions = []
+    if query.ip:
+        address = str(query.ip)
+        conditions.append(or_(DetectionEvent.src_ip == address, DetectionEvent.dst_ip == address))
     for key in ("severity", "attack_type"):
         if value := getattr(query, key):
             conditions.append(getattr(DetectionEvent, key) == value)

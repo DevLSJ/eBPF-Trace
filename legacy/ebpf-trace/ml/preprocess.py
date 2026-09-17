@@ -50,9 +50,14 @@ def preprocess(source, output, allow_random_split=False):
     if len(frame) < 2:
         raise ValueError("No sufficient labeled features; UNLABELED/AMBIGUOUS rows are excluded")
     cut = None
+    rounded_timestamps = 0
     if "timestamp" in frame and "flow_started_at" in frame:
         times = pd.to_numeric(frame["timestamp"], errors="raise").to_numpy()
         starts = pd.to_numeric(frame["flow_started_at"], errors="raise").to_numpy()
+        # Nanosecond conversion can round epoch seconds by one ULP.
+        rounded = (starts > times) & (starts - times <= 1e-6)
+        rounded_timestamps = int(rounded.sum())
+        starts = np.where(rounded, times, starts)
         if (not np.isfinite(times).all() or not np.isfinite(starts).all()
                 or (starts > times).any()):
             raise ValueError("Invalid timestamps")
@@ -96,6 +101,7 @@ def preprocess(source, output, allow_random_split=False):
         "split_policy": policy,
         "cut_timestamp": cut,
         "purged_rows": len(values) - len(train_y) - len(test_y),
+        "rounded_timestamp_rows": rounded_timestamps,
         "deployment_eligible": bool(policy == "purged_time_10s_new_flows"
                                     and "label_status" in frame
                                     and (frame["label_status"] == "matched_time_5tuple").all()),
