@@ -1,148 +1,119 @@
-# eBPF Trace
+<p align="center">
+  <a href="https://skillicons.dev"><img src="https://skillicons.dev/icons?i=c,python,fastapi,react,ts,vite,postgres,redis,docker,linux,aws,terraform,githubactions&theme=light" alt="C, Python, FastAPI, React, TypeScript, Vite, PostgreSQL, Redis, Docker, Linux, AWS, Terraform, GitHub Actions" /></a>
+</p>
 
-Ubuntu VM의 native XDP로 TCP/UDP 트래픽을 관찰하고, EC2에서 이상 탐지·저장·실시간 대시보드를 제공하는 프로젝트입니다. 패킷은 항상 `XDP_PASS`로 통과시킵니다.
+<h1 align="center">eBPF Trace</h1>
+<p align="center"><strong>See the traffic. Understand the threat.</strong><br/>커널의 패킷 흐름을 실시간 탐지와 검증 가능한 데이터로 연결합니다.</p>
 
-> **2026-09-16 개발·검증:** 목요일·금요일 PCAP **19,319,899개 패킷** 전체 변환, 레이블 결합 CLI, 모델 검증 보호, 홈페이지 상세·필터·설정·PCAP 선택 기능을 추가했습니다. 실제 PostgreSQL/Redis 포함 Python **43개**, 데스크톱/모바일 브라우저 **8개** 테스트 통과. 정답 CSV가 없어 실제 ML 학습·F1/FPR 평가는 대기 중입니다. [최신 검증 기록](docs/verification-2026-09-16.md), [남은 작업](docs/tasks.md#2026-09-16-개발-상태)을 참고하세요.
+<p align="center">
+  <a href="https://github.com/DevLSJ/eBPF-Trace/actions/workflows/ci-cd.yml"><img src="https://github.com/DevLSJ/eBPF-Trace/actions/workflows/ci-cd.yml/badge.svg" alt="CI/CD Pipeline" /></a>
+  <img src="https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white" alt="Python 3.14" />
+  <img src="https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white" alt="React 19" />
+  <img src="https://img.shields.io/badge/XDP-PASS-20A391" alt="XDP PASS: observe traffic" />
+</p>
 
-## 현재 실행 환경
+<p align="center">
+  <a href="http://52.62.165.10"><strong>대시보드 열기 ↗</strong></a> ·
+  <a href="http://52.62.165.10/#capture">데이터 분석</a> ·
+  <a href="docs/operations.md">실행 · 운영 가이드</a> ·
+  <a href="docs/verification-2026-09-17.md">검증 기록</a>
+</p>
 
-- 대시보드: http://52.62.165.10
-- EC2: `ssh -i "don forget.pem" ubuntu@52.62.165.10`
-- Ubuntu VM: `ssh ubuntu@192.168.64.2`
-- CI·브라우저 검증·amd64 Docker 빌드는 GitHub Ubuntu runner에서 실행합니다. VM runner는 EC2에 배포를 요청하며 EC2는 완성된 이미지만 pull합니다. VM에는 Docker가 필요 없습니다.
-- 백엔드 Python 3.14, 프론트 Node 24, PostgreSQL 17, Redis 7.
-- Collector는 Ubuntu BCC 패키지와 맞는 시스템 Python 3.10의 `--system-site-packages` 가상환경을 사용합니다.
+---
 
-## 구성
+## A closer look
 
-| 경로 | 역할 |
-|---|---|
-| `ebpf-agent/` | Ethernet/VLAN/IPv4/TCP/UDP 파싱, LRU 플로우 맵, ring buffer |
-| `collector/` | 1초 피처 윈도우, 출발지별 10초 포트 분포, Redis 캐시, 영속 전송 큐 |
-| `ml/` | 규칙 탐지, Isolation Forest 학습·검증·폴백 |
-| `backend/` | FastAPI REST/WS, PostgreSQL, 메트릭, Slack 서비스 |
-| `frontend/` | React·TypeScript·Recharts·Zustand 대시보드 |
-| `infra/` | Terraform, runner 설정, systemd, 배포·검증 스크립트 |
+Ubuntu VM의 **eBPF/XDP**가 관찰한 트래픽을 **FastAPI**가 분석·저장하고, **React** 대시보드가 WebSocket으로 전달받습니다. 원본 PCAP과 정답 CSV는 별도의 오프라인 경로에서 검증합니다. 모든 패킷은 `XDP_PASS`로 통과하며 자동 차단은 하지 않습니다.
 
-## 로컬 개발
+![실제 운영 대시보드 — 실시간 트래픽과 탐지 이벤트](docs/screenshots/dashboard-desktop.png)
+
+| Live observability | Event investigation | Data evidence |
+|:---|:---|:---|
+| 패킷·대역폭·시스템 자원 실시간 표시 | 심각도·기간·유형·출발지/목적지 IP 검색 | 캡처 타임라인·프로토콜·정답 분포 |
+| Collector·Redis·WebSocket 연결 상태 | 피처 상세 조회·페이지별 JSON 내보내기 | 매칭률·제외 사유·혼동 행렬·평가 JSON |
+| 규칙 기반 탐지와 장애 후 재연결 | 인증된 관리자 임계값 저장 | 실험 성능과 운영 엔진 상태 구분 |
+
+## From packets to evidence
+
+![CIC-IDS-2017 분석 화면 — 캡처 타임라인과 정답 매칭](docs/screenshots/analysis-desktop.png)
+
+<details>
+<summary><strong>모델 평가와 모바일 화면 보기</strong></summary>
+
+<p align="center"><img src="docs/screenshots/model-evaluation.png" alt="실측 모델 성능과 혼동 행렬" width="100%" /></p>
+<p align="center"><img src="docs/screenshots/analysis-mobile.png" alt="모바일 분석 화면" width="320" /></p>
+
+</details>
+
+2026-09-17 기준 실제 CIC-IDS-2017 목요일·금요일 캡처와 제공된 `TrafficLabelling` CSV를 사용했습니다. 화면 캡처는 운영 서버의 실제 API 응답을 사용합니다.
+
+| 데이터 | Thursday | Friday |
+|:---|---:|---:|
+| 원본 패킷 | 9,322,025 | 9,997,874 |
+| 생성 피처 행 | 2,599,785 | 3,357,642 |
+| 확실히 매칭된 정답 행 | 281,933 | 261,319 |
+| 정답 매칭률 | 10.84% | 7.78% |
+
+> **현재 운영: 규칙 기반.** Isolation Forest의 매칭 표본 평가 결과는 **F1 2.82% · FPR 1.51%**입니다. F1 목표 80%에 미달해 운영에 적용하지 않았습니다. CSV의 분 단위 시각 때문에 짧은 플로우가 제외되므로, 이 수치는 전체 데이터셋 성능을 대표하지 않습니다. [평가 근거와 한계 →](docs/verification-2026-09-17.md)
+
+## Built with
+
+| 계층 | 기술 | 역할 |
+|:---|:---|:---|
+| Kernel | C · eBPF · XDP · BCC | Linux VM에서 패킷 관찰·플로우 집계 |
+| Collection | Python · Redis · SQLite outbox | 1초 피처·10초 포트 분포·전송 재시도 |
+| API | FastAPI · SQLAlchemy · PostgreSQL 17 | 탐지·영속 저장·REST·WebSocket·관리자 설정 |
+| Detection | Rules · scikit-learn | SYN Flood·Port Scan·트래픽 급증·실험 모델 검증 |
+| Interface | React 19 · TypeScript · Vite · Recharts · Zustand | 반응형 대시보드·이벤트 조사·데이터 분석 |
+| Delivery | Docker Compose · Nginx · GitHub Actions · EC2 | 테스트 → 외부 이미지 빌드 → VM runner 배포 |
+| Infrastructure | Terraform | EC2/VPC/SG 정의; 기존 자원 import/plan은 별도 후속 작업 |
+
+## Start locally
+
+Python **3.14**와 Node **24**를 사용합니다. 아래 SQLite 환경은 웹/API 개발용이며, 실제 커널 수집은 Linux VM에서 실행합니다.
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
-DATABASE_URL=sqlite+aiosqlite:///./ebpf.db .venv/bin/alembic upgrade head
-DATABASE_URL=sqlite+aiosqlite:///./ebpf.db .venv/bin/uvicorn backend.main:app --reload
+.venv/bin/python -m pip install -r requirements-dev.txt
+DATABASE_URL=sqlite+aiosqlite:///./ebpf.db .venv/bin/python -m alembic upgrade head
+DATABASE_URL=sqlite+aiosqlite:///./ebpf.db .venv/bin/python -m uvicorn backend.main:app --reload
+```
 
-# 별도 터미널, Node 24
+```bash
+# 별도 터미널
 cd frontend
 npm ci
 npm run dev
 ```
 
-로컬 SQLite는 API 개발용입니다. 실제 PostgreSQL/Redis 테스트 서비스는 EC2에서 실행합니다.
+`http://127.0.0.1:5173`에서 확인합니다. Collector가 없으면 실시간 데이터는 수신 대기로 표시되고, 저장된 오프라인 분석 보고서는 바로 조회할 수 있습니다. 관리자 토큰·Redis·VM 수집기·EC2 배포 설정은 [운영 가이드](docs/operations.md)에 정리했습니다.
 
-```bash
-# EC2
-cd /home/ubuntu/ebpf-project
-python3 infra/bootstrap_env.py  # .env가 없을 때만 0600 권한으로 생성
-docker compose -f docker-compose.dev.yml up -d --wait
-
-# 로컬 터널 (DB 외부 공개 없음)
-ssh -i "don forget.pem" -N \
-  -L 127.0.0.1:25432:127.0.0.1:25432 \
-  -L 127.0.0.1:26379:127.0.0.1:26379 \
-  -L 127.0.0.1:18080:127.0.0.1:80 ubuntu@52.62.165.10
-.venv/bin/python infra/test_remote.py
-```
-
-## EC2 배포
-
-`main` 푸시 → 실 DB/Redis·브라우저 E2E·eBPF 컴파일 → GitHub 이미지 빌드/push → VM runner의 EC2 SSH 배포 순서입니다. Docker 파일시스템의 최소 900 MiB 여유를 검사합니다. 이 값은 최소 중단 기준이며 모든 이미지의 unpack 공간을 보장하지는 않습니다.
-
-수동 배포는 이미 빌드·푸시한 이미지의 레지스트리/커밋 SHA를 지정한 릴리즈 디렉터리에서 실행합니다.
-
-```bash
-export DOCKERHUB_USERNAME=<레지스트리_사용자> IMAGE_TAG=<커밋_SHA>
-cd /home/ubuntu/ebpf-releases/$IMAGE_TAG
-python3 infra/check_disk.py --minimum-mib 900
-docker compose -p ebpf-trace-app -f docker-compose.yml -f docker-compose.tunnel.yml pull backend frontend
-bash infra/deploy.sh
-```
-
-프로젝트 `ebpf-trace-app`의 PostgreSQL 17 전용 볼륨을 사용하며, 기존 `ebpf-trace` PostgreSQL 16 볼륨은 보존했습니다. `.env`에는 독립적인 DB 암호, Collector 토큰, 관리자 토큰을 사용합니다. 비밀값은 Git에 넣지 않습니다.
-
-Nginx의 공개 포트는 80입니다. HTTPS 인증서/도메인은 아직 설정하지 않았습니다. Collector의 인증 토큰과 Redis 트래픽은 VM의 전용 SSH 터널로 전송합니다. Redis는 EC2 루프백 16379에만 바인딩됩니다. PostgreSQL과 FastAPI는 공개 포트를 갖지 않습니다.
-
-## VM 수집기
-
-```bash
-cd /home/ubuntu/ebpf-project
-python3 -m venv --system-site-packages .venv-collector
-.venv-collector/bin/pip install -r collector/requirements.txt
-make -C ebpf-agent
-sudo python3 ebpf-agent/verify.py
-sudo systemctl status ebpf-tunnel ebpf-collector
-sudo journalctl -u ebpf-collector -f
-```
-
-환경 파일: `.env.collector`, `.env.tunnel`. 배포 정의: `infra/systemd/`. 수집기는 비특권 `ubuntu` 사용자와 제한된 BPF/네트워크 capability로 실행합니다. BPF link가 attachment를 소유하므로 프로세스 종료 시 커널이 연결과 맵을 해제합니다.
-
-WS 미확인 메시지는 `collector-outbox.db`에 남습니다. 백엔드는 탐지 이벤트를 저장한 후 ACK를 보내며, 재전송된 메시지 ID를 중복 저장하지 않습니다. 재접속 5회 소진 후 systemd가 프로세스를 다시 시작합니다. Redis 캐시는 전송 경로와 독립적으로 처리합니다.
-
-## 탐지·학습
-
-규칙은 SYN Flood, Port Scan, Traffic Spike, Large Flow를 탐지합니다. `byte_rate` 단위는 **bytes/s**이고 화면에서만 8을 곱해 bits/s로 표시합니다. 100 Mbps 대용량 플로우 임계값은 12,500,000 bytes/s입니다. SYN 임계값은 패킷 수가 아닌 실제 SYN/s 기준입니다.
-
-기본 배포는 **규칙 기반 모드**입니다. 실제 CIC-IDS-2017 기반 모델은 아직 제공되지 않았습니다. 누락된 ML 점수는 `null`/`—`로 표시하며, 합성 점수나 합성 성능을 운영 결과로 표시하지 않습니다.
-
-원본 캡처는 **`pcap/`**, 정답 레이블은 **`ml/data/cic-ids2017/`**에 보관합니다. 현재 Thursday/Friday 캡처가 있으며 둘 다 PCAPNG 형식입니다. 원본과 생성 피처는 Git/Docker에서 제외하고 작은 보고서만 `ml/reports/`에 포함합니다. 시간·IP·포트·프로토콜을 가진 `GeneratedLabelledFlows` CSV가 필요하며, 피처만 있는 `MachineLearningCSV`로 정답 결합을 대체하지 않습니다.
-
-`ml.replay`는 PCAP/PCAPNG를 스트리밍으로 읽고 커널과 같은 Ethernet/VLAN/IPv4/TCP/UDP 판정 및 Collector의 `FeatureCalculator`를 사용합니다. 100ms snapshot과 1초 flush를 모사하지만 실제 커널/스레드 스케줄링과 완전히 같지는 않습니다. 패킷을 네트워크로 재전송하지 않습니다. 정답 없는 행은 `UNLABELED`이며 규칙 탐지 횟수는 고유 공격 수나 정확도가 아닙니다. 레이블 결합기는 CSV/하위 폴더/ZIP 입력을 지원합니다. [공식 데이터 구성](https://www.unb.ca/cic/datasets/ids-2017.html).
-
-원본은 로컬 Mac에 보관합니다. 검증된 모델·스케일러·`model_version.json` 세트만 EC2의 `/home/ubuntu/ebpf-project/ml/models/`에 배포합니다. 백엔드의 `/app/models`에 읽기 전용으로 마운트됩니다.
-
-```bash
-.venv/bin/python -m ml.replay pcap/Friday-WorkingHours.pcap \
-  --output ml/data/friday-features.csv.gz --report ml/reports/friday.json
-.venv/bin/python -m ml.replay pcap/Thursday-WorkingHours.pcap \
-  --output ml/data/thursday-features.csv.gz --report ml/reports/thursday.json
-
-# 레이블 확보 후 실제 시각 형식과 시간대를 확인해 지정합니다.
-.venv/bin/python -m ml.labels ml/data/friday-features.csv.gz \
-  ml/data/cic-ids2017/GeneratedLabelledFlows.zip \
-  --output ml/data/friday-labeled.csv.gz \
-  --timezone <확인한_IANA_시간대> --timestamp-format '<확인한_strptime_형식>'
-.venv/bin/python -m ml.preprocess ml/data/friday-labeled.csv.gz
-.venv/bin/python -m ml.train_model
-.venv/bin/python -m ml.validate
-```
-
-6개 컬럼은 `pkt_rate, byte_rate, syn_ratio, port_entropy, flow_duration, avg_pkt_size`입니다. 원본 CIC의 장기 플로우 통계는 실시간 1초 윈도우 및 10초 포트 엔트로피와 동일하지 않습니다. PCAP을 같은 피처 계산 방식으로 변환하고 레이블을 결합해야 합니다. 호환되지 않는 CSV 입력은 명시적으로 거부합니다.
-
-레이블 결합은 양방향 5-tuple과 전체 관찰 구간을 대조하고 미매칭·충돌 행을 학습에서 제외합니다. 시간 순서 70% 지점 양쪽 10초와 경계를 가로지른 장기 플로우를 제외합니다. 스케일러/모델은 분리 후 정상 학습 데이터에만 적합합니다. `--allow-random-split`은 타임스탬프 없는 실험 CSV용이며 운영 승인되지 않습니다.
-
-점수는 `clip(decision_function - 0.1, -1, 0)`입니다. F1 ≥ 0.80·FPR ≤ 0.05, 시간 분리/레이블 결합 이력, 피처 순서, sklearn 버전, 모델·스케일러 해시를 확인한 모델만 로드합니다. -0.1의 검증 성능을 다른 임계값에 적용하지 않습니다. 공식 알고리즘: [IsolationForest](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html).
-
-Port Scan은 F-M03에 따라 10초 내 고유 목적지 포트 수로 판정합니다. 기존 `port_entropy_threshold` API 필드는 호환성을 위해 유지하지만 판정에 사용하지 않습니다.
-
-## 테스트와 운영 확인
+## Verify & reproduce
 
 ```bash
 .venv/bin/python -m pytest -q
 .venv/bin/python -m ruff check backend collector ml infra
-cd frontend && npm run build
+cd frontend
+npm run build
 npx playwright install chromium
 npm run test:e2e
-# Ubuntu VM에서만, 외부 기본 경로가 없는 임시 테스트망 생성·정리
-sudo python3 infra/lab_e2e.py
 ```
 
-REST: `/health`, `/api/events`, `/api/events/{id}`, `/api/metrics`, `/api/metrics/history`, `/api/config/thresholds`, `/api/analysis/pcap`.
-WS: `/ws/dashboard`, `/ws/collector` (Bearer Collector 토큰 필수).
-Slack 자동 알림은 `SLACK_ENABLED=true`와 `SLACK_WEBHOOK_URL`을 함께 설정해야 켜집니다. Webhook 저장만으로 재배포 시 활성화되지 않습니다.
-임계값 PUT은 `Authorization: Bearer <ADMIN_TOKEN>`이 필요하며 PostgreSQL에 저장됩니다. WS 연결 관리와 런타임 설정 공유를 위해 현재는 백엔드 worker 1개를 사용합니다.
+- **Python 49개:** 실제 PostgreSQL·Redis를 포함한 검증. 외부 테스트 URL이 없으면 해당 2개는 건너뜁니다.
+- **브라우저 12개:** 데스크톱·모바일 검색, 상세, 설정 인증·저장, 재연결, 분석 선택·내보내기, 오류 복구.
+- **데이터 추적:** 원본·피처·레이블 결과의 SHA-256, 시간 분리 정책, 제외 건수와 실제 평가 지표를 기록합니다.
 
-홈페이지는 이벤트 상세, 심각도/기간/유형 필터, 현재 페이지 JSON 내보내기, 캡처별 분석, 임계값 설정을 제공합니다. 관리자 토큰은 메모리에만 보관하고 저장 성공 시 지웁니다. 공개 주소는 HTTP이므로 설정 변경은 HTTPS 또는 위 SSH 터널의 `http://127.0.0.1:18080`에서 실행합니다.
+원본은 `pcap/`과 `label/`에 두며 Git/Docker에 포함하지 않습니다. 작은 검증 보고서만 `ml/reports/`에 포함합니다. [레이블 결합과 모델 평가 재현 명령](docs/operations.md#탐지학습)을 참고하세요.
 
-진행 상태는 [tasks.md](docs/tasks.md), 최신 실측은 [9월 16일 검증](docs/verification-2026-09-16.md), 과거 커널·복구 실측은 [9월 11일 검증](docs/verification-2026-09-11.md)을 참고하세요.
+## Explore the repository
 
-AWS와 Slack 비밀값은 `infra/configure_credentials.py --aws --slack`로 입력하면 프로젝트 전용 `.secrets/`에 권한 `0600`으로 저장됩니다. 전역 AWS 설정은 변경하지 않습니다. `.venv/bin/python infra/aws_cli.py sts get-caller-identity`로 `ebpf-trace` 프로필을 확인할 수 있습니다. 현재 계정 인증은 성공했지만 `ec2:DescribeInstances` 권한이 없어 Terraform의 기존 자원 import/plan은 보류했습니다. 인프라 워크플로우에는 별도의 OIDC 역할 및 S3 state bucket 설정도 필요합니다.
+| 경로 | 내용 |
+|:---|:---|
+| [`backend/`](backend/) · [`frontend/`](frontend/) | API와 대시보드 |
+| [`ebpf-agent/`](ebpf-agent/) · [`collector/`](collector/) | 커널 관찰과 수집 파이프라인 |
+| [`ml/`](ml/) · [`ml/reports/`](ml/reports/) | 규칙·레이블 결합·모델 학습·실측 보고서 |
+| [`infra/`](infra/) · [`.github/workflows/`](.github/workflows/) | 배포와 자동 검증 |
+| [`docs/requirements.md`](docs/requirements.md) · [`docs/design.md`](docs/design.md) | 요구사항과 설계 |
+| [`docs/tasks.md`](docs/tasks.md) · [`docs/operations.md`](docs/operations.md) | 진행 상태와 운영 방법 |
+
+<sub>Dataset: <a href="https://www.unb.ca/cic/datasets/ids-2017.html">CIC-IDS2017 · Canadian Institute for Cybersecurity</a> — Sharafaldin, Lashkari & Ghorbani, ICISSP 2018. Stack icons: <a href="https://skillicons.dev">Skill Icons</a>.</sub>

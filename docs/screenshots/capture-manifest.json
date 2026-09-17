@@ -1,0 +1,41 @@
+{
+  "captured_at": "2026-09-17T00:27:10.823Z",
+  "base_url": "http://52.62.165.10",
+  "source": "live production API; no seeded or injected traffic",
+  "health": {
+    "status": "ok",
+    "database": "ok",
+    "redis": "ok",
+    "detection_mode": "rules_only",
+    "collector_connected": true,
+    "model_status": "unavailable_or_unvalidated",
+    "model_validation_threshold": null
+  },
+  "evaluation": {
+    "precision": 0.027530364372469637,
+    "recall": 0.028862478777589132,
+    "f1": 0.02818068794032325,
+    "fpr": 0.01507742717075406,
+    "tn": 156909,
+    "fp": 2402,
+    "fn": 2288,
+    "tp": 68,
+    "passed": false,
+    "deployment_eligible": false
+  },
+  "captures": [
+    {
+      "source": "Friday-WorkingHours.pcap",
+      "matched": 261319,
+      "coverage": 0.07782813057496898
+    },
+    {
+      "source": "Thursday-WorkingHours.pcap",
+      "matched": 281933,
+      "coverage": 0.10844473677631035
+    }
+  ],
+  "page_errors": [],
+  "desktop_overflow": false,
+  "mobile_overflow": false
+}
