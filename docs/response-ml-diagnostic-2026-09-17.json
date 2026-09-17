@@ -1,0 +1,213 @@
+{
+  "generated_on": "2026-09-17",
+  "scope": "Read-only post-hoc diagnosis of the already inspected matched held-out feature windows. Not new validation, not a deployment approval, not production hybrid performance.",
+  "evaluation_report": "ml/reports/evaluation/combined.json",
+  "evaluation_report_sha256": "95a946faa2c4386d06f6d4fd844c65e16aebf1c54c0fc0df3f6c629042ac5c7d",
+  "baseline_performance": {
+    "precision": 0.9212687066529163,
+    "recall": 0.4777910543635359,
+    "f1": 0.6292425226839924,
+    "fpr": 0.04113707972391553,
+    "tn": 699339,
+    "fp": 30003,
+    "fn": 383716,
+    "tp": 351078,
+    "passed": false,
+    "per_label": {
+      "BENIGN": {
+        "rows": 729342,
+        "detected": 30003,
+        "detection_rate": 0.04113707972391553
+      },
+      "DDOS": {
+        "rows": 416239,
+        "detected": 160596,
+        "detection_rate": 0.38582641222951236
+      },
+      "PORTSCAN": {
+        "rows": 318555,
+        "detected": 190482,
+        "detection_rate": 0.5979563968545463
+      }
+    },
+    "deployment_eligible": false
+  },
+  "diagnostic": {
+    "scope": "Post-hoc diagnostic on already inspected held-out set; NOT a new validation or deployable threshold selection",
+    "model_sha256": "973e7898fb4719e443c722b0841d8dbba3d05eb2515a9bb41e879a608698e7c7",
+    "rows": 1464136,
+    "attack_prevalence": 0.5018618488992825,
+    "n_estimators": 100,
+    "samples_per_tree": 256,
+    "roc_auc": 0.9018662562640325,
+    "average_precision": 0.8687778424273647,
+    "optimistic_threshold_bound_at_fpr_max_005": {
+      "precision": 0.9149672951135052,
+      "recall": 0.5339863961872308,
+      "f1": 0.6743902051255168,
+      "fpr": 0.04999712069235009
+    },
+    "groups": {
+      "BENIGN/all": {
+        "rows": 729342,
+        "medians": {
+          "pkt_rate": 1.0,
+          "byte_rate": 112.0,
+          "syn_ratio": 0.0,
+          "port_entropy": 1.109196745961424,
+          "flow_duration": 790.862592000005,
+          "avg_pkt_size": 77.99999999999999,
+          "source_pkt_rate": 35.0,
+          "source_syn_rate": 0.0,
+          "port_cnt": 3.0
+        }
+      },
+      "DDOS/all": {
+        "rows": 416239,
+        "medians": {
+          "pkt_rate": 1.0,
+          "byte_rate": 65.99999999999636,
+          "syn_ratio": 0.0,
+          "port_entropy": 9.641145993304338,
+          "flow_duration": 769.293055999995,
+          "avg_pkt_size": 66.0,
+          "source_pkt_rate": 434.0,
+          "source_syn_rate": 0.0,
+          "port_cnt": 852.0
+        }
+      },
+      "DDOS/missed": {
+        "rows": 255643,
+        "medians": {
+          "pkt_rate": 1.0,
+          "byte_rate": 65.99999999999636,
+          "syn_ratio": 0.0,
+          "port_entropy": 0.0,
+          "flow_duration": 1.0240000000048894,
+          "avg_pkt_size": 66.0,
+          "source_pkt_rate": 455.0,
+          "source_syn_rate": 48.0,
+          "port_cnt": 1.0
+        }
+      },
+      "DDOS/detected": {
+        "rows": 160596,
+        "medians": {
+          "pkt_rate": 3.0,
+          "byte_rate": 5954.0,
+          "syn_ratio": 0.0,
+          "port_entropy": 9.724000175094012,
+          "flow_duration": 1355.3955840000053,
+          "avg_pkt_size": 2006.666666666667,
+          "source_pkt_rate": 406.0,
+          "source_syn_rate": 0.0,
+          "port_cnt": 901.0
+        }
+      },
+      "PORTSCAN/all": {
+        "rows": 318555,
+        "medians": {
+          "pkt_rate": 1.0,
+          "byte_rate": 60.0,
+          "syn_ratio": 0.3333333333333333,
+          "port_entropy": 9.950285637709891,
+          "flow_duration": 0.0,
+          "avg_pkt_size": 60.0,
+          "source_pkt_rate": 505.0,
+          "source_syn_rate": 6.0,
+          "port_cnt": 997.0000000000001
+        }
+      },
+      "PORTSCAN/missed": {
+        "rows": 128073,
+        "medians": {
+          "pkt_rate": 1.0,
+          "byte_rate": 60.0,
+          "syn_ratio": 0.0,
+          "port_entropy": 3.0250704532152817,
+          "flow_duration": 0.0,
+          "avg_pkt_size": 60.0,
+          "source_pkt_rate": 380.0,
+          "source_syn_rate": 0.0,
+          "port_cnt": 13.0
+        }
+      },
+      "PORTSCAN/detected": {
+        "rows": 190482,
+        "medians": {
+          "pkt_rate": 1.0,
+          "byte_rate": 60.0,
+          "syn_ratio": 0.9999999999999999,
+          "port_entropy": 9.952468487782276,
+          "flow_duration": 0.0,
+          "avg_pkt_size": 60.0,
+          "source_pkt_rate": 608.0,
+          "source_syn_rate": 404.0,
+          "port_cnt": 997.0000000000001
+        }
+      }
+    }
+  },
+  "direction_groups": [
+    {
+      "label": "DDoS",
+      "src_ip": "192.168.10.50",
+      "dst_ip": "172.16.0.1",
+      "rows": 237226,
+      "missed": 85915,
+      "recall": 0.6378348073145439
+    },
+    {
+      "label": "DDoS",
+      "src_ip": "172.16.0.1",
+      "dst_ip": "192.168.10.50",
+      "rows": 179013,
+      "missed": 169728,
+      "recall": 0.05186774144894505
+    },
+    {
+      "label": "PortScan",
+      "src_ip": "172.16.0.1",
+      "dst_ip": "192.168.10.50",
+      "rows": 159736,
+      "missed": 4289,
+      "recall": 0.9731494465868683
+    },
+    {
+      "label": "PortScan",
+      "src_ip": "192.168.10.50",
+      "dst_ip": "172.16.0.1",
+      "rows": 158819,
+      "missed": 123784,
+      "recall": 0.22059703184127843
+    }
+  ],
+  "direction_interpretation": {
+    "192.168.10.50": "Victim server in the official CIC-IDS2017 topology",
+    "172.16.0.1": "Firewall/NAT address in the official topology; not an attribution to an original attacker",
+    "source": "https://www.unb.ca/cic/datasets/ids-2017.html"
+  },
+  "illustrations_not_measurements": {
+    "recall_needed_for_f1_080_if_current_precision_stays_fixed": 0.706943420845969,
+    "precision_at_attack_prevalence_001_if_current_recall_and_fpr_stay_fixed": 0.10500067025992618
+  },
+  "method": [
+    "Verified local model, scaler and held-out split against saved metadata hashes before scoring.",
+    "Scored the saved held-out split with the trusted local model and computed all score cutoffs using precision_recall_curve.",
+    "Selected the maximum F1 satisfying the observed FPR <= 0.05 only as a post-hoc diagnostic bound on this finite sample.",
+    "Reconstructed held-out time/purge/new-flow filtering from matched.csv.gz and verified every scaled feature row and label against the saved split before using direction-group results.",
+    "Counted missed attack windows using the existing evaluation threshold; group totals equal the baseline attack and false-negative counts."
+  ],
+  "limitations": [
+    "This held-out set contains BENIGN, DDoS and PortScan only.",
+    "Flow-level labels mapped to directional feature windows do not prove that every individual packet or window independently shows attack behavior.",
+    "Endpoint direction is observed; original pre-NAT attacker identity is not recovered.",
+    "Feature changes and model alternatives remain proposals until independently tested.",
+    "Use new untouched days/sessions for future final evaluation after this diagnostic analysis."
+  ],
+  "direction_join_verification": {
+    "held_out_rows_verified": 1464136,
+    "feature_columns_verified": 9,
+    "check": "Compared every reconstructed scaled feature value and label with the stored held-out split in row order; rtol=1e-12, atol=1e-12."
+  }
+}

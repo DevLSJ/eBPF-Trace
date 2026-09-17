@@ -22,8 +22,11 @@ try {
   await page.goto(`${baseURL}/#capture`);
   await page.locator('.evaluation-metrics').waitFor();
   await page.getByLabel('캡처 파일').selectOption('Thursday-WorkingHours.pcap');
-  await page.screenshot({ path: `${directory}analysis-desktop.png`, fullPage: true });
+  await page.evaluate(() => scrollTo(0, 0));
+  await page.screenshot({ path: `${directory}analysis-desktop.png` });
   await page.locator('.model-panel').screenshot({ path: `${directory}model-evaluation.png` });
+  await page.locator('.benchmark-metrics').waitFor();
+  await page.locator('.benchmark-panel').screenshot({ path: `${directory}benchmark-desktop.png` });
   const health = await (await page.request.get(`${baseURL}/health`)).json();
   const model = await (await page.request.get(`${baseURL}/api/analysis/model`)).json();
   const reports = await (await page.request.get(`${baseURL}/api/analysis/pcap`)).json();
@@ -42,6 +45,8 @@ try {
   await page.locator('.evaluation-metrics').waitFor();
   await page.evaluate(() => scrollTo(0, 0));
   await page.screenshot({ path: `${directory}analysis-mobile.png` });
+  await page.locator('.benchmark-panel').screenshot({ path: `${directory}benchmark-mobile.png` });
+  const benchmarkOverflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   await page.goto(`${baseURL}/#scenarios?run=${run.id}`);
   await page.locator('.run-stats').waitFor();
   await page.screenshot({ path: `${directory}scenarios-mobile.png`, fullPage: true });
@@ -49,9 +54,9 @@ try {
   await page.locator('.event-history-chart').waitFor();
   await page.screenshot({ path: `${directory}events-mobile.png`, fullPage: true });
   const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
-  if (errors.length || desktopOverflow || mobileOverflow) throw new Error(JSON.stringify({ errors, desktopOverflow, mobileOverflow }));
-  await writeFile(`${directory}capture-manifest.json`, JSON.stringify({ captured_at: new Date().toISOString(), base_url: baseURL, source: 'production API; live dashboard excludes simulation; scenario/event screenshots show an explicitly marked persisted rehearsal', scenario_run_id: run.id, health, evaluation: model.evaluation.performance, captures: reports.items.map(item => ({ source: item.source, matched: item.labels.counts.matched, coverage: item.labels.coverage })), page_errors: errors, desktop_overflow: desktopOverflow, mobile_overflow: mobileOverflow }, null, 2) + '\n');
-  console.log('Saved eight production screenshots and capture-manifest.json');
+  if (errors.length || desktopOverflow || mobileOverflow || benchmarkOverflow) throw new Error(JSON.stringify({ errors, desktopOverflow, mobileOverflow, benchmarkOverflow }));
+  await writeFile(`${directory}capture-manifest.json`, JSON.stringify({ captured_at: new Date().toISOString(), base_url: baseURL, source: 'production API; live dashboard excludes simulation; scenario/event screenshots show an explicitly marked persisted rehearsal', scenario_run_id: run.id, health, evaluation: model.evaluation.performance, context_evaluation: { preferred_id: model.context_evaluation.preferred_id, protocol_sha256: model.context_evaluation.protocol_sha256, deployment_approved: model.context_evaluation.deployment_approved, candidates: model.context_evaluation.candidates.map(({ id, performance }) => ({ id, performance })) }, captures: reports.items.map(item => ({ source: item.source, matched: item.labels.counts.matched, coverage: item.labels.coverage })), page_errors: errors, desktop_overflow: desktopOverflow, mobile_overflow: mobileOverflow, benchmark_overflow: benchmarkOverflow }, null, 2) + '\n');
+  console.log('Saved ten production screenshots and capture-manifest.json');
 } finally {
   await browser.close();
 }
