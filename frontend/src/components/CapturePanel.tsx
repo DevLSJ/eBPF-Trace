@@ -56,9 +56,9 @@ export function CapturePanel() {
           </div> : <p className="panel-message">정답 레이블이 없어 매칭률을 계산할 수 없습니다.</p>}
         </section>
         <section className="panel evidence-panel"><div className="panel-heading"><div><h2><CheckCheck size={17}/>분석 근거와 범위</h2><p>결과를 해석하기 전에 확인하세요.</p></div></div><div className="evidence-content">
-          <div><span className="step-index">01</span><section><h3>동일한 피처 계산</h3><p>PCAP을 Collector의 6개 피처로 변환했습니다. 규칙 탐지 횟수는 고유 공격 수와 다릅니다.</p></section></div>
-          <div><span className="step-index">02</span><section><h3>시간과 양방향 5-tuple 결합</h3><p>{labels ? `원본 ${labels.sources.length}개 CSV · ${labels.timezone}. 분 단위 시각의 ${labels.timestamp_uncertainty_seconds}초 불확실성을 고려해 관찰 구간 전체가 포함될 때만 매칭합니다.` : '정답 CSV 결합 결과를 기다리고 있습니다.'}</p></section></div>
-          <div><span className="step-index">03</span><section><h3>평가 표본의 한계</h3><p>짧은 플로우가 제외되어 긴 플로우에 편향됩니다. 아래 성능은 매칭된 평가 구간에 한정되며 전체 데이터셋의 정확도를 의미하지 않습니다.</p></section></div>
+          <div><span className="step-index">01</span><section><h3>동일한 피처 계산</h3><p>PCAP을 Collector와 동일한 피처 계산으로 변환했습니다. 추가 실험은 출발지 PPS·SYN PPS·목적지 포트 수도 사용합니다.</p></section></div>
+          <div><span className="step-index">02</span><section><h3>패킷 근거로 정답 시각 복원</h3><p>{labels ? labels.alignment ? `원본 ${labels.sources.length}개 CSV · 패킷 수·방향·지속시간(±${labels.alignment.duration_tolerance_us}μs)이 유일하게 일치하는 구간을 사용합니다. 미복원 구간은 60초 불확실성을 유지합니다.` : `원본 ${labels.sources.length}개 CSV · 분 단위 시각의 불확실성을 보수적으로 처리합니다.` : '정답 CSV 결합 결과를 기다리고 있습니다.'}</p></section></div>
+          <div><span className="step-index">03</span><section><h3>평가 표본의 한계</h3><p>미매칭·정답 충돌은 평가에서 제외합니다. 현재 시간순 평가에는 DDoS·PortScan이 포함되며 다른 공격 유형의 성능까지 보장하지 않습니다.</p></section></div>
           <details><summary>원본 파일과 SHA-256 확인</summary><code>{report.sha256}</code>{labels?.sources.map(source => <p key={source}>{source}</p>)}</details>
         </div></section>
       </div>
@@ -72,6 +72,8 @@ export function CapturePanel() {
           ].map(([title, value, note]) => <div key={String(title)}><span>{title}</span><strong>{percent(Number(value))}</strong><small>{note}</small></div>)}</div>
           <div className="evaluation-bottom"><div className="split-summary"><h3>검증 데이터</h3><p>정상 학습 <b>{number(evaluation.split.training_rows)}</b>행</p><p>시간순 평가 <b>{number(evaluation.split.held_out_rows)}</b>행</p><p>경계·장기 플로우 제외 <b>{number(evaluation.split.purged_rows)}</b>행</p><span>점수 임계값 {evaluation.threshold} · {evaluation.performance.passed ? '수치 목표 충족' : '수치 목표 미달'}</span></div>
           <div className="confusion"><h3>혼동 행렬 <span>피처 행 기준</span></h3><div className="confusion-grid">{[['TN · 정상 통과', evaluation.performance.tn], ['FP · 정상 오탐', evaluation.performance.fp], ['FN · 공격 미탐', evaluation.performance.fn], ['TP · 공격 탐지', evaluation.performance.tp]].map(([label, count]) => <div key={String(label)}><span>{label}</span><b>{number(Number(count))}</b></div>)}</div></div></div>
+          {evaluation.six_feature_comparison && <div className="feature-comparison"><div><span>동일한 데이터 · 동일한 시간순 분리</span><h3>출발지 문맥을 추가한 비교 실험</h3><p>각 연결의 패킷 수에 출발지 전체의 PPS, SYN PPS, 포트 다양성을 더했습니다. 아래 값은 동일한 평가 표본에서 비교합니다.</p></div><div><span>기존 6개 피처 F1</span><strong>{percent(evaluation.six_feature_comparison.performance.f1)}</strong></div><div><span>{evaluation.features.length}개 피처 F1</span><strong>{percent(evaluation.performance.f1)}</strong></div></div>}
+          {evaluation.performance.per_label && <div className="per-label-metrics"><h3>평가 레이블별 관측 결과</h3><div className="table-wrap"><table><thead><tr><th>정답 레이블</th><th>평가 행</th><th>탐지된 행</th><th>탐지 비율</th></tr></thead><tbody>{Object.entries(evaluation.performance.per_label).map(([label, result]) => <tr key={label}><td>{label}{label === 'BENIGN' ? ' · 오탐' : ''}</td><td>{number(result.rows)}</td><td>{number(result.detected)}</td><td>{percent(result.detection_rate)}</td></tr>)}</tbody></table></div></div>}
           <div className="model-runtime"><ShieldCheck size={18}/><div><strong>현재 운영 엔진: {model?.runtime.mode === 'hybrid' ? '하이브리드' : '규칙 기반'}</strong><p>이 화면의 실험 결과와 운영 모델 적용 상태는 별도로 관리됩니다.</p></div></div>
         </div>}
       </section>

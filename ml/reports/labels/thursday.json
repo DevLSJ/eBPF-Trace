@@ -1,15 +1,17 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-17T00:00:12.546661+00:00",
+  "generated_at": "2026-09-17T01:05:41.843806+00:00",
   "counts": {
     "label_rows": 747570,
     "invalid_label_rows": 15,
     "empty_label_rows": 288602,
-    "unlabeled": 2306793,
-    "uncertain_time_rows": 2306451,
-    "matched": 281933,
+    "matched_packet_evidence": 2152904,
+    "matched": 2170602,
+    "unlabeled": 425267,
+    "uncertain_time_rows": 424422,
+    "matched_time_5tuple": 17698,
     "rounded_window_rows": 29,
-    "ambiguous": 11059
+    "ambiguous": 3916
   },
   "sources": [
     "Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv",
@@ -19,11 +21,13 @@
   "timestamp_format": "%d/%m/%Y %H:%M; working-hours 12h clock",
   "timestamp_uncertainty_seconds": 60,
   "profile": "cicids2017",
-  "policy": "full window guaranteed coverage; bidirectional tuple",
+  "policy": "unique packet signature; full window coverage; unresolved intervals retain uncertainty",
   "distribution": {
-    "BENIGN": 274944,
-    "Web Attack \u2013 XSS": 411,
-    "Infiltration": 6578
+    "BENIGN": 2137060,
+    "Web Attack \u2013 Brute Force": 17178,
+    "Web Attack \u2013 XSS": 6565,
+    "Web Attack \u2013 Sql Injection": 60,
+    "Infiltration": 9739
   },
   "source_distribution": {
     "BENIGN": 456737,
@@ -33,9 +37,27 @@
     "Web Attack \u2013 Sql Injection": 21
   },
   "features_sha256": "169c19a83e0b9f06d60f1aaac81f5f35de689d06807640e589e0cdb52694a17b",
-  "output_sha256": "96bedff2a9f5947c7a5fb50034a9425597425f67872715d867524b17b52c291c",
+  "output_sha256": "de86bf03f784ed02ccd0ecb07123cb3b48976f3f5703d79c12bedb97e426f98c",
   "source_sha256": {
     "Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv": "d74238e054023c8bd4d8056650463cadb25c100fb0e26ebd4272c07b5c022c4b",
     "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv": "e3deaff483d18b53b100a441dff9b8919416df8876b4edcc0f0d1e4bf48397d0"
+  },
+  "alignment": {
+    "schema_version": 1,
+    "policy": "unique bidirectional packet counts + duration + minute + direction",
+    "generated_at": "2026-09-17T01:00:40.154457+00:00",
+    "sources": [
+      "Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv",
+      "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv"
+    ],
+    "capture_sha256": "38f8b1bb276849bf1721f7c4de22bebfa7f59a74e52286d4c0a37edbb118fe01",
+    "features_sha256": "169c19a83e0b9f06d60f1aaac81f5f35de689d06807640e589e0cdb52694a17b",
+    "source_sha256": {
+      "Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv": "d74238e054023c8bd4d8056650463cadb25c100fb0e26ebd4272c07b5c022c4b",
+      "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv": "e3deaff483d18b53b100a441dff9b8919416df8876b4edcc0f0d1e4bf48397d0"
+    },
+    "duration_tolerance_us": 2,
+    "timezone": "America/Halifax",
+    "intervals_sha256": "bb1cc21e27507d98bbbf5d1b75b7497f1ae373630cb9dc925e240ef230b1366f"
   }
 }

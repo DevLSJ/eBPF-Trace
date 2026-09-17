@@ -6,13 +6,11 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
-from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.core.schemas import FlowMessage
-from backend.db.crud import create_event, event_dict
-from backend.db.models import DetectionEvent
 from backend.services.alert import send_alert
+from backend.services.detection import process_flow, traffic_message
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -52,28 +50,14 @@ async def collector(ws: WebSocket):
             except (ValidationError, json.JSONDecodeError):
                 await ws.send_json({"type": "error", "code": "VALIDATION_ERROR"})
                 continue
-            result = await asyncio.to_thread(
-                ws.app.state.detector.analyze,
-                message.features.model_dump(),
-                ws.app.state.redis_available,
-            )
-            event = None
-            if result["severity"]:
-                try:
-                    async with ws.app.state.db.sessions() as session:
-                        existing = await session.scalar(
-                            select(DetectionEvent).where(
-                                DetectionEvent.message_id == str(message.message_id)
-                            )
-                        )
-                        if existing is None:
-                            event = event_dict(await create_event(session, message, result))
-                except SQLAlchemyError:
-                    logger.exception(
-                        "Event persistence failed; collector will replay unacknowledged data"
-                    )
-                    await ws.close(code=1013)
-                    return
+            try:
+                async with ws.app.state.db.sessions() as session:
+                    result, event = await process_flow(ws.app, session, message)
+                    await session.commit()
+            except SQLAlchemyError:
+                logger.exception("Event persistence failed; collector will replay unacknowledged data")
+                await ws.close(code=1013)
+                return
             if event:
                 await ws.app.state.manager.broadcast(event)
                 if ws.app.state.settings.slack_enabled:
@@ -82,15 +66,7 @@ async def collector(ws: WebSocket):
                     )
                     ws.app.state.alert_tasks.add(task)
                     task.add_done_callback(ws.app.state.alert_tasks.discard)
-            await ws.app.state.manager.broadcast(
-                {
-                    "type": "traffic",
-                    "timestamp": message.timestamp,
-                    "flow": message.flow.model_dump(mode="json"),
-                    "features": message.features.model_dump(),
-                    "anomaly_score": result["anomaly_score"],
-                }
-            )
+            await ws.app.state.manager.broadcast(traffic_message(message, result))
             await ws.send_json({"type": "ack", "message_id": str(message.message_id)})
     except WebSocketDisconnect:
         pass

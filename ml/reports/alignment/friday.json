@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "policy": "unique bidirectional packet counts + duration + minute + direction",
+  "generated_at": "2026-09-17T00:57:19.892487+00:00",
+  "sources": [
+    "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv",
+    "Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv",
+    "Friday-WorkingHours-Morning.pcap_ISCX.csv"
+  ],
+  "capture_sha256": "beff0dcce1eebc9b2454582f4dc8ed0ba0112b2c619a710bf03af93147254cd0",
+  "features_sha256": "e2a2fcb75aac003d42f4afe7ce9d844a309260a857f7be9ee12ca998e3eaffc3",
+  "source_sha256": {
+    "Friday-WorkingHours-Morning.pcap_ISCX.csv": "c061cd98f39d8054aeaed6244a5129a20b3985983d0d022b860ae8aa07fe8d21",
+    "Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv": "7e2ddaa80a5849ba629463296b6128436c161b4a32e8034bb5beae06b0c45e08",
+    "Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv": "1f779b4f0d78f9225554c4de53b5a2c07912b60dcd136ee4c5c1d0d2496b7cc4"
+  },
+  "duration_tolerance_us": 2,
+  "timezone": "America/Halifax",
+  "counts": {
+    "label_rows": 703245,
+    "invalid_label_rows": 47,
+    "capture_packets": 9997874,
+    "indexed_packets": 9913604,
+    "unique_packet_signature": 687658,
+    "multiple_packet_segments": 9499,
+    "signature_mismatch": 5453,
+    "no_packet_segment": 588
+  },
+  "resolved_distribution": {
+    "BENIGN": 398955,
+    "DDoS": 127846,
+    "PortScan": 158923,
+    "Bot": 1934
+  },
+  "unresolved_distribution": {
+    "BENIGN": 15320,
+    "DDoS": 181,
+    "PortScan": 7,
+    "Bot": 32
+  },
+  "intervals_sha256": "20b5cb1d5d35be73d48ba3c82d5237b284a28733c573ec637abcbf2c0e0a1e36"
+}

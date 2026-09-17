@@ -13,10 +13,10 @@ from sklearn.preprocessing import StandardScaler
 from ml.engine import FEATURE_NAMES
 
 
-def feature_frame(path):
+def feature_frame(path, feature_names=FEATURE_NAMES):
     frame = pd.read_csv(path)
     frame.columns = frame.columns.str.strip()
-    missing = set(FEATURE_NAMES) - set(frame.columns)
+    missing = set(feature_names) - set(frame.columns)
     if missing:
         raise ValueError(
             "Missing live-compatible features: "
@@ -27,13 +27,13 @@ def feature_frame(path):
         )
     if "Label" not in frame:
         raise ValueError("A Label column is required (BENIGN or an attack label)")
-    numeric = frame[FEATURE_NAMES].apply(pd.to_numeric, errors="coerce")
+    numeric = frame[feature_names].apply(pd.to_numeric, errors="coerce")
     numeric = numeric.replace([np.inf, -np.inf], np.nan)
     valid = numeric.notna().all(axis=1) & (numeric >= 0).all(axis=1)
     valid &= numeric["syn_ratio"].between(0, 1) & numeric["port_entropy"].between(0, 16)
     labels = frame["Label"].astype("string").str.strip().str.upper()
     valid &= labels.notna() & ~labels.isin(["", "UNLABELED", "UNKNOWN", "AMBIGUOUS", "NAN"])
-    frame[FEATURE_NAMES] = numeric
+    frame[feature_names] = numeric
     frame["Label"] = labels
     return frame.loc[valid].copy()
 
@@ -43,9 +43,9 @@ def load_features(path):
     return frame[FEATURE_NAMES].to_numpy(), (frame["Label"] != "BENIGN").to_numpy(dtype=bool)
 
 
-def preprocess(source, output, allow_random_split=False):
-    frame = feature_frame(source)
-    values = frame[FEATURE_NAMES].to_numpy()
+def preprocess(source, output, allow_random_split=False, feature_names=FEATURE_NAMES):
+    frame = feature_frame(source, feature_names)
+    values = frame[feature_names].to_numpy()
     labels = (frame["Label"] != "BENIGN").to_numpy(dtype=bool)
     if len(frame) < 2:
         raise ValueError("No sufficient labeled features; UNLABELED/AMBIGUOUS rows are excluded")
@@ -67,11 +67,13 @@ def preprocess(source, output, allow_random_split=False):
         test_mask = (times >= cut + 10) & (starts >= cut + 10)
         train_x, train_y = values[train_mask], labels[train_mask]
         test_x, test_y = values[test_mask], labels[test_mask]
+        test_labels = frame.loc[test_mask, "Label"].to_numpy(dtype=str)
         policy = "purged_time_10s_new_flows"
     elif allow_random_split:
         train_x, test_x, train_y, test_y = train_test_split(
             values, labels, test_size=0.3, random_state=42, stratify=labels
         )
+        test_labels = np.where(test_y, "ATTACK", "BENIGN")
         policy = "random_experiment_only"
     else:
         raise ValueError("Replay timestamps required; --allow-random-split is for experiments only")
@@ -89,6 +91,7 @@ def preprocess(source, output, allow_random_split=False):
         train=scaler.transform(benign),
         test=scaler.transform(test_x),
         labels=test_y,
+        label_names=test_labels,
     )
     summary = {
         "source": str(source),
@@ -97,14 +100,15 @@ def preprocess(source, output, allow_random_split=False):
         "attacks": int(labels.sum()),
         "training_rows": len(benign),
         "held_out_rows": len(test_y),
-        "features": FEATURE_NAMES,
+        "features": feature_names,
+        "held_out_distribution": {str(k): int(v) for k, v in zip(*np.unique(test_labels, return_counts=True))},
         "split_policy": policy,
         "cut_timestamp": cut,
         "purged_rows": len(values) - len(train_y) - len(test_y),
         "rounded_timestamp_rows": rounded_timestamps,
         "deployment_eligible": bool(policy == "purged_time_10s_new_flows"
                                     and "label_status" in frame
-                                    and (frame["label_status"] == "matched_time_5tuple").all()),
+                                    and frame["label_status"].isin(["matched_time_5tuple", "matched_packet_evidence"]).all()),
     }
     (output / "preprocessing.json").write_text(json.dumps(summary, indent=2))
     return summary

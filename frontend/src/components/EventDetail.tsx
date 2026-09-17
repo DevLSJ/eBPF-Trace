@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import { errorMessage, getEvent } from '../api/client';
+import { errorMessage, getEvent, reviewEvent } from '../api/client';
 import type { DetectionEvent } from '../types';
 import { SeverityBadge } from './SeverityBadge';
 
@@ -15,11 +15,19 @@ export function EventDetail({ id, onClose }: { id: number; onClose: () => void }
   const dialog = useRef<HTMLDialogElement>(null);
   const [event, setEvent] = useState<DetectionEvent | null>(null);
   const [error, setError] = useState('');
+  const [token, setToken] = useState(''), [note, setNote] = useState(''), [review, setReview] = useState('pending');
+  const [saved, setSaved] = useState(false), [saving, setSaving] = useState(false), [saveError, setSaveError] = useState('');
+  const adopt = (value: DetectionEvent) => { setEvent(value); setNote(value.note ?? ''); setReview(value.is_confirmed === true ? 'confirmed' : value.is_confirmed === false ? 'false_positive' : 'pending'); };
+  const save = async () => {
+    setSaving(true); setSaved(false); setSaveError('');
+    try { adopt(await reviewEvent(id, review === 'pending' ? null : review === 'confirmed', note, token)); setSaved(true); } catch (e) { setSaveError(errorMessage(e)); }
+    finally { setSaving(false); setToken(''); }
+  };
   useEffect(() => {
     const controller = new AbortController();
     const element = dialog.current;
     element?.showModal();
-    getEvent(id, controller.signal).then(setEvent).catch(e => {
+    getEvent(id, controller.signal).then(adopt).catch(e => {
       if (!controller.signal.aborted) setError(errorMessage(e));
     });
     return () => { controller.abort(); element?.close(); };
@@ -28,6 +36,7 @@ export function EventDetail({ id, onClose }: { id: number; onClose: () => void }
     <div className="panel-heading"><h2 id="event-detail-title">탐지 이벤트 #{id}</h2><button className="icon-button" aria-label="상세 닫기" onClick={onClose}><X size={20}/></button></div>
     {error ? <p role="alert">{error}</p> : !event ? <p role="status">상세 정보를 불러오는 중입니다.</p> : <>
       <div className="detail-intro"><SeverityBadge severity={event.severity}/><strong>{event.attack_type.replaceAll('_', ' ')}</strong><p>{new Date(event.detected_at).toLocaleString('ko-KR')}</p></div>
+      <div className="event-provenance"><span className={event.source === 'simulation' ? 'simulation-tag' : 'evidence-tag'}>{event.source === 'simulation' ? 'SIMULATION · 모의 탐지' : 'LIVE · Collector 탐지'}</span>{event.scenario_run_id && <a href={`#scenarios?run=${event.scenario_run_id}`} onClick={onClose}>실행 그래프 ↗</a>}{event.expected_label && <p>시나리오 기대 유형: {event.expected_label}</p>}</div>
       <dl className="detail-grid">
         <div><dt>출발지</dt><dd>{event.flow.src_ip}:{event.flow.src_port}</dd></div>
         <div><dt>목적지</dt><dd>{event.flow.dst_ip}:{event.flow.dst_port}</dd></div>
@@ -35,6 +44,7 @@ export function EventDetail({ id, onClose }: { id: number; onClose: () => void }
         <div><dt>ML 이상 점수</dt><dd>{event.anomaly_score?.toFixed(4) ?? '미제공 (규칙 기반)'}</dd></div>
         {Object.entries(event.features).map(([key, value]) => <div key={key}><dt>{featureLabels[key] || key}</dt><dd>{value.toLocaleString('ko-KR', { maximumFractionDigits: 4 })}</dd></div>)}
       </dl>
+      <form className="review-form" onSubmit={e => { e.preventDefault(); save(); }}><h3>분석가 검토</h3><p>검토 결과는 DB에 저장됩니다. 모델의 정답 레이블이나 학습 데이터로 자동 사용되지 않습니다.</p><label>판정<select aria-label="판정" value={review} onChange={e => setReview(e.target.value)}><option value="pending">검토 대기</option><option value="confirmed">정탐 확인</option><option value="false_positive">오탐 확인</option></select></label><label>검토 메모<textarea value={note} maxLength={2000} onChange={e => setNote(e.target.value)} placeholder="판단 근거를 남겨 주세요."/></label><label>검토용 관리자 토큰<input type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)} disabled={!window.isSecureContext}/></label>{!window.isSecureContext && <p>검토 저장은 HTTPS 또는 localhost에서 사용할 수 있습니다.</p>}<button className="primary-button" type="submit" disabled={!window.isSecureContext || !token || saving}>검토 저장</button>{saved && <p role="status">검토 결과를 저장했습니다.</p>}{saveError && <p role="alert">{saveError}</p>}{event.reviewed_at && <small>마지막 검토: {new Date(event.reviewed_at).toLocaleString('ko-KR')}</small>}</form>
     </>}
   </dialog>;
 }

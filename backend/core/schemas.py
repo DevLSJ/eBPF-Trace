@@ -55,6 +55,9 @@ class Thresholds(BaseModel):
 
 
 class EventQuery(BaseModel):
+    source: Literal["live", "simulation"] | None = None
+    scenario_run_id: UUID | None = None
+    review: Literal["pending", "confirmed", "false_positive"] | None = None
     ip: IPvAnyAddress | None = None
     severity: Severity | None = None
     attack_type: (
@@ -71,3 +74,15 @@ class EventQuery(BaseModel):
         if value is not None and value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
         return value
+
+
+class EventReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    is_confirmed: bool | None
+    note: str = Field(default="", max_length=2000)
+
+
+class ScenarioRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: UUID
+    scenario_id: Literal["intrusion", "syn_flood", "port_scan", "large_flow"]

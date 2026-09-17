@@ -1,19 +1,19 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-17T00:10:08.310103+00:00",
+  "generated_at": "2026-09-17T01:13:07.502025+00:00",
   "dataset": "CIC-IDS-2017 \u00b7 Thursday + Friday",
   "status": "below_target",
   "deployment_approved": false,
   "scope": "conservatively matched feature windows only",
   "sources": [
     {
-      "file": "thursday-labeled.csv.gz",
-      "sha256": "96bedff2a9f5947c7a5fb50034a9425597425f67872715d867524b17b52c291c",
+      "file": "thursday-aligned.csv.gz",
+      "sha256": "de86bf03f784ed02ccd0ecb07123cb3b48976f3f5703d79c12bedb97e426f98c",
       "timestamp_uncertainty_seconds": 60
     },
     {
-      "file": "friday-labeled.csv.gz",
-      "sha256": "5140623d1c92c41559ccb68eb206a091f44a0bce7a3a8fc57748b2b9765776ce",
+      "file": "friday-aligned.csv.gz",
+      "sha256": "eaa66086b75e9cd7bf35e5c4aab4ed9613aab91d7bb1c8bf25e85f38a3ba37c5",
       "timestamp_uncertainty_seconds": 60
     }
   ],
@@ -27,37 +27,84 @@
     "syn_ratio",
     "port_entropy",
     "flow_duration",
-    "avg_pkt_size"
+    "avg_pkt_size",
+    "source_pkt_rate",
+    "source_syn_rate",
+    "port_cnt"
   ],
   "performance": {
-    "precision": 0.027530364372469637,
-    "recall": 0.028862478777589132,
-    "f1": 0.02818068794032325,
-    "fpr": 0.01507742717075406,
-    "tn": 156909,
-    "fp": 2402,
-    "fn": 2288,
-    "tp": 68,
+    "precision": 0.9212687066529163,
+    "recall": 0.4777910543635359,
+    "f1": 0.6292425226839924,
+    "fpr": 0.04113707972391553,
+    "tn": 699339,
+    "fp": 30003,
+    "fn": 383716,
+    "tp": 351078,
     "passed": false,
+    "per_label": {
+      "BENIGN": {
+        "rows": 729342,
+        "detected": 30003,
+        "detection_rate": 0.04113707972391553
+      },
+      "DDOS": {
+        "rows": 416239,
+        "detected": 160596,
+        "detection_rate": 0.38582641222951236
+      },
+      "PORTSCAN": {
+        "rows": 318555,
+        "detected": 190482,
+        "detection_rate": 0.5979563968545463
+      }
+    },
     "deployment_eligible": false
   },
   "split": {
-    "rows": 543252,
-    "benign": 533907,
-    "attacks": 9345,
-    "training_rows": 373239,
-    "held_out_rows": 161667,
+    "rows": 4891978,
+    "benign": 4117797,
+    "attacks": 774181,
+    "training_rows": 3384391,
+    "held_out_rows": 1464136,
+    "held_out_distribution": {
+      "BENIGN": 729342,
+      "DDOS": 416239,
+      "PORTSCAN": 318555
+    },
     "split_policy": "purged_time_10s_new_flows",
-    "cut_timestamp": 1499437266.6388407,
-    "purged_rows": 1357,
-    "rounded_timestamp_rows": 3
+    "cut_timestamp": 1499448252.5523882,
+    "purged_rows": 4064,
+    "rounded_timestamp_rows": 41684
+  },
+  "six_feature_comparison": {
+    "features": [
+      "pkt_rate",
+      "byte_rate",
+      "syn_ratio",
+      "port_entropy",
+      "flow_duration",
+      "avg_pkt_size"
+    ],
+    "scope": "Same aligned rows, split and hyperparameters",
+    "performance": {
+      "precision": 0.9012795202593651,
+      "recall": 0.3473082251624265,
+      "f1": 0.5014013499720515,
+      "fpr": 0.03832632701805189,
+      "tn": 701389,
+      "fp": 27953,
+      "fn": 479594,
+      "tp": 255200,
+      "passed": false
+    }
   },
   "targets": {
     "f1_min": 0.8,
     "fpr_max": 0.05
   },
   "limitations": [
-    "Minute-resolution timestamps exclude short or uncertain flows; this subset is biased toward long flows.",
+    "Only uniquely aligned or conservatively time-covered windows are included; unresolved and conflicting rows remain excluded.",
     "Scores describe matched held-out feature windows, not all attacks or the full CICIDS2017 benchmark.",
     "This evaluation does not approve deployment; live detection remains independent."
   ]

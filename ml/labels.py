@@ -46,7 +46,8 @@ def canonical(src, dst, sport, dport, protocol):
     return json.dumps([*ends, int(protocol)], separators=(",", ":"))
 
 
-def join_labels(features, labels, output, timezone_name, timestamp_format, *, profile=None, day=None):
+def join_labels(features, labels, output, timezone_name, timestamp_format, *, profile=None, day=None,
+                alignment=None):
     if Path(output).resolve() in (Path(features).resolve(), Path(labels).resolve()):
         raise ValueError("Label output must be a new file")
     if profile and (profile != "cicids2017" or day not in ("Thursday", "Friday")):
@@ -54,10 +55,19 @@ def join_labels(features, labels, output, timezone_name, timestamp_format, *, pr
     zone = ZoneInfo(timezone_name)
     counts, sources, distribution, raw_distribution = Counter(), [], Counter(), Counter()
     uncertainty = 60 if profile else 0
+    label_path = Path(labels)
+    source_paths = label_path.rglob("*") if label_path.is_dir() else [label_path]
+    source_hashes = {
+        path.name: sha256(path) for path in source_paths
+        if path.suffix.lower() == ".zip" or (
+            path.suffix.lower() == ".csv" and (not day or belongs_to_capture(path.name, day))
+        )
+    }
+    evidence = None
     with tempfile.TemporaryDirectory(prefix="ebpf-labels-") as temporary:
         db = sqlite3.connect(str(Path(temporary) / "labels.sqlite"))
         try:
-            db.execute("CREATE TABLE labels (flow TEXT, start REAL, end REAL, label TEXT)")
+            db.execute("CREATE TABLE labels (flow TEXT, start REAL, end REAL, label TEXT, uncertainty REAL, method TEXT)")
             for name, stream in csv_sources(labels, "cp1252" if profile else "utf-8-sig", day):
                 reader = csv.DictReader(stream)
                 if reader.fieldnames is None:
@@ -87,17 +97,32 @@ def join_labels(features, labels, output, timezone_name, timestamp_format, *, pr
                             raise ValueError(f"{name}: {error}") from error
                         counts["invalid_label_rows"] += 1
                         continue
-                    db.execute("INSERT INTO labels VALUES (?, ?, ?, ?)",
-                               (key, start, start + duration, label))
+                    if not alignment:
+                        db.execute("INSERT INTO labels VALUES (?, ?, ?, ?, ?, ?)",
+                                   (key, start, start + duration, label, uncertainty, "time_5tuple"))
                     raw_distribution[label] += 1
             if not sources:
                 raise ValueError("No label CSVs found")
+            if alignment:
+                aligned_distribution = Counter()
+                with gzip.open(alignment, "rt") as stream:
+                    evidence = json.loads(next(stream))["manifest"]
+                    if (evidence["features_sha256"] != sha256(features)
+                            or evidence["source_sha256"] != source_hashes):
+                        raise ValueError("Alignment provenance does not match features / labels")
+                    for line in stream:
+                        item = json.loads(line)
+                        db.execute("INSERT INTO labels VALUES (?, ?, ?, ?, ?, ?)", tuple(
+                            item[k] for k in ("flow", "start", "end", "label", "uncertainty", "method")))
+                        aligned_distribution[item["label"]] += 1
+                if aligned_distribution != raw_distribution:
+                    raise ValueError("Alignment must retain every valid label, including unresolved rows")
             db.execute("CREATE INDEX labels_flow_time ON labels(flow, start, end)")
             db.commit()
 
             @lru_cache(maxsize=32768)
             def intervals(key):
-                return db.execute("SELECT start, end, label FROM labels WHERE flow=?", (key,)).fetchall()
+                return db.execute("SELECT start, end, label, uncertainty, method FROM labels WHERE flow=?", (key,)).fetchall()
 
             Path(output).parent.mkdir(parents=True, exist_ok=True)
             read = gzip.open if str(features).endswith(".gz") else open
@@ -123,13 +148,17 @@ def join_labels(features, labels, output, timezone_name, timestamp_format, *, pr
                         raise ValueError("Invalid feature window timestamps")
                     # Union of possible intervals detects conflicts. Intersection
                     # guarantees coverage for every possible sub-minute start.
-                    matches = [(a, b, label) for a, b, label in intervals(key)
-                               if a <= end and b + uncertainty >= start]
+                    matches = [(a, b, label, u, method) for a, b, label, u, method in intervals(key)
+                               if a <= end + 1e-6 and b + u >= start - 1e-6]
                     labels_found = {match[2] for match in matches}
-                    covered = any(a + uncertainty <= start and b >= end for a, b, _ in matches)
+                    coverage = [method for a, b, _, u, method in matches
+                                if a + u <= start + 1e-6 and b >= end - 1e-6]
+                    covered = bool(coverage)
                     if len(labels_found) == 1 and covered:
                         row["Label"] = labels_found.pop()
-                        row["label_status"] = "matched_time_5tuple"
+                        row["label_status"] = ("matched_packet_evidence" if "unique_packet_signature" in coverage
+                                               else "matched_time_5tuple")
+                        counts[row["label_status"]] += 1
                         counts["matched"] += 1
                         distribution[row["Label"]] += 1
                     else:
@@ -153,14 +182,10 @@ def join_labels(features, labels, output, timezone_name, timestamp_format, *, pr
         "distribution": dict(distribution), "source_distribution": dict(raw_distribution),
         "features_sha256": sha256(features), "output_sha256": sha256(output),
     }
-    label_path = Path(labels)
-    source_paths = label_path.rglob("*") if label_path.is_dir() else [label_path]
-    summary["source_sha256"] = {
-        path.name: sha256(path) for path in source_paths
-        if path.suffix.lower() == ".zip" or (
-            path.suffix.lower() == ".csv" and (not day or belongs_to_capture(path.name, day))
-        )
-    }
+    summary["source_sha256"] = source_hashes
+    if evidence:
+        summary["alignment"] = {**evidence, "intervals_sha256": sha256(alignment)}
+        summary["policy"] = "unique packet signature; full window coverage; unresolved intervals retain uncertainty"
     Path(str(output) + ".labels.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary
 
@@ -175,12 +200,13 @@ if __name__ == "__main__":
     parser.add_argument("--profile", choices=["cicids2017"])
     parser.add_argument("--day", choices=["Thursday", "Friday"])
     parser.add_argument("--report", help="Also publish the small join report at this path")
+    parser.add_argument("--alignment", help="Packet-aligned intervals with verified provenance")
     args = parser.parse_args()
     if not args.profile and (not args.timestamp_format or not args.timezone):
         parser.error("--timestamp-format and --timezone required without an explicit dataset profile")
     summary = join_labels(args.features, args.labels, args.output,
                           args.timezone or "America/Halifax", args.timestamp_format,
-                          profile=args.profile, day=args.day)
+                          profile=args.profile, day=args.day, alignment=args.alignment)
     if args.report:
         Path(args.report).parent.mkdir(parents=True, exist_ok=True)
         Path(args.report).write_text(json.dumps(summary, indent=2) + "\n")

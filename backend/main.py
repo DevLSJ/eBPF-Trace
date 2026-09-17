@@ -16,6 +16,7 @@ from backend.core.schemas import Thresholds
 from backend.db.database import Database
 from backend.db.models import Base, RuntimeConfig
 from backend.services.metrics_collector import collect_metrics
+from backend.services.scenarios import ScenarioService
 from backend.websocket.collector import router as ws_router
 from backend.websocket.manager import ConnectionManager
 from ml.engine import DetectionEngine
@@ -44,10 +45,13 @@ def create_app(settings: Settings | None = None):
             config = await session.get(RuntimeConfig, 1)
             if config:
                 app.state.detector.rules.thresholds = Thresholds(**config.thresholds)
+        app.state.scenarios = ScenarioService(app)
+        await app.state.scenarios.recover()
         task = asyncio.create_task(collect_metrics(app)) if settings.metrics_enabled else None
         try:
             yield
         finally:
+            await app.state.scenarios.close()
             if task:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
@@ -61,7 +65,7 @@ def create_app(settings: Settings | None = None):
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins.split(","),
-        allow_methods=["GET", "PUT"],
+        allow_methods=["GET", "PUT", "POST", "PATCH"],
         allow_headers=["Authorization", "Content-Type"],
     )
 

@@ -31,7 +31,7 @@ def test_zip_labels_join_both_directions_and_reject_conflicts(tmp_path):
     with out.open() as stream:
         result = list(csv.DictReader(stream))
     assert [row["Label"] for row in result] == ["BENIGN", "AMBIGUOUS", "UNLABELED"]
-    assert summary["counts"] == {"label_rows": 2, "matched": 1, "ambiguous": 1, "unlabeled": 1}
+    assert summary["counts"] == {"label_rows": 2, "matched": 1, "matched_time_5tuple": 1, "ambiguous": 1, "unlabeled": 1}
 
 
 def test_unknown_labels_are_never_attacks(tmp_path):
