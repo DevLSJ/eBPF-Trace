@@ -1,6 +1,6 @@
 # 실행 및 운영 가이드
 
-[프로젝트 홈](../README.md) · [최신 검증](verification-2026-09-17.md)
+[프로젝트 홈](../README.md) · [최신 검증](verification-2026-09-17-upgrade.md)
 
 ## 현재 실행 환경
 
@@ -90,7 +90,7 @@ WS 미확인 메시지는 `collector-outbox.db`에 남습니다. 백엔드는 �
 
 규칙은 SYN Flood, Port Scan, Traffic Spike, Large Flow를 탐지합니다. `byte_rate` 단위는 **bytes/s**이고 화면에서만 8을 곱해 bits/s로 표시합니다. 100 Mbps 대용량 플로우 임계값은 12,500,000 bytes/s입니다. SYN 임계값은 패킷 수가 아닌 실제 SYN/s 기준입니다.
 
-기본 배포는 **규칙 기반 모드**입니다. 실제 CIC-IDS-2017 레이블 결합·학습·평가를 수행했지만 F1 2.82%로 목표에 미달했고, 분 단위 레이블 표본의 편향도 있어 모델을 운영에 적용하지 않았습니다. 누락된 ML 점수는 `null`/`—`로 표시하며, 합성 점수나 합성 성능을 운영 결과로 표시하지 않습니다.
+기본 배포는 **규칙 기반 모드**입니다. 실제 CIC-IDS-2017 레이블 결합·학습·평가를 수행했지만 패킷 정합 후 9개 피처 실험 F1 62.92%로 목표에 미달했고, 미매칭 표본 및 평가 공격 유형의 한계도 있어 모델을 운영에 적용하지 않았습니다. 누락된 ML 점수는 `null`/`—`로 표시하며, 합성 점수나 합성 성능을 운영 결과로 표시하지 않습니다.
 
 원본 캡처는 **`pcap/`**, 정답 레이블은 **`label/`**에 보관합니다. 현재 Thursday/Friday 캡처가 있으며 둘 다 PCAPNG 형식입니다. 원본과 생성 피처는 Git/Docker에서 제외하고 작은 보고서만 `ml/reports/`에 포함합니다. 제공된 `label/TrafficLabelling ` 폴더의 CSV에 시간·IP·포트·프로토콜·정답이 포함되어 있으며, 피처만 있는 `MachineLearningCSV`로 정답 결합을 대체하지 않습니다.
 
@@ -104,22 +104,29 @@ WS 미확인 메시지는 `collector-outbox.db`에 남습니다. 백엔드는 �
 .venv/bin/python -m ml.replay pcap/Thursday-WorkingHours.pcap \
   --output ml/data/thursday-features.csv.gz --report ml/reports/thursday.json
 
-# 제공된 TrafficLabelling CSV 또는 ZIP. 날짜·12시간 시계·분 단위 불확실성 처리.
+# 패킷 수·방향·지속시간으로 분 단위 CSV 시각을 복원합니다.
+.venv/bin/python -m ml.alignment pcap/Thursday-WorkingHours.pcap label \
+  --features ml/data/thursday-features.csv.gz --day Thursday \
+  --output ml/data/thursday-intervals.jsonl.gz --report ml/reports/alignment/thursday.json
+.venv/bin/python -m ml.alignment pcap/Friday-WorkingHours.pcap label \
+  --features ml/data/friday-features.csv.gz --day Friday \
+  --output ml/data/friday-intervals.jsonl.gz --report ml/reports/alignment/friday.json
 .venv/bin/python -m ml.labels ml/data/thursday-features.csv.gz label \
-  --output ml/data/thursday-labeled.csv.gz --profile cicids2017 --day Thursday \
-  --report ml/reports/labels/thursday.json
+  --output ml/data/thursday-aligned.csv.gz --profile cicids2017 --day Thursday \
+  --alignment ml/data/thursday-intervals.jsonl.gz --report ml/reports/labels/thursday.json
 .venv/bin/python -m ml.labels ml/data/friday-features.csv.gz label \
-  --output ml/data/friday-labeled.csv.gz --profile cicids2017 --day Friday \
-  --report ml/reports/labels/friday.json
+  --output ml/data/friday-aligned.csv.gz --profile cicids2017 --day Friday \
+  --alignment ml/data/friday-intervals.jsonl.gz --report ml/reports/labels/friday.json
 .venv/bin/python -m ml.evaluate_dataset \
-  ml/data/thursday-labeled.csv.gz ml/data/friday-labeled.csv.gz
+  ml/data/thursday-aligned.csv.gz ml/data/friday-aligned.csv.gz \
+  --directory ml/models/cic2017-aligned --source-context
 ```
 
 6개 컬럼은 `pkt_rate, byte_rate, syn_ratio, port_entropy, flow_duration, avg_pkt_size`입니다. 원본 CIC의 장기 플로우 통계는 실시간 1초 윈도우 및 10초 포트 엔트로피와 동일하지 않습니다. PCAP을 같은 피처 계산 방식으로 변환하고 레이블을 결합해야 합니다. 호환되지 않는 CSV 입력은 명시적으로 거부합니다.
 
-레이블 결합은 양방향 5-tuple과 전체 관찰 구간을 대조하고 미매칭·충돌 행을 학습에서 제외합니다. 제공 CSV는 CP1252 인코딩, day/month 날짜, AM/PM 없는 12시간 시계, America/Halifax 기준입니다. 60초 시작 시각 불확실성 전체에 대해 관찰 구간이 포함되는 경우만 매칭합니다. 빈 행 288,602개와 음수 지속시간 62개를 제외했습니다. 자세한 시간 정합 근거는 [최신 검증](verification-2026-09-17.md)을 참조하세요. 시간 순서 70% 지점 양쪽 10초와 경계를 가로지른 장기 플로우를 제외합니다. 스케일러/모델은 분리 후 정상 학습 데이터에만 적합합니다. `--allow-random-split`은 타임스탬프 없는 실험 CSV용이며 운영 승인되지 않습니다.
+레이블 결합은 양방향 5-tuple과 전체 관찰 구간을 대조하고 미매칭·충돌 행을 학습에서 제외합니다. 제공 CSV는 CP1252 인코딩, day/month 날짜, AM/PM 없는 12시간 시계, America/Halifax 기준입니다. PCAP에서 유일하게 일치하는 연속 패킷 구간을 찾고, 시작 방향·양방향 개수·지속시간(±2µs)을 검증합니다. 복원하지 못한 행은 60초 시작 시각 불확실성을 유지합니다. 해당 불확실 구간이 다른 정답과 겹치면 확정 매칭하지 않습니다. 결합 전 피처·원본 CSV 해시 및 전체 정답 분포를 확인합니다. 빈 행 288,602개와 음수 지속시간 62개를 제외했습니다. 자세한 시간 정합 근거는 [최신 검증](verification-2026-09-17-upgrade.md)을 참조하세요. 시간 순서 70% 지점 양쪽 10초와 경계를 가로지른 장기 플로우를 제외합니다. 스케일러/모델은 분리 후 정상 학습 데이터에만 적합합니다. `--allow-random-split`은 타임스탬프 없는 실험 CSV용이며 운영 승인되지 않습니다.
 
-실험 모델은 `ml/models/cic2017-experiment/`에 저장되며 공개 보고서는 `ml/reports/evaluation/combined.json`입니다. 이 실험의 표본 편향 때문에 수치 목표를 충족하더라도 운영 승인 플래그는 false입니다.
+추가 9개 피처 실험은 기존 6개에 `source_pkt_rate`, `source_syn_rate`, `port_cnt`를 더합니다. 운영 피처 계약을 바꾸지 않으며 9개 피처 실험 모델을 운영 엔진에 배포하지 않습니다. 실험 모델은 `ml/models/cic2017-aligned/`에 저장되며 공개 보고서는 `ml/reports/evaluation/combined.json`입니다. 이 실험의 표본 편향 때문에 수치 목표를 충족하더라도 운영 승인 플래그는 false입니다.
 
 점수는 `clip(decision_function - 0.1, -1, 0)`입니다. F1 ≥ 0.80·FPR ≤ 0.05, 시간 분리/레이블 결합 이력, 피처 순서, sklearn 버전, 모델·스케일러 해시를 확인한 모델만 로드합니다. -0.1의 검증 성능을 다른 임계값에 적용하지 않습니다. 공식 알고리즘: [IsolationForest](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html).
 
@@ -142,8 +149,12 @@ WS: `/ws/dashboard`, `/ws/collector` (Bearer Collector 토큰 필수).
 Slack 자동 알림은 `SLACK_ENABLED=true`와 `SLACK_WEBHOOK_URL`을 함께 설정해야 켜집니다. Webhook 저장만으로 재배포 시 활성화되지 않습니다.
 임계값 PUT은 `Authorization: Bearer <ADMIN_TOKEN>`이 필요하며 PostgreSQL에 저장됩니다. WS 연결 관리와 런타임 설정 공유를 위해 현재는 백엔드 worker 1개를 사용합니다.
 
-홈페이지는 대시보드·데이터 분석·탐지 설정 화면을 분리하고 모바일 메뉴를 제공합니다. 이벤트 상세, 심각도/기간/유형/IP 필터, 현재 페이지 JSON 내보내기, 캡처별 타임라인·정답 분포·모델 평가, 분석 JSON 다운로드를 지원합니다. 관리자 토큰은 메모리에만 보관하고 저장 성공 시 지웁니다. 공개 주소는 HTTP이므로 설정 변경은 HTTPS 또는 위 SSH 터널의 `http://127.0.0.1:18080`에서 실행합니다.
+홈페이지는 대시보드·탐지 이벤트·탐지 시나리오·데이터 분석·탐지 설정 화면을 분리하고 모바일 메뉴를 제공합니다. 이벤트 상세, 심각도/기간/유형/IP 필터, 현재 페이지 JSON 내보내기, 캡처별 타임라인·정답 분포·모델 평가, 분석 JSON 다운로드를 지원합니다. 관리자 토큰은 메모리에만 보관하고 저장 성공 시 지웁니다. 공개 주소는 HTTP이므로 설정 변경은 HTTPS 또는 위 SSH 터널의 `http://127.0.0.1:18080`에서 실행합니다.
 
-진행 상태는 [tasks.md](tasks.md), 최신 실측은 [9월 17일 검증](verification-2026-09-17.md), 과거 커널·복구 실측은 [9월 11일 검증](verification-2026-09-11.md)을 참고하세요.
+진행 상태는 [tasks.md](tasks.md), 최신 실측은 [9월 17일 검증](verification-2026-09-17-upgrade.md), 과거 커널·복구 실측은 [9월 11일 검증](verification-2026-09-11.md)을 참고하세요.
 
 AWS와 Slack 비밀값은 `infra/configure_credentials.py --aws --slack`로 입력하면 프로젝트 전용 `.secrets/`에 권한 `0600`으로 저장됩니다. 전역 AWS 설정은 변경하지 않습니다. `.venv/bin/python infra/aws_cli.py sts get-caller-identity`로 `ebpf-trace` 프로필을 확인할 수 있습니다. 현재 계정 인증은 성공했지만 `ec2:DescribeInstances` 권한이 없어 Terraform의 기존 자원 import/plan은 보류했습니다. 인프라 워크플로우에는 별도의 OIDC 역할 및 S3 state bucket 설정도 필요합니다.
+
+## 시나리오 및 검토
+
+[시나리오 시연 가이드](scenarios.md)에 실행 버튼·DB 그래프·이벤트 판정 순서를 정리했습니다. 새 Alembic revision `89c6d1e42a10`은 기존 이벤트를 보존하며 출처/실행 FK/검토 시각과 실행·샘플 테이블을 추가합니다. 배포 시 백엔드 시작 명령이 `alembic upgrade head`를 실행합니다. 시나리오 데이터는 실행별로 명시적으로 저장되며 실시간 그래프에 합산하지 않습니다.

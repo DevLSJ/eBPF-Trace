@@ -1,7 +1,8 @@
 {
-  "captured_at": "2026-09-17T00:27:10.823Z",
+  "captured_at": "2026-09-17T01:56:14.504Z",
   "base_url": "http://52.62.165.10",
-  "source": "live production API; no seeded or injected traffic",
+  "source": "production API; live dashboard excludes simulation; scenario/event screenshots show an explicitly marked persisted rehearsal",
+  "scenario_run_id": "29b68d26-06bc-4d11-a962-55a5c6a4bbe8",
   "health": {
     "status": "ok",
     "database": "ok",
@@ -12,27 +13,44 @@
     "model_validation_threshold": null
   },
   "evaluation": {
-    "precision": 0.027530364372469637,
-    "recall": 0.028862478777589132,
-    "f1": 0.02818068794032325,
-    "fpr": 0.01507742717075406,
-    "tn": 156909,
-    "fp": 2402,
-    "fn": 2288,
-    "tp": 68,
+    "precision": 0.9212687066529163,
+    "recall": 0.4777910543635359,
+    "f1": 0.6292425226839924,
+    "fpr": 0.04113707972391553,
+    "tn": 699339,
+    "fp": 30003,
+    "fn": 383716,
+    "tp": 351078,
     "passed": false,
+    "per_label": {
+      "BENIGN": {
+        "rows": 729342,
+        "detected": 30003,
+        "detection_rate": 0.04113707972391553
+      },
+      "DDOS": {
+        "rows": 416239,
+        "detected": 160596,
+        "detection_rate": 0.38582641222951236
+      },
+      "PORTSCAN": {
+        "rows": 318555,
+        "detected": 190482,
+        "detection_rate": 0.5979563968545463
+      }
+    },
     "deployment_eligible": false
   },
   "captures": [
     {
       "source": "Friday-WorkingHours.pcap",
-      "matched": 261319,
-      "coverage": 0.07782813057496898
+      "matched": 2721376,
+      "coverage": 0.810502132151075
     },
     {
       "source": "Thursday-WorkingHours.pcap",
-      "matched": 281933,
-      "coverage": 0.10844473677631035
+      "matched": 2170602,
+      "coverage": 0.8349159642047324
     }
   ],
   "page_errors": [],

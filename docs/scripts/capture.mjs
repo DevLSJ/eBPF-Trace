@@ -27,16 +27,31 @@ try {
   const health = await (await page.request.get(`${baseURL}/health`)).json();
   const model = await (await page.request.get(`${baseURL}/api/analysis/model`)).json();
   const reports = await (await page.request.get(`${baseURL}/api/analysis/pcap`)).json();
+  const runs = await (await page.request.get(`${baseURL}/api/scenarios/runs`)).json();
+  const run = runs.items.find(item => item.scenario_id === 'intrusion' && item.status === 'completed');
+  if (!run) throw new Error('A completed, explicitly marked rehearsal must exist before capture');
+  await page.goto(`${baseURL}/#scenarios?run=${run.id}`);
+  await page.locator('.run-stats').waitFor();
+  await page.screenshot({ path: `${directory}scenarios-desktop.png`, fullPage: true });
+  await page.goto(`${baseURL}/#events?run=${run.id}`);
+  await page.locator('.event-history-chart').waitFor();
+  await page.screenshot({ path: `${directory}events-desktop.png`, fullPage: true });
   const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseURL}/#capture`);
   await page.locator('.evaluation-metrics').waitFor();
   await page.evaluate(() => scrollTo(0, 0));
   await page.screenshot({ path: `${directory}analysis-mobile.png` });
+  await page.goto(`${baseURL}/#scenarios?run=${run.id}`);
+  await page.locator('.run-stats').waitFor();
+  await page.screenshot({ path: `${directory}scenarios-mobile.png`, fullPage: true });
+  await page.goto(`${baseURL}/#events?run=${run.id}`);
+  await page.locator('.event-history-chart').waitFor();
+  await page.screenshot({ path: `${directory}events-mobile.png`, fullPage: true });
   const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   if (errors.length || desktopOverflow || mobileOverflow) throw new Error(JSON.stringify({ errors, desktopOverflow, mobileOverflow }));
-  await writeFile(`${directory}capture-manifest.json`, JSON.stringify({ captured_at: new Date().toISOString(), base_url: baseURL, source: 'live production API; no seeded or injected traffic', health, evaluation: model.evaluation.performance, captures: reports.items.map(item => ({ source: item.source, matched: item.labels.counts.matched, coverage: item.labels.coverage })), page_errors: errors, desktop_overflow: desktopOverflow, mobile_overflow: mobileOverflow }, null, 2) + '\n');
-  console.log('Saved four production screenshots and capture-manifest.json');
+  await writeFile(`${directory}capture-manifest.json`, JSON.stringify({ captured_at: new Date().toISOString(), base_url: baseURL, source: 'production API; live dashboard excludes simulation; scenario/event screenshots show an explicitly marked persisted rehearsal', scenario_run_id: run.id, health, evaluation: model.evaluation.performance, captures: reports.items.map(item => ({ source: item.source, matched: item.labels.counts.matched, coverage: item.labels.coverage })), page_errors: errors, desktop_overflow: desktopOverflow, mobile_overflow: mobileOverflow }, null, 2) + '\n');
+  console.log('Saved eight production screenshots and capture-manifest.json');
 } finally {
   await browser.close();
 }

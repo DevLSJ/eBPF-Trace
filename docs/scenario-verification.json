@@ -1,0 +1,385 @@
+{
+  "verified_at": "2026-09-17T01:55:07.508806+00:00",
+  "run": {
+    "id": "29b68d26-06bc-4d11-a962-55a5c6a4bbe8",
+    "scenario_id": "intrusion",
+    "status": "completed",
+    "started_at": "2026-09-17T01:54:49.049870+00:00",
+    "finished_at": "2026-09-17T01:55:04.150620+00:00",
+    "thresholds": {
+      "syn_ratio_threshold": 0.8,
+      "syn_pps_threshold": 1000.0,
+      "port_entropy_threshold": 3.5,
+      "port_cnt_threshold": 20,
+      "spike_threshold_multiplier": 10.0,
+      "baseline_pps": 1000.0,
+      "large_flow_threshold": 12500000.0,
+      "anomaly_threshold": -0.1
+    },
+    "detection_mode": "rules_only",
+    "source": "simulation",
+    "samples": [
+      {
+        "step": 0,
+        "timestamp": "2026-09-17T01:54:49.056937+00:00",
+        "stage": "baseline",
+        "expected_label": "BENIGN",
+        "detected_label": "BENIGN",
+        "features": {
+          "pkt_rate": 35.0,
+          "byte_rate": 28000.0,
+          "syn_ratio": 0.03,
+          "port_entropy": 0.2,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 800.0,
+          "port_cnt": 2,
+          "source_pkt_rate": 35.0,
+          "source_syn_rate": 1.0
+        },
+        "anomaly_score": null,
+        "event_id": null
+      },
+      {
+        "step": 1,
+        "timestamp": "2026-09-17T01:54:50.061432+00:00",
+        "stage": "baseline",
+        "expected_label": "BENIGN",
+        "detected_label": "BENIGN",
+        "features": {
+          "pkt_rate": 35.0,
+          "byte_rate": 28000.0,
+          "syn_ratio": 0.03,
+          "port_entropy": 0.2,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 800.0,
+          "port_cnt": 2,
+          "source_pkt_rate": 35.0,
+          "source_syn_rate": 1.0
+        },
+        "anomaly_score": null,
+        "event_id": null
+      },
+      {
+        "step": 2,
+        "timestamp": "2026-09-17T01:54:51.065720+00:00",
+        "stage": "baseline",
+        "expected_label": "BENIGN",
+        "detected_label": "BENIGN",
+        "features": {
+          "pkt_rate": 35.0,
+          "byte_rate": 28000.0,
+          "syn_ratio": 0.03,
+          "port_entropy": 0.2,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 800.0,
+          "port_cnt": 2,
+          "source_pkt_rate": 35.0,
+          "source_syn_rate": 1.0
+        },
+        "anomaly_score": null,
+        "event_id": null
+      },
+      {
+        "step": 3,
+        "timestamp": "2026-09-17T01:54:52.077410+00:00",
+        "stage": "recon",
+        "expected_label": "PORT_SCAN",
+        "detected_label": "PORT_SCAN",
+        "features": {
+          "pkt_rate": 80.0,
+          "byte_rate": 4800.0,
+          "syn_ratio": 1.0,
+          "port_entropy": 5.58,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 60.0,
+          "port_cnt": 48,
+          "source_pkt_rate": 80.0,
+          "source_syn_rate": 80.0
+        },
+        "anomaly_score": null,
+        "event_id": 116
+      },
+      {
+        "step": 4,
+        "timestamp": "2026-09-17T01:54:53.085504+00:00",
+        "stage": "recon",
+        "expected_label": "PORT_SCAN",
+        "detected_label": "PORT_SCAN",
+        "features": {
+          "pkt_rate": 80.0,
+          "byte_rate": 4800.0,
+          "syn_ratio": 1.0,
+          "port_entropy": 5.58,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 60.0,
+          "port_cnt": 48,
+          "source_pkt_rate": 80.0,
+          "source_syn_rate": 80.0
+        },
+        "anomaly_score": null,
+        "event_id": 117
+      },
+      {
+        "step": 5,
+        "timestamp": "2026-09-17T01:54:54.092740+00:00",
+        "stage": "recon",
+        "expected_label": "PORT_SCAN",
+        "detected_label": "PORT_SCAN",
+        "features": {
+          "pkt_rate": 80.0,
+          "byte_rate": 4800.0,
+          "syn_ratio": 1.0,
+          "port_entropy": 5.58,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 60.0,
+          "port_cnt": 48,
+          "source_pkt_rate": 80.0,
+          "source_syn_rate": 80.0
+        },
+        "anomaly_score": null,
+        "event_id": 118
+      },
+      {
+        "step": 6,
+        "timestamp": "2026-09-17T01:54:55.100204+00:00",
+        "stage": "flood",
+        "expected_label": "SYN_FLOOD",
+        "detected_label": "SYN_FLOOD",
+        "features": {
+          "pkt_rate": 4320.0,
+          "byte_rate": 260000.0,
+          "syn_ratio": 0.98,
+          "port_entropy": 0.2,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 60.0,
+          "port_cnt": 1,
+          "source_pkt_rate": 4800.0,
+          "source_syn_rate": 4700.0
+        },
+        "anomaly_score": null,
+        "event_id": 119
+      },
+      {
+        "step": 7,
+        "timestamp": "2026-09-17T01:54:56.107403+00:00",
+        "stage": "flood",
+        "expected_label": "SYN_FLOOD",
+        "detected_label": "SYN_FLOOD",
+        "features": {
+          "pkt_rate": 4340.0,
+          "byte_rate": 260000.0,
+          "syn_ratio": 0.98,
+          "port_entropy": 0.2,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 60.0,
+          "port_cnt": 1,
+          "source_pkt_rate": 4800.0,
+          "source_syn_rate": 4700.0
+        },
+        "anomaly_score": null,
+        "event_id": 120
+      },
+      {
+        "step": 8,
+        "timestamp": "2026-09-17T01:54:57.115186+00:00",
+        "stage": "flood",
+        "expected_label": "SYN_FLOOD",
+        "detected_label": "SYN_FLOOD",
+        "features": {
+          "pkt_rate": 4360.0,
+          "byte_rate": 260000.0,
+          "syn_ratio": 0.98,
+          "port_entropy": 0.2,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 60.0,
+          "port_cnt": 1,
+          "source_pkt_rate": 4800.0,
+          "source_syn_rate": 4700.0
+        },
+        "anomaly_score": null,
+        "event_id": 121
+      },
+      {
+        "step": 9,
+        "timestamp": "2026-09-17T01:54:58.122120+00:00",
+        "stage": "transfer",
+        "expected_label": "LARGE_FLOW",
+        "detected_label": "LARGE_FLOW",
+        "features": {
+          "pkt_rate": 9500.0,
+          "byte_rate": 13509000.0,
+          "syn_ratio": 0.03,
+          "port_entropy": 0.2,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 1422.0,
+          "port_cnt": 2,
+          "source_pkt_rate": 9500.0,
+          "source_syn_rate": 1.0
+        },
+        "anomaly_score": null,
+        "event_id": 122
+      },
+      {
+        "step": 10,
+        "timestamp": "2026-09-17T01:54:59.129228+00:00",
+        "stage": "transfer",
+        "expected_label": "LARGE_FLOW",
+        "detected_label": "LARGE_FLOW",
+        "features": {
+          "pkt_rate": 9500.0,
+          "byte_rate": 13510000.0,
+          "syn_ratio": 0.03,
+          "port_entropy": 0.2,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 1422.0,
+          "port_cnt": 2,
+          "source_pkt_rate": 9500.0,
+          "source_syn_rate": 1.0
+        },
+        "anomaly_score": null,
+        "event_id": 123
+      },
+      {
+        "step": 11,
+        "timestamp": "2026-09-17T01:55:00.135676+00:00",
+        "stage": "transfer",
+        "expected_label": "LARGE_FLOW",
+        "detected_label": "LARGE_FLOW",
+        "features": {
+          "pkt_rate": 9500.0,
+          "byte_rate": 13511000.0,
+          "syn_ratio": 0.03,
+          "port_entropy": 0.2,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 1422.0,
+          "port_cnt": 2,
+          "source_pkt_rate": 9500.0,
+          "source_syn_rate": 1.0
+        },
+        "anomaly_score": null,
+        "event_id": 124
+      },
+      {
+        "step": 12,
+        "timestamp": "2026-09-17T01:55:01.138955+00:00",
+        "stage": "recovery",
+        "expected_label": "BENIGN",
+        "detected_label": "BENIGN",
+        "features": {
+          "pkt_rate": 35.0,
+          "byte_rate": 28000.0,
+          "syn_ratio": 0.03,
+          "port_entropy": 0.2,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 800.0,
+          "port_cnt": 2,
+          "source_pkt_rate": 35.0,
+          "source_syn_rate": 1.0
+        },
+        "anomaly_score": null,
+        "event_id": null
+      },
+      {
+        "step": 13,
+        "timestamp": "2026-09-17T01:55:02.142008+00:00",
+        "stage": "recovery",
+        "expected_label": "BENIGN",
+        "detected_label": "BENIGN",
+        "features": {
+          "pkt_rate": 35.0,
+          "byte_rate": 28000.0,
+          "syn_ratio": 0.03,
+          "port_entropy": 0.2,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 800.0,
+          "port_cnt": 2,
+          "source_pkt_rate": 35.0,
+          "source_syn_rate": 1.0
+        },
+        "anomaly_score": null,
+        "event_id": null
+      },
+      {
+        "step": 14,
+        "timestamp": "2026-09-17T01:55:03.147071+00:00",
+        "stage": "recovery",
+        "expected_label": "BENIGN",
+        "detected_label": "BENIGN",
+        "features": {
+          "pkt_rate": 35.0,
+          "byte_rate": 28000.0,
+          "syn_ratio": 0.03,
+          "port_entropy": 0.2,
+          "flow_duration": 1000.0,
+          "avg_pkt_size": 800.0,
+          "port_cnt": 2,
+          "source_pkt_rate": 35.0,
+          "source_syn_rate": 1.0
+        },
+        "anomaly_score": null,
+        "event_id": null
+      }
+    ],
+    "event_count": 9,
+    "matched_steps": 15,
+    "sample_count": 15
+  },
+  "source": "simulation; one authorized production rehearsal",
+  "stored_event_ids": [
+    124,
+    123,
+    122,
+    121,
+    120,
+    119,
+    118,
+    117,
+    116
+  ],
+  "summary": {
+    "severity": {
+      "critical": 3,
+      "high": 3,
+      "medium": 3
+    },
+    "attack_type": {
+      "LARGE_FLOW": 3,
+      "PORT_SCAN": 3,
+      "SYN_FLOOD": 3
+    },
+    "source": {
+      "simulation": 9
+    },
+    "is_confirmed": {
+      "pending": 9
+    },
+    "total": 9,
+    "timeline": [
+      {
+        "timestamp": "2026-09-17T01:54:00+00:00",
+        "count": 8
+      },
+      {
+        "timestamp": "2026-09-17T01:55:00+00:00",
+        "count": 1
+      }
+    ],
+    "timeline_start": "2026-09-16T01:55:06.740019+00:00",
+    "timeline_end": "2026-09-17T01:55:06.740019+00:00",
+    "timeline_scope": "Last 24 hours within filters; one-minute database aggregates"
+  },
+  "reviewed_event_id": 124,
+  "websocket_traffic_messages": 15,
+  "websocket_events": 9,
+  "live_events_before": 115,
+  "live_events_after": 115,
+  "health": {
+    "status": "ok",
+    "database": "ok",
+    "redis": "ok",
+    "detection_mode": "rules_only",
+    "collector_connected": true,
+    "model_status": "unavailable_or_unvalidated",
+    "model_validation_threshold": null
+  }
+}
