@@ -1,0 +1,139 @@
+{
+  "schema_version": 2,
+  "status": "complete",
+  "started_at": "2026-09-17T07:31:45.504974+00:00",
+  "feature_schema_version": 2,
+  "features": [
+    "pkt_rate",
+    "byte_rate",
+    "syn_ratio",
+    "port_entropy",
+    "flow_duration",
+    "avg_pkt_size",
+    "source_pkt_rate",
+    "source_syn_rate",
+    "port_cnt",
+    "destination_pkt_rate",
+    "destination_byte_rate",
+    "destination_syn_rate",
+    "destination_source_count",
+    "service_pkt_rate",
+    "service_byte_rate",
+    "service_syn_rate",
+    "service_source_count",
+    "reverse_pkt_rate",
+    "reverse_byte_rate",
+    "bidirectional_pkt_rate",
+    "bidirectional_byte_rate",
+    "reverse_packet_fraction",
+    "bidirectional_syn_ratio",
+    "source_pkt_rate_10s",
+    "destination_pkt_rate_10s"
+  ],
+  "days": [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday"
+  ],
+  "completed": [
+    {
+      "day": "Monday",
+      "source": "Monday-WorkingHours.pcap",
+      "source_bytes": 10822507416,
+      "sha256": "f6eac599358f216b074338813a1cf7be3cc4e91d116e13efc0dc71f2cca11972",
+      "feature_rows": 2898867,
+      "matched_rows": 2345037,
+      "distribution": {
+        "BENIGN": 2345037
+      },
+      "replay_seconds": 328.32,
+      "feature_schema_version": 2,
+      "resumed": false
+    },
+    {
+      "day": "Tuesday",
+      "source": "Tuesday-WorkingHours.pcap",
+      "source_bytes": 11048283608,
+      "sha256": "080c2250154c5a174c03660ed0f75a3858d41a27511ba716e780d7bcb1ec4c57",
+      "feature_rows": 2675578,
+      "matched_rows": 2166408,
+      "distribution": {
+        "BENIGN": 2049166,
+        "FTP-Patator": 36542,
+        "SSH-Patator": 80700
+      },
+      "replay_seconds": 309.72,
+      "feature_schema_version": 2,
+      "resumed": false
+    },
+    {
+      "day": "Wednesday",
+      "source": "Wednesday-workingHours.pcap",
+      "source_bytes": 13420789612,
+      "sha256": "cd2674db7559a53f24bc03be3239b315700174ccaef72d10f5edc4c1a08f6186",
+      "feature_rows": 3694503,
+      "matched_rows": 2847052,
+      "distribution": {
+        "BENIGN": 2148410,
+        "DoS slowloris": 38485,
+        "DoS Slowhttptest": 32271,
+        "DoS Hulk": 587098,
+        "DoS GoldenEye": 38206,
+        "Heartbleed": 2582
+      },
+      "replay_seconds": 368.53,
+      "feature_schema_version": 2,
+      "resumed": false
+    },
+    {
+      "day": "Thursday",
+      "source": "Thursday-WorkingHours.pcap",
+      "source_bytes": 8302500180,
+      "sha256": "38f8b1bb276849bf1721f7c4de22bebfa7f59a74e52286d4c0a37edbb118fe01",
+      "feature_rows": 2599785,
+      "matched_rows": 2170602,
+      "distribution": {
+        "BENIGN": 2137060,
+        "Web Attack \u2013 Brute Force": 17178,
+        "Web Attack \u2013 XSS": 6565,
+        "Web Attack \u2013 Sql Injection": 60,
+        "Infiltration": 9739
+      },
+      "replay_seconds": 249.13,
+      "feature_schema_version": 2,
+      "resumed": false
+    },
+    {
+      "day": "Friday",
+      "source": "Friday-WorkingHours.pcap",
+      "source_bytes": 8839309056,
+      "sha256": "beff0dcce1eebc9b2454582f4dc8ed0ba0112b2c619a710bf03af93147254cd0",
+      "feature_rows": 3357642,
+      "matched_rows": 2721376,
+      "distribution": {
+        "BENIGN": 1980737,
+        "Bot": 4893,
+        "PortScan": 319507,
+        "DDoS": 416239
+      },
+      "replay_seconds": 247.72,
+      "feature_schema_version": 2,
+      "resumed": false
+    }
+  ],
+  "failures": [],
+  "code_sha256": {
+    "collector/features.py": "3caf3dd4bbc7b992f3c7b94d64e45180c5bafa147e1a54725c643efee6b443c2",
+    "collector/feature_schema.py": "218572f5321858ed857602b28cc2d658ead85f43d2ebde9c4fd56249efc099cc",
+    "ml/replay.py": "6b4b3044703ee5fc878d83ffe698253e3df3a07817fa557b8c606831094fcc91",
+    "ml/pcap.py": "b64df45839417c4dae4321f6903d222fbd909bf1590b1d0f964cf753a0f49e5c",
+    "ml/labels.py": "6e62fdf605f631f1828e1967028a8e6f3fd97e0e6d4f46a070ee759cfb20a20a",
+    "ml/alignment.py": "313693dec16fa0b74a29c9a0cd079582dbc12c25012357f5d4694b3993add327",
+    "ml/cic_profile.py": "cf71a52e3fb517f9e1e68f1222c6ab0627b014023c5b71ba76498f320edef0c7",
+    "ml/rule_engine.py": "09463dff0d601e13ba729c18bba523f470a28ff4ad978460a57f097b520e79a2",
+    "ml/pipeline.py": "0db804195d800605b6498f97462d271a0d22b763640c8da144c687833753635e"
+  },
+  "finished_at": "2026-09-17T07:41:13.171261+00:00"
+}

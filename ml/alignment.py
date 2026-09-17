@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from ml.artifacts import sha256
-from ml.cic_profile import timestamp
+from ml.cic_profile import CAPTURE_DAYS, timestamp, timestamp_uncertainty
 from ml.labels import REQUIRED, UNKNOWN, canonical, csv_sources
 from ml.pcap import decode, packets
 
@@ -31,11 +31,12 @@ def orientation(src, dst, sport, dport):
     return int((str(src), int(sport)) <= (str(dst), int(dport)))
 
 
-def resolve_segment(times, directions, prefix, base, duration, forward, backward, direction):
+def resolve_segment(times, directions, prefix, base, duration, forward, backward, direction,
+                    uncertainty_us=60_000_000):
     total = forward + backward
     if total <= 0 or forward <= 0:
         return None, 'invalid_packet_counts'
-    lo, hi = np.searchsorted(times, [base, base + 60_000_000])
+    lo, hi = np.searchsorted(times, [base, base + uncertainty_us])
     starts = np.arange(lo, min(hi, len(times) - total + 1))
     if not len(starts):
         return None, 'no_packet_segment'
@@ -81,11 +82,14 @@ def align(capture, labels, features, day, output, report_path):
                     raise ValueError('Invalid packet count')
                 key = canonical(*(row[field] for field in REQUIRED[:5]))
                 direction = orientation(*(row[field] for field in REQUIRED[:4]))
-                records[key].append((start, int(duration), fwd, back, direction, label))
+                records[key].append((start, int(duration), fwd, back, direction, label,
+                                     timestamp_uncertainty(row['Timestamp'])))
             except (ValueError, TypeError, AttributeError):
                 counts['invalid_label_rows'] += 1
     if not sources:
         raise ValueError('No label files for the requested day')
+    if not records:
+        raise ValueError('No valid label records; check timestamp format before reading the capture')
     print(f'{day}: indexed {sum(map(len, records.values())):,} labels / {len(records):,} tuples', flush=True)
     traces = {}
     with capture.open('rb') as stream:
@@ -109,6 +113,7 @@ def align(capture, labels, features, day, output, report_path):
         'source_sha256': {p.name: sha256(p) for p in source_paths
                           if p.name in sources or p.suffix.lower() == '.zip'},
         'duration_tolerance_us': 2, 'timezone': 'America/Halifax',
+        'timestamp_policy': 'second-or-minute-working-hours-12h-v2',
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     resolved_labels, unresolved_labels = Counter(), Counter()
@@ -120,8 +125,9 @@ def align(capture, labels, features, day, output, report_path):
                 array = np.sort(array, order='time', kind='stable')
             times, directions = array['time'], array['forward']
             prefix = np.concatenate(([0], np.cumsum(directions, dtype=np.int64)))
-            for base, duration, fwd, back, direction, label in flows:
-                interval, method = resolve_segment(times, directions, prefix, base, duration, fwd, back, direction)
+            for base, duration, fwd, back, direction, label, uncertainty in flows:
+                interval, method = resolve_segment(times, directions, prefix, base, duration, fwd, back, direction,
+                                                    uncertainty * 1_000_000)
                 counts[method] += 1
                 if interval:
                     start, end = interval
@@ -130,7 +136,7 @@ def align(capture, labels, features, day, output, report_path):
                     start, end = base, base + duration
                     unresolved_labels[label] += 1
                 dest.write(json.dumps({'flow': key, 'start': start / 1e6, 'end': end / 1e6,
-                                       'label': label, 'uncertainty': 0 if interval else 60,
+                                       'label': label, 'uncertainty': 0 if interval else uncertainty,
                                        'method': method}) + '\n')
     summary = {**manifest, 'counts': dict(counts), 'resolved_distribution': dict(resolved_labels),
                'unresolved_distribution': dict(unresolved_labels), 'intervals_sha256': sha256(output)}
@@ -144,7 +150,7 @@ if __name__ == '__main__':
     parser.add_argument('capture')
     parser.add_argument('labels')
     parser.add_argument('--features', required=True)
-    parser.add_argument('--day', choices=['Thursday', 'Friday'], required=True)
+    parser.add_argument('--day', choices=CAPTURE_DAYS, required=True)
     parser.add_argument('--output', required=True)
     parser.add_argument('--report', required=True)
     args = parser.parse_args()

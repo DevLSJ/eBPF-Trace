@@ -29,6 +29,7 @@ async def health(request: Request):
         "redis": "ok" if request.app.state.redis_available else "degraded",
         "detection_mode": request.app.state.detector.mode,
         "collector_connected": request.app.state.collector_connections > 0,
+        "collector_feature_schema_version": request.app.state.collector_feature_schema_version,
         "model_status": request.app.state.detector.model_status,
         "model_validation_threshold": (
             request.app.state.detector.metadata.get("validation_threshold")
@@ -49,8 +50,12 @@ def pcap_report():
 def analysis_model(request: Request):
     detector = request.app.state.detector
     return {
-        "runtime": {"mode": detector.mode, "status": detector.model_status},
+        "runtime": {"mode": detector.mode, "status": detector.model_status,
+                    "feature_count": len(detector.feature_names),
+                    "collector_feature_schema_version": request.app.state.collector_feature_schema_version},
         "evaluation": model_evaluation(),
+        "context_evaluation": model_evaluation("context-v2"),
+        "preparation": model_evaluation("preparation"),
     }
 
 

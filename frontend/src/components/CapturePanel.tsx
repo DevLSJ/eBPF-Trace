@@ -3,6 +3,7 @@ import { ArrowDownToLine, CheckCheck, Database, FileCheck2, FlaskConical, Info, 
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { getCaptureReport, getModelAnalysis, errorMessage } from '../api/client';
 import type { CaptureReport, ModelAnalysis } from '../types';
+import { BenchmarkPanel } from './BenchmarkPanel';
 
 const number = (value: number) => value.toLocaleString('ko-KR');
 const percent = (value: number) => `${(value * 100).toFixed(2)}%`;
@@ -56,12 +57,13 @@ export function CapturePanel() {
           </div> : <p className="panel-message">정답 레이블이 없어 매칭률을 계산할 수 없습니다.</p>}
         </section>
         <section className="panel evidence-panel"><div className="panel-heading"><div><h2><CheckCheck size={17}/>분석 근거와 범위</h2><p>결과를 해석하기 전에 확인하세요.</p></div></div><div className="evidence-content">
-          <div><span className="step-index">01</span><section><h3>동일한 피처 계산</h3><p>PCAP을 Collector와 동일한 피처 계산으로 변환했습니다. 추가 실험은 출발지 PPS·SYN PPS·목적지 포트 수도 사용합니다.</p></section></div>
-          <div><span className="step-index">02</span><section><h3>패킷 근거로 정답 시각 복원</h3><p>{labels ? labels.alignment ? `원본 ${labels.sources.length}개 CSV · 패킷 수·방향·지속시간(±${labels.alignment.duration_tolerance_us}μs)이 유일하게 일치하는 구간을 사용합니다. 미복원 구간은 60초 불확실성을 유지합니다.` : `원본 ${labels.sources.length}개 CSV · 분 단위 시각의 불확실성을 보수적으로 처리합니다.` : '정답 CSV 결합 결과를 기다리고 있습니다.'}</p></section></div>
-          <div><span className="step-index">03</span><section><h3>평가 표본의 한계</h3><p>미매칭·정답 충돌은 평가에서 제외합니다. 현재 시간순 평가에는 DDoS·PortScan이 포함되며 다른 공격 유형의 성능까지 보장하지 않습니다.</p></section></div>
+          <div><span className="step-index">01</span><section><h3>동일한 피처 계산</h3><p>PCAP과 Collector는 같은 계산을 사용합니다. 새 피처는 목적지·서비스 집계와 관측된 반대 방향 트래픽까지 포함합니다.</p></section></div>
+          <div><span className="step-index">02</span><section><h3>패킷 근거로 정답 시각 복원</h3><p>{labels ? labels.alignment ? `원본 ${labels.sources.length}개 CSV · 패킷 수·방향·지속시간(±${labels.alignment.duration_tolerance_us}μs)이 유일하게 일치하는 구간을 사용합니다. 미복원 구간은 ${labels.timestamp_uncertainty_seconds}초 불확실성을 유지합니다.` : `원본 ${labels.sources.length}개 CSV · ${labels.timestamp_uncertainty_seconds}초 시각 불확실성을 보수적으로 처리합니다.` : '정답 CSV 결합 결과를 기다리고 있습니다.'}</p></section></div>
+          <div><span className="step-index">03</span><section><h3>평가 표본의 한계</h3><p>미매칭·정답 충돌은 학습과 평가에서 제외합니다. 전체 요일 실험과 기존 목·금요일 평가의 표본·분리 기준을 각각 확인하세요.</p></section></div>
           <details><summary>원본 파일과 SHA-256 확인</summary><code>{report.sha256}</code>{labels?.sources.map(source => <p key={source}>{source}</p>)}</details>
         </div></section>
       </div>
+      <BenchmarkPanel benchmark={model?.context_evaluation} preparation={model?.preparation}/>
       <section className="panel model-panel"><div className="panel-heading"><div><h2><FlaskConical size={17}/>Isolation Forest 평가</h2><p>Thursday + Friday · 시간순 분리 · 경계 10초 및 장기 플로우 제외</p></div><span className={`evaluation-status ${evaluation?.deployment_approved ? 'approved' : ''}`}>{evaluation ? evaluation.deployment_approved ? '운영 승인' : '실험 평가 · 운영 미승인' : '평가 대기'}</span></div>
         {modelError ? <div className="error-banner" role="alert">{modelError}<button onClick={() => setRetry(v => v + 1)}>다시 시도</button></div> : !evaluation ? <p className="panel-message">실측 평가 보고서가 아직 없습니다. 성능 지표는 평가 후 표시됩니다.</p> : <div className="model-content">
           <div className="evaluation-metrics">{[
@@ -74,7 +76,7 @@ export function CapturePanel() {
           <div className="confusion"><h3>혼동 행렬 <span>피처 행 기준</span></h3><div className="confusion-grid">{[['TN · 정상 통과', evaluation.performance.tn], ['FP · 정상 오탐', evaluation.performance.fp], ['FN · 공격 미탐', evaluation.performance.fn], ['TP · 공격 탐지', evaluation.performance.tp]].map(([label, count]) => <div key={String(label)}><span>{label}</span><b>{number(Number(count))}</b></div>)}</div></div></div>
           {evaluation.six_feature_comparison && <div className="feature-comparison"><div><span>동일한 데이터 · 동일한 시간순 분리</span><h3>출발지 문맥을 추가한 비교 실험</h3><p>각 연결의 패킷 수에 출발지 전체의 PPS, SYN PPS, 포트 다양성을 더했습니다. 아래 값은 동일한 평가 표본에서 비교합니다.</p></div><div><span>기존 6개 피처 F1</span><strong>{percent(evaluation.six_feature_comparison.performance.f1)}</strong></div><div><span>{evaluation.features.length}개 피처 F1</span><strong>{percent(evaluation.performance.f1)}</strong></div></div>}
           {evaluation.performance.per_label && <div className="per-label-metrics"><h3>평가 레이블별 관측 결과</h3><div className="table-wrap"><table><thead><tr><th>정답 레이블</th><th>평가 행</th><th>탐지된 행</th><th>탐지 비율</th></tr></thead><tbody>{Object.entries(evaluation.performance.per_label).map(([label, result]) => <tr key={label}><td>{label}{label === 'BENIGN' ? ' · 오탐' : ''}</td><td>{number(result.rows)}</td><td>{number(result.detected)}</td><td>{percent(result.detection_rate)}</td></tr>)}</tbody></table></div></div>}
-          <div className="model-runtime"><ShieldCheck size={18}/><div><strong>현재 운영 엔진: {model?.runtime.mode === 'hybrid' ? '하이브리드' : '규칙 기반'}</strong><p>이 화면의 실험 결과와 운영 모델 적용 상태는 별도로 관리됩니다.</p></div></div>
+          <div className="model-runtime"><ShieldCheck size={18}/><div><strong>현재 운영 엔진: {model?.runtime.mode === 'hybrid' ? '하이브리드' : '규칙 기반'}</strong><p>이 화면의 실험 결과와 운영 모델 적용 상태는 별도로 관리됩니다. {model?.runtime.collector_feature_schema_version === 2 ? '실시간 Collector: 목적지·양방향 피처 v2 관측 중.' : '실시간 Collector의 v2 피처는 아직 확인되지 않았습니다.'}</p></div></div>
         </div>}
       </section>
       <div className="analysis-footnote"><Info size={15}/><span>정답 매칭과 모델 평가는 오프라인 결과입니다. 실시간 탐지 이벤트에는 이 데이터가 주입되지 않습니다.</span></div>

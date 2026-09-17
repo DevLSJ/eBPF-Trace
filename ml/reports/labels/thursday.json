@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-17T01:05:41.843806+00:00",
+  "generated_at": "2026-09-17T07:39:03.269475+00:00",
   "counts": {
     "label_rows": 747570,
     "invalid_label_rows": 15,
@@ -18,7 +18,7 @@
     "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv"
   ],
   "timezone": "America/Halifax",
-  "timestamp_format": "%d/%m/%Y %H:%M; working-hours 12h clock",
+  "timestamp_format": "day-first; second or minute precision; working-hours-12h",
   "timestamp_uncertainty_seconds": 60,
   "profile": "cicids2017",
   "policy": "unique packet signature; full window coverage; unresolved intervals retain uncertainty",
@@ -36,8 +36,8 @@
     "Web Attack \u2013 XSS": 652,
     "Web Attack \u2013 Sql Injection": 21
   },
-  "features_sha256": "169c19a83e0b9f06d60f1aaac81f5f35de689d06807640e589e0cdb52694a17b",
-  "output_sha256": "de86bf03f784ed02ccd0ecb07123cb3b48976f3f5703d79c12bedb97e426f98c",
+  "features_sha256": "dceafe492c065681dc54661c000eadd62a21f8fd197fd5b0f953075dbd1eaa5d",
+  "output_sha256": "bcb6e7722fd7261f4ba1968f285a6b88c51e193c63dc21c4e12f3b2fae5773e9",
   "source_sha256": {
     "Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv": "d74238e054023c8bd4d8056650463cadb25c100fb0e26ebd4272c07b5c022c4b",
     "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv": "e3deaff483d18b53b100a441dff9b8919416df8876b4edcc0f0d1e4bf48397d0"
@@ -51,13 +51,14 @@
       "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv"
     ],
     "capture_sha256": "38f8b1bb276849bf1721f7c4de22bebfa7f59a74e52286d4c0a37edbb118fe01",
-    "features_sha256": "169c19a83e0b9f06d60f1aaac81f5f35de689d06807640e589e0cdb52694a17b",
+    "features_sha256": "dceafe492c065681dc54661c000eadd62a21f8fd197fd5b0f953075dbd1eaa5d",
     "source_sha256": {
       "Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv": "d74238e054023c8bd4d8056650463cadb25c100fb0e26ebd4272c07b5c022c4b",
       "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv": "e3deaff483d18b53b100a441dff9b8919416df8876b4edcc0f0d1e4bf48397d0"
     },
     "duration_tolerance_us": 2,
     "timezone": "America/Halifax",
-    "intervals_sha256": "bb1cc21e27507d98bbbf5d1b75b7497f1ae373630cb9dc925e240ef230b1366f"
+    "reused_from_intervals_sha256": "bb1cc21e27507d98bbbf5d1b75b7497f1ae373630cb9dc925e240ef230b1366f",
+    "intervals_sha256": "5e6be9eb3bbf673cd86537565977dbdabda54820a45369e9a5f536574e35f169"
   }
 }

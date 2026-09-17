@@ -4,7 +4,7 @@
   "source_bytes": 8302500180,
   "sha256": "38f8b1bb276849bf1721f7c4de22bebfa7f59a74e52286d4c0a37edbb118fe01",
   "complete": true,
-  "generated_at": "2026-09-16T07:02:18.634102+00:00",
+  "generated_at": "2026-09-17T07:05:18.936097+00:00",
   "started_at": 1499342338.492265,
   "ended_at": 1499371484.364012,
   "counts": {
@@ -39,6 +39,34 @@
   "label_status": "unavailable",
   "model_validated": false,
   "feature_policy": "100ms per-flow snapshots + 1s dirty flush; shared FeatureCalculator",
+  "feature_schema_version": 2,
+  "features": [
+    "pkt_rate",
+    "byte_rate",
+    "syn_ratio",
+    "port_entropy",
+    "flow_duration",
+    "avg_pkt_size",
+    "source_pkt_rate",
+    "source_syn_rate",
+    "port_cnt",
+    "destination_pkt_rate",
+    "destination_byte_rate",
+    "destination_syn_rate",
+    "destination_source_count",
+    "service_pkt_rate",
+    "service_byte_rate",
+    "service_syn_rate",
+    "service_source_count",
+    "reverse_pkt_rate",
+    "reverse_byte_rate",
+    "bidirectional_pkt_rate",
+    "bidirectional_byte_rate",
+    "reverse_packet_fraction",
+    "bidirectional_syn_ratio",
+    "source_pkt_rate_10s",
+    "destination_pkt_rate_10s"
+  ],
   "limitations": [
     "Rule counts are feature-window alerts, not unique attacks or ground truth.",
     "Capture replay does not reproduce live kernel/reader scheduling.",
@@ -2477,5 +2505,5 @@
       "bytes": 70303
     }
   ],
-  "elapsed_seconds": 203.33
+  "elapsed_seconds": 249.13
 }

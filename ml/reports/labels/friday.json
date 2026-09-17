@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-17T01:02:08.432408+00:00",
+  "generated_at": "2026-09-17T07:41:12.649657+00:00",
   "counts": {
     "label_rows": 703245,
     "invalid_label_rows": 47,
@@ -18,7 +18,7 @@
     "Friday-WorkingHours-Morning.pcap_ISCX.csv"
   ],
   "timezone": "America/Halifax",
-  "timestamp_format": "%d/%m/%Y %H:%M; working-hours 12h clock",
+  "timestamp_format": "day-first; second or minute precision; working-hours-12h",
   "timestamp_uncertainty_seconds": 60,
   "profile": "cicids2017",
   "policy": "unique packet signature; full window coverage; unresolved intervals retain uncertainty",
@@ -34,8 +34,8 @@
     "PortScan": 158930,
     "Bot": 1966
   },
-  "features_sha256": "e2a2fcb75aac003d42f4afe7ce9d844a309260a857f7be9ee12ca998e3eaffc3",
-  "output_sha256": "eaa66086b75e9cd7bf35e5c4aab4ed9613aab91d7bb1c8bf25e85f38a3ba37c5",
+  "features_sha256": "851d39313da1040919aafe035f7df96b94af7dd7df5c30096246b36d949118b2",
+  "output_sha256": "66c2cd55f7e0677e840781e77ebeeea93d02ec7d34208d1fb20e2a6394aefcd7",
   "source_sha256": {
     "Friday-WorkingHours-Morning.pcap_ISCX.csv": "c061cd98f39d8054aeaed6244a5129a20b3985983d0d022b860ae8aa07fe8d21",
     "Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv": "7e2ddaa80a5849ba629463296b6128436c161b4a32e8034bb5beae06b0c45e08",
@@ -51,7 +51,7 @@
       "Friday-WorkingHours-Morning.pcap_ISCX.csv"
     ],
     "capture_sha256": "beff0dcce1eebc9b2454582f4dc8ed0ba0112b2c619a710bf03af93147254cd0",
-    "features_sha256": "e2a2fcb75aac003d42f4afe7ce9d844a309260a857f7be9ee12ca998e3eaffc3",
+    "features_sha256": "851d39313da1040919aafe035f7df96b94af7dd7df5c30096246b36d949118b2",
     "source_sha256": {
       "Friday-WorkingHours-Morning.pcap_ISCX.csv": "c061cd98f39d8054aeaed6244a5129a20b3985983d0d022b860ae8aa07fe8d21",
       "Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv": "7e2ddaa80a5849ba629463296b6128436c161b4a32e8034bb5beae06b0c45e08",
@@ -59,6 +59,7 @@
     },
     "duration_tolerance_us": 2,
     "timezone": "America/Halifax",
-    "intervals_sha256": "20b5cb1d5d35be73d48ba3c82d5237b284a28733c573ec637abcbf2c0e0a1e36"
+    "reused_from_intervals_sha256": "20b5cb1d5d35be73d48ba3c82d5237b284a28733c573ec637abcbf2c0e0a1e36",
+    "intervals_sha256": "1be1b0f246f1fb3f4c5cb573016d56408029225dab304d8bf42017e97f255141"
   }
 }

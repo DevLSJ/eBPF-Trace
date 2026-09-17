@@ -3,7 +3,9 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, IPvAnyAddress, field_validator
+from pydantic import BaseModel, ConfigDict, Field, IPvAnyAddress, field_validator, model_validator
+
+from collector.feature_schema import CONTEXT_FEATURES
 
 
 class Severity(str, Enum):
@@ -32,6 +34,31 @@ class Features(BaseModel):
     port_cnt: int = Field(default=1, ge=0, le=65536)
     source_pkt_rate: float = Field(default=0, ge=0)
     source_syn_rate: float = Field(default=0, ge=0)
+    feature_schema_version: Literal[1, 2] = 1
+    destination_pkt_rate: float | None = Field(default=None, ge=0)
+    destination_byte_rate: float | None = Field(default=None, ge=0)
+    destination_syn_rate: float | None = Field(default=None, ge=0)
+    destination_source_count: int | None = Field(default=None, ge=0)
+    service_pkt_rate: float | None = Field(default=None, ge=0)
+    service_byte_rate: float | None = Field(default=None, ge=0)
+    service_syn_rate: float | None = Field(default=None, ge=0)
+    service_source_count: int | None = Field(default=None, ge=0)
+    reverse_pkt_rate: float | None = Field(default=None, ge=0)
+    reverse_byte_rate: float | None = Field(default=None, ge=0)
+    bidirectional_pkt_rate: float | None = Field(default=None, ge=0)
+    bidirectional_byte_rate: float | None = Field(default=None, ge=0)
+    reverse_packet_fraction: float | None = Field(default=None, ge=0, le=1)
+    bidirectional_syn_ratio: float | None = Field(default=None, ge=0, le=1)
+    source_pkt_rate_10s: float | None = Field(default=None, ge=0)
+    destination_pkt_rate_10s: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def complete_context_contract(self):
+        if self.feature_schema_version == 2 and any(
+            key not in self.model_fields_set or getattr(self, key) is None for key in CONTEXT_FEATURES
+        ):
+            raise ValueError("Feature schema 2 requires all context observations")
+        return self
 
 
 class FlowMessage(BaseModel):

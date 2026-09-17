@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-17T07:36:33.425437+00:00",
+  "counts": {
+    "label_rows": 529918,
+    "invalid_label_rows": 15,
+    "matched_packet_evidence": 2325238,
+    "matched": 2345037,
+    "unlabeled": 553830,
+    "uncertain_time_rows": 552782,
+    "matched_time_5tuple": 19799,
+    "rounded_window_rows": 25
+  },
+  "sources": [
+    "Monday-WorkingHours.pcap_ISCX.csv"
+  ],
+  "timezone": "America/Halifax",
+  "timestamp_format": "day-first; second or minute precision; working-hours-12h",
+  "timestamp_uncertainty_seconds": 1,
+  "profile": "cicids2017",
+  "policy": "unique packet signature; full window coverage; unresolved intervals retain uncertainty",
+  "distribution": {
+    "BENIGN": 2345037
+  },
+  "source_distribution": {
+    "BENIGN": 529903
+  },
+  "features_sha256": "afc33b1031daaafe75d275ef45d870ba6804604220f9f3e8a3c153fd400cb0f7",
+  "output_sha256": "62b1e725c69d7f0e0ecd98bb7407de8935e834be1b4d2da315f9ddf2e3d7aadc",
+  "source_sha256": {
+    "Monday-WorkingHours.pcap_ISCX.csv": "96f26aea87d513073769b48ce204c2921791149e1c6225f7db65a3fed7973820"
+  },
+  "alignment": {
+    "schema_version": 1,
+    "policy": "unique bidirectional packet counts + duration + minute + direction",
+    "generated_at": "2026-09-17T07:33:23.435749+00:00",
+    "sources": [
+      "Monday-WorkingHours.pcap_ISCX.csv"
+    ],
+    "capture_sha256": "f6eac599358f216b074338813a1cf7be3cc4e91d116e13efc0dc71f2cca11972",
+    "features_sha256": "afc33b1031daaafe75d275ef45d870ba6804604220f9f3e8a3c153fd400cb0f7",
+    "source_sha256": {
+      "Monday-WorkingHours.pcap_ISCX.csv": "96f26aea87d513073769b48ce204c2921791149e1c6225f7db65a3fed7973820"
+    },
+    "duration_tolerance_us": 2,
+    "timezone": "America/Halifax",
+    "timestamp_policy": "second-or-minute-working-hours-12h-v2",
+    "intervals_sha256": "56c4c596679ad0b43bf91496dff74ff982d9a6da44bff3f36547feebed840f98"
+  }
+}

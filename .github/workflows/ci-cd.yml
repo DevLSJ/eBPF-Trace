@@ -92,6 +92,7 @@ jobs:
           printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$REGISTRY" --password-stdin
           docker build --pull -f backend/Dockerfile -t "$REGISTRY/ebpf-ids-backend:$GITHUB_SHA" .
           docker build --pull -t "$REGISTRY/ebpf-ids-frontend:$GITHUB_SHA" frontend
+          docker run --rm "$REGISTRY/ebpf-ids-backend:$GITHUB_SHA" python -c 'from backend.main import app; from collector.feature_schema import CONTEXT_FEATURES; assert len(CONTEXT_FEATURES) == 25'
           docker push "$REGISTRY/ebpf-ids-backend:$GITHUB_SHA"
           docker push "$REGISTRY/ebpf-ids-frontend:$GITHUB_SHA"
       - name: Remove registry credentials
@@ -155,6 +156,8 @@ jobs:
           ln -sfn "/home/ubuntu/ebpf-releases/$IMAGE_TAG" /home/ubuntu/ebpf-current
           test "$(readlink /home/ubuntu/ebpf-current)" = "/home/ubuntu/ebpf-releases/$IMAGE_TAG"
           REMOTE
+      - name: Update VM Collector and verify feature schema
+        run: python3 infra/update_collector.py --revision "$GITHUB_SHA"
       - name: Remove temporary credentials
         if: always()
         run: |
