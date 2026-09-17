@@ -23,6 +23,12 @@ def event_dict(event):
             for key in ("src_ip", "dst_ip", "src_port", "dst_port", "protocol")
         },
         "features": event.raw_features,
+        "source": event.source,
+        "scenario_run_id": event.scenario_run_id,
+        "expected_label": event.expected_label,
+        "is_confirmed": event.is_confirmed,
+        "note": event.note,
+        "reviewed_at": utc_iso(event.reviewed_at) if event.reviewed_at else None,
     }
 
 
@@ -34,7 +40,8 @@ def metric_dict(metric):
     }
 
 
-async def create_event(session, message, result):
+async def create_event(session, message, result, *, source="live", scenario_run_id=None,
+                       expected_label=None, commit=True):
     features = message.features.model_dump()
     event = DetectionEvent(
         message_id=str(message.message_id),
@@ -45,25 +52,39 @@ async def create_event(session, message, result):
             for key in ("pkt_rate", "byte_rate", "syn_ratio", "port_entropy", "flow_duration")
         },
         raw_features=features,
+        source=source, scenario_run_id=scenario_run_id, expected_label=expected_label,
     )
     session.add(event)
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     await session.refresh(event)
     return event
 
 
-async def get_events(session, query):
+def event_conditions(query):
     conditions = []
     if query.ip:
         address = str(query.ip)
         conditions.append(or_(DetectionEvent.src_ip == address, DetectionEvent.dst_ip == address))
-    for key in ("severity", "attack_type"):
+    for key in ("severity", "attack_type", "source"):
         if value := getattr(query, key):
             conditions.append(getattr(DetectionEvent, key) == value)
     if query.start_time:
         conditions.append(DetectionEvent.detected_at >= query.start_time)
     if query.end_time:
         conditions.append(DetectionEvent.detected_at <= query.end_time)
+    if query.scenario_run_id:
+        conditions.append(DetectionEvent.scenario_run_id == str(query.scenario_run_id))
+    if query.review:
+        value = {"pending": None, "confirmed": True, "false_positive": False}[query.review]
+        conditions.append(DetectionEvent.is_confirmed.is_(value))
+    return conditions
+
+
+async def get_events(session, query):
+    conditions = event_conditions(query)
     total = await session.scalar(
         select(func.count()).select_from(DetectionEvent).where(*conditions)
     )

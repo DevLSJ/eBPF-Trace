@@ -20,6 +20,8 @@ def capture_reports():
             total = sum(counts.get(key, 0) for key in ("matched", "unlabeled", "ambiguous"))
             if total != report["counts"]["feature_rows"]:
                 raise ValueError(f"Label/capture row count mismatch: {path.name}")
+            if labels.get("alignment", {}).get("capture_sha256", report.get("sha256")) != report.get("sha256"):
+                raise ValueError(f"Alignment/capture hash mismatch: {path.name}")
             labels["coverage"] = counts.get("matched", 0) / total if total else 0
             report["labels"] = labels
             report["label_status"] = "joined_conservative"

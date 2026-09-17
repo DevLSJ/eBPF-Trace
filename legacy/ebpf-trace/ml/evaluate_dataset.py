@@ -11,13 +11,17 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
+from sklearn.ensemble import IsolationForest
+
 from ml.artifacts import sha256
+from ml.engine import FEATURE_NAMES
 from ml.preprocess import preprocess
 from ml.train_model import train_model
-from ml.validate import validate
+from ml.validate import classification_metrics, validate
 
 
-def evaluate(sources, directory, report_path):
+def evaluate(sources, directory, report_path, source_context=False):
     directory, report_path = Path(directory), Path(report_path)
     directory.mkdir(parents=True, exist_ok=True)
     merged = directory / "matched.csv.gz"
@@ -37,9 +41,12 @@ def evaluate(sources, directory, report_path):
                     writer = csv.DictWriter(output, fieldnames=reader.fieldnames)
                     writer.writeheader()
                 for row in reader:
-                    if row["label_status"] == "matched_time_5tuple":
+                    if row["label_status"] in ("matched_time_5tuple", "matched_packet_evidence"):
                         writer.writerow(row)
-    preparation = preprocess(merged, directory)
+    features = FEATURE_NAMES + (["source_pkt_rate", "source_syn_rate", "port_cnt"] if source_context else [])
+    print("Preparing time-purged split", flush=True)
+    preparation = preprocess(merged, directory, feature_names=features)
+    print("Training normal-only Isolation Forest", flush=True)
     version = train_model(directory)
     biased_sample = any(item["timestamp_uncertainty_seconds"] for item in provenance)
     version["deployment_eligible"] &= not biased_sample
@@ -47,6 +54,13 @@ def evaluate(sources, directory, report_path):
     version["sources"] = provenance
     (directory / "model_version.json").write_text(json.dumps(version, indent=2) + "\n")
     performance = validate(directory)
+    comparison = None
+    if source_context:
+        split = np.load(directory / 'split.npz')
+        baseline = IsolationForest(n_estimators=100, contamination=0.05, random_state=42)
+        baseline.fit(split['train'][:, :len(FEATURE_NAMES)])
+        comparison = {'features': FEATURE_NAMES, 'scope': 'Same aligned rows, split and hyperparameters',
+                      'performance': classification_metrics(split['labels'], baseline.decision_function(split['test'][:, :len(FEATURE_NAMES)]) < 0)}
     report = {
         "schema_version": 1,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -59,9 +73,10 @@ def evaluate(sources, directory, report_path):
         "contamination": version["contamination"], "threshold": version["validation_threshold"],
         "features": version["features"], "performance": performance,
         "split": {key: value for key, value in preparation.items() if key not in ("source", "features", "deployment_eligible")},
+        "six_feature_comparison": comparison,
         "targets": {"f1_min": 0.8, "fpr_max": 0.05},
         "limitations": [
-            "Minute-resolution timestamps exclude short or uncertain flows; this subset is biased toward long flows.",
+            "Only uniquely aligned or conservatively time-covered windows are included; unresolved and conflicting rows remain excluded.",
             "Scores describe matched held-out feature windows, not all attacks or the full CICIDS2017 benchmark.",
             "This evaluation does not approve deployment; live detection remains independent.",
         ],
@@ -76,5 +91,6 @@ if __name__ == "__main__":
     parser.add_argument("sources", nargs="+")
     parser.add_argument("--directory", default="ml/models/cic2017-experiment")
     parser.add_argument("--report", default="ml/reports/evaluation/combined.json")
+    parser.add_argument("--source-context", action="store_true", help="Experiment with existing source PPS/SYN/port-count features")
     args = parser.parse_args()
-    print(json.dumps(evaluate(args.sources, args.directory, args.report), indent=2))
+    print(json.dumps(evaluate(args.sources, args.directory, args.report, args.source_context), indent=2))

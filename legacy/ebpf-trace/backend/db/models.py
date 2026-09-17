@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Float,
+    ForeignKey,
     Integer,
     String,
     Text,
@@ -52,6 +53,35 @@ class DetectionEvent(Base):
     raw_features: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"))
     is_confirmed: Mapped[bool | None] = mapped_column(Boolean)
     note: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(16), default="live", server_default="live", index=True)
+    scenario_run_id: Mapped[str | None] = mapped_column(ForeignKey("scenario_runs.id"), index=True)
+    expected_label: Mapped[str | None] = mapped_column(String(32))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ScenarioRun(Base):
+    __tablename__ = "scenario_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    scenario_id: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    thresholds: Mapped[dict] = mapped_column(JSON)
+    detection_mode: Mapped[str] = mapped_column(String(16))
+
+
+class ScenarioSample(Base):
+    __tablename__ = "scenario_samples"
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("scenario_runs.id"), index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    step: Mapped[int] = mapped_column(Integer)
+    stage: Mapped[str] = mapped_column(String(32))
+    expected_label: Mapped[str] = mapped_column(String(32))
+    detected_label: Mapped[str] = mapped_column(String(32))
+    features: Mapped[dict] = mapped_column(JSON)
+    anomaly_score: Mapped[float | None] = mapped_column(Float)
+    event_id: Mapped[int | None] = mapped_column(ForeignKey("detection_events.id"))
 
 
 class SystemMetric(Base):

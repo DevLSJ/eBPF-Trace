@@ -14,7 +14,7 @@ export const useEventStore = create<Store>((set) => ({
   receive: message => set(state => {
     if (message.type === 'detection_event') return { events: [message, ...state.events.filter(e => e.event_id !== message.event_id)].slice(0, 500) };
     if (message.type === 'system_metrics') return { metric: message.metric };
-    if (message.type !== 'traffic') return {};
+    if (message.type !== 'traffic' || message.source === 'simulation') return {};
     const timestamp = Math.floor(message.timestamp / 1000) * 1000;
     // Replayed historical traffic must not replace the latest live bucket.
     if (timestamp < Date.now() - 300000) return {};

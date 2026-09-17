@@ -10,7 +10,6 @@ import sklearn
 from sklearn.ensemble import IsolationForest
 
 from ml.artifacts import sha256
-from ml.engine import FEATURE_NAMES
 
 
 def train_model(directory, contamination=0.05):
@@ -23,7 +22,7 @@ def train_model(directory, contamination=0.05):
     version = {
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "sklearn_version": sklearn.__version__,
-        "features": FEATURE_NAMES,
+        "features": preprocessing["features"],
         "n_estimators": 100,
         "contamination": contamination,
         "training_rows": len(data["train"]),

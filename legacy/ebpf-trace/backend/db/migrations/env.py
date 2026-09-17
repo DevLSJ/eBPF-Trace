@@ -14,7 +14,7 @@ def migrate(connection):
 
 
 async def online():
-    engine = create_async_engine(Settings().database_url)
+    engine = create_async_engine(context.config.attributes.get("database_url") or Settings().database_url)
     async with engine.connect() as connection:
         await connection.run_sync(migrate)
     await engine.dispose()
