@@ -47,6 +47,7 @@ async def collector(ws: WebSocket):
         while True:
             try:
                 message = FlowMessage.model_validate_json(await ws.receive_text())
+                ws.app.state.collector_feature_schema_version = message.features.feature_schema_version
             except (ValidationError, json.JSONDecodeError):
                 await ws.send_json({"type": "error", "code": "VALIDATION_ERROR"})
                 continue
@@ -72,3 +73,5 @@ async def collector(ws: WebSocket):
         pass
     finally:
         ws.app.state.collector_connections -= 1
+        if not ws.app.state.collector_connections:
+            ws.app.state.collector_feature_schema_version = None

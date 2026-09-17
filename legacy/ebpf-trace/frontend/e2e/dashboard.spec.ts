@@ -1,5 +1,38 @@
 import { test, expect } from '@playwright/test';
 
+test('full-week evidence, model comparison and legacy context availability', async ({ page, request }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const analysis = await (await request.get('/api/analysis/model')).json();
+  expect(analysis.context_evaluation.deployment_approved).toBe(false);
+  expect(analysis.context_evaluation.candidates).toHaveLength(5);
+  await page.goto('/#capture');
+  await expect(page.locator('.dataset-day')).toHaveCount(5);
+  await expect(page.locator('.benchmark-coverage')).toContainText('4 / 14종');
+  await expect(page.locator('.benchmark-coverage')).toContainText('시험에 없는 유형');
+  await page.getByLabel('캡처 파일').selectOption('Monday-WorkingHours.pcap');
+  await expect(page.locator('.label-bars')).toContainText('BENIGN');
+  await expect(page.locator('.label-row')).toHaveCount(1);
+  await expect(page.locator('.evidence-panel')).toContainText('1초 불확실성');
+  await page.getByLabel('비교 모델').selectOption('if_25');
+  const candidate = analysis.context_evaluation.candidates.find((item: { id: string }) => item.id === 'if_25');
+  await expect(page.locator('.benchmark-metrics')).toContainText(`${(candidate.performance.f1 * 100).toFixed(2)}%`);
+  await page.getByRole('button', { name: '지도학습 · 25개', exact: true }).click();
+  await expect(page.getByLabel('비교 모델')).toHaveValue('hgb_25');
+  await page.getByText('유형별 표본·미탐·오탐 확인', { exact: true }).click();
+  await expect(page.locator('.benchmark-label-details')).toContainText('BENIGN · 탐지는 오탐');
+  const pending = page.waitForEvent('download');
+  await page.getByRole('button', { name: '실험 보고서', exact: true }).click();
+  expect((await pending).suggestedFilename()).toBe('context-feature-benchmark.json');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  await page.locator('.benchmark-panel').screenshot({ path: `test-results/benchmark-${test.info().project.name}.png` });
+  await page.goto('/#overview');
+  await page.getByRole('button', { name: '이벤트 25 상세 보기' }).click();
+  await page.getByText('목적지·양방향 탐지 근거', { exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('이 기록은 이전 Collector 피처입니다');
+  expect(errors).toEqual([]);
+});
+
 test('filters, pagination, detail, export and capture selection', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

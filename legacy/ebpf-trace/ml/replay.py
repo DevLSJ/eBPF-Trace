@@ -12,15 +12,26 @@ import hashlib
 import json
 import time
 from collections import Counter, OrderedDict
-from dataclasses import replace
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from collector.feature_schema import CONTEXT_FEATURES, FEATURE_SCHEMA_VERSION
 from collector.features import FeatureCalculator, Snapshot
 from ml.pcap import decode, packets
 from ml.rule_engine import RuleEngine
 
 FLOW_FIELDS = ["src_ip", "dst_ip", "src_port", "dst_port", "protocol"]
+
+
+@dataclass(slots=True)
+class ReplayFlow:
+    packets: int = 0
+    bytes: int = 0
+    syns: int = 0
+    first: int = 0
+    last: int = 0
+    exported: float | None = None
 
 
 class Replay:
@@ -33,7 +44,8 @@ class Replay:
         self.evictions = 0
 
     def emit(self, key, now):
-        snapshot, _ = self.flows[key]
+        flow = self.flows[key]
+        snapshot = Snapshot(*key, flow.packets, flow.bytes, flow.syns, flow.first, flow.last)
         self.dirty.pop(key, None)
         features = self.calculator.compute(snapshot, now)
         if features is not None:
@@ -57,11 +69,13 @@ class Replay:
             yield from self.flush(self.last_flush + 1)
             self.last_flush = now
         ns = int(now * 1e9)
-        snapshot, exported = self.flows.get(key, (Snapshot(*key, 0, 0, 0, ns, ns), None))
-        snapshot = replace(snapshot, pkt_cnt=snapshot.pkt_cnt + 1,
-                           byte_cnt=snapshot.byte_cnt + length,
-                           syn_cnt=snapshot.syn_cnt + syn, last_seen_ns=ns)
-        self.flows[key] = (snapshot, exported)
+        flow = self.flows.get(key)
+        if flow is None:
+            flow = self.flows[key] = ReplayFlow(first=ns)
+        flow.packets += 1
+        flow.bytes += length
+        flow.syns += syn
+        flow.last = ns
         self.flows.move_to_end(key)
         self.dirty[key] = None
         if len(self.flows) > self.max_flows:
@@ -72,8 +86,8 @@ class Replay:
                     yield row
             self.flows.pop(oldest)
             self.evictions += 1
-        if exported is None or now - exported >= 0.1:
-            self.flows[key] = (snapshot, now)
+        if flow.exported is None or now - flow.exported >= 0.1:
+            flow.exported = now
             row = self.emit(key, now)
             if row is not None:
                 yield row
@@ -146,6 +160,7 @@ def analyze(source, output, report_path, max_packets=None):
         "thresholds": rules.thresholds.model_dump(), "flow_evictions": replay.evictions,
         "label_status": "unavailable", "model_validated": False,
         "feature_policy": "100ms per-flow snapshots + 1s dirty flush; shared FeatureCalculator",
+        "feature_schema_version": FEATURE_SCHEMA_VERSION, "features": CONTEXT_FEATURES,
         "limitations": ["Rule counts are feature-window alerts, not unique attacks or ground truth.",
                         "Capture replay does not reproduce live kernel/reader scheduling.",
                         "Out-of-order capture timestamps are clamped and counted.",

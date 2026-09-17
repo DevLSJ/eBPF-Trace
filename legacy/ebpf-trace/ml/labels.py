@@ -16,7 +16,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from ml.artifacts import sha256
-from ml.cic_profile import belongs_to_capture
+from ml.cic_profile import CAPTURE_DAYS, belongs_to_capture, timestamp_uncertainty
 from ml.cic_profile import timestamp as cic_timestamp
 from ml.replay import FLOW_FIELDS
 
@@ -50,11 +50,11 @@ def join_labels(features, labels, output, timezone_name, timestamp_format, *, pr
                 alignment=None):
     if Path(output).resolve() in (Path(features).resolve(), Path(labels).resolve()):
         raise ValueError("Label output must be a new file")
-    if profile and (profile != "cicids2017" or day not in ("Thursday", "Friday")):
-        raise ValueError("CICIDS2017 profile requires --day Thursday or Friday")
+    if profile and (profile != "cicids2017" or day not in CAPTURE_DAYS):
+        raise ValueError("CICIDS2017 profile requires a weekday --day")
     zone = ZoneInfo(timezone_name)
     counts, sources, distribution, raw_distribution = Counter(), [], Counter(), Counter()
-    uncertainty = 60 if profile else 0
+    uncertainty = 0
     label_path = Path(labels)
     source_paths = label_path.rglob("*") if label_path.is_dir() else [label_path]
     source_hashes = {
@@ -84,9 +84,11 @@ def join_labels(features, labels, output, timezone_name, timestamp_format, *, pr
                     try:
                         if profile:
                             start = cic_timestamp(row["Timestamp"])
+                            row_uncertainty = timestamp_uncertainty(row["Timestamp"])
                         else:
                             parsed = datetime.strptime(row["Timestamp"].strip(), timestamp_format)
                             start = (parsed if parsed.tzinfo else parsed.replace(tzinfo=zone)).timestamp()
+                            row_uncertainty = 0
                         duration = float(row["Flow Duration"]) / 1e6
                         label = row["Label"].strip()
                         if not math.isfinite(duration) or duration < 0 or label.upper() in UNKNOWN:
@@ -97,9 +99,10 @@ def join_labels(features, labels, output, timezone_name, timestamp_format, *, pr
                             raise ValueError(f"{name}: {error}") from error
                         counts["invalid_label_rows"] += 1
                         continue
+                    uncertainty = max(uncertainty, row_uncertainty)
                     if not alignment:
                         db.execute("INSERT INTO labels VALUES (?, ?, ?, ?, ?, ?)",
-                                   (key, start, start + duration, label, uncertainty, "time_5tuple"))
+                                   (key, start, start + duration, label, row_uncertainty, "time_5tuple"))
                     raw_distribution[label] += 1
             if not sources:
                 raise ValueError("No label CSVs found")
@@ -176,7 +179,7 @@ def join_labels(features, labels, output, timezone_name, timestamp_format, *, pr
         "schema_version": 1, "generated_at": datetime.now(timezone.utc).isoformat(),
         "counts": dict(counts), "sources": sources,
         "timezone": "America/Halifax" if profile else timezone_name,
-        "timestamp_format": "%d/%m/%Y %H:%M; working-hours 12h clock" if profile else timestamp_format,
+        "timestamp_format": "day-first; second or minute precision; working-hours-12h" if profile else timestamp_format,
         "timestamp_uncertainty_seconds": uncertainty,
         "profile": profile, "policy": "full window guaranteed coverage; bidirectional tuple",
         "distribution": dict(distribution), "source_distribution": dict(raw_distribution),
@@ -198,7 +201,7 @@ if __name__ == "__main__":
     parser.add_argument("--timezone")
     parser.add_argument("--timestamp-format")
     parser.add_argument("--profile", choices=["cicids2017"])
-    parser.add_argument("--day", choices=["Thursday", "Friday"])
+    parser.add_argument("--day", choices=CAPTURE_DAYS)
     parser.add_argument("--report", help="Also publish the small join report at this path")
     parser.add_argument("--alignment", help="Packet-aligned intervals with verified provenance")
     args = parser.parse_args()

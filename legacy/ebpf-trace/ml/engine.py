@@ -1,21 +1,16 @@
+import json
 import logging
 from pathlib import Path
 
 import joblib
 import numpy as np
 
+from collector.feature_schema import CONTEXT_FEATURES, LEGACY_FEATURES, SOURCE_FEATURES
 from ml.artifacts import verify_artifacts
 from ml.rule_engine import RuleEngine
 
 logger = logging.getLogger(__name__)
-FEATURE_NAMES = [
-    "pkt_rate",
-    "byte_rate",
-    "syn_ratio",
-    "port_entropy",
-    "flow_duration",
-    "avg_pkt_size",
-]
+FEATURE_NAMES = LEGACY_FEATURES
 
 
 class DetectionEngine:
@@ -24,14 +19,19 @@ class DetectionEngine:
         self.model = self.scaler = None
         self.model_status = "not_configured"
         self.metadata = None
+        self.feature_names = FEATURE_NAMES
         if model_path and scaler_path:
             try:
                 if not Path(model_path).is_file() or not Path(scaler_path).is_file():
                     raise FileNotFoundError("Model/scaler artifacts not available")
                 # Only load deployment-owned artifacts, never uploaded pickle files.
-                self.metadata = verify_artifacts(model_path, scaler_path, FEATURE_NAMES)
+                contract = json.loads((Path(model_path).parent / "model_version.json").read_text()).get("features")
+                if contract not in (LEGACY_FEATURES, SOURCE_FEATURES, CONTEXT_FEATURES):
+                    raise ValueError("Unsupported feature contract")
+                self.metadata = verify_artifacts(model_path, scaler_path, contract)
+                self.feature_names = contract
                 self.model, self.scaler = joblib.load(model_path), joblib.load(scaler_path)
-                probe = self.model.decision_function(self.scaler.transform(np.zeros((1, 6))))
+                probe = self.model.decision_function(self.scaler.transform(np.zeros((1, len(contract)))))
                 if not np.isfinite(probe).all():
                     raise ValueError("Invalid inference result")
                 self.model_status = "validated"
@@ -48,9 +48,11 @@ class DetectionEngine:
     def analyze(self, features: dict, use_ml: bool = True) -> dict:
         rule = self.rules.detect(features)
         score = None
-        if use_ml and self.model is not None:
+        compatible = (self.feature_names == LEGACY_FEATURES or features.get("feature_schema_version") == 2)
+        compatible &= all(features.get(key) is not None for key in self.feature_names)
+        if use_ml and self.model is not None and compatible:
             try:
-                values = np.array([[features[key] for key in FEATURE_NAMES]], dtype=float)
+                values = np.array([[features[key] for key in self.feature_names]], dtype=float)
                 # sklearn's decision boundary is 0; shift it to the API's -0.1.
                 decision = self.model.decision_function(self.scaler.transform(values))[0]
                 score = float(np.clip(decision - 0.1, -1, 0))

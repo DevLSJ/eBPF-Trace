@@ -104,3 +104,25 @@ def test_cic_clock_handles_noon_and_day_first_date():
     assert datetime.fromtimestamp(timestamp('6/7/2017 8:59'), timezone.utc).month == 7
     with pytest.raises(ValueError):
         timestamp('7/6/2017 8:59')
+
+
+def test_monday_seconds_preserve_afternoon_clock_and_one_second_uncertainty(tmp_path):
+    from ml.cic_profile import timestamp, timestamp_uncertainty
+
+    assert timestamp_uncertainty('03/07/2017 08:55:58') == 1
+    assert timestamp('03/07/2017 13:00:00') == timestamp('3/7/2017 1:00')
+    assert timestamp('03/07/2017 01:00:00') == timestamp('3/7/2017 1:00')
+    start = timestamp('03/07/2017 08:55:58')
+    label_path = tmp_path / 'Monday-WorkingHours.csv'
+    with label_path.open('w') as stream:
+        writer = csv.writer(stream)
+        writer.writerow(REQUIRED)
+        writer.writerow(['192.0.2.1', '192.0.2.2', 1, 80, 6, '03/07/2017 08:55:58', 10000000, 'BENIGN'])
+    features = tmp_path / 'features.csv'
+    pd.DataFrame([dict(src_ip='192.0.2.1', dst_ip='192.0.2.2', src_port=1, dst_port=80, protocol=6,
+                       timestamp=start+t, window_start=start+t, window_end=start+t, Label='UNLABELED')
+                  for t in (.5, 2)]).to_csv(features, index=False)
+    output = tmp_path / 'joined.csv'
+    report = join_labels(features, label_path, output, 'UTC', None, profile='cicids2017', day='Monday')
+    assert report['timestamp_uncertainty_seconds'] == 1
+    assert pd.read_csv(output).Label.tolist() == ['UNLABELED', 'BENIGN']

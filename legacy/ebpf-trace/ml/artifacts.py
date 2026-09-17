@@ -22,6 +22,8 @@ def verify_artifacts(model_path, scaler_path, features):
         raise ValueError("Model has not passed held-out validation")
     if not version.get("deployment_eligible") or version.get("features") != features:
         raise ValueError("Incompatible features or evaluation provenance")
+    if len(features) > 6 and version.get("feature_schema_version") != 2:
+        raise ValueError("Context models require explicit feature schema 2")
     if version.get("sklearn_version") != sklearn.__version__:
         raise ValueError("Training/runtime sklearn versions differ")
     if version.get("validation_threshold") != -0.1:

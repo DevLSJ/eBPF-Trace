@@ -79,6 +79,29 @@ def test_real_model_score_range_and_boundary(tmp_path):
     metadata["validated"] = False
     (tmp_path / "model_version.json").write_text(json.dumps(metadata))
     assert DetectionEngine(str(tmp_path / "model.pkl"), str(tmp_path / "scaler.pkl")).mode == "rules_only"
+
+
+def test_context_model_requires_versioned_complete_observations(tmp_path):
+    from collector.feature_schema import CONTEXT_FEATURES
+
+    data = np.random.default_rng(42).uniform(0, 1, (150, len(CONTEXT_FEATURES)))
+    scaler = StandardScaler().fit(data)
+    model = IsolationForest(n_estimators=10, random_state=42).fit(scaler.transform(data))
+    joblib.dump(model, tmp_path / 'model.pkl')
+    joblib.dump(scaler, tmp_path / 'scaler.pkl')
+    metadata = {'validated': True, 'deployment_eligible': True, 'feature_schema_version': 2,
+                'performance': {'passed': True, 'f1': .9, 'fpr': .01}, 'features': CONTEXT_FEATURES,
+                'sklearn_version': sklearn.__version__, 'validation_threshold': -.1,
+                'sha256': {'model': sha256(tmp_path / 'model.pkl'), 'scaler': sha256(tmp_path / 'scaler.pkl')}}
+    (tmp_path / 'model_version.json').write_text(json.dumps(metadata))
+    engine = DetectionEngine(str(tmp_path / 'model.pkl'), str(tmp_path / 'scaler.pkl'))
+    assert engine.mode == 'hybrid'
+    values = dict(zip(CONTEXT_FEATURES, data[0]))
+    assert engine.analyze(values)['anomaly_score'] is None
+    values['feature_schema_version'] = 2
+    assert engine.analyze(values)['anomaly_score'] is not None
+    values['service_pkt_rate'] = None
+    assert engine.analyze(values)['anomaly_score'] is None
     metadata["validated"] = True
     metadata["sha256"]["scaler"] = "incorrect"
     (tmp_path / "model_version.json").write_text(json.dumps(metadata))

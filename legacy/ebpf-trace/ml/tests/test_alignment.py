@@ -28,6 +28,13 @@ def test_packet_signature_requires_unique_counts_duration_direction():
     assert resolve([60_000_000], [1], 0, 1, 0)[0] is None
 
 
+def test_second_precision_signature_does_not_search_the_rest_of_the_minute():
+    times, directions = np.array([500_000, 2_000_000]), np.array([1, 1])
+    prefix = np.array([0, 1, 2])
+    assert resolve_segment(times, directions, prefix, 0, 0, 1, 0, 1, 1_000_000)[0] == (500_000, 500_000)
+    assert resolve_segment(times, directions, prefix, 0, 0, 1, 0, 1)[1] == 'multiple_packet_segments'
+
+
 def test_alignment_provenance_and_unresolved_conflict_are_preserved(tmp_path):
     labels = tmp_path / 'labels.csv'
     with labels.open('w') as stream:

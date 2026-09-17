@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-17T07:38:15.846478+00:00",
+  "counts": {
+    "label_rows": 692703,
+    "invalid_label_rows": 21,
+    "matched_packet_evidence": 2836454,
+    "matched": 2847052,
+    "unlabeled": 823474,
+    "uncertain_time_rows": 822589,
+    "matched_time_5tuple": 10598,
+    "ambiguous": 23977,
+    "rounded_window_rows": 35
+  },
+  "sources": [
+    "Wednesday-workingHours.pcap_ISCX.csv"
+  ],
+  "timezone": "America/Halifax",
+  "timestamp_format": "day-first; second or minute precision; working-hours-12h",
+  "timestamp_uncertainty_seconds": 60,
+  "profile": "cicids2017",
+  "policy": "unique packet signature; full window coverage; unresolved intervals retain uncertainty",
+  "distribution": {
+    "BENIGN": 2148410,
+    "DoS slowloris": 38485,
+    "DoS Slowhttptest": 32271,
+    "DoS Hulk": 587098,
+    "DoS GoldenEye": 38206,
+    "Heartbleed": 2582
+  },
+  "source_distribution": {
+    "BENIGN": 440010,
+    "DoS slowloris": 5796,
+    "DoS Slowhttptest": 5499,
+    "DoS Hulk": 231073,
+    "DoS GoldenEye": 10293,
+    "Heartbleed": 11
+  },
+  "features_sha256": "374741182ecf74c99b3d902fbf0fab4e1193871a64b4b1c2dae3dd482e0d0e73",
+  "output_sha256": "c71d1bfe67e0b02f9f26aea0a91f266a6c5042760123ed6e487c22b0c55ca902",
+  "source_sha256": {
+    "Wednesday-workingHours.pcap_ISCX.csv": "ed538e85b84181e8897dedb3d37d365982f44b27eccd67c477581a8b65f3d170"
+  },
+  "alignment": {
+    "schema_version": 1,
+    "policy": "unique bidirectional packet counts + duration + minute + direction",
+    "generated_at": "2026-09-17T06:41:01.627119+00:00",
+    "sources": [
+      "Wednesday-workingHours.pcap_ISCX.csv"
+    ],
+    "capture_sha256": "cd2674db7559a53f24bc03be3239b315700174ccaef72d10f5edc4c1a08f6186",
+    "features_sha256": "374741182ecf74c99b3d902fbf0fab4e1193871a64b4b1c2dae3dd482e0d0e73",
+    "source_sha256": {
+      "Wednesday-workingHours.pcap_ISCX.csv": "ed538e85b84181e8897dedb3d37d365982f44b27eccd67c477581a8b65f3d170"
+    },
+    "duration_tolerance_us": 2,
+    "timezone": "America/Halifax",
+    "reused_from_intervals_sha256": "d12bf052d3410c24fa4c02411c1d3aaff7a7db94331c5945d124a674e6b43dfa",
+    "intervals_sha256": "7a1b7ccc861bfbd3eba79ef2b7c400ec76991a4d9a1fc2982d0a9fe1322b7184"
+  }
+}

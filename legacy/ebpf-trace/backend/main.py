@@ -35,6 +35,7 @@ def create_app(settings: Settings | None = None):
         )
         app.state.redis_available = False
         app.state.collector_connections = 0
+        app.state.collector_feature_schema_version = None
         app.state.alert_tasks = set()
         app.state.manager = ConnectionManager()
         app.state.detector = DetectionEngine(settings.model_path, settings.scaler_path)

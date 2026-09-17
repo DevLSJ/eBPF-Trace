@@ -24,6 +24,7 @@ def test_capture_reports_have_provenance_and_no_invented_performance(client):
     assert response.status_code == 200
     reports = response.json()["items"]
     assert {item["source"] for item in reports} == {
+        "Monday-WorkingHours.pcap", "Tuesday-WorkingHours.pcap", "Wednesday-workingHours.pcap",
         "Friday-WorkingHours.pcap", "Thursday-WorkingHours.pcap"
     }
     for report in reports:
@@ -32,9 +33,47 @@ def test_capture_reports_have_provenance_and_no_invented_performance(client):
         labels = report["labels"]
         assert 0 < labels["coverage"] < 1
         assert sum(labels["distribution"].values()) == labels["counts"]["matched"]
-        assert labels["timestamp_uncertainty_seconds"] == 60
+        assert labels["timestamp_uncertainty_seconds"] == (1 if report['source'].startswith('Monday') else 60)
+        assert labels['counts'].get('invalid_label_rows', 0) < labels['counts']['label_rows'] * .01
         assert report["model_validated"] is False
         assert sum(report["protocols"].values()) == report["counts"]["eligible_packets"]
+        assert report["feature_schema_version"] == 2 and len(report["features"]) == 25
+
+
+def test_context_contract_is_complete_and_saved_in_event_evidence(client, message):
+    from collector.features import FeatureCalculator, Snapshot
+
+    snapshot = Snapshot('192.168.64.1', '192.168.64.2', 12345, 80, 6, 1250, 75000, 1250, 0, 10**9)
+    message['features'] = FeatureCalculator().compute(snapshot, 1)
+    with client.websocket_connect('/ws/collector', headers=AUTH) as ws:
+        incomplete = {**message, 'features': {**message['features'], 'service_pkt_rate': None}}
+        ws.send_json(incomplete)
+        assert ws.receive_json()['code'] == 'VALIDATION_ERROR'
+        ws.send_json(message)
+        assert ws.receive_json()['type'] == 'ack'
+        assert client.get('/health').json()['collector_feature_schema_version'] == 2
+    event = client.get('/api/events').json()['items'][0]
+    assert event['features']['feature_schema_version'] == 2
+    assert event['features']['service_syn_rate'] == 1250
+    assert client.get('/health').json()['collector_feature_schema_version'] is None
+
+
+def test_analysis_cache_is_not_mutated_and_new_evidence_is_visible(client, tmp_path, monkeypatch):
+    import json
+
+    from backend.services import analysis
+
+    monkeypatch.setattr(analysis, 'REPORT_DIRECTORY', tmp_path)
+    (tmp_path / 'evaluation').mkdir()
+    path = tmp_path / 'evaluation/context-v2.json'
+    path.write_text(json.dumps({'status': 'complete', 'deployment_approved': False}))
+    returned = analysis.model_evaluation('context-v2')
+    returned['status'] = 'mutated'
+    assert client.get('/api/analysis/model').json()['context_evaluation']['status'] == 'complete'
+    path.write_text(json.dumps({'status': 'updated-report', 'deployment_approved': False}))
+    body = client.get('/api/analysis/model').json()
+    assert body['context_evaluation']['status'] == 'updated-report'
+    assert body['runtime']['mode'] == 'rules_only'
 
 
 def test_stored_webhook_does_not_enable_notifications(client, message, monkeypatch):

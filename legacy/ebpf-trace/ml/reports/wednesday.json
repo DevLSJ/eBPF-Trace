@@ -1,0 +1,2625 @@
+{
+  "schema_version": 1,
+  "source": "Wednesday-workingHours.pcap",
+  "source_bytes": 13420789612,
+  "sha256": "cd2674db7559a53f24bc03be3239b315700174ccaef72d10f5edc4c1a08f6186",
+  "complete": true,
+  "generated_at": "2026-09-17T07:04:59.114401+00:00",
+  "started_at": 1499254962.084372,
+  "ended_at": 1499285419.780725,
+  "counts": {
+    "packets": 13788878,
+    "wire_bytes": 12960792765,
+    "eligible_packets": 13704741,
+    "feature_rows": 3694503,
+    "non_ipv4": 83323,
+    "non_tcp_udp": 386,
+    "out_of_order": 14562,
+    "fragment": 428
+  },
+  "protocols": {
+    "UDP": 761425,
+    "TCP": 12943316
+  },
+  "rule_detections": {
+    "PORT_SCAN": 914871,
+    "SYN_FLOOD": 651,
+    "TRAFFIC_SPIKE": 2858
+  },
+  "thresholds": {
+    "syn_ratio_threshold": 0.8,
+    "syn_pps_threshold": 1000,
+    "port_entropy_threshold": 3.5,
+    "port_cnt_threshold": 20,
+    "spike_threshold_multiplier": 10,
+    "baseline_pps": 1000,
+    "large_flow_threshold": 12500000,
+    "anomaly_threshold": -0.1
+  },
+  "flow_evictions": 441367,
+  "label_status": "unavailable",
+  "model_validated": false,
+  "feature_policy": "100ms per-flow snapshots + 1s dirty flush; shared FeatureCalculator",
+  "feature_schema_version": 2,
+  "features": [
+    "pkt_rate",
+    "byte_rate",
+    "syn_ratio",
+    "port_entropy",
+    "flow_duration",
+    "avg_pkt_size",
+    "source_pkt_rate",
+    "source_syn_rate",
+    "port_cnt",
+    "destination_pkt_rate",
+    "destination_byte_rate",
+    "destination_syn_rate",
+    "destination_source_count",
+    "service_pkt_rate",
+    "service_byte_rate",
+    "service_syn_rate",
+    "service_source_count",
+    "reverse_pkt_rate",
+    "reverse_byte_rate",
+    "bidirectional_pkt_rate",
+    "bidirectional_byte_rate",
+    "reverse_packet_fraction",
+    "bidirectional_syn_ratio",
+    "source_pkt_rate_10s",
+    "destination_pkt_rate_10s"
+  ],
+  "limitations": [
+    "Rule counts are feature-window alerts, not unique attacks or ground truth.",
+    "Capture replay does not reproduce live kernel/reader scheduling.",
+    "Out-of-order capture timestamps are clamped and counted.",
+    "No label CSV supplied; accuracy, F1 and FPR are not measured."
+  ],
+  "traffic_minutes": [
+    {
+      "timestamp": 1499254920,
+      "packets": 4430,
+      "bytes": 3794111
+    },
+    {
+      "timestamp": 1499254980,
+      "packets": 14992,
+      "bytes": 16526295
+    },
+    {
+      "timestamp": 1499255040,
+      "packets": 9067,
+      "bytes": 8453713
+    },
+    {
+      "timestamp": 1499255100,
+      "packets": 112116,
+      "bytes": 141637860
+    },
+    {
+      "timestamp": 1499255160,
+      "packets": 241861,
+      "bytes": 314576621
+    },
+    {
+      "timestamp": 1499255220,
+      "packets": 254244,
+      "bytes": 326248246
+    },
+    {
+      "timestamp": 1499255280,
+      "packets": 241109,
+      "bytes": 311202538
+    },
+    {
+      "timestamp": 1499255340,
+      "packets": 237181,
+      "bytes": 292502932
+    },
+    {
+      "timestamp": 1499255400,
+      "packets": 247355,
+      "bytes": 315442130
+    },
+    {
+      "timestamp": 1499255460,
+      "packets": 283642,
+      "bytes": 349129516
+    },
+    {
+      "timestamp": 1499255520,
+      "packets": 244414,
+      "bytes": 315042679
+    },
+    {
+      "timestamp": 1499255580,
+      "packets": 226633,
+      "bytes": 283136122
+    },
+    {
+      "timestamp": 1499255640,
+      "packets": 230742,
+      "bytes": 288281647
+    },
+    {
+      "timestamp": 1499255700,
+      "packets": 260219,
+      "bytes": 327904255
+    },
+    {
+      "timestamp": 1499255760,
+      "packets": 245100,
+      "bytes": 311695523
+    },
+    {
+      "timestamp": 1499255820,
+      "packets": 237151,
+      "bytes": 305365841
+    },
+    {
+      "timestamp": 1499255880,
+      "packets": 260440,
+      "bytes": 326857325
+    },
+    {
+      "timestamp": 1499255940,
+      "packets": 249150,
+      "bytes": 317516096
+    },
+    {
+      "timestamp": 1499256000,
+      "packets": 230046,
+      "bytes": 297144309
+    },
+    {
+      "timestamp": 1499256060,
+      "packets": 228960,
+      "bytes": 295778146
+    },
+    {
+      "timestamp": 1499256120,
+      "packets": 256739,
+      "bytes": 329188818
+    },
+    {
+      "timestamp": 1499256180,
+      "packets": 259250,
+      "bytes": 326416666
+    },
+    {
+      "timestamp": 1499256240,
+      "packets": 231267,
+      "bytes": 294352552
+    },
+    {
+      "timestamp": 1499256300,
+      "packets": 41516,
+      "bytes": 52368940
+    },
+    {
+      "timestamp": 1499256360,
+      "packets": 4840,
+      "bytes": 2380089
+    },
+    {
+      "timestamp": 1499256420,
+      "packets": 19848,
+      "bytes": 12520869
+    },
+    {
+      "timestamp": 1499256480,
+      "packets": 265101,
+      "bytes": 401969918
+    },
+    {
+      "timestamp": 1499256540,
+      "packets": 21776,
+      "bytes": 20889355
+    },
+    {
+      "timestamp": 1499256600,
+      "packets": 16836,
+      "bytes": 7716838
+    },
+    {
+      "timestamp": 1499256660,
+      "packets": 6598,
+      "bytes": 3912869
+    },
+    {
+      "timestamp": 1499256720,
+      "packets": 264633,
+      "bytes": 468805647
+    },
+    {
+      "timestamp": 1499256780,
+      "packets": 110935,
+      "bytes": 194522817
+    },
+    {
+      "timestamp": 1499256840,
+      "packets": 25384,
+      "bytes": 18759701
+    },
+    {
+      "timestamp": 1499256900,
+      "packets": 2717,
+      "bytes": 382383
+    },
+    {
+      "timestamp": 1499256960,
+      "packets": 16374,
+      "bytes": 11178954
+    },
+    {
+      "timestamp": 1499257020,
+      "packets": 13160,
+      "bytes": 11223268
+    },
+    {
+      "timestamp": 1499257080,
+      "packets": 15844,
+      "bytes": 11727406
+    },
+    {
+      "timestamp": 1499257140,
+      "packets": 3469,
+      "bytes": 457319
+    },
+    {
+      "timestamp": 1499257200,
+      "packets": 2963,
+      "bytes": 728703
+    },
+    {
+      "timestamp": 1499257260,
+      "packets": 4960,
+      "bytes": 1925582
+    },
+    {
+      "timestamp": 1499257320,
+      "packets": 6658,
+      "bytes": 3616145
+    },
+    {
+      "timestamp": 1499257380,
+      "packets": 36632,
+      "bytes": 25090699
+    },
+    {
+      "timestamp": 1499257440,
+      "packets": 5377,
+      "bytes": 875888
+    },
+    {
+      "timestamp": 1499257500,
+      "packets": 4108,
+      "bytes": 799569
+    },
+    {
+      "timestamp": 1499257560,
+      "packets": 7618,
+      "bytes": 4216881
+    },
+    {
+      "timestamp": 1499257620,
+      "packets": 8482,
+      "bytes": 6159454
+    },
+    {
+      "timestamp": 1499257680,
+      "packets": 4668,
+      "bytes": 1683056
+    },
+    {
+      "timestamp": 1499257740,
+      "packets": 11320,
+      "bytes": 7617764
+    },
+    {
+      "timestamp": 1499257800,
+      "packets": 35767,
+      "bytes": 24247197
+    },
+    {
+      "timestamp": 1499257860,
+      "packets": 4696,
+      "bytes": 533219
+    },
+    {
+      "timestamp": 1499257920,
+      "packets": 3116,
+      "bytes": 737191
+    },
+    {
+      "timestamp": 1499257980,
+      "packets": 7472,
+      "bytes": 5011183
+    },
+    {
+      "timestamp": 1499258040,
+      "packets": 9137,
+      "bytes": 5555045
+    },
+    {
+      "timestamp": 1499258100,
+      "packets": 21502,
+      "bytes": 12000424
+    },
+    {
+      "timestamp": 1499258160,
+      "packets": 2845,
+      "bytes": 382163
+    },
+    {
+      "timestamp": 1499258220,
+      "packets": 7700,
+      "bytes": 5582339
+    },
+    {
+      "timestamp": 1499258280,
+      "packets": 7972,
+      "bytes": 4710893
+    },
+    {
+      "timestamp": 1499258340,
+      "packets": 13229,
+      "bytes": 9477639
+    },
+    {
+      "timestamp": 1499258400,
+      "packets": 19306,
+      "bytes": 10528180
+    },
+    {
+      "timestamp": 1499258460,
+      "packets": 6534,
+      "bytes": 1833368
+    },
+    {
+      "timestamp": 1499258520,
+      "packets": 3270,
+      "bytes": 1164185
+    },
+    {
+      "timestamp": 1499258580,
+      "packets": 12589,
+      "bytes": 7563885
+    },
+    {
+      "timestamp": 1499258640,
+      "packets": 6446,
+      "bytes": 3314322
+    },
+    {
+      "timestamp": 1499258700,
+      "packets": 12901,
+      "bytes": 6406771
+    },
+    {
+      "timestamp": 1499258760,
+      "packets": 9321,
+      "bytes": 3116582
+    },
+    {
+      "timestamp": 1499258820,
+      "packets": 13859,
+      "bytes": 8263442
+    },
+    {
+      "timestamp": 1499258880,
+      "packets": 11032,
+      "bytes": 5517110
+    },
+    {
+      "timestamp": 1499258940,
+      "packets": 32916,
+      "bytes": 24597862
+    },
+    {
+      "timestamp": 1499259000,
+      "packets": 18961,
+      "bytes": 11503391
+    },
+    {
+      "timestamp": 1499259060,
+      "packets": 10805,
+      "bytes": 3827439
+    },
+    {
+      "timestamp": 1499259120,
+      "packets": 11393,
+      "bytes": 6417269
+    },
+    {
+      "timestamp": 1499259180,
+      "packets": 27823,
+      "bytes": 17627100
+    },
+    {
+      "timestamp": 1499259240,
+      "packets": 21676,
+      "bytes": 12894218
+    },
+    {
+      "timestamp": 1499259300,
+      "packets": 5732,
+      "bytes": 747502
+    },
+    {
+      "timestamp": 1499259360,
+      "packets": 9037,
+      "bytes": 3648519
+    },
+    {
+      "timestamp": 1499259420,
+      "packets": 31085,
+      "bytes": 19567618
+    },
+    {
+      "timestamp": 1499259480,
+      "packets": 6229,
+      "bytes": 810275
+    },
+    {
+      "timestamp": 1499259540,
+      "packets": 8966,
+      "bytes": 2906978
+    },
+    {
+      "timestamp": 1499259600,
+      "packets": 25249,
+      "bytes": 17147144
+    },
+    {
+      "timestamp": 1499259660,
+      "packets": 30816,
+      "bytes": 16664085
+    },
+    {
+      "timestamp": 1499259720,
+      "packets": 19371,
+      "bytes": 9142243
+    },
+    {
+      "timestamp": 1499259780,
+      "packets": 18659,
+      "bytes": 7433605
+    },
+    {
+      "timestamp": 1499259840,
+      "packets": 15893,
+      "bytes": 10027124
+    },
+    {
+      "timestamp": 1499259900,
+      "packets": 27482,
+      "bytes": 19557470
+    },
+    {
+      "timestamp": 1499259960,
+      "packets": 7390,
+      "bytes": 2034226
+    },
+    {
+      "timestamp": 1499260020,
+      "packets": 31079,
+      "bytes": 21922326
+    },
+    {
+      "timestamp": 1499260080,
+      "packets": 9514,
+      "bytes": 4851929
+    },
+    {
+      "timestamp": 1499260140,
+      "packets": 7238,
+      "bytes": 3419834
+    },
+    {
+      "timestamp": 1499260200,
+      "packets": 8618,
+      "bytes": 3997265
+    },
+    {
+      "timestamp": 1499260260,
+      "packets": 8259,
+      "bytes": 5206713
+    },
+    {
+      "timestamp": 1499260320,
+      "packets": 7575,
+      "bytes": 6660716
+    },
+    {
+      "timestamp": 1499260380,
+      "packets": 17775,
+      "bytes": 8004306
+    },
+    {
+      "timestamp": 1499260440,
+      "packets": 20274,
+      "bytes": 12571685
+    },
+    {
+      "timestamp": 1499260500,
+      "packets": 44440,
+      "bytes": 28406341
+    },
+    {
+      "timestamp": 1499260560,
+      "packets": 27939,
+      "bytes": 13688295
+    },
+    {
+      "timestamp": 1499260620,
+      "packets": 33689,
+      "bytes": 19969025
+    },
+    {
+      "timestamp": 1499260680,
+      "packets": 11008,
+      "bytes": 3914265
+    },
+    {
+      "timestamp": 1499260740,
+      "packets": 8825,
+      "bytes": 3589093
+    },
+    {
+      "timestamp": 1499260800,
+      "packets": 24061,
+      "bytes": 18731291
+    },
+    {
+      "timestamp": 1499260860,
+      "packets": 8652,
+      "bytes": 3799478
+    },
+    {
+      "timestamp": 1499260920,
+      "packets": 10384,
+      "bytes": 1849204
+    },
+    {
+      "timestamp": 1499260980,
+      "packets": 13606,
+      "bytes": 6658504
+    },
+    {
+      "timestamp": 1499261040,
+      "packets": 5005,
+      "bytes": 1334824
+    },
+    {
+      "timestamp": 1499261100,
+      "packets": 23193,
+      "bytes": 11470236
+    },
+    {
+      "timestamp": 1499261160,
+      "packets": 17911,
+      "bytes": 7046617
+    },
+    {
+      "timestamp": 1499261220,
+      "packets": 10943,
+      "bytes": 5276226
+    },
+    {
+      "timestamp": 1499261280,
+      "packets": 16022,
+      "bytes": 6474160
+    },
+    {
+      "timestamp": 1499261340,
+      "packets": 16913,
+      "bytes": 6653145
+    },
+    {
+      "timestamp": 1499261400,
+      "packets": 8544,
+      "bytes": 2741050
+    },
+    {
+      "timestamp": 1499261460,
+      "packets": 7476,
+      "bytes": 2216503
+    },
+    {
+      "timestamp": 1499261520,
+      "packets": 6992,
+      "bytes": 2886380
+    },
+    {
+      "timestamp": 1499261580,
+      "packets": 20714,
+      "bytes": 9456615
+    },
+    {
+      "timestamp": 1499261640,
+      "packets": 9749,
+      "bytes": 3395766
+    },
+    {
+      "timestamp": 1499261700,
+      "packets": 6240,
+      "bytes": 2191814
+    },
+    {
+      "timestamp": 1499261760,
+      "packets": 14520,
+      "bytes": 7701792
+    },
+    {
+      "timestamp": 1499261820,
+      "packets": 18163,
+      "bytes": 11333831
+    },
+    {
+      "timestamp": 1499261880,
+      "packets": 24894,
+      "bytes": 12787353
+    },
+    {
+      "timestamp": 1499261940,
+      "packets": 6421,
+      "bytes": 1654097
+    },
+    {
+      "timestamp": 1499262000,
+      "packets": 8938,
+      "bytes": 4042514
+    },
+    {
+      "timestamp": 1499262060,
+      "packets": 18636,
+      "bytes": 11234472
+    },
+    {
+      "timestamp": 1499262120,
+      "packets": 20910,
+      "bytes": 11810152
+    },
+    {
+      "timestamp": 1499262180,
+      "packets": 112825,
+      "bytes": 101046567
+    },
+    {
+      "timestamp": 1499262240,
+      "packets": 111333,
+      "bytes": 99418610
+    },
+    {
+      "timestamp": 1499262300,
+      "packets": 159826,
+      "bytes": 143073562
+    },
+    {
+      "timestamp": 1499262360,
+      "packets": 128494,
+      "bytes": 113022812
+    },
+    {
+      "timestamp": 1499262420,
+      "packets": 147817,
+      "bytes": 134278502
+    },
+    {
+      "timestamp": 1499262480,
+      "packets": 145454,
+      "bytes": 131596032
+    },
+    {
+      "timestamp": 1499262540,
+      "packets": 124977,
+      "bytes": 108453265
+    },
+    {
+      "timestamp": 1499262600,
+      "packets": 150137,
+      "bytes": 133710157
+    },
+    {
+      "timestamp": 1499262660,
+      "packets": 115934,
+      "bytes": 102893757
+    },
+    {
+      "timestamp": 1499262720,
+      "packets": 148725,
+      "bytes": 132822363
+    },
+    {
+      "timestamp": 1499262780,
+      "packets": 157289,
+      "bytes": 138415825
+    },
+    {
+      "timestamp": 1499262840,
+      "packets": 135462,
+      "bytes": 126753003
+    },
+    {
+      "timestamp": 1499262900,
+      "packets": 158354,
+      "bytes": 144312920
+    },
+    {
+      "timestamp": 1499262960,
+      "packets": 134670,
+      "bytes": 119120669
+    },
+    {
+      "timestamp": 1499263020,
+      "packets": 190619,
+      "bytes": 175772678
+    },
+    {
+      "timestamp": 1499263080,
+      "packets": 176193,
+      "bytes": 165378384
+    },
+    {
+      "timestamp": 1499263140,
+      "packets": 172951,
+      "bytes": 167666970
+    },
+    {
+      "timestamp": 1499263200,
+      "packets": 155921,
+      "bytes": 150058835
+    },
+    {
+      "timestamp": 1499263260,
+      "packets": 56578,
+      "bytes": 56238817
+    },
+    {
+      "timestamp": 1499263320,
+      "packets": 37765,
+      "bytes": 42570381
+    },
+    {
+      "timestamp": 1499263380,
+      "packets": 40938,
+      "bytes": 46084037
+    },
+    {
+      "timestamp": 1499263440,
+      "packets": 45149,
+      "bytes": 45596938
+    },
+    {
+      "timestamp": 1499263500,
+      "packets": 36817,
+      "bytes": 42183128
+    },
+    {
+      "timestamp": 1499263560,
+      "packets": 35370,
+      "bytes": 43346631
+    },
+    {
+      "timestamp": 1499263620,
+      "packets": 53406,
+      "bytes": 52859036
+    },
+    {
+      "timestamp": 1499263680,
+      "packets": 66251,
+      "bytes": 67056529
+    },
+    {
+      "timestamp": 1499263740,
+      "packets": 50443,
+      "bytes": 47935785
+    },
+    {
+      "timestamp": 1499263800,
+      "packets": 55129,
+      "bytes": 56540471
+    },
+    {
+      "timestamp": 1499263860,
+      "packets": 47617,
+      "bytes": 36113181
+    },
+    {
+      "timestamp": 1499263920,
+      "packets": 29341,
+      "bytes": 17144371
+    },
+    {
+      "timestamp": 1499263980,
+      "packets": 27046,
+      "bytes": 18325706
+    },
+    {
+      "timestamp": 1499264040,
+      "packets": 16323,
+      "bytes": 9420880
+    },
+    {
+      "timestamp": 1499264100,
+      "packets": 8350,
+      "bytes": 4003806
+    },
+    {
+      "timestamp": 1499264160,
+      "packets": 2625,
+      "bytes": 368226
+    },
+    {
+      "timestamp": 1499264220,
+      "packets": 21353,
+      "bytes": 15607458
+    },
+    {
+      "timestamp": 1499264280,
+      "packets": 25712,
+      "bytes": 18225530
+    },
+    {
+      "timestamp": 1499264340,
+      "packets": 25739,
+      "bytes": 19523754
+    },
+    {
+      "timestamp": 1499264400,
+      "packets": 3212,
+      "bytes": 631869
+    },
+    {
+      "timestamp": 1499264460,
+      "packets": 24469,
+      "bytes": 16526722
+    },
+    {
+      "timestamp": 1499264520,
+      "packets": 11254,
+      "bytes": 4776932
+    },
+    {
+      "timestamp": 1499264580,
+      "packets": 10736,
+      "bytes": 6617319
+    },
+    {
+      "timestamp": 1499264640,
+      "packets": 6135,
+      "bytes": 5102561
+    },
+    {
+      "timestamp": 1499264700,
+      "packets": 4567,
+      "bytes": 3605265
+    },
+    {
+      "timestamp": 1499264760,
+      "packets": 1482,
+      "bytes": 340334
+    },
+    {
+      "timestamp": 1499264820,
+      "packets": 13804,
+      "bytes": 6707627
+    },
+    {
+      "timestamp": 1499264880,
+      "packets": 19204,
+      "bytes": 11744086
+    },
+    {
+      "timestamp": 1499264940,
+      "packets": 3325,
+      "bytes": 458170
+    },
+    {
+      "timestamp": 1499265000,
+      "packets": 5385,
+      "bytes": 2609473
+    },
+    {
+      "timestamp": 1499265060,
+      "packets": 6512,
+      "bytes": 2366824
+    },
+    {
+      "timestamp": 1499265120,
+      "packets": 1248,
+      "bytes": 146089
+    },
+    {
+      "timestamp": 1499265180,
+      "packets": 1253,
+      "bytes": 202920
+    },
+    {
+      "timestamp": 1499265240,
+      "packets": 1894,
+      "bytes": 420139
+    },
+    {
+      "timestamp": 1499265300,
+      "packets": 22549,
+      "bytes": 13699708
+    },
+    {
+      "timestamp": 1499265360,
+      "packets": 11347,
+      "bytes": 4435840
+    },
+    {
+      "timestamp": 1499265420,
+      "packets": 2608,
+      "bytes": 346523
+    },
+    {
+      "timestamp": 1499265480,
+      "packets": 6012,
+      "bytes": 2913015
+    },
+    {
+      "timestamp": 1499265540,
+      "packets": 5530,
+      "bytes": 2622752
+    },
+    {
+      "timestamp": 1499265600,
+      "packets": 12124,
+      "bytes": 6738842
+    },
+    {
+      "timestamp": 1499265660,
+      "packets": 6003,
+      "bytes": 2449204
+    },
+    {
+      "timestamp": 1499265720,
+      "packets": 9805,
+      "bytes": 3891605
+    },
+    {
+      "timestamp": 1499265780,
+      "packets": 11972,
+      "bytes": 6639132
+    },
+    {
+      "timestamp": 1499265840,
+      "packets": 15025,
+      "bytes": 7506518
+    },
+    {
+      "timestamp": 1499265900,
+      "packets": 15500,
+      "bytes": 7929548
+    },
+    {
+      "timestamp": 1499265960,
+      "packets": 4079,
+      "bytes": 726729
+    },
+    {
+      "timestamp": 1499266020,
+      "packets": 4753,
+      "bytes": 2198174
+    },
+    {
+      "timestamp": 1499266080,
+      "packets": 21642,
+      "bytes": 15598702
+    },
+    {
+      "timestamp": 1499266140,
+      "packets": 21484,
+      "bytes": 7924867
+    },
+    {
+      "timestamp": 1499266200,
+      "packets": 5634,
+      "bytes": 861748
+    },
+    {
+      "timestamp": 1499266260,
+      "packets": 15515,
+      "bytes": 9320722
+    },
+    {
+      "timestamp": 1499266320,
+      "packets": 11701,
+      "bytes": 3568448
+    },
+    {
+      "timestamp": 1499266380,
+      "packets": 32946,
+      "bytes": 22909948
+    },
+    {
+      "timestamp": 1499266440,
+      "packets": 4197,
+      "bytes": 558881
+    },
+    {
+      "timestamp": 1499266500,
+      "packets": 15081,
+      "bytes": 8415096
+    },
+    {
+      "timestamp": 1499266560,
+      "packets": 15375,
+      "bytes": 11562273
+    },
+    {
+      "timestamp": 1499266620,
+      "packets": 14211,
+      "bytes": 8566253
+    },
+    {
+      "timestamp": 1499266680,
+      "packets": 10910,
+      "bytes": 6379433
+    },
+    {
+      "timestamp": 1499266740,
+      "packets": 11975,
+      "bytes": 8220788
+    },
+    {
+      "timestamp": 1499266800,
+      "packets": 12517,
+      "bytes": 8222920
+    },
+    {
+      "timestamp": 1499266860,
+      "packets": 10603,
+      "bytes": 6032939
+    },
+    {
+      "timestamp": 1499266920,
+      "packets": 22766,
+      "bytes": 11774138
+    },
+    {
+      "timestamp": 1499266980,
+      "packets": 17001,
+      "bytes": 10133814
+    },
+    {
+      "timestamp": 1499267040,
+      "packets": 4992,
+      "bytes": 1809957
+    },
+    {
+      "timestamp": 1499267100,
+      "packets": 6029,
+      "bytes": 2409064
+    },
+    {
+      "timestamp": 1499267160,
+      "packets": 2102,
+      "bytes": 515720
+    },
+    {
+      "timestamp": 1499267220,
+      "packets": 2482,
+      "bytes": 700817
+    },
+    {
+      "timestamp": 1499267280,
+      "packets": 1604,
+      "bytes": 423049
+    },
+    {
+      "timestamp": 1499267340,
+      "packets": 8736,
+      "bytes": 5293262
+    },
+    {
+      "timestamp": 1499267400,
+      "packets": 10460,
+      "bytes": 4057642
+    },
+    {
+      "timestamp": 1499267460,
+      "packets": 11225,
+      "bytes": 5158693
+    },
+    {
+      "timestamp": 1499267520,
+      "packets": 2492,
+      "bytes": 545835
+    },
+    {
+      "timestamp": 1499267580,
+      "packets": 2959,
+      "bytes": 1729354
+    },
+    {
+      "timestamp": 1499267640,
+      "packets": 15483,
+      "bytes": 12872294
+    },
+    {
+      "timestamp": 1499267700,
+      "packets": 4615,
+      "bytes": 2407699
+    },
+    {
+      "timestamp": 1499267760,
+      "packets": 6034,
+      "bytes": 3068046
+    },
+    {
+      "timestamp": 1499267820,
+      "packets": 7098,
+      "bytes": 2363671
+    },
+    {
+      "timestamp": 1499267880,
+      "packets": 1424,
+      "bytes": 242602
+    },
+    {
+      "timestamp": 1499267940,
+      "packets": 1253,
+      "bytes": 186886
+    },
+    {
+      "timestamp": 1499268000,
+      "packets": 9292,
+      "bytes": 6066426
+    },
+    {
+      "timestamp": 1499268060,
+      "packets": 2760,
+      "bytes": 1787461
+    },
+    {
+      "timestamp": 1499268120,
+      "packets": 10144,
+      "bytes": 7654637
+    },
+    {
+      "timestamp": 1499268180,
+      "packets": 3949,
+      "bytes": 2342831
+    },
+    {
+      "timestamp": 1499268240,
+      "packets": 2341,
+      "bytes": 900216
+    },
+    {
+      "timestamp": 1499268300,
+      "packets": 6057,
+      "bytes": 3915861
+    },
+    {
+      "timestamp": 1499268360,
+      "packets": 1315,
+      "bytes": 657318
+    },
+    {
+      "timestamp": 1499268420,
+      "packets": 1856,
+      "bytes": 1222590
+    },
+    {
+      "timestamp": 1499268480,
+      "packets": 1779,
+      "bytes": 950835
+    },
+    {
+      "timestamp": 1499268540,
+      "packets": 10341,
+      "bytes": 7287800
+    },
+    {
+      "timestamp": 1499268600,
+      "packets": 10862,
+      "bytes": 6269546
+    },
+    {
+      "timestamp": 1499268660,
+      "packets": 2701,
+      "bytes": 800697
+    },
+    {
+      "timestamp": 1499268720,
+      "packets": 830,
+      "bytes": 133769
+    },
+    {
+      "timestamp": 1499268780,
+      "packets": 1511,
+      "bytes": 317785
+    },
+    {
+      "timestamp": 1499268840,
+      "packets": 1112,
+      "bytes": 229501
+    },
+    {
+      "timestamp": 1499268900,
+      "packets": 1401,
+      "bytes": 351431
+    },
+    {
+      "timestamp": 1499268960,
+      "packets": 8421,
+      "bytes": 5142758
+    },
+    {
+      "timestamp": 1499269020,
+      "packets": 5041,
+      "bytes": 2749770
+    },
+    {
+      "timestamp": 1499269080,
+      "packets": 6453,
+      "bytes": 2248078
+    },
+    {
+      "timestamp": 1499269140,
+      "packets": 5695,
+      "bytes": 3160492
+    },
+    {
+      "timestamp": 1499269200,
+      "packets": 2503,
+      "bytes": 429428
+    },
+    {
+      "timestamp": 1499269260,
+      "packets": 3879,
+      "bytes": 1209638
+    },
+    {
+      "timestamp": 1499269320,
+      "packets": 3351,
+      "bytes": 1236685
+    },
+    {
+      "timestamp": 1499269380,
+      "packets": 1968,
+      "bytes": 438140
+    },
+    {
+      "timestamp": 1499269440,
+      "packets": 5230,
+      "bytes": 1736445
+    },
+    {
+      "timestamp": 1499269500,
+      "packets": 1117,
+      "bytes": 170961
+    },
+    {
+      "timestamp": 1499269560,
+      "packets": 5235,
+      "bytes": 1911426
+    },
+    {
+      "timestamp": 1499269620,
+      "packets": 6087,
+      "bytes": 1883922
+    },
+    {
+      "timestamp": 1499269680,
+      "packets": 1047,
+      "bytes": 193442
+    },
+    {
+      "timestamp": 1499269740,
+      "packets": 1408,
+      "bytes": 250690
+    },
+    {
+      "timestamp": 1499269800,
+      "packets": 5101,
+      "bytes": 2324396
+    },
+    {
+      "timestamp": 1499269860,
+      "packets": 1309,
+      "bytes": 165444
+    },
+    {
+      "timestamp": 1499269920,
+      "packets": 1205,
+      "bytes": 211410
+    },
+    {
+      "timestamp": 1499269980,
+      "packets": 305,
+      "bytes": 47825
+    },
+    {
+      "timestamp": 1499270040,
+      "packets": 752,
+      "bytes": 135822
+    },
+    {
+      "timestamp": 1499270100,
+      "packets": 1603,
+      "bytes": 493287
+    },
+    {
+      "timestamp": 1499270160,
+      "packets": 5531,
+      "bytes": 3739792
+    },
+    {
+      "timestamp": 1499270220,
+      "packets": 14078,
+      "bytes": 8882813
+    },
+    {
+      "timestamp": 1499270280,
+      "packets": 3569,
+      "bytes": 608016
+    },
+    {
+      "timestamp": 1499270340,
+      "packets": 2124,
+      "bytes": 356006
+    },
+    {
+      "timestamp": 1499270400,
+      "packets": 4157,
+      "bytes": 1111412
+    },
+    {
+      "timestamp": 1499270460,
+      "packets": 1734,
+      "bytes": 295812
+    },
+    {
+      "timestamp": 1499270520,
+      "packets": 993,
+      "bytes": 233216
+    },
+    {
+      "timestamp": 1499270580,
+      "packets": 2226,
+      "bytes": 517973
+    },
+    {
+      "timestamp": 1499270640,
+      "packets": 2738,
+      "bytes": 2069425
+    },
+    {
+      "timestamp": 1499270700,
+      "packets": 24136,
+      "bytes": 17061145
+    },
+    {
+      "timestamp": 1499270760,
+      "packets": 2346,
+      "bytes": 318959
+    },
+    {
+      "timestamp": 1499270820,
+      "packets": 1912,
+      "bytes": 264730
+    },
+    {
+      "timestamp": 1499270880,
+      "packets": 10359,
+      "bytes": 6140028
+    },
+    {
+      "timestamp": 1499270940,
+      "packets": 5227,
+      "bytes": 2136793
+    },
+    {
+      "timestamp": 1499271000,
+      "packets": 12492,
+      "bytes": 7731977
+    },
+    {
+      "timestamp": 1499271060,
+      "packets": 12066,
+      "bytes": 4460479
+    },
+    {
+      "timestamp": 1499271120,
+      "packets": 5525,
+      "bytes": 2047934
+    },
+    {
+      "timestamp": 1499271180,
+      "packets": 5869,
+      "bytes": 2377412
+    },
+    {
+      "timestamp": 1499271240,
+      "packets": 25473,
+      "bytes": 13187180
+    },
+    {
+      "timestamp": 1499271300,
+      "packets": 12955,
+      "bytes": 3750005
+    },
+    {
+      "timestamp": 1499271360,
+      "packets": 8028,
+      "bytes": 2156104
+    },
+    {
+      "timestamp": 1499271420,
+      "packets": 19547,
+      "bytes": 10850994
+    },
+    {
+      "timestamp": 1499271480,
+      "packets": 8856,
+      "bytes": 3039254
+    },
+    {
+      "timestamp": 1499271540,
+      "packets": 9642,
+      "bytes": 4228237
+    },
+    {
+      "timestamp": 1499271600,
+      "packets": 4881,
+      "bytes": 1680432
+    },
+    {
+      "timestamp": 1499271660,
+      "packets": 19084,
+      "bytes": 12703172
+    },
+    {
+      "timestamp": 1499271720,
+      "packets": 6398,
+      "bytes": 1325795
+    },
+    {
+      "timestamp": 1499271780,
+      "packets": 16966,
+      "bytes": 8710443
+    },
+    {
+      "timestamp": 1499271840,
+      "packets": 8695,
+      "bytes": 4567553
+    },
+    {
+      "timestamp": 1499271900,
+      "packets": 2930,
+      "bytes": 547683
+    },
+    {
+      "timestamp": 1499271960,
+      "packets": 14537,
+      "bytes": 9060307
+    },
+    {
+      "timestamp": 1499272020,
+      "packets": 22557,
+      "bytes": 12452390
+    },
+    {
+      "timestamp": 1499272080,
+      "packets": 5617,
+      "bytes": 1185908
+    },
+    {
+      "timestamp": 1499272140,
+      "packets": 1487,
+      "bytes": 177480
+    },
+    {
+      "timestamp": 1499272200,
+      "packets": 19388,
+      "bytes": 14592259
+    },
+    {
+      "timestamp": 1499272260,
+      "packets": 5097,
+      "bytes": 2426102
+    },
+    {
+      "timestamp": 1499272320,
+      "packets": 26724,
+      "bytes": 19012831
+    },
+    {
+      "timestamp": 1499272380,
+      "packets": 6459,
+      "bytes": 2816021
+    },
+    {
+      "timestamp": 1499272440,
+      "packets": 9315,
+      "bytes": 5089281
+    },
+    {
+      "timestamp": 1499272500,
+      "packets": 6571,
+      "bytes": 2799210
+    },
+    {
+      "timestamp": 1499272560,
+      "packets": 16445,
+      "bytes": 9700909
+    },
+    {
+      "timestamp": 1499272620,
+      "packets": 9972,
+      "bytes": 4098177
+    },
+    {
+      "timestamp": 1499272680,
+      "packets": 3043,
+      "bytes": 1062021
+    },
+    {
+      "timestamp": 1499272740,
+      "packets": 5124,
+      "bytes": 3150566
+    },
+    {
+      "timestamp": 1499272800,
+      "packets": 4421,
+      "bytes": 1566335
+    },
+    {
+      "timestamp": 1499272860,
+      "packets": 17294,
+      "bytes": 11388059
+    },
+    {
+      "timestamp": 1499272920,
+      "packets": 2853,
+      "bytes": 365490
+    },
+    {
+      "timestamp": 1499272980,
+      "packets": 7686,
+      "bytes": 4676762
+    },
+    {
+      "timestamp": 1499273040,
+      "packets": 20121,
+      "bytes": 9586523
+    },
+    {
+      "timestamp": 1499273100,
+      "packets": 9895,
+      "bytes": 5307427
+    },
+    {
+      "timestamp": 1499273160,
+      "packets": 12084,
+      "bytes": 6573577
+    },
+    {
+      "timestamp": 1499273220,
+      "packets": 10780,
+      "bytes": 3939315
+    },
+    {
+      "timestamp": 1499273280,
+      "packets": 8303,
+      "bytes": 3717887
+    },
+    {
+      "timestamp": 1499273340,
+      "packets": 7846,
+      "bytes": 3073590
+    },
+    {
+      "timestamp": 1499273400,
+      "packets": 14492,
+      "bytes": 9658412
+    },
+    {
+      "timestamp": 1499273460,
+      "packets": 16645,
+      "bytes": 9541479
+    },
+    {
+      "timestamp": 1499273520,
+      "packets": 5585,
+      "bytes": 1704267
+    },
+    {
+      "timestamp": 1499273580,
+      "packets": 6904,
+      "bytes": 2643506
+    },
+    {
+      "timestamp": 1499273640,
+      "packets": 12994,
+      "bytes": 6649819
+    },
+    {
+      "timestamp": 1499273700,
+      "packets": 8796,
+      "bytes": 2048573
+    },
+    {
+      "timestamp": 1499273760,
+      "packets": 3719,
+      "bytes": 1022917
+    },
+    {
+      "timestamp": 1499273820,
+      "packets": 6695,
+      "bytes": 1763853
+    },
+    {
+      "timestamp": 1499273880,
+      "packets": 5471,
+      "bytes": 2900262
+    },
+    {
+      "timestamp": 1499273940,
+      "packets": 19212,
+      "bytes": 7652820
+    },
+    {
+      "timestamp": 1499274000,
+      "packets": 8892,
+      "bytes": 4414067
+    },
+    {
+      "timestamp": 1499274060,
+      "packets": 10998,
+      "bytes": 7000447
+    },
+    {
+      "timestamp": 1499274120,
+      "packets": 19057,
+      "bytes": 11864347
+    },
+    {
+      "timestamp": 1499274180,
+      "packets": 9230,
+      "bytes": 4991096
+    },
+    {
+      "timestamp": 1499274240,
+      "packets": 18546,
+      "bytes": 9620653
+    },
+    {
+      "timestamp": 1499274300,
+      "packets": 12954,
+      "bytes": 6701199
+    },
+    {
+      "timestamp": 1499274360,
+      "packets": 4776,
+      "bytes": 1427016
+    },
+    {
+      "timestamp": 1499274420,
+      "packets": 6094,
+      "bytes": 3054319
+    },
+    {
+      "timestamp": 1499274480,
+      "packets": 3028,
+      "bytes": 1524703
+    },
+    {
+      "timestamp": 1499274540,
+      "packets": 18218,
+      "bytes": 8251799
+    },
+    {
+      "timestamp": 1499274600,
+      "packets": 13939,
+      "bytes": 4550069
+    },
+    {
+      "timestamp": 1499274660,
+      "packets": 12252,
+      "bytes": 4920467
+    },
+    {
+      "timestamp": 1499274720,
+      "packets": 9724,
+      "bytes": 4899464
+    },
+    {
+      "timestamp": 1499274780,
+      "packets": 20845,
+      "bytes": 10790196
+    },
+    {
+      "timestamp": 1499274840,
+      "packets": 6162,
+      "bytes": 1635433
+    },
+    {
+      "timestamp": 1499274900,
+      "packets": 21458,
+      "bytes": 12370138
+    },
+    {
+      "timestamp": 1499274960,
+      "packets": 7341,
+      "bytes": 2094005
+    },
+    {
+      "timestamp": 1499275020,
+      "packets": 24466,
+      "bytes": 18031416
+    },
+    {
+      "timestamp": 1499275080,
+      "packets": 24420,
+      "bytes": 15816194
+    },
+    {
+      "timestamp": 1499275140,
+      "packets": 12303,
+      "bytes": 4783787
+    },
+    {
+      "timestamp": 1499275200,
+      "packets": 5499,
+      "bytes": 1351374
+    },
+    {
+      "timestamp": 1499275260,
+      "packets": 9749,
+      "bytes": 4969207
+    },
+    {
+      "timestamp": 1499275320,
+      "packets": 16563,
+      "bytes": 9149112
+    },
+    {
+      "timestamp": 1499275380,
+      "packets": 2802,
+      "bytes": 432386
+    },
+    {
+      "timestamp": 1499275440,
+      "packets": 4544,
+      "bytes": 2358874
+    },
+    {
+      "timestamp": 1499275500,
+      "packets": 26595,
+      "bytes": 17953768
+    },
+    {
+      "timestamp": 1499275560,
+      "packets": 9406,
+      "bytes": 3889313
+    },
+    {
+      "timestamp": 1499275620,
+      "packets": 6730,
+      "bytes": 3073881
+    },
+    {
+      "timestamp": 1499275680,
+      "packets": 6439,
+      "bytes": 3175121
+    },
+    {
+      "timestamp": 1499275740,
+      "packets": 14179,
+      "bytes": 6440930
+    },
+    {
+      "timestamp": 1499275800,
+      "packets": 32442,
+      "bytes": 15477443
+    },
+    {
+      "timestamp": 1499275860,
+      "packets": 48947,
+      "bytes": 28324827
+    },
+    {
+      "timestamp": 1499275920,
+      "packets": 30150,
+      "bytes": 18381345
+    },
+    {
+      "timestamp": 1499275980,
+      "packets": 14415,
+      "bytes": 11055750
+    },
+    {
+      "timestamp": 1499276040,
+      "packets": 10929,
+      "bytes": 3855248
+    },
+    {
+      "timestamp": 1499276100,
+      "packets": 26013,
+      "bytes": 14532252
+    },
+    {
+      "timestamp": 1499276160,
+      "packets": 9686,
+      "bytes": 2308005
+    },
+    {
+      "timestamp": 1499276220,
+      "packets": 7447,
+      "bytes": 1578470
+    },
+    {
+      "timestamp": 1499276280,
+      "packets": 3939,
+      "bytes": 1129717
+    },
+    {
+      "timestamp": 1499276340,
+      "packets": 7092,
+      "bytes": 3567844
+    },
+    {
+      "timestamp": 1499276400,
+      "packets": 5199,
+      "bytes": 1545006
+    },
+    {
+      "timestamp": 1499276460,
+      "packets": 17514,
+      "bytes": 13757057
+    },
+    {
+      "timestamp": 1499276520,
+      "packets": 7075,
+      "bytes": 3287523
+    },
+    {
+      "timestamp": 1499276580,
+      "packets": 12223,
+      "bytes": 6251296
+    },
+    {
+      "timestamp": 1499276640,
+      "packets": 30681,
+      "bytes": 21895501
+    },
+    {
+      "timestamp": 1499276700,
+      "packets": 6741,
+      "bytes": 1397845
+    },
+    {
+      "timestamp": 1499276760,
+      "packets": 5943,
+      "bytes": 1634697
+    },
+    {
+      "timestamp": 1499276820,
+      "packets": 16013,
+      "bytes": 10164897
+    },
+    {
+      "timestamp": 1499276880,
+      "packets": 5494,
+      "bytes": 1547259
+    },
+    {
+      "timestamp": 1499276940,
+      "packets": 9098,
+      "bytes": 4001231
+    },
+    {
+      "timestamp": 1499277000,
+      "packets": 5339,
+      "bytes": 1819306
+    },
+    {
+      "timestamp": 1499277060,
+      "packets": 10713,
+      "bytes": 4815692
+    },
+    {
+      "timestamp": 1499277120,
+      "packets": 9079,
+      "bytes": 3833267
+    },
+    {
+      "timestamp": 1499277180,
+      "packets": 23755,
+      "bytes": 18472640
+    },
+    {
+      "timestamp": 1499277240,
+      "packets": 9042,
+      "bytes": 3415227
+    },
+    {
+      "timestamp": 1499277300,
+      "packets": 11820,
+      "bytes": 8271185
+    },
+    {
+      "timestamp": 1499277360,
+      "packets": 2136,
+      "bytes": 402600
+    },
+    {
+      "timestamp": 1499277420,
+      "packets": 7293,
+      "bytes": 3406748
+    },
+    {
+      "timestamp": 1499277480,
+      "packets": 3679,
+      "bytes": 764631
+    },
+    {
+      "timestamp": 1499277540,
+      "packets": 9640,
+      "bytes": 6193116
+    },
+    {
+      "timestamp": 1499277600,
+      "packets": 7531,
+      "bytes": 3994172
+    },
+    {
+      "timestamp": 1499277660,
+      "packets": 2947,
+      "bytes": 451301
+    },
+    {
+      "timestamp": 1499277720,
+      "packets": 8607,
+      "bytes": 4276703
+    },
+    {
+      "timestamp": 1499277780,
+      "packets": 2677,
+      "bytes": 638000
+    },
+    {
+      "timestamp": 1499277840,
+      "packets": 4043,
+      "bytes": 1314790
+    },
+    {
+      "timestamp": 1499277900,
+      "packets": 1639,
+      "bytes": 212313
+    },
+    {
+      "timestamp": 1499277960,
+      "packets": 12748,
+      "bytes": 6509532
+    },
+    {
+      "timestamp": 1499278020,
+      "packets": 29481,
+      "bytes": 18682973
+    },
+    {
+      "timestamp": 1499278080,
+      "packets": 17259,
+      "bytes": 5230086
+    },
+    {
+      "timestamp": 1499278140,
+      "packets": 23771,
+      "bytes": 7545490
+    },
+    {
+      "timestamp": 1499278200,
+      "packets": 47348,
+      "bytes": 31742636
+    },
+    {
+      "timestamp": 1499278260,
+      "packets": 26677,
+      "bytes": 10628832
+    },
+    {
+      "timestamp": 1499278320,
+      "packets": 22673,
+      "bytes": 10337386
+    },
+    {
+      "timestamp": 1499278380,
+      "packets": 27776,
+      "bytes": 15166337
+    },
+    {
+      "timestamp": 1499278440,
+      "packets": 26802,
+      "bytes": 13381965
+    },
+    {
+      "timestamp": 1499278500,
+      "packets": 15393,
+      "bytes": 8655728
+    },
+    {
+      "timestamp": 1499278560,
+      "packets": 20402,
+      "bytes": 10090921
+    },
+    {
+      "timestamp": 1499278620,
+      "packets": 16178,
+      "bytes": 8086840
+    },
+    {
+      "timestamp": 1499278680,
+      "packets": 37575,
+      "bytes": 28107018
+    },
+    {
+      "timestamp": 1499278740,
+      "packets": 31930,
+      "bytes": 19251466
+    },
+    {
+      "timestamp": 1499278800,
+      "packets": 19533,
+      "bytes": 11103215
+    },
+    {
+      "timestamp": 1499278860,
+      "packets": 18730,
+      "bytes": 10528556
+    },
+    {
+      "timestamp": 1499278920,
+      "packets": 37981,
+      "bytes": 36780520
+    },
+    {
+      "timestamp": 1499278980,
+      "packets": 6501,
+      "bytes": 4538435
+    },
+    {
+      "timestamp": 1499279040,
+      "packets": 11157,
+      "bytes": 8531796
+    },
+    {
+      "timestamp": 1499279100,
+      "packets": 23029,
+      "bytes": 14503834
+    },
+    {
+      "timestamp": 1499279160,
+      "packets": 14007,
+      "bytes": 8026000
+    },
+    {
+      "timestamp": 1499279220,
+      "packets": 9527,
+      "bytes": 7059994
+    },
+    {
+      "timestamp": 1499279280,
+      "packets": 6954,
+      "bytes": 5233348
+    },
+    {
+      "timestamp": 1499279340,
+      "packets": 25478,
+      "bytes": 15923362
+    },
+    {
+      "timestamp": 1499279400,
+      "packets": 9609,
+      "bytes": 5684579
+    },
+    {
+      "timestamp": 1499279460,
+      "packets": 8630,
+      "bytes": 6426918
+    },
+    {
+      "timestamp": 1499279520,
+      "packets": 7426,
+      "bytes": 5913007
+    },
+    {
+      "timestamp": 1499279580,
+      "packets": 21194,
+      "bytes": 12392227
+    },
+    {
+      "timestamp": 1499279640,
+      "packets": 9720,
+      "bytes": 5265786
+    },
+    {
+      "timestamp": 1499279700,
+      "packets": 12277,
+      "bytes": 6153150
+    },
+    {
+      "timestamp": 1499279760,
+      "packets": 3297,
+      "bytes": 767527
+    },
+    {
+      "timestamp": 1499279820,
+      "packets": 1545,
+      "bytes": 229554
+    },
+    {
+      "timestamp": 1499279880,
+      "packets": 5668,
+      "bytes": 3420895
+    },
+    {
+      "timestamp": 1499279940,
+      "packets": 10841,
+      "bytes": 7101871
+    },
+    {
+      "timestamp": 1499280000,
+      "packets": 18364,
+      "bytes": 15061194
+    },
+    {
+      "timestamp": 1499280060,
+      "packets": 4708,
+      "bytes": 1460618
+    },
+    {
+      "timestamp": 1499280120,
+      "packets": 2588,
+      "bytes": 383779
+    },
+    {
+      "timestamp": 1499280180,
+      "packets": 10944,
+      "bytes": 5193723
+    },
+    {
+      "timestamp": 1499280240,
+      "packets": 2365,
+      "bytes": 358840
+    },
+    {
+      "timestamp": 1499280300,
+      "packets": 12137,
+      "bytes": 9456680
+    },
+    {
+      "timestamp": 1499280360,
+      "packets": 13948,
+      "bytes": 5546732
+    },
+    {
+      "timestamp": 1499280420,
+      "packets": 2691,
+      "bytes": 449155
+    },
+    {
+      "timestamp": 1499280480,
+      "packets": 2755,
+      "bytes": 840113
+    },
+    {
+      "timestamp": 1499280540,
+      "packets": 4407,
+      "bytes": 2283726
+    },
+    {
+      "timestamp": 1499280600,
+      "packets": 3231,
+      "bytes": 2153207
+    },
+    {
+      "timestamp": 1499280660,
+      "packets": 10736,
+      "bytes": 6705131
+    },
+    {
+      "timestamp": 1499280720,
+      "packets": 12700,
+      "bytes": 7731674
+    },
+    {
+      "timestamp": 1499280780,
+      "packets": 9235,
+      "bytes": 4232056
+    },
+    {
+      "timestamp": 1499280840,
+      "packets": 10246,
+      "bytes": 8669783
+    },
+    {
+      "timestamp": 1499280900,
+      "packets": 6125,
+      "bytes": 2681268
+    },
+    {
+      "timestamp": 1499280960,
+      "packets": 8090,
+      "bytes": 5040209
+    },
+    {
+      "timestamp": 1499281020,
+      "packets": 17180,
+      "bytes": 7237586
+    },
+    {
+      "timestamp": 1499281080,
+      "packets": 3910,
+      "bytes": 660752
+    },
+    {
+      "timestamp": 1499281140,
+      "packets": 1893,
+      "bytes": 238310
+    },
+    {
+      "timestamp": 1499281200,
+      "packets": 13951,
+      "bytes": 7341343
+    },
+    {
+      "timestamp": 1499281260,
+      "packets": 3569,
+      "bytes": 710479
+    },
+    {
+      "timestamp": 1499281320,
+      "packets": 3321,
+      "bytes": 916566
+    },
+    {
+      "timestamp": 1499281380,
+      "packets": 969,
+      "bytes": 171850
+    },
+    {
+      "timestamp": 1499281440,
+      "packets": 4108,
+      "bytes": 2541238
+    },
+    {
+      "timestamp": 1499281500,
+      "packets": 18376,
+      "bytes": 12293031
+    },
+    {
+      "timestamp": 1499281560,
+      "packets": 17434,
+      "bytes": 10009811
+    },
+    {
+      "timestamp": 1499281620,
+      "packets": 12051,
+      "bytes": 8124079
+    },
+    {
+      "timestamp": 1499281680,
+      "packets": 7061,
+      "bytes": 4554648
+    },
+    {
+      "timestamp": 1499281740,
+      "packets": 10524,
+      "bytes": 6784931
+    },
+    {
+      "timestamp": 1499281800,
+      "packets": 12223,
+      "bytes": 7911075
+    },
+    {
+      "timestamp": 1499281860,
+      "packets": 18427,
+      "bytes": 12746030
+    },
+    {
+      "timestamp": 1499281920,
+      "packets": 13515,
+      "bytes": 13814355
+    },
+    {
+      "timestamp": 1499281980,
+      "packets": 16092,
+      "bytes": 7290844
+    },
+    {
+      "timestamp": 1499282040,
+      "packets": 11709,
+      "bytes": 5709089
+    },
+    {
+      "timestamp": 1499282100,
+      "packets": 7518,
+      "bytes": 2961304
+    },
+    {
+      "timestamp": 1499282160,
+      "packets": 9235,
+      "bytes": 4383360
+    },
+    {
+      "timestamp": 1499282220,
+      "packets": 16751,
+      "bytes": 9601841
+    },
+    {
+      "timestamp": 1499282280,
+      "packets": 26022,
+      "bytes": 21762493
+    },
+    {
+      "timestamp": 1499282340,
+      "packets": 5486,
+      "bytes": 1573843
+    },
+    {
+      "timestamp": 1499282400,
+      "packets": 5738,
+      "bytes": 2402008
+    },
+    {
+      "timestamp": 1499282460,
+      "packets": 10674,
+      "bytes": 5466944
+    },
+    {
+      "timestamp": 1499282520,
+      "packets": 9009,
+      "bytes": 5692202
+    },
+    {
+      "timestamp": 1499282580,
+      "packets": 15574,
+      "bytes": 8376136
+    },
+    {
+      "timestamp": 1499282640,
+      "packets": 10859,
+      "bytes": 5577324
+    },
+    {
+      "timestamp": 1499282700,
+      "packets": 8569,
+      "bytes": 3527895
+    },
+    {
+      "timestamp": 1499282760,
+      "packets": 2493,
+      "bytes": 312440
+    },
+    {
+      "timestamp": 1499282820,
+      "packets": 28717,
+      "bytes": 21979240
+    },
+    {
+      "timestamp": 1499282880,
+      "packets": 14807,
+      "bytes": 9150157
+    },
+    {
+      "timestamp": 1499282940,
+      "packets": 15320,
+      "bytes": 10568544
+    },
+    {
+      "timestamp": 1499283000,
+      "packets": 3729,
+      "bytes": 1567722
+    },
+    {
+      "timestamp": 1499283060,
+      "packets": 2896,
+      "bytes": 1481730
+    },
+    {
+      "timestamp": 1499283120,
+      "packets": 4109,
+      "bytes": 1727380
+    },
+    {
+      "timestamp": 1499283180,
+      "packets": 6304,
+      "bytes": 3729873
+    },
+    {
+      "timestamp": 1499283240,
+      "packets": 12615,
+      "bytes": 8297415
+    },
+    {
+      "timestamp": 1499283300,
+      "packets": 5208,
+      "bytes": 1587249
+    },
+    {
+      "timestamp": 1499283360,
+      "packets": 11552,
+      "bytes": 8587065
+    },
+    {
+      "timestamp": 1499283420,
+      "packets": 3647,
+      "bytes": 1306710
+    },
+    {
+      "timestamp": 1499283480,
+      "packets": 10513,
+      "bytes": 6478856
+    },
+    {
+      "timestamp": 1499283540,
+      "packets": 12545,
+      "bytes": 6043434
+    },
+    {
+      "timestamp": 1499283600,
+      "packets": 13621,
+      "bytes": 9270745
+    },
+    {
+      "timestamp": 1499283660,
+      "packets": 14419,
+      "bytes": 11562391
+    },
+    {
+      "timestamp": 1499283720,
+      "packets": 11875,
+      "bytes": 4506647
+    },
+    {
+      "timestamp": 1499283780,
+      "packets": 9255,
+      "bytes": 6691805
+    },
+    {
+      "timestamp": 1499283840,
+      "packets": 14048,
+      "bytes": 7891810
+    },
+    {
+      "timestamp": 1499283900,
+      "packets": 7354,
+      "bytes": 3766581
+    },
+    {
+      "timestamp": 1499283960,
+      "packets": 1403,
+      "bytes": 251894
+    },
+    {
+      "timestamp": 1499284020,
+      "packets": 3967,
+      "bytes": 2094813
+    },
+    {
+      "timestamp": 1499284080,
+      "packets": 38005,
+      "bytes": 20633360
+    },
+    {
+      "timestamp": 1499284140,
+      "packets": 7470,
+      "bytes": 2681068
+    },
+    {
+      "timestamp": 1499284200,
+      "packets": 19777,
+      "bytes": 11584327
+    },
+    {
+      "timestamp": 1499284260,
+      "packets": 7115,
+      "bytes": 2824250
+    },
+    {
+      "timestamp": 1499284320,
+      "packets": 7833,
+      "bytes": 5786008
+    },
+    {
+      "timestamp": 1499284380,
+      "packets": 6574,
+      "bytes": 3671530
+    },
+    {
+      "timestamp": 1499284440,
+      "packets": 7358,
+      "bytes": 3481832
+    },
+    {
+      "timestamp": 1499284500,
+      "packets": 8209,
+      "bytes": 4360116
+    },
+    {
+      "timestamp": 1499284560,
+      "packets": 3336,
+      "bytes": 420426
+    },
+    {
+      "timestamp": 1499284620,
+      "packets": 18680,
+      "bytes": 11624255
+    },
+    {
+      "timestamp": 1499284680,
+      "packets": 2502,
+      "bytes": 309085
+    },
+    {
+      "timestamp": 1499284740,
+      "packets": 4506,
+      "bytes": 2311698
+    },
+    {
+      "timestamp": 1499284800,
+      "packets": 6837,
+      "bytes": 3860886
+    },
+    {
+      "timestamp": 1499284860,
+      "packets": 10163,
+      "bytes": 5977894
+    },
+    {
+      "timestamp": 1499284920,
+      "packets": 15524,
+      "bytes": 11402210
+    },
+    {
+      "timestamp": 1499284980,
+      "packets": 6846,
+      "bytes": 4928099
+    },
+    {
+      "timestamp": 1499285040,
+      "packets": 1563,
+      "bytes": 178550
+    },
+    {
+      "timestamp": 1499285100,
+      "packets": 2054,
+      "bytes": 1169915
+    },
+    {
+      "timestamp": 1499285160,
+      "packets": 3104,
+      "bytes": 2498406
+    },
+    {
+      "timestamp": 1499285220,
+      "packets": 1203,
+      "bytes": 224509
+    },
+    {
+      "timestamp": 1499285280,
+      "packets": 198,
+      "bytes": 30030
+    },
+    {
+      "timestamp": 1499285340,
+      "packets": 9,
+      "bytes": 2187
+    },
+    {
+      "timestamp": 1499285400,
+      "packets": 35,
+      "bytes": 12600
+    }
+  ],
+  "elapsed_seconds": 368.53
+}

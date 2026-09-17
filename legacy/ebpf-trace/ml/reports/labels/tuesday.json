@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-17T07:34:39.637639+00:00",
+  "counts": {
+    "label_rows": 445909,
+    "invalid_label_rows": 17,
+    "matched_packet_evidence": 2148765,
+    "matched": 2166408,
+    "unlabeled": 488193,
+    "uncertain_time_rows": 487350,
+    "matched_time_5tuple": 17643,
+    "ambiguous": 20977,
+    "rounded_window_rows": 30
+  },
+  "sources": [
+    "Tuesday-WorkingHours.pcap_ISCX.csv"
+  ],
+  "timezone": "America/Halifax",
+  "timestamp_format": "day-first; second or minute precision; working-hours-12h",
+  "timestamp_uncertainty_seconds": 60,
+  "profile": "cicids2017",
+  "policy": "unique packet signature; full window coverage; unresolved intervals retain uncertainty",
+  "distribution": {
+    "BENIGN": 2049166,
+    "FTP-Patator": 36542,
+    "SSH-Patator": 80700
+  },
+  "source_distribution": {
+    "BENIGN": 432057,
+    "FTP-Patator": 7938,
+    "SSH-Patator": 5897
+  },
+  "features_sha256": "ef11a69ea701a774bcb2a37551533a847a0de043e914f6c79dcc590043545f94",
+  "output_sha256": "a1def42bed2e87b2200074d49cc72d1297646b3d24f618564ad1442074793b22",
+  "source_sha256": {
+    "Tuesday-WorkingHours.pcap_ISCX.csv": "ae9c88e10c41a8eb1ff454ae98bc513454925097d0b0b57180f94e79de445815"
+  },
+  "alignment": {
+    "schema_version": 1,
+    "policy": "unique bidirectional packet counts + duration + minute + direction",
+    "generated_at": "2026-09-17T06:31:26.857016+00:00",
+    "sources": [
+      "Tuesday-WorkingHours.pcap_ISCX.csv"
+    ],
+    "capture_sha256": "080c2250154c5a174c03660ed0f75a3858d41a27511ba716e780d7bcb1ec4c57",
+    "features_sha256": "ef11a69ea701a774bcb2a37551533a847a0de043e914f6c79dcc590043545f94",
+    "source_sha256": {
+      "Tuesday-WorkingHours.pcap_ISCX.csv": "ae9c88e10c41a8eb1ff454ae98bc513454925097d0b0b57180f94e79de445815"
+    },
+    "duration_tolerance_us": 2,
+    "timezone": "America/Halifax",
+    "reused_from_intervals_sha256": "17258851d9deaddecb607ecb54937465df7fbc868b4d2370fb026fdf10cddb56",
+    "intervals_sha256": "693b50f2cb8056677d30ba3a86ff5f7e06a62ebbebad815df0c3a12fe1ea58c1"
+  }
+}

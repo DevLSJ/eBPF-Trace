@@ -10,6 +10,7 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY backend /app/backend
 COPY ml /app/ml
+COPY collector/__init__.py collector/feature_schema.py /app/collector/
 COPY alembic.ini /app/alembic.ini
 USER app
 EXPOSE 8000
