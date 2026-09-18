@@ -168,6 +168,35 @@ def test_session_csrf_rbac_and_logout(ops_client):
     assert c.get("/api/ops/me", headers=admin).status_code == 401
 
 
+def test_restricted_public_test_account(ops_client):
+    c = ops_client
+
+    async def setup():
+        async with c.app.state.db.sessions() as session:
+            with pytest.raises(ValueError):
+                await provision_operator(session, "admin", "Test", "admin", "admin")
+            with pytest.raises(ValueError):
+                await provision_operator(
+                    session, "other", "Test", "admin", "admin", test_account=True
+                )
+            await provision_operator(session, "admin", "Test", "admin", "admin", test_account=True)
+            await session.commit()
+
+    c.portal.call(setup)
+    credentials = {"username": "admin", "password": "admin"}
+    assert c.post("/api/ops/login", json=credentials).status_code == 401
+    c.app.state.settings.ops_test_account_mode = True
+    result = c.post("/api/ops/login", json=credentials)
+    assert result.status_code == 200
+    assert result.json()["operator"]["is_test_account"] is True
+    assert c.get("/api/ops/me").status_code == 200
+    c.app.state.settings.ops_test_account_mode = False
+    assert c.get("/api/ops/me").status_code == 401
+    for flag in ["response_live_enabled", "ops_notifications_enabled", "slack_enabled"]:
+        with pytest.raises(ValueError, match="Test accounts require"):
+            Settings(_env_file=None, ops_test_account_mode=True, **{flag: True})
+
+
 def test_password_throttle_and_https_gate(ops_client):
     c = ops_client
     for _ in range(10):
@@ -329,6 +358,24 @@ def test_postgres_incident_outbox_rollback(postgres_client, message):
             assert await session.get(Incident, incident_id) is None
 
     c.portal.call(verify)
+    c.app.state.settings.ops_allow_insecure_local = True
+    username = "postgres_" + uuid4().hex
+
+    async def provision():
+        async with c.app.state.db.sessions() as session:
+            await provision_operator(session, username, "PostgreSQL login test", "viewer", PASSWORD)
+            await session.commit()
+
+    c.portal.call(provision)
+    response = c.post("/api/ops/login", json={"username": username, "password": PASSWORD})
+    assert response.status_code == 200, response.text
+    assert c.get("/api/ops/me").json()["operator"]["username"] == username
+    assert (
+        c.post(
+            "/api/ops/logout", headers={"X-CSRF-Token": response.json()["csrf_token"]}
+        ).status_code
+        == 200
+    )
 
 
 def test_full_ownership_approval_apply_release_recovery_and_metrics(ops_client):

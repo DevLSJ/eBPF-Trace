@@ -107,7 +107,9 @@ async def login(body: schema.Login, request: Request, response: Response):
         valid = await asyncio.to_thread(
             check_password, body.password, actor.password_hash if actor else _DUMMY_HASH
         )
-        if not valid or not actor or not actor.active:
+        if not valid or not actor or not actor.active or (
+            actor.is_test_account and not request.app.state.settings.ops_test_account_mode
+        ):
             raise HTTPException(401, "Invalid username or password")
         throttle.attempts = 0
         token, csrf = await new_session(

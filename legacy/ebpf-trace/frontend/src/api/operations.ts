@@ -10,7 +10,7 @@ api.interceptors.response.use(response => response, error => {
   }
   return Promise.reject(error);
 });
-export interface Operator { id: string; username: string; name: string; role: string; active: boolean }
+export interface Operator { id: string; username: string; name: string; role: string; active: boolean; is_test_account?: boolean }
 export interface Incident {
   id: string; title: string; attack_type: string; priority: string; status: string; source: string;
   asset_id: string | null; asset_name: string; dst_ip: string; dst_port: number; protocol: number;

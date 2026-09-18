@@ -82,6 +82,7 @@ def operator_dict(row):
         "name": row.name,
         "role": row.role,
         "active": row.active,
+        "is_test_account": row.is_test_account,
         "slack_user_id": row.slack_user_id,
     }
 
@@ -101,7 +102,11 @@ async def current_operator(request: Request):
         if not login or aware(login.expires_at) <= utcnow():
             raise HTTPException(401, "Session expired; sign in again")
         actor = await session.get(Operator, login.operator_id)
-        if not actor or not actor.active:
+        if (
+            not actor
+            or not actor.active
+            or (actor.is_test_account and not request.app.state.settings.ops_test_account_mode)
+        ):
             raise HTTPException(401, "Account is disabled")
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             check_origin(request)
@@ -111,14 +116,19 @@ async def current_operator(request: Request):
         return actor
 
 
-async def provision_operator(session, username, name, role, password, slack_user_id=None):
-    if role not in ROLES or len(password) < 12:
+async def provision_operator(
+    session, username, name, role, password, slack_user_id=None, *, test_account=False
+):
+    if test_account and (username, password, role) != ("admin", "admin", "admin"):
+        raise ValueError("The restricted test identity must be admin/admin with the admin role")
+    if role not in ROLES or (len(password) < 12 and not test_account):
         raise ValueError("A valid role and a password of at least 12 characters are required")
     row = await session.scalar(select(Operator).where(Operator.username == username))
     if row is None:
         row = Operator(id=str(uuid4()), username=username, name=name, role=role, active=True)
         session.add(row)
     row.name, row.role, row.active = name, role, True
+    row.is_test_account = test_account
     row.password_hash = await asyncio.to_thread(password_hash, password)
     row.slack_user_id = slack_user_id
     await session.execute(delete(OperatorSession).where(OperatorSession.operator_id == row.id))

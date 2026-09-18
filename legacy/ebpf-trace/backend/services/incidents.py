@@ -52,6 +52,7 @@ def audit(session, kind, detail, *, incident_id=None, actor=None):
 
 async def lock_key(session, key):
     """A durable per-key lock works across workers, including SQLite test deployments."""
+    key = hashlib.sha256(key.encode()).hexdigest()  # PostgreSQL column is exactly 64 characters.
     if session.bind.dialect.name == "postgresql":
         from sqlalchemy.dialects.postgresql import insert
     else:
