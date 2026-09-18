@@ -112,6 +112,7 @@ class Operator(Base):
     password_hash: Mapped[str] = mapped_column(String(256))
     role: Mapped[str] = mapped_column(String(16))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_test_account: Mapped[bool] = mapped_column(Boolean, default=False)
     slack_user_id: Mapped[str | None] = mapped_column(String(40), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

@@ -152,4 +152,10 @@ P1 인수 기한은 2분, P2 10분, P3 1시간, P4 24시간이다. P1/P2 사건�
 
 ## 아직 남은 운영 검증
 
+### 공개 HTTPS 테스트 배포
+
+`docker-compose.https.yml`은 Caddy의 TLS-ALPN 인증과 자동 갱신을 사용한다. 서버의 TCP 443 인바운드와 해당 서버를 가리키는 공개 DNS가 필요하다. 기존 HTTP Collector 연결은 유지한다. `infra/configure_public_test.py --env-file /home/ubuntu/ebpf-project/.env --host <공개호스트> --proxy-subnet <Docker-내부서브넷>`으로 기존 비밀 설정을 백업하고 테스트 모드를 명시적으로 활성화한다. `infra/deploy.sh`는 HTTPS 인증서 검증을 통과한 후에만 테스트 계정을 준비한다.
+
+사용자 요청에 따른 `admin/admin`은 `OPS_TEST_ACCOUNT_MODE=true`에서만 로그인할 수 있다. 비밀번호 변경을 강제하지 않으며, 일반 계정의 12자 이상 정책은 유지한다. 이 모드와 실제 대응·사건 외부 알림·레거시 Slack 전송은 함께 활성화할 수 없다. `OPS_TEST_ACCOUNT_MODE=false`로 전환하면 기존 테스트 세션도 거부된다. 공개 테스트 계정으로 민감한 실제 데이터를 다루지 않는다. 운영 전환에는 테스트 계정 중단과 별도 개인 계정 발급이 필요하다.
+
 실제 Slack/SMTP 송수신, HTTPS·프록시 설정, 개별 서비스 probe 연동, 운영 부하에서 지연/정상 트래픽 영향, 독립 ML 평가와 최소 7일 Shadow 관측이 필요하다. SMS·당직표 연동, 이메일 요약, Slack 스레드 지속 갱신, 정상 세션별 영향 추정, 자동 승인형 대응은 이번 구현 범위에 포함하지 않았다. 완료율이나 실제 SLA 달성률을 시험용 관측값으로 대체하지 않는다.

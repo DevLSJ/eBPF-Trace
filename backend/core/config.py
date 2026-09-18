@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     ops_notifications_enabled: bool = False
     ops_session_hours: int = Field(default=8, ge=1, le=24)
     ops_allow_insecure_local: bool = False
+    ops_test_account_mode: bool = False
     incident_window_seconds: int = Field(default=600, ge=30, le=3600)
     ops_retention_days: int = Field(default=30, ge=1, le=365)
     slack_bot_token: SecretStr = SecretStr("")
@@ -50,6 +51,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def postgres_url(self):
+        if self.ops_test_account_mode and (
+            self.response_live_enabled or self.ops_notifications_enabled or self.slack_enabled
+        ):
+            raise ValueError(
+                "Test accounts require live responses and external notifications disabled"
+            )
         if self.postgres_host:
             self.database_url = URL.create(
                 "postgresql+asyncpg",
