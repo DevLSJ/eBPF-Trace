@@ -82,7 +82,7 @@ def test_stored_webhook_does_not_enable_notifications(client, message, monkeypat
     def forbidden_send(*args):
         raise AssertionError("Slack must require explicit activation")
 
-    monkeypatch.setattr("backend.websocket.collector.send_alert", forbidden_send)
+    monkeypatch.setattr("backend.services.notifications.deliver", forbidden_send)
     client.app.state.settings.slack_webhook_url = SecretStr("https://hooks.slack.com/test")
     with client.websocket_connect("/ws/collector", headers=AUTH) as ws:
         ws.send_json(message)

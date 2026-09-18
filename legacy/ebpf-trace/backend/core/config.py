@@ -23,6 +23,30 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     event_cooldown_sec: float = Field(default=10, ge=0)
+    public_base_url: str = "http://127.0.0.1:5173"
+    ops_worker_enabled: bool = True
+    ops_notifications_enabled: bool = False
+    ops_session_hours: int = Field(default=8, ge=1, le=24)
+    ops_allow_insecure_local: bool = False
+    incident_window_seconds: int = Field(default=600, ge=30, le=3600)
+    ops_retention_days: int = Field(default=30, ge=1, le=365)
+    slack_bot_token: SecretStr = SecretStr("")
+    slack_signing_secret: SecretStr = SecretStr("")
+    slack_team_id: str = ""
+    slack_channel: str = ""
+    slack_escalation_channel: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: SecretStr = SecretStr("")
+    smtp_from: str = ""
+    notification_email: str = ""
+    shadow_manifest_path: str = ""
+    shadow_sample_modulus: int = Field(default=100, ge=1, le=10000)
+    response_live_enabled: bool = False
+    response_max_ttl_seconds: int = Field(default=300, ge=30, le=900)
+    response_freshness_seconds: int = Field(default=30, ge=5, le=120)
+    recovery_observation_seconds: int = Field(default=60, ge=10, le=3600)
 
     @model_validator(mode="after")
     def postgres_url(self):

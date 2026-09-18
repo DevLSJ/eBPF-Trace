@@ -22,7 +22,7 @@ def exercise(client, monkeypatch):
     client.app.state.settings.slack_enabled = True  # Simulations never invoke alert delivery.
     def forbidden(*args):
         raise AssertionError('Simulation must not send external alerts')
-    monkeypatch.setattr('backend.websocket.collector.send_alert', forbidden)
+    monkeypatch.setattr('backend.services.notifications.deliver', forbidden)
     body = {'scenario_id': 'intrusion', 'request_id': str(uuid.uuid4())}
     assert client.post('/api/scenarios/runs', json=body).status_code == 401
     with client.websocket_connect('/ws/dashboard') as ws:

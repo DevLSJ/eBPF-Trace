@@ -12,6 +12,7 @@ COPY backend /app/backend
 COPY ml /app/ml
 COPY collector/__init__.py collector/feature_schema.py /app/collector/
 COPY alembic.ini /app/alembic.ini
+COPY infra/operators.py infra/ops_retention.py /app/infra/
 USER app
 EXPOSE 8000
 CMD ["sh", "-c", "alembic upgrade head && exec uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1 --ws-max-size 65536"]

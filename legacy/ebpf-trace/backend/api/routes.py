@@ -11,6 +11,7 @@ from backend.db import crud
 from backend.db.models import RuntimeConfig, ScenarioRun, SystemMetric, utcnow
 from backend.services.analysis import capture_reports, model_evaluation
 from backend.services.event_summary import summarize
+from backend.services.model_operations import runtime_mode
 from backend.services.scenarios import catalog, run_detail, run_dict
 
 router = APIRouter()
@@ -21,13 +22,15 @@ async def health(request: Request):
     try:
         async with request.app.state.db.sessions() as session:
             await session.execute(text("SELECT 1"))
+            detection_mode = await runtime_mode(request.app, session)
     except Exception:
         raise HTTPException(503, "Database unavailable") from None
     return {
         "status": "ok",
         "database": "ok",
         "redis": "ok" if request.app.state.redis_available else "degraded",
-        "detection_mode": request.app.state.detector.mode,
+        "detection_mode": detection_mode,
+        "context_model_status": request.app.state.shadow_model.status,
         "collector_connected": request.app.state.collector_connections > 0,
         "collector_feature_schema_version": request.app.state.collector_feature_schema_version,
         "model_status": request.app.state.detector.model_status,

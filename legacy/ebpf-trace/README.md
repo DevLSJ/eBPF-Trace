@@ -25,6 +25,8 @@
 
 ## A closer look
 
+**사건 대응 워크스페이스 추가:** 개인 계정으로 사건 인수 → 별도 승인 → 기한부 대응 → 현장 확인 → 복구 관찰을 연결했습니다. [구현 결과·성공지표·체험·운영 활성화 조건](docs/incident-operations.md)을 확인하세요. 새 기능은 아직 운영 배포하지 않았으며 실제 알림·차단·ML 승격은 기본 비활성입니다.
+
 Ubuntu VM의 **eBPF/XDP**가 관찰한 트래픽을 **FastAPI**가 분석·저장하고, **React** 대시보드가 WebSocket으로 전달받습니다. 원본 PCAP과 정답 CSV는 별도의 오프라인 경로에서 검증합니다. 모든 패킷은 `XDP_PASS`로 통과하며 자동 차단은 하지 않습니다.
 
 ![실제 운영 대시보드 — 실시간 트래픽과 탐지 이벤트](docs/screenshots/dashboard-desktop.png)
@@ -118,7 +120,8 @@ Python **3.14**와 Node **24**를 사용합니다. 아래 SQLite 환경은 웹/A
 python3.14 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 DATABASE_URL=sqlite+aiosqlite:///./ebpf.db .venv/bin/python -m alembic upgrade head
-DATABASE_URL=sqlite+aiosqlite:///./ebpf.db .venv/bin/python -m uvicorn backend.main:app --reload
+DATABASE_URL=sqlite+aiosqlite:///./ebpf.db .venv/bin/python -m infra.operators --username operator --name 운영자 --role admin
+DATABASE_URL=sqlite+aiosqlite:///./ebpf.db OPS_ALLOW_INSECURE_LOCAL=true .venv/bin/python -m uvicorn backend.main:app --reload
 ```
 
 ```bash
@@ -128,21 +131,22 @@ npm ci
 npm run dev
 ```
 
-`http://127.0.0.1:5173`에서 확인합니다. Collector가 없으면 실시간 데이터는 수신 대기로 표시되고, 저장된 오프라인 분석 보고서는 바로 조회할 수 있습니다. 관리자 토큰·Redis·VM 수집기·EC2 배포 설정은 [운영 가이드](docs/operations.md)에 정리했습니다.
+`http://127.0.0.1:5173`에서 발급한 개인 계정으로 로그인합니다. 대응 훈련에는 [별도 승인자 계정](docs/incident-operations.md#로컬에서-체험)도 필요합니다. 기존 공개 관측 화면은 `/#overview`입니다. Collector가 없으면 실시간 데이터는 수신 대기로 표시됩니다. 관리자 토큰·Redis·VM 수집기·EC2 배포 설정은 [운영 가이드](docs/operations.md)에 정리했습니다.
 
 ## Verify & reproduce
 
 ```bash
 .venv/bin/python -m pytest -q
-.venv/bin/python -m ruff check backend collector ml infra
+.venv/bin/python -m ruff check backend collector ml infra response_agent
 cd frontend
 npm run build
 npx playwright install chromium
 npm run test:e2e
 ```
 
-- **Python 69개:** 실제 PostgreSQL·Redis를 포함한 검증. 외부 테스트 URL이 없으면 해당 3개는 건너뜁니다.
-- **브라우저 16개:** 데스크톱·모바일 검색, 상세, 설정 인증·저장, 재연결, 분석 선택·내보내기, 오류 복구, 시나리오 실행→DB 그래프→이벤트 검토, 5일 데이터·모델 비교·보고서 다운로드.
+- **Python 96개:** 실제 PostgreSQL·Redis, 사건·알림·승인·복구, ML 승격·폴백, 대응 에이전트 검증. 외부 테스트 URL이 없으면 해당 4개는 건너뜁니다.
+- **브라우저 20개:** 기존 데스크톱·모바일 관측 기능과 두 운영자의 인수→승인→적용→해제→복구 흐름, 자산 등록·모델 운영·보고서.
+- **Linux 커널:** 격리 네트워크 namespace에서 실제 nftables의 범위 제한·정상 연결 유지·커널 TTL 자동 해제·명시적 해제 확인.
 - **데이터 추적:** 원본·피처·레이블 결과의 SHA-256, 시간 분리 정책, 제외 건수와 실제 평가 지표를 기록합니다.
 
 원본은 `pcap/`과 `label/`에 두며 Git/Docker에 포함하지 않습니다. 작은 검증 보고서만 `ml/reports/`에 포함합니다. [레이블 결합과 모델 평가 재현 명령](docs/operations.md#탐지학습)을 참고하세요.
@@ -153,6 +157,7 @@ npm run test:e2e
 |:---|:---|
 | [`backend/`](backend/) · [`frontend/`](frontend/) | API와 대시보드 |
 | [`ebpf-agent/`](ebpf-agent/) · [`collector/`](collector/) | 커널 관찰과 수집 파이프라인 |
+| [`response_agent/`](response_agent/) · [`docs/incident-operations.md`](docs/incident-operations.md) | 별도 승인형 대응 에이전트·사건 워크스페이스 운영 |
 | [`ml/`](ml/) · [`ml/reports/`](ml/reports/) | 규칙·레이블 결합·모델 학습·실측 보고서 |
 | [`infra/`](infra/) · [`.github/workflows/`](.github/workflows/) | 배포와 자동 검증 |
 | [`docs/requirements.md`](docs/requirements.md) · [`docs/design.md`](docs/design.md) | 요구사항과 설계 |

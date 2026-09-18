@@ -41,8 +41,10 @@ def metric_dict(metric):
 
 
 async def create_event(session, message, result, *, source="live", scenario_run_id=None,
-                       expected_label=None, commit=True):
+                       expected_label=None, commit=True, model_evidence=None):
     features = message.features.model_dump()
+    if model_evidence:
+        features["model_evidence"] = model_evidence
     event = DetectionEvent(
         message_id=str(message.message_id),
         **message.flow.model_dump(mode="json"),
