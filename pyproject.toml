@@ -1,5 +1,5 @@
 [tool.pytest.ini_options]
-testpaths = ["backend/tests", "collector/tests", "ml/tests"]
+testpaths = ["backend/tests", "collector/tests", "ml/tests", "response_agent/tests"]
 asyncio_mode = "auto"
 pythonpath = ["."]
 

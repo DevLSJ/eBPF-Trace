@@ -5,6 +5,8 @@ from sqlalchemy import select
 
 from backend.db.crud import create_event, event_dict
 from backend.db.models import DetectionEvent
+from backend.services.incidents import correlate
+from backend.services.model_operations import observe
 
 
 async def process_flow(app, session, message, *, detector=None, source='live',
@@ -13,13 +15,16 @@ async def process_flow(app, session, message, *, detector=None, source='live',
         (detector or app.state.detector).analyze,
         message.features.model_dump(), app.state.redis_available if use_ml is None else use_ml)
     event = None
+    model_evidence = await observe(app, session, message, result, source)
     if result['severity']:
         existing = await session.scalar(select(DetectionEvent).where(
             DetectionEvent.message_id == str(message.message_id)))
         if existing is None:
-            event = event_dict(await create_event(
+            row = await create_event(
                 session, message, result, source=source, scenario_run_id=run_id,
-                expected_label=expected_label, commit=False))
+                expected_label=expected_label, commit=False, model_evidence=model_evidence)
+            await correlate(session, row, app.state.settings)
+            event = event_dict(row)
     return result, event
 
 

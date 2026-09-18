@@ -36,7 +36,7 @@ test('full-week evidence, model comparison and legacy context availability', asy
 test('filters, pagination, detail, export and capture selection', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('/');
+  await page.goto('/#overview');
   await expect(page.getByRole('heading', { name: '네트워크 대시보드' })).toBeVisible();
   await expect(page.locator('.pagination')).toContainText('25개 기록');
   await page.getByRole('button', { name: '다음 페이지' }).click();
@@ -92,7 +92,7 @@ test('threshold authentication, persistence and chart threshold', async ({ page,
 test('API error recovery and websocket reconnect restore events', async ({ page }) => {
   let failed = true;
   await page.route('**/api/events?**', route => failed ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { message: '테스트 연결 오류' } }) }) : route.continue());
-  await page.goto('/');
+  await page.goto('/#overview');
   await expect(page.getByRole('alert').filter({ hasText: '테스트 연결 오류' })).toBeVisible();
   failed = false;
   await page.getByRole('button', { name: '다시 시도' }).first().click();
@@ -137,7 +137,7 @@ test('analysis evidence, capture switching, download and navigation', async ({ p
 });
 
 test('IP search, reset and independent analysis error recovery', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/#overview');
   await page.getByLabel('IP 주소 검색').fill('192.0.2.99');
   await page.getByRole('button', { name: '검색', exact: true }).click();
   await expect(page.locator('.pagination')).toContainText('0개 기록');

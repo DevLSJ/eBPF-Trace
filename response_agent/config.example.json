@@ -1,0 +1,11 @@
+{
+  "backend": "https://response.example.invalid",
+  "point_id": "00000000-0000-4000-8000-000000000000",
+  "mode": "nftables",
+  "token_env": "EBPF_RESPONSE_TOKEN",
+  "allowed_services": ["198.51.100.20:443/6"],
+  "protected_cidrs": ["192.0.2.1/32"],
+  "max_ttl_seconds": 300,
+  "observation_file": "/run/ebpf-response/service-observation.json",
+  "ledger": "/var/lib/ebpf-response/ledger.sqlite"
+}

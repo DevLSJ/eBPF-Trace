@@ -50,7 +50,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install -r requirements-dev.txt
-          .venv/bin/ruff check backend collector ml infra
+          .venv/bin/ruff check backend collector ml infra response_agent
           DATABASE_URL="$TEST_DATABASE_URL" .venv/bin/alembic upgrade head
           .venv/bin/pytest -q
       - uses: actions/setup-node@v7

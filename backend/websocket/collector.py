@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import secrets
@@ -9,7 +8,6 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.core.schemas import FlowMessage
-from backend.services.alert import send_alert
 from backend.services.detection import process_flow, traffic_message
 
 router = APIRouter()
@@ -61,12 +59,6 @@ async def collector(ws: WebSocket):
                 return
             if event:
                 await ws.app.state.manager.broadcast(event)
-                if ws.app.state.settings.slack_enabled:
-                    task = asyncio.create_task(
-                        send_alert(ws.app.state.settings.slack_webhook_url.get_secret_value(), event)
-                    )
-                    ws.app.state.alert_tasks.add(task)
-                    task.add_done_callback(ws.app.state.alert_tasks.discard)
             await ws.app.state.manager.broadcast(traffic_message(message, result))
             await ws.send_json({"type": "ack", "message_id": str(message.message_id)})
     except WebSocketDisconnect:

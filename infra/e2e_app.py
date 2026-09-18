@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from backend.core.config import Settings
+from backend.core.operator_auth import provision_operator
 from backend.core.schemas import FlowMessage
 from backend.db.crud import create_event
 from backend.main import create_app
@@ -18,6 +19,8 @@ app = create_app(Settings(
     postgres_host="", auto_create_schema=True, metrics_enabled=False,
     collector_token="browser-collector", admin_token="browser-admin",
     slack_webhook_url="", model_path="missing", scaler_path="missing",
+    ops_allow_insecure_local=True, recovery_observation_seconds=10,
+    public_base_url="http://127.0.0.1:15173", allowed_origins="http://127.0.0.1:15173",
 ))
 original_lifespan = app.router.lifespan_context
 
@@ -26,6 +29,9 @@ original_lifespan = app.router.lifespan_context
 async def lifespan(application):
     async with original_lifespan(application):
         async with application.state.db.sessions() as session:
+            for username, name, role in [("operator", "김민서", "admin"), ("approver", "박지훈", "approver")]:
+                await provision_operator(session, username, name, role, "browser-test-password")
+            await session.commit()
             for index in range(25):
                 scan = index >= 21
                 message = FlowMessage(
