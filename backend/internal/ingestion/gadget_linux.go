@@ -15,12 +15,20 @@ import (
 
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/datasource"
 	gadgetcontext "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-context"
+	apihelpers "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-service/api-helpers"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators"
+	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/btfgen"
+	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/cgroup"
 	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/ebpf"
-	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators/formatters"
+	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/filter"
+	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/formatters"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators/localmanager"
 	ocihandler "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/oci-handler"
+	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/process"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators/simple"
+	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/socketenricher"
+	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/uidgidresolver"
+	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/wasm" // trace_dns 등 WASM 레이어가 있는 가젯의 CO-RE 재배치에 필요
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/runtime/local"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/utils/host"
 
@@ -75,6 +83,21 @@ func (g *Gadget) Run(ctx context.Context, out chan<- model.Event) error {
 		lm = localmanager.NewLocalManager(&dc.cc, dc.tc)
 	}
 
+	// ig 와 동일하게 등록된 데이터 오퍼레이터 전체를 쓰되, 기본 LocalManager 는 제외하고
+	// 위에서 만든 컨테이너 컬렉션(lm)으로 대체한다. trace_dns 같은 소켓필터 가젯이 socketenricher 등
+	// 다른 오퍼레이터가 제공하는 심볼을 CO-RE 로 참조하므로, 세트가 빠지면 로드가 깨진다.
+	shared := []operators.DataOperator{ocihandler.OciHandler, lm}
+	for name, op := range operators.GetDataOperators() {
+		if name == localmanager.OperatorName {
+			continue // 기본 대신 lm 사용
+		}
+		if err := op.Init(apihelpers.ToParamDescs(op.GlobalParams()).ToParams()); err != nil {
+			slog.Warn("skipping data operator (init failed)", "op", name, "err", err)
+			continue
+		}
+		shared = append(shared, op)
+	}
+
 	go g.reportDrops(ctx)
 
 	kinds := append([]model.Kind{}, g.Kinds...)
@@ -86,7 +109,7 @@ func (g *Gadget) Run(ctx context.Context, out chan<- model.Event) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			g.runWithRetry(ctx, rt, lm, k, out)
+			g.runWithRetry(ctx, rt, shared, k, out)
 		}()
 	}
 	wg.Wait()
@@ -94,15 +117,15 @@ func (g *Gadget) Run(ctx context.Context, out chan<- model.Event) error {
 }
 
 // runWithRetry: 이미지 pull 실패 등으로 가젯이 멈추면 백오프 후 다시 띄운다.
-// trace_dns 는 목적지 도메인 부가정보용 보조 가젯이라, 커널이 로드를 못 하면(구형·비표준 커널)
+// trace_dns 는 목적지 도메인 부가정보용 보조 가젯이라, 로드에 반복 실패하면
 // 몇 번 시도 후 조용히 포기한다 — connect/open/exec 탐지는 그대로 돈다.
-func (g *Gadget) runWithRetry(ctx context.Context, rt *local.Runtime, lm operators.DataOperator, k model.Kind, out chan<- model.Event) {
+func (g *Gadget) runWithRetry(ctx context.Context, rt *local.Runtime, shared []operators.DataOperator, k model.Kind, out chan<- model.Event) {
 	backoff := time.Second
 	quickFails := 0
 	for ctx.Err() == nil {
 		start := time.Now()
 		slog.Info("gadget starting", "kind", k, "image", GadgetImage[k])
-		err := g.runOne(ctx, rt, lm, k, out)
+		err := g.runOne(ctx, rt, shared, k, out)
 		if ctx.Err() != nil {
 			return
 		}
@@ -112,7 +135,7 @@ func (g *Gadget) runWithRetry(ctx context.Context, rt *local.Runtime, lm operato
 			quickFails, backoff = 0, time.Second
 		}
 		if k == model.KindDNS && quickFails >= 3 {
-			slog.Warn("trace_dns gadget will not load on this kernel; destination domains disabled (detection unaffected)", "err", err)
+			slog.Warn("trace_dns gadget failed to load; destination domains disabled (exec/open/connect detection unaffected)", "err", err)
 			return
 		}
 		slog.Error("gadget stopped; retrying", "kind", k, "err", err, "in", backoff)
@@ -125,7 +148,7 @@ func (g *Gadget) runWithRetry(ctx context.Context, rt *local.Runtime, lm operato
 	}
 }
 
-func (g *Gadget) runOne(ctx context.Context, rt *local.Runtime, lm operators.DataOperator, k model.Kind, out chan<- model.Event) error {
+func (g *Gadget) runOne(ctx context.Context, rt *local.Runtime, shared []operators.DataOperator, k model.Kind, out chan<- model.Event) error {
 	consumer := simple.New("supplyguard-consumer-"+string(k),
 		simple.OnInit(func(gadgetCtx operators.GadgetContext) error {
 			for _, d := range gadgetCtx.GetDataSources() {
@@ -137,7 +160,7 @@ func (g *Gadget) runOne(ctx context.Context, rt *local.Runtime, lm operators.Dat
 		}),
 	)
 	gctx := gadgetcontext.New(ctx, GadgetImage[k],
-		gadgetcontext.WithDataOperators(ocihandler.OciHandler, lm, formatters.FormattersOperator, consumer),
+		gadgetcontext.WithDataOperators(append(append([]operators.DataOperator{}, shared...), consumer)...),
 	)
 	params := map[string]string{}
 	if g.ContainerName != "" {

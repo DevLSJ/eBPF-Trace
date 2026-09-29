@@ -56,8 +56,8 @@ make sandbox-down
 ```
 
 `WATCH_CONTAINERS=sg-install-*` 이므로 개발 PC 의 다른 컨테이너(minikube 등)는 평가·격리 대상이 아니다.
-목적지 도메인 표시(`allowHosts`/`denyHosts`)는 `trace_dns` 가젯이 뜨는 커널(예: Ubuntu 24.04)에서 동작한다.
-Docker Desktop 의 linuxkit 커널에서는 trace_dns 가 로드되지 않아 도메인은 비고, 나머지 탐지는 그대로 동작한다(도메인 미확인 연결은 격리하지 않음 — fail-open).
+목적지 도메인 표시·규칙(`allowHosts`/`denyHosts`)은 `trace_dns` 가젯으로 동작하며, macOS Docker Desktop 과 리눅스 양쪽에서 확인됐다.
+(도메인을 확인 못 한 연결은 fail-open 이라 정상 다운로드를 죽이지 않는다.)
 
 ## 운영 배포 (EC2, 실제 eBPF)
 
