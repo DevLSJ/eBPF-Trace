@@ -14,7 +14,9 @@ type ListField =
   | 'allowPorts'
   | 'allowCidrs'
   | 'denyPorts'
-  | 'denyCidrs';
+  | 'denyCidrs'
+  | 'allowHosts'
+  | 'denyHosts';
 
 const portFields: ListField[] = ['allowPorts', 'denyPorts'];
 
@@ -29,10 +31,12 @@ const fieldsByKind: Record<Kind, { field: ListField; label: string; hint: string
     { field: 'allowPaths', label: '예외 경로', hint: '금지 경로보다 먼저 평가되는 허용 목록' },
   ],
   connect: [
-    { field: 'allowPorts', label: '허용 포트', hint: '허용 포트 또는 허용 대역이면 통과, 그 밖은 위반' },
+    { field: 'allowPorts', label: '허용 포트', hint: '허용 포트·대역·도메인 중 하나면 통과, 그 밖은 위반' },
     { field: 'allowCidrs', label: '허용 대역', hint: 'CIDR 또는 IP (예: 10.0.0.0/8)' },
+    { field: 'allowHosts', label: '허용 도메인', hint: 'DNS 응답으로 확인한 목적지 이름. pypi.org 는 *.pypi.org 도 포함' },
     { field: 'denyPorts', label: '금지 포트', hint: '허용 목록과 무관하게 항상 위반' },
     { field: 'denyCidrs', label: '금지 대역', hint: '허용 목록과 무관하게 항상 위반' },
+    { field: 'denyHosts', label: '금지 도메인', hint: '허용 목록과 무관하게 항상 위반' },
   ],
 };
 

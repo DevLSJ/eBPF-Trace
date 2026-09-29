@@ -13,6 +13,9 @@ import (
 type Gadget struct {
 	Kinds         []model.Kind
 	ContainerName string
+	Discovery     string
+	DockerHost    string
+	ResolveDNS    bool
 }
 
 func (g *Gadget) Run(context.Context, chan<- model.Event) error {

@@ -21,6 +21,14 @@ type Config struct {
 	ContainerName string
 	// IgnoreContainers: 관찰 대상에서 제외할 컨테이너 이름 glob (자기 스택 보호)
 	IgnoreContainers []string
+	// WatchContainers: 비우면 전체, 채우면 맞는 이름만 평가·격리 (예: sg-install-* — 설치 샌드박스만)
+	WatchContainers []string
+
+	// ContainerDiscovery: 가젯 소스가 컨테이너를 찾는 방법 — docker-events(기본) | fanotify(IG 기본 runc 훅, Docker Desktop 에선 동작 안 함)
+	ContainerDiscovery string
+
+	// ResolveDNS: trace_dns 를 함께 돌려 connect 이벤트에 목적지 도메인을 붙인다 (allowHosts/denyHosts 에 필요)
+	ResolveDNS bool
 
 	// EnforceKill=false면 kill 정책도 알림만 (전역 dry-run)
 	EnforceKill bool
@@ -41,19 +49,24 @@ type Config struct {
 
 func Load() (Config, error) {
 	c := Config{
-		Port:             env("BACKEND_PORT", "8000"),
-		EventSource:      env("EVENT_SOURCE", "gadget"),
-		ContainerName:    env("CONTAINER_NAME", ""),
-		IgnoreContainers: list(env("IGNORE_CONTAINERS", "supplyguard-*")),
-		DockerHost:       env("DOCKER_HOST", "unix:///var/run/docker.sock"),
-		DatabaseURL:      env("DATABASE_URL", ""),
-		RedisURL:         env("REDIS_URL", ""),
-		PolicyFile:       env("POLICY_FILE", "policies/default.yaml"),
-		AdminToken:       env("ADMIN_TOKEN", ""),
-		AllowedOrigins:   list(env("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),
+		Port:               env("BACKEND_PORT", "8000"),
+		EventSource:        env("EVENT_SOURCE", "gadget"),
+		ContainerName:      env("CONTAINER_NAME", ""),
+		IgnoreContainers:   list(env("IGNORE_CONTAINERS", "supplyguard-*")),
+		WatchContainers:    list(env("WATCH_CONTAINERS", "")),
+		ContainerDiscovery: env("CONTAINER_DISCOVERY", "docker-events"),
+		DockerHost:         env("DOCKER_HOST", "unix:///var/run/docker.sock"),
+		DatabaseURL:        env("DATABASE_URL", ""),
+		RedisURL:           env("REDIS_URL", ""),
+		PolicyFile:         env("POLICY_FILE", "policies/default.yaml"),
+		AdminToken:         env("ADMIN_TOKEN", ""),
+		AllowedOrigins:     list(env("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),
 	}
 	var err error
 	if c.EnforceKill, err = boolEnv("ENFORCE_KILL", false); err != nil {
+		return c, err
+	}
+	if c.ResolveDNS, err = boolEnv("RESOLVE_DNS", true); err != nil {
 		return c, err
 	}
 	if c.NormalEventRate, err = intEnv("NORMAL_EVENT_RATE", 50); err != nil {
@@ -74,6 +87,9 @@ func Load() (Config, error) {
 			return c, fmt.Errorf("GADGETS: unknown kind %q (exec, open, connect)", g)
 		}
 		c.Gadgets = append(c.Gadgets, k)
+	}
+	if c.ContainerDiscovery != "docker-events" && c.ContainerDiscovery != "fanotify" {
+		return c, fmt.Errorf("CONTAINER_DISCOVERY: %q (docker-events | fanotify)", c.ContainerDiscovery)
 	}
 	if c.EventSource != "gadget" && c.EventSource != "mock" {
 		return c, fmt.Errorf("EVENT_SOURCE: %q (gadget | mock)", c.EventSource)

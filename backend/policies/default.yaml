@@ -38,3 +38,38 @@ rules:
     action: alert
     allowPorts: [80, 443, 53]
     allowCidrs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, "::1"]
+
+  # ── 설치 샌드박스 전용 (컨테이너 이름 sg-install-*) ──────────────────────────
+  # sg-install 이 pip/npm/cargo 설치를 이 이름의 컨테이너에서 돌린다. 개발자 PC 의 다른 컨테이너에는 적용되지 않는다.
+  - id: sandbox-egress
+    description: 설치 샌드박스는 패키지 레지스트리·GitHub 외 아웃바운드를 금지 (도메인은 DNS 응답으로 확인)
+    kind: connect
+    action: kill
+    containers: ["sg-install-*"]
+    allowHosts:
+      - pypi.org
+      - pythonhosted.org
+      - registry.npmjs.org
+      - registry.yarnpkg.com
+      - crates.io
+      - static.crates.io
+      - github.com
+      - githubusercontent.com
+      - deb.debian.org
+      - dl-cdn.alpinelinux.org
+    allowCidrs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8]
+
+  - id: sandbox-secrets
+    description: 설치 스크립트가 자격 증명·토큰·설정 파일에 손대면 격리
+    kind: open
+    action: kill
+    containers: ["sg-install-*"]
+    denyPaths:
+      - /root/.ssh/
+      - /root/.aws/
+      - /root/.npmrc
+      - /root/.pypirc
+      - /root/.netrc
+      - /root/.gitconfig
+      - /root/.docker/
+      - /run/secrets/

@@ -15,6 +15,7 @@ export interface Event {
   path?: string; // open
   dstIp?: string; // connect
   dstPort?: number; // connect
+  dstHost?: string; // connect — 같은 컨테이너의 DNS 응답으로 알아낸 목적지 도메인
 }
 
 export interface Verdict {
@@ -48,6 +49,8 @@ export interface Rule {
   allowCidrs?: string[];
   denyPorts?: number[];
   denyCidrs?: string[];
+  allowHosts?: string[];
+  denyHosts?: string[];
 }
 
 export interface TrendPoint {
@@ -110,6 +113,6 @@ export function detailOf(e: Event): string {
     case 'open':
       return e.path ?? '';
     case 'connect':
-      return `${e.dstIp}:${e.dstPort}`;
+      return e.dstHost ? `${e.dstIp}:${e.dstPort} (${e.dstHost})` : `${e.dstIp}:${e.dstPort}`;
   }
 }

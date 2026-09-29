@@ -24,10 +24,14 @@ type Broadcaster interface {
 type Options struct {
 	EnforceKill      bool
 	IgnoreContainers []string
-	NormalEventRate  int
+	// WatchContainers: 비어 있지 않으면 여기에 맞는 이름의 컨테이너만 평가·격리한다 (설치 샌드박스 모드: sg-install-*).
+	// 개발자 PC 처럼 남의 컨테이너(minikube 등)가 같이 도는 호스트에서 오탐 격리를 막는 안전장치.
+	WatchContainers []string
+	NormalEventRate int
 }
 
 type Pipeline struct {
+	resolver *Resolver
 	opt      Options
 	engine   *rules.Engine
 	enforcer enforcer.Enforcer
@@ -51,8 +55,10 @@ const (
 
 func New(opt Options, engine *rules.Engine, enf enforcer.Enforcer, hub Broadcaster,
 	agg *stats.Aggregator, audit store.AuditStore, buffer store.Buffer) *Pipeline {
+	resolver := NewResolver(15 * time.Minute)
 	return &Pipeline{
-		opt: opt, engine: engine, enforcer: enf, hub: hub, stats: agg, audit: audit, buffer: buffer,
+		resolver: resolver,
+		opt:      opt, engine: engine, enforcer: enf, hub: hub, stats: agg, audit: audit, buffer: buffer,
 		persist: make(chan model.Verdict, persistQueue),
 		killed:  map[string]time.Time{},
 	}
@@ -84,22 +90,38 @@ func (p *Pipeline) Run(ctx context.Context, events <-chan model.Event) {
 	}
 }
 
-// Ignored: 자기 스택(supplyguard-*) 등 관찰·격리 제외 대상
+// Ignored: 자기 스택(supplyguard-*) 등 제외 대상이거나, 관찰 목록(WatchContainers)이 있는데 그 밖이면 true
 func (p *Pipeline) Ignored(containerName string) bool {
 	for _, g := range p.opt.IgnoreContainers {
 		if ok, _ := path.Match(g, containerName); ok {
 			return true
 		}
 	}
-	return false
+	if len(p.opt.WatchContainers) == 0 {
+		return false
+	}
+	for _, g := range p.opt.WatchContainers {
+		if ok, _ := path.Match(g, containerName); ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *Pipeline) Handle(ctx context.Context, ev model.Event) {
+	if ev.Timestamp.IsZero() {
+		ev.Timestamp = time.Now().UTC()
+	}
+	if ev.Kind == model.KindDNS {
+		// DNS 응답은 정책 평가·피드 대상이 아니다. 목적지 도메인 캐시만 채운다 (제외 컨테이너도 포함해 배운다).
+		p.resolver.Learn(ev.ContainerID, ev.DNSName, ev.DNSAddrs, ev.Timestamp)
+		return
+	}
 	if ev.ContainerID == "" || p.Ignored(ev.ContainerName) {
 		return // 호스트 프로세스 또는 보호 대상
 	}
-	if ev.Timestamp.IsZero() {
-		ev.Timestamp = time.Now().UTC()
+	if ev.Kind == model.KindConnect && ev.DstHost == "" {
+		ev.DstHost = p.resolver.Lookup(ev.ContainerID, ev.DstIP)
 	}
 	v := p.engine.Evaluate(ev)
 	if v.Matched && v.Action == model.ActionKill && !v.DryRun {

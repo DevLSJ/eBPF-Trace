@@ -175,6 +175,9 @@ func (r compiled) matchConnect(ev model.Event) (string, bool) {
 	}
 	addr = addr.Unmap()
 	dst := ev.DstIP + ":" + strconv.Itoa(int(ev.DstPort))
+	if ev.DstHost != "" {
+		dst += " (" + ev.DstHost + ")"
+	}
 	if slices.Contains(r.DenyPorts, ev.DstPort) {
 		return "금지 포트 연결: " + dst, true
 	}
@@ -183,10 +186,15 @@ func (r compiled) matchConnect(ev model.Event) (string, bool) {
 			return "금지 대역 연결: " + dst, true
 		}
 	}
-	if len(r.AllowPorts) == 0 && len(r.allow) == 0 {
+	for _, h := range r.DenyHosts {
+		if HostMatches(h, ev.DstHost) {
+			return "금지 도메인 연결: " + dst, true
+		}
+	}
+	if len(r.AllowPorts) == 0 && len(r.allow) == 0 && len(r.AllowHosts) == 0 {
 		return "", false
 	}
-	// 허용 목록은 OR: 허용 포트이거나 허용 대역이면 통과
+	// 허용 목록은 OR: 허용 포트이거나 허용 대역이거나 허용 도메인이면 통과
 	if slices.Contains(r.AllowPorts, ev.DstPort) {
 		return "", false
 	}
@@ -194,6 +202,16 @@ func (r compiled) matchConnect(ev model.Event) (string, bool) {
 		if p.Contains(addr) {
 			return "", false
 		}
+	}
+	for _, h := range r.AllowHosts {
+		if HostMatches(h, ev.DstHost) {
+			return "", false
+		}
+	}
+	// 도메인 허용 목록이 있는데 목적지 도메인을 모르면(DNS 미확인 — trace_dns 미탑재 커널 등)
+	// 도메인 기준을 판단할 수 없으므로 이 연결로는 격리하지 않는다(fail-open). trace_dns 가 뜨면 실제로 판단한다.
+	if len(r.AllowHosts) > 0 && ev.DstHost == "" {
+		return "", false
 	}
 	return "허용 목록 밖 외부 연결: " + dst, true
 }

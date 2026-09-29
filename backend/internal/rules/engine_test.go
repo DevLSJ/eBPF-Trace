@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
@@ -99,5 +100,33 @@ func TestAllowlistIsOr(t *testing.T) {
 	e := New(rs)
 	if v := e.Evaluate(model.Event{Kind: model.KindConnect, DstIP: "172.18.0.4", DstPort: 5432}); v.Matched {
 		t.Fatalf("internal DB connection must pass, got %+v", v)
+	}
+}
+
+func TestAllowHostsUseResolvedDomain(t *testing.T) {
+	e := New([]Rule{{ID: "sandbox-egress", Kind: model.KindConnect, Action: model.ActionKill,
+		AllowHosts: []string{"pypi.org", "files.pythonhosted.org"}, AllowCIDRs: []string{"127.0.0.0/8"},
+		DenyHosts: []string{"reqeusts-update.test"}}})
+	ok := model.Event{Kind: model.KindConnect, ContainerID: "c1", DstIP: "151.101.0.223", DstPort: 443, DstHost: "files.pythonhosted.org"}
+	if v := e.Evaluate(ok); v.Matched {
+		t.Fatalf("registry host must pass, got %+v", v)
+	}
+	sub := ok
+	sub.DstHost = "Mirror.PyPI.org." // 하위 도메인·대소문자·끝 점
+	if v := e.Evaluate(sub); v.Matched {
+		t.Fatalf("subdomain of allowed host must pass, got %+v", v)
+	}
+	unknown := ok
+	unknown.DstHost = ""
+	if v := e.Evaluate(unknown); v.Matched {
+		t.Fatalf("unknown host must fail open (DNS unavailable), got %+v", v)
+	}
+	deny := ok
+	deny.DstHost = "cdn.reqeusts-update.test"
+	if v := e.Evaluate(deny); !v.Matched || !strings.Contains(v.Reason, "금지 도메인") {
+		t.Fatalf("denyHosts must win, got %+v", v)
+	}
+	if err := (Rule{ID: "bad", Kind: model.KindConnect, Action: model.ActionAlert, AllowHosts: []string{"not a host!"}}).Validate(); err == nil {
+		t.Fatal("invalid host must fail validation")
 	}
 }

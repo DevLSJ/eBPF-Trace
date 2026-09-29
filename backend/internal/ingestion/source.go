@@ -21,6 +21,8 @@ var GadgetImage = map[model.Kind]string{
 	model.KindExec:    "ghcr.io/inspektor-gadget/gadget/trace_exec:" + GadgetVersion,
 	model.KindOpen:    "ghcr.io/inspektor-gadget/gadget/trace_open:" + GadgetVersion,
 	model.KindConnect: "ghcr.io/inspektor-gadget/gadget/trace_tcp:" + GadgetVersion,
+	// trace_dns: connect 이벤트에 목적지 도메인을 붙이기 위한 보조 가젯 (RESOLVE_DNS)
+	model.KindDNS: "ghcr.io/inspektor-gadget/gadget/trace_dns:" + GadgetVersion,
 }
 
 const GadgetVersion = "v0.56.1"

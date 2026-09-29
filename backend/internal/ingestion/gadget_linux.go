@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,7 +32,12 @@ import (
 type Gadget struct {
 	Kinds         []model.Kind
 	ContainerName string
-	dropped       atomic.Uint64
+	// Discovery: "docker-events"(기본, Docker 이벤트 API 로 컨테이너 추적) | "fanotify"(IG 기본 runc 훅)
+	Discovery  string
+	DockerHost string
+	// ResolveDNS: connect 가 켜져 있으면 trace_dns 도 함께 돌려 목적지 도메인을 배운다
+	ResolveDNS bool
+	dropped    atomic.Uint64
 }
 
 const opPriority = 50000
@@ -47,20 +54,35 @@ func (g *Gadget) Run(ctx context.Context, out chan<- model.Event) error {
 	defer rt.Close()
 
 	// 컨테이너 메타데이터 부착 (docker). host.Init 이후에 초기화해야 한다.
-	lm := localmanager.LocalManagerOperator
-	lmParams := lm.GlobalParamDescs().ToParams()
-	if err := lmParams.Get(localmanager.Runtimes).Set("docker"); err != nil {
-		return err
+	var lm operators.DataOperator
+	if g.Discovery == "fanotify" {
+		op := localmanager.LocalManagerOperator
+		lmParams := op.GlobalParamDescs().ToParams()
+		if err := lmParams.Get(localmanager.Runtimes).Set("docker"); err != nil {
+			return err
+		}
+		if err := op.Init(lmParams); err != nil {
+			return fmt.Errorf("localmanager init: %w", err)
+		}
+		defer op.Close()
+		lm = op
+	} else {
+		dc, err := newDockerCollection(ctx, g.DockerHost)
+		if err != nil {
+			return fmt.Errorf("container discovery (docker-events): %w", err)
+		}
+		defer dc.Close()
+		lm = localmanager.NewLocalManager(&dc.cc, dc.tc)
 	}
-	if err := lm.Init(lmParams); err != nil {
-		return fmt.Errorf("localmanager init: %w", err)
-	}
-	defer lm.Close()
 
 	go g.reportDrops(ctx)
 
+	kinds := append([]model.Kind{}, g.Kinds...)
+	if g.ResolveDNS && slices.Contains(kinds, model.KindConnect) {
+		kinds = append(kinds, model.KindDNS)
+	}
 	var wg sync.WaitGroup
-	for _, k := range g.Kinds {
+	for _, k := range kinds {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -72,8 +94,11 @@ func (g *Gadget) Run(ctx context.Context, out chan<- model.Event) error {
 }
 
 // runWithRetry: 이미지 pull 실패 등으로 가젯이 멈추면 백오프 후 다시 띄운다.
+// trace_dns 는 목적지 도메인 부가정보용 보조 가젯이라, 커널이 로드를 못 하면(구형·비표준 커널)
+// 몇 번 시도 후 조용히 포기한다 — connect/open/exec 탐지는 그대로 돈다.
 func (g *Gadget) runWithRetry(ctx context.Context, rt *local.Runtime, lm operators.DataOperator, k model.Kind, out chan<- model.Event) {
 	backoff := time.Second
+	quickFails := 0
 	for ctx.Err() == nil {
 		start := time.Now()
 		slog.Info("gadget starting", "kind", k, "image", GadgetImage[k])
@@ -81,8 +106,14 @@ func (g *Gadget) runWithRetry(ctx context.Context, rt *local.Runtime, lm operato
 		if ctx.Err() != nil {
 			return
 		}
-		if time.Since(start) > time.Minute {
-			backoff = time.Second
+		if time.Since(start) < 10*time.Second {
+			quickFails++
+		} else {
+			quickFails, backoff = 0, time.Second
+		}
+		if k == model.KindDNS && quickFails >= 3 {
+			slog.Warn("trace_dns gadget will not load on this kernel; destination domains disabled (detection unaffected)", "err", err)
+			return
 		}
 		slog.Error("gadget stopped; retrying", "kind", k, "err", err, "in", backoff)
 		select {
@@ -133,6 +164,8 @@ func (g *Gadget) subscribe(d datasource.DataSource, k model.Kind, out chan<- mod
 	fnameF := d.GetField("fname")      // open
 	dstAddrF := d.GetField("dst.addr") // connect (l4endpoint → addr/port)
 	dstPortF := d.GetField("dst.port") // connect
+	nameF := d.GetField("name")        // dns
+	addrsF := d.GetField("addresses")  // dns (응답에만, 콤마 구분)
 	if commF == nil || cIDF == nil {
 		return fmt.Errorf("datasource %q: proc.comm/runtime.containerId 필드 없음", d.Name())
 	}
@@ -170,6 +203,13 @@ func (g *Gadget) subscribe(d datasource.DataSource, k model.Kind, out chan<- mod
 			if dstPortF != nil {
 				ev.DstPort, _ = dstPortF.Uint16(data)
 			}
+		case model.KindDNS:
+			addrs := str(addrsF, data)
+			if addrs == "" {
+				return nil // 질의 패킷: 배울 것이 없다
+			}
+			ev.DNSName = str(nameF, data)
+			ev.DNSAddrs = strings.Split(addrs, ",")
 		}
 		if !send(out, ev) {
 			g.dropped.Add(1)

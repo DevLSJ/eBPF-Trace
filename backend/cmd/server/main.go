@@ -88,7 +88,7 @@ func run() error {
 		m := ingestion.NewMock()
 		source, enf = m, m
 	default:
-		source = &ingestion.Gadget{Kinds: cfg.Gadgets, ContainerName: cfg.ContainerName}
+		source = &ingestion.Gadget{Kinds: cfg.Gadgets, ContainerName: cfg.ContainerName, Discovery: cfg.ContainerDiscovery, DockerHost: cfg.DockerHost, ResolveDNS: cfg.ResolveDNS}
 		if enf, err = enforcer.NewDocker(cfg.DockerHost); err != nil {
 			return err
 		}
@@ -99,6 +99,7 @@ func run() error {
 	pipe := pipeline.New(pipeline.Options{
 		EnforceKill:      cfg.EnforceKill,
 		IgnoreContainers: cfg.IgnoreContainers,
+		WatchContainers:  cfg.WatchContainers,
 		NormalEventRate:  cfg.NormalEventRate,
 	}, engine, enf, hub, agg, audit, buffer)
 
@@ -156,7 +157,10 @@ func run() error {
 	}()
 
 	slog.Info("listening", "addr", srv.Addr, "source", cfg.EventSource,
-		"gadgets", cfg.Gadgets, "enforceKill", cfg.EnforceKill, "ignore", strings.Join(cfg.IgnoreContainers, ","))
+		"gadgets", cfg.Gadgets, "enforceKill", cfg.EnforceKill, "ignore", strings.Join(cfg.IgnoreContainers, ","), "watch", strings.Join(cfg.WatchContainers, ","))
+	if cfg.EventSource == "gadget" && cfg.EnforceKill && len(cfg.WatchContainers) == 0 {
+		slog.Warn("ENFORCE_KILL=true without WATCH_CONTAINERS: every container on this host can be killed by policy")
+	}
 	if cfg.AdminToken == "" && cfg.EventSource != "mock" {
 		slog.Warn("ADMIN_TOKEN not set; policy changes are disabled")
 	}

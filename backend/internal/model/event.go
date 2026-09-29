@@ -14,6 +14,8 @@ const (
 	KindExec    Kind = "exec"    // trace_exec (execve)
 	KindOpen    Kind = "open"    // trace_open (openat)
 	KindConnect Kind = "connect" // trace_tcp --connect-only (sys_connect)
+	// KindDNS: trace_dns 응답. 정책 평가 대상이 아니라 connect 이벤트의 목적지 도메인(DstHost)을 채우는 내부 이벤트.
+	KindDNS Kind = "dns"
 )
 
 var Kinds = []Kind{KindExec, KindOpen, KindConnect}
@@ -51,6 +53,11 @@ type Event struct {
 	Path    string `json:"path,omitempty"`    // open (fname)
 	DstIP   string `json:"dstIp,omitempty"`   // connect
 	DstPort uint16 `json:"dstPort,omitempty"` // connect
+	// DstHost: 같은 컨테이너가 직전에 조회한 DNS 응답으로 알아낸 목적지 도메인 (모르면 빈 문자열)
+	DstHost string `json:"dstHost,omitempty"` // connect
+	// DNS 응답 (KindDNS 내부 이벤트 전용, JSON 으로 내보내지 않음)
+	DNSName  string   `json:"-"`
+	DNSAddrs []string `json:"-"`
 }
 
 // Detail: 이벤트 종류별 핵심 값 한 줄 (피드·감사로그 표시용)
@@ -64,7 +71,11 @@ func (e Event) Detail() string {
 	case KindOpen:
 		return e.Path
 	case KindConnect:
-		return e.DstIP + ":" + strconv.Itoa(int(e.DstPort))
+		d := e.DstIP + ":" + strconv.Itoa(int(e.DstPort))
+		if e.DstHost != "" {
+			d += " (" + e.DstHost + ")"
+		}
+		return d
 	}
 	return ""
 }

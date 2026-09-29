@@ -137,3 +137,23 @@ func TestNormalSampling(t *testing.T) {
 		t.Fatalf("stats must count every event, got %d", s.TotalEvents)
 	}
 }
+
+func TestWatchContainersScopesEvaluation(t *testing.T) {
+	p := &Pipeline{opt: Options{IgnoreContainers: []string{"supplyguard-*"}, WatchContainers: []string{"sg-install-*", "victim"}}}
+	cases := map[string]bool{
+		"sg-install-pip-1":      false, // 관찰 대상
+		"victim":                false,
+		"minikube":              true, // 목록 밖 → 무시
+		"web-api":               true,
+		"supplyguard-backend-1": true, // 제외 목록은 항상 우선
+	}
+	for name, ignored := range cases {
+		if got := p.Ignored(name); got != ignored {
+			t.Errorf("Ignored(%q) = %v, want %v", name, got, ignored)
+		}
+	}
+	all := &Pipeline{opt: Options{IgnoreContainers: []string{"supplyguard-*"}}}
+	if all.Ignored("minikube") {
+		t.Error("empty WatchContainers must observe every container")
+	}
+}

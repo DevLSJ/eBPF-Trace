@@ -49,7 +49,7 @@
   const KINDS = ['exec', 'open', 'connect'];
   const LEVEL_LABEL = { normal: '정상', alert: '경고', held: '격리 대상', killed: '격리됨' };
   const levelOf = (v) => (!v.matched ? 'normal' : v.action !== 'kill' ? 'alert' : v.enforced ? 'killed' : 'held');
-  const detailOf = (e) => (e.kind === 'exec' ? e.args || e.comm : e.kind === 'open' ? e.path || '' : `${e.dstIp}:${e.dstPort}`);
+  const detailOf = (e) => (e.kind === 'exec' ? e.args || e.comm : e.kind === 'open' ? e.path || '' : e.dstHost ? `${e.dstIp}:${e.dstPort} (${e.dstHost})` : `${e.dstIp}:${e.dstPort}`);
 
   // ── 토폴로지 저장소 (frontend/src/lib/topology.ts) ──────
   const SEV = { normal: 0, alert: 1, held: 2, killed: 3 };
@@ -64,7 +64,7 @@
       const p = this.touch(`p:${e.containerName}:${e.comm}`, 'process', e.comm, e.containerName, level, now, v);
       this.link(c.id, p.id, 'exec', level, now, v);
       if (e.kind === 'open' && e.path) { const f = this.touch(`f:${e.containerName}:${e.path}`, 'file', e.path, e.containerName, level, now, v); this.link(p.id, f.id, 'open', level, now, v); }
-      else if (e.kind === 'connect') { const d = detailOf(e); const dn = this.touch(`d:${e.containerName}:${d}`, 'dest', d, e.containerName, level, now, v); this.link(p.id, dn.id, 'connect', level, now, v); }
+      else if (e.kind === 'connect') { const key = `${e.dstIp}:${e.dstPort}`; const label = e.dstHost ? `${e.dstHost}:${e.dstPort}` : key; const dn = this.touch(`d:${e.containerName}:${key}`, 'dest', label, e.containerName, level, now, v); if (e.dstHost) dn.label = label; this.link(p.id, dn.id, 'connect', level, now, v); }
     }
     // mark: 횟수·최악 판정을 누적하고, 위반이면 kind 별 최악 판정(byKind)·규칙별 횟수(rules)·규칙의 kind(ruleKinds)를 기록한다.
     mark(x, level, now, v) {

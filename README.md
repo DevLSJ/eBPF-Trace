@@ -42,6 +42,23 @@ make stack-down
 개발용 Postgres·Redis 만 필요하면 `docker compose -f deploy/docker-compose.dev.yml up -d`
 (127.0.0.1:25432 / 127.0.0.1:26379). `make test` 가 백엔드 vet·race 테스트와 프론트 lint·build 를 돈다.
 
+## 설치 샌드박스 — 패키지를 감시 컨테이너에서 설치
+
+개발자 PC 에 오픈소스 패키지를 바로 깔지 않고, SupplyGuard 가 커널에서 감시하는 일회용 컨테이너 안에서 설치한다.
+설치 스크립트가 외부 스크립트를 실행(`no-shell-download`)하거나 자격 증명 파일을 읽거나(`sandbox-secrets`)
+레지스트리·GitHub 밖으로 접속(`sandbox-egress`·`reverse-shell-ports`)하면 설치가 끝나기 전에 격리된다.
+
+```bash
+make sandbox-up                            # 가젯 소스 백엔드를 :8000 에 띄운다 (WATCH_CONTAINERS=sg-install-* 로 범위 제한)
+tools/sg-install pip requests              # 정상 패키지 → 위반 없음
+tools/sg-install pip ./deploy/demo/reqeusts   # 타이포스쿼팅 데모(무해 시뮬) → 격리 + 위반 목록
+make sandbox-down
+```
+
+`WATCH_CONTAINERS=sg-install-*` 이므로 개발 PC 의 다른 컨테이너(minikube 등)는 평가·격리 대상이 아니다.
+목적지 도메인 표시(`allowHosts`/`denyHosts`)는 `trace_dns` 가젯이 뜨는 커널(예: Ubuntu 24.04)에서 동작한다.
+Docker Desktop 의 linuxkit 커널에서는 trace_dns 가 로드되지 않아 도메인은 비고, 나머지 탐지는 그대로 동작한다(도메인 미확인 연결은 격리하지 않음 — fail-open).
+
 ## 운영 배포 (EC2, 실제 eBPF)
 
 Ubuntu 22.04/24.04 + Docker 가 있는 단일 호스트. 백엔드 컨테이너가 `privileged` · `pid: host` · `/:/host:ro` ·
@@ -73,6 +90,8 @@ EC2 에는 `/home/ubuntu/supplyguard/.env` 가 미리 있어야 한다.
 | `pipe-to-shell` | exec | kill | `\| sh`, `\| bash`, `base64 -d` 인자 |
 | `reverse-shell-ports` | connect | kill | 4444·1337·31337 포트 |
 | `egress-allowlist` | connect | alert | 사설 대역도 아니고 80·443·53 도 아닌 아웃바운드 |
+| `sandbox-egress` | connect | kill | (sg-install-* 만) 패키지 레지스트리·GitHub 외 도메인 |
+| `sandbox-secrets` | open | kill | (sg-install-* 만) `~/.ssh`·`~/.aws`·`.npmrc`·`.pypirc` 등 |
 
 ## API
 

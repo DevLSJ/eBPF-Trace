@@ -37,6 +37,18 @@ type Rule struct {
 	AllowCIDRs []string `yaml:"allowCidrs,omitempty" json:"allowCidrs,omitempty"`
 	DenyPorts  []uint16 `yaml:"denyPorts,omitempty" json:"denyPorts,omitempty"`
 	DenyCIDRs  []string `yaml:"denyCidrs,omitempty" json:"denyCidrs,omitempty"`
+	// 도메인: 같은 컨테이너의 DNS 응답(trace_dns)으로 알아낸 목적지 이름과 비교. "pypi.org" 는 pypi.org 와 *.pypi.org 에 맞는다.
+	AllowHosts []string `yaml:"allowHosts,omitempty" json:"allowHosts,omitempty"`
+	DenyHosts  []string `yaml:"denyHosts,omitempty" json:"denyHosts,omitempty"`
+}
+
+var hostPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
+
+// HostMatches: pattern 이 host 와 같거나 host 의 상위 도메인이면 true (대소문자·끝의 점 무시)
+func HostMatches(pattern, host string) bool {
+	h := strings.ToLower(strings.TrimSuffix(host, "."))
+	pt := strings.ToLower(strings.TrimSuffix(pattern, "."))
+	return h != "" && (h == pt || strings.HasSuffix(h, "."+pt))
 }
 
 var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
@@ -63,6 +75,11 @@ func (r Rule) Validate() error {
 			errs = append(errs, fmt.Errorf("cidr %q: %w", c, err))
 		}
 	}
+	for _, h := range append(append([]string{}, r.AllowHosts...), r.DenyHosts...) {
+		if !hostPattern.MatchString(strings.ToLower(strings.TrimSuffix(h, "."))) {
+			errs = append(errs, fmt.Errorf("host %q: 도메인 이름 형식이 아님", h))
+		}
+	}
 	var conds int
 	switch r.Kind {
 	case model.KindExec:
@@ -70,7 +87,7 @@ func (r Rule) Validate() error {
 	case model.KindOpen:
 		conds = len(r.DenyPaths)
 	case model.KindConnect:
-		conds = len(r.AllowPorts) + len(r.AllowCIDRs) + len(r.DenyPorts) + len(r.DenyCIDRs)
+		conds = len(r.AllowPorts) + len(r.AllowCIDRs) + len(r.DenyPorts) + len(r.DenyCIDRs) + len(r.AllowHosts) + len(r.DenyHosts)
 	}
 	if r.Kind.Valid() && conds == 0 {
 		errs = append(errs, fmt.Errorf("%s 규칙에 조건이 없음", r.Kind))

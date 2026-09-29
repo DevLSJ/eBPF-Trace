@@ -188,12 +188,12 @@
   };
 
   // ── 정책 ─────────────────────────────────────────────────
-  const LIST_FIELDS = ['containers', 'denyComms', 'denyArgs', 'denyPaths', 'allowPaths', 'allowPorts', 'allowCidrs', 'denyPorts', 'denyCidrs'];
+  const LIST_FIELDS = ['containers', 'denyComms', 'denyArgs', 'denyPaths', 'allowPaths', 'allowPorts', 'allowCidrs', 'allowHosts', 'denyPorts', 'denyCidrs', 'denyHosts'];
   const PORT_FIELDS = ['allowPorts', 'denyPorts'];
   const FIELDS_BY_KIND = {
     exec: [['denyComms', '금지 프로세스', 'comm 또는 argv[0] 이름 (예: curl, wget, nc)'], ['denyArgs', '금지 인자 패턴', '인자 문자열에 포함되면 위반 (예: | sh)']],
     open: [['denyPaths', '금지 경로', '접두사 일치, * ? [ ] 가 있으면 glob (예: /home/*/.ssh/*)'], ['allowPaths', '예외 경로', '금지 경로보다 먼저 평가되는 허용 목록']],
-    connect: [['allowPorts', '허용 포트', '허용 포트 또는 허용 대역이면 통과, 그 밖은 위반'], ['allowCidrs', '허용 대역', 'CIDR 또는 IP (예: 10.0.0.0/8)'], ['denyPorts', '금지 포트', '허용 목록과 무관하게 항상 위반'], ['denyCidrs', '금지 대역', '허용 목록과 무관하게 항상 위반']],
+    connect: [['allowPorts', '허용 포트', '허용 포트·대역·도메인 중 하나면 통과, 그 밖은 위반'], ['allowCidrs', '허용 대역', 'CIDR 또는 IP (예: 10.0.0.0/8)'], ['allowHosts', '허용 도메인', 'DNS 응답으로 확인한 목적지 이름. pypi.org 는 *.pypi.org 도 포함'], ['denyPorts', '금지 포트', '허용 목록과 무관하게 항상 위반'], ['denyCidrs', '금지 대역', '허용 목록과 무관하게 항상 위반'], ['denyHosts', '금지 도메인', '허용 목록과 무관하게 항상 위반']],
   };
   // 최소 YAML — 규칙 스키마(스칼라·문자열/숫자 목록)만 다룬다
   const yq = (v) => (typeof v === 'number' || typeof v === 'boolean' ? String(v) : /^[A-Za-z0-9_./*?\[\]:-]+$/.test(v) && !/^[-?:]/.test(v) && !/:$/.test(v) ? v : JSON.stringify(v));
