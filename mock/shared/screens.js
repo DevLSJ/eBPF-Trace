@@ -60,8 +60,17 @@
       const body = h('div', { class: 'col' }, filters, note, h('div', { class: 'grow' }, feedEl));
       const main = panel({ title: ['이벤트 · 판정 스트림 ', count], actions: pause, body, class: 'grow' });
       page.append(h('div', { class: 'split' }, main, detail));
+      let history = [], histKey = '';
+      function loadHistory() {
+        const key = `${f.period}|${f.kind}|${f.container}|${f.verdict}`; if (key === histKey) return; histKey = key;
+        const since = new Date(Date.now() - (f.period === '1h' ? 3600e3 : 86400e3)).toISOString();
+        U.api.audit({ since, kind: f.kind, container: f.container, limit: 500, action: f.verdict === 'alert' || f.verdict === 'kill' ? f.verdict : '' })
+          .then((rows) => { if (histKey !== key) return; history = rows.map((r) => Object.assign({ key: -r.id }, r)); note.textContent = '기간 조회는 감사 로그에 저장된 위반 판정만 보여 줍니다.'; update(); })
+          .catch((e) => { note.textContent = `조회 실패: ${e.message}`; });
+      }
       function rowsNow() {
-        const src = f.period === 'live' ? state.verdicts : state.audit.filter((a) => Date.now() - new Date(a.event.timestamp) < (f.period === '1h' ? 3600e3 : 86400e3)).map((a) => Object.assign({ key: -a.id }, a));
+        if (f.period !== 'live') loadHistory();
+        const src = f.period === 'live' ? state.verdicts : history;
         const q = f.container.toLowerCase();
         return src.filter((v) => {
           if (f.kind && v.event.kind !== f.kind) return false;
@@ -85,7 +94,8 @@
         const rows = rowsNow();
         count.textContent = `${fmt.num(rows.length)}건`;
         feedEl.set(rows);
-        note.hidden = f.period === 'live'; pause.hidden = f.period !== 'live'; pause.sync();
+        note.hidden = f.period === 'live';
+        if (f.period === 'live') histKey = ''; pause.hidden = f.period !== 'live'; pause.sync();
         replace(periodBtns, ['live', '1h', '24h'].map((p) => h('button', { type: 'button', class: `seg-btn ${f.period === p ? 'on' : ''}`, onclick: () => setF('period', p) }, p === 'live' ? '실시간' : p)));
       }
       update();
@@ -94,25 +104,83 @@
   };
 
   // ── 토폴로지 ─────────────────────────────────────────────
+  // 왼쪽 그래프 + 오른쪽 "공격 체인" 패널. 체인은 데모 시나리오 순서(1 exec → 2 open → 3 connect)로 위반 경로를 나열하고,
+  // 항목을 누르면 그래프에서 해당 노드와 연결선만 강조된다. 노드를 누르면 상세(횟수·걸린 규칙·사유)가 뜬다.
   const WINDOWS = [1, 5, 15];
+  const KIND_ORDER = { exec: 1, open: 2, connect: 3 };
+  const KIND_STEP = { exec: '1 실행', open: '2 파일', connect: '3 통신' };
+  const fakeVerdict = (level) => ({ matched: level !== 'normal', action: level === 'alert' ? 'alert' : 'kill', enforced: level === 'killed' });
   U.screens['/topology'] = {
     title: '토폴로지',
     mount(page, query) {
-      let container = query.get('container') || '', windowMin = 5, last = 0;
-      const graph = U.topologyGraph();
+      let container = query.get('container') || '', windowMin = 5, last = 0, selected = null, snap = { nodes: [], edges: [] };
+      const graph = U.topologyGraph({ onSelect: (n) => { selected = selected && selected.id === n.id ? null : n; graph.select(selected ? selected.id : null); renderSide(); } });
       const meta = h('span', { class: 'num muted' });
       const sel = h('span');
       const range = h('input', { type: 'range', min: 0, max: WINDOWS.length - 1, value: WINDOWS.indexOf(windowMin), class: 'range', oninput: (e) => { windowMin = WINDOWS[Number(e.target.value)]; draw(); } });
       const winLabel = h('span', { class: 'num w-10' });
-      const legend = h('div', { class: 'legend' }, Object.entries(U.LEVEL_LABEL).map(([l, label]) => h('span', null, h('i', { class: `sw sw-${l}` }), label)));
-      page.append(panel({ title: ['보안 토폴로지 ', meta], class: 'grow', actions: h('div', { class: 'row-actions' }, sel, h('label', { class: 'row-inline' }, '최근 ', range, winLabel)), body: h('div', { class: 'topo-wrap' }, graph, legend) }));
+      const legend = h('div', { class: 'legend-row' }, Object.entries(U.LEVEL_LABEL).map(([l, label]) => h('span', null, h('i', { class: `sw sw-${l}` }), label)), h('span', { class: 'muted' }, h('i', { class: 'sw', style: 'border-color:#e2e8f0;background:linear-gradient(90deg,#cbd5e1 50%,transparent 50%)' }), '선 굵기 = 위반'));
+      const side = h('div', { class: 'topo-side' });
+      page.append(h('div', { class: 'topo-layout' },
+        panel({ title: ['보안 토폴로지 ', meta], class: 'grow', actions: h('div', { class: 'row-actions' }, sel, h('label', { class: 'row-inline' }, '최근 ', range, winLabel)), body: h('div', { class: 'col' }, legend, h('div', { class: 'topo-wrap grow' }, graph)) }),
+        side));
+      // 공격 체인: 컨테이너별로 위반을 일으킨 노드를 시나리오 순서로 — 1 실행(프로세스의 exec 위반) → 2 파일(open) → 3 통신(connect)
+      function chains() {
+        const out = [];
+        const step = (kind, n) => ({ kind, node: n, level: n.byKind[kind], rules: [...n.rules.entries()].filter(([id]) => n.ruleKinds.get(id) === kind).sort((a, b) => b[1] - a[1]).map(([id]) => id), at: n.lastViolation || n.lastSeen });
+        for (const c of snap.nodes.filter((n) => n.type === 'container').sort((a, b) => U.SEV[b.level] - U.SEV[a.level])) {
+          const steps = [];
+          for (const n of snap.nodes) {
+            if (n.container !== c.label) continue;
+            if (n.type === 'process' && n.byKind.exec) steps.push(step('exec', n));
+            if (n.type === 'file' && n.byKind.open) steps.push(step('open', n));
+            if (n.type === 'dest' && n.byKind.connect) steps.push(step('connect', n));
+          }
+          if (!steps.length) continue;
+          steps.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || U.SEV[b.level] - U.SEV[a.level] || a.at - b.at);
+          out.push({ container: c, steps });
+        }
+        return out;
+      }
+      function nodeDetail(n) {
+        const TYPE = { container: '컨테이너', process: '프로세스', file: '파일', dest: '외부 목적지' };
+        return h('section', { class: 'side-card' },
+          h('div', { class: 'card-head' }, h('b', null, '선택한 노드'), h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => { selected = null; graph.select(null); renderSide(); } }, '✕')),
+          h('dl', { class: 'dl tight' },
+            h('dt', null, '종류'), h('dd', null, TYPE[n.type]),
+            h('dt', null, '이름'), h('dd', { class: n.type === 'file' || n.type === 'dest' ? 'mono' : '' }, n.label),
+            h('dt', null, '컨테이너'), h('dd', null, n.container),
+            h('dt', null, '판정'), h('dd', null, verdictBadge(fakeVerdict(n.level))),
+            h('dt', null, '횟수'), h('dd', { class: 'num' }, `${fmt.num(n.count)}회 · 위반 ${fmt.num(n.violations)}회`),
+            h('dt', null, '마지막'), h('dd', { class: 'num' }, fmt.time(new Date(n.lastSeen).toISOString()))),
+          n.rules.size ? h('div', null, h('div', { class: 'small strong' }, '걸린 규칙'), h('ul', { class: 'rule-chips' }, [...n.rules.entries()].sort((a, b) => b[1] - a[1]).map(([id, cnt]) => h('li', null, h('a', { href: `#/policies?id=${encodeURIComponent(id)}`, class: 'chip mono' }, `${id} ×${cnt}`))))) : null,
+          n.reason ? h('p', { class: 'small muted' }, n.reason) : null,
+          h('div', { class: 'row-actions' }, h('a', { href: `#/events?container=${encodeURIComponent(n.container)}${n.level !== 'normal' ? '&verdict=violation' : ''}`, class: 'btn btn-ghost btn-xs' }, '이벤트에서 보기 →')));
+      }
+      function renderSide() {
+        const list = chains();
+        replace(side,
+          selected ? nodeDetail(selected) : null,
+          h('section', { class: 'side-card grow' },
+            h('div', { class: 'card-head' }, h('b', null, '공격 체인'), h('span', { class: 'small muted num' }, `최근 ${windowMin}분 · ${list.length}개 컨테이너`)),
+            list.length ? list.map(({ container: c, steps }) => h('div', { class: 'chain' },
+              h('button', { type: 'button', class: `chain-head ${selected && selected.id === c.id ? 'on' : ''}`, onclick: () => { selected = c; graph.select(c.id); renderSide(); } }, h('span', { class: 'strong' }, c.label), verdictBadge(fakeVerdict(c.level))),
+              h('ol', { class: 'chain-steps' }, steps.map((st) => h('li', null, h('button', { type: 'button', class: `chain-step ${selected && selected.id === st.node.id ? 'on' : ''}`, onclick: () => { selected = st.node; graph.select(st.node.id); renderSide(); } },
+                h('span', { class: `step-no step-${st.kind}` }, KIND_STEP[st.kind]),
+                h('span', { class: 'step-label mono', title: st.node.label }, st.node.label),
+                h('span', { class: 'step-rule small muted', title: st.rules.join(', ') }, st.rules[0] || ''),
+                verdictBadge(fakeVerdict(st.level)))))))) :
+              h('div', { class: 'empty' }, state.source === 'sim' ? '이 창에 위반 없음 — 데모 제어 → 지금 실행' : '이 창에 위반 없음')));
+      }
       function draw() {
-        const snap = state.topology.snapshot(windowMin * 60000, container || undefined);
+        snap = state.topology.snapshot(windowMin * 60000, container || undefined);
         const risky = snap.nodes.filter((n) => n.level !== 'normal').length;
         meta.textContent = `노드 ${snap.nodes.length} · 위험 ${risky}`;
         winLabel.textContent = `${windowMin}분`;
-        replace(sel, U.select([['', '모든 컨테이너'], ...state.topology.containers().map((c) => [c, c])], container, (v) => { container = v; U.setQuery({ container: v }); draw(); }));
+        replace(sel, U.select([['', '모든 컨테이너'], ...state.topology.containers().map((c) => [c, c])], container, (v) => { container = v; U.setQuery({ container: v }); selected = null; graph.select(null); draw(); }));
+        if (selected && !snap.nodes.some((n) => n.id === selected.id)) { selected = null; graph.select(null); }
         graph.set(snap);
+        renderSide();
       }
       draw();
       return { update() { if (Date.now() - last > 1000) { last = Date.now(); draw(); } } }; // 스트림은 250ms, 그래프는 1초
@@ -176,10 +244,7 @@
     return r;
   }
   const canWrite = () => !state.info.authRequired || state.token !== '';
-  function applyRule(rule) { // POST /api/policies (upsert 후 엔진 리로드)
-    const i = state.rules.findIndex((r) => r.id === rule.id);
-    if (i >= 0) state.rules[i] = rule; else state.rules.push(rule);
-  }
+  const errText = (e) => (e && e.message) || String(e);
 
   U.screens['/policies'] = {
     title: '정책',
@@ -188,12 +253,13 @@
       const list = h('ul', { class: 'rule-list' });
       const editor = h('div', { class: 'grow' });
       const editorTitle = h('span');
-      const tokenRow = h('label', { class: 'token-row' }, '🔑 ', h('input', { type: 'password', autocomplete: 'off', class: 'ctl grow', placeholder: '관리자 토큰 (변경 시 필요 · 목업은 아무 값)', value: state.token, oninput: (e) => { state.token = e.target.value; renderEditor(); } }));
+      const tokenRow = h('label', { class: 'token-row', hidden: !state.info.authRequired }, '🔑 ', h('input', { type: 'password', autocomplete: 'off', class: 'ctl grow', placeholder: '관리자 토큰 (변경 시 필요 · 목업은 아무 값)', value: state.token, oninput: (e) => { state.token = e.target.value; renderEditor(); } }));
       const select = (id) => { selected = id; U.setQuery({ id }); renderList(); renderEditor(); };
       page.append(h('div', { class: 'split' },
         panel({ title: h('span', { id: 'rules-title' }), class: 'w-80', actions: [h('button', { type: 'button', class: 'btn btn-ghost btn-xs', title: '전체 정책을 YAML 로 보기·일괄 적용', onclick: () => select('__yaml__') }, '{} YAML'), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => select('__new__') }, '+ 새 정책')], body: h('div', { class: 'col' }, h('div', { class: 'grow scroll' }, list), tokenRow) }),
         panel({ title: editorTitle, class: 'grow', body: editor })));
       function renderList() {
+        tokenRow.hidden = !state.info.authRequired;
         page.querySelector('#rules-title').textContent = `정책 ${state.rules.length}`;
         replace(list, state.rules.length ? state.rules.map((r) => h('li', null, h('button', { type: 'button', class: `rule-row ${r.id === selected ? 'selected' : ''}`, onclick: () => select(r.id) },
           h('span', { class: `dot ${r.disabled ? 'off' : 'on'}`, title: r.disabled ? '비활성' : '활성' }),
@@ -209,11 +275,15 @@
         editorTitle.textContent = '정책 편집'; editor.append(empty('왼쪽에서 정책을 고르거나 새 정책을 만드세요'));
       }
       function bulkYaml() {
-        const ta = h('textarea', { class: 'ctl mono yaml grow', spellcheck: 'false', 'aria-label': '전체 정책 YAML' }, rulesToYaml(state.rules));
+        const ta = h('textarea', { class: 'ctl mono yaml grow', spellcheck: 'false', 'aria-label': '전체 정책 YAML', disabled: true }, '불러오는 중…');
+        U.api.exportYaml().then((text) => { ta.value = text === null ? rulesToYaml(state.rules) : text; ta.disabled = false; apply.disabled = !canWrite(); }).catch((e) => { msg.className = 'grow small tone-danger'; msg.textContent = errText(e); });
         const msg = h('span', { class: 'grow small' });
-        const apply = U.confirmButton({ label: '전체 교체 후 적용 ▶', confirmLabel: '기존 정책을 모두 교체 — 확정', class: 'btn btn-primary', disabled: !canWrite(), onConfirm: () => {
-          try { const doc = parseYaml(ta.value); if (!doc || !Array.isArray(doc.rules)) throw new Error('최상위 rules: 목록이 필요함'); const rs = doc.rules.map((r) => validateRule(r)); const ids = new Set(); for (const r of rs) { if (ids.has(r.id)) throw new Error(`중복 id: ${r.id}`); ids.add(r.id); } state.rules = rs; renderList(); msg.className = 'grow small tone-ok'; msg.textContent = `${rs.length}개 정책을 엔진에 적용함`; U.toast(`정책 ${rs.length}개 전체 교체 후 적용`, { tone: 'ok' }); }
-          catch (e) { msg.className = 'grow small tone-danger'; msg.textContent = `400 · ${e.message}`; }
+        const apply = U.confirmButton({ label: '전체 교체 후 적용 ▶', confirmLabel: '기존 정책을 모두 교체 — 확정', class: 'btn btn-primary', disabled: true, onConfirm: () => {
+          const done = (rs) => { renderList(); msg.className = 'grow small tone-ok'; msg.textContent = `${rs.length}개 정책을 엔진에 적용함`; U.toast(`정책 ${rs.length}개 전체 교체 후 적용`, { tone: 'ok' }); };
+          const fail = (e) => { msg.className = 'grow small tone-danger'; msg.textContent = errText(e); };
+          if (state.source === 'live') { U.api.applyYaml(ta.value).then(done).catch(fail); return; }
+          try { const doc = parseYaml(ta.value); if (!doc || !Array.isArray(doc.rules)) throw new Error('400 · 최상위 rules: 목록이 필요함'); const rs = doc.rules.map((r) => validateRule(r)); const ids = new Set(); for (const r of rs) { if (ids.has(r.id)) throw new Error(`400 · 중복 id: ${r.id}`); ids.add(r.id); } state.rules = rs; done(rs); }
+          catch (e) { fail(e); }
         } });
         return h('div', { class: 'col' }, h('div', { class: 'grow pad' }, ta), h('div', { class: 'foot' }, msg, apply));
       }
@@ -252,7 +322,7 @@
             h('div', { class: 'foot' },
               mode === 'form' ? h('label', { class: 'row-inline', title: 'kill 정책을 알림만 보내도록 강제 (오탐 시 컨테이너 보호)' }, U.switchEl(draft.dryRun, (on) => upd({ dryRun: on })), ' dry-run') : null,
               error ? h('span', { class: 'grow small tone-danger', title: error }, error) : saved ? h('span', { class: 'grow small tone-ok' }, '저장 후 엔진에 적용됨') : h('span', { class: 'grow' }),
-              !isNew ? U.confirmButton({ label: '🗑 삭제', confirmLabel: '눌러서 삭제 확정', class: 'btn btn-danger-ghost', disabled: !canWrite(), onConfirm: () => { state.rules = state.rules.filter((r) => r.id !== rule.id); U.toast(`정책 ${rule.id} 삭제됨`, { tone: 'warn' }); select(''); } }) : null,
+              !isNew ? U.confirmButton({ label: '🗑 삭제', confirmLabel: '눌러서 삭제 확정', class: 'btn btn-danger-ghost', disabled: !canWrite(), onConfirm: () => { U.api.deleteRule(rule.id).then(() => U.api.listRules()).then(() => { U.toast(`정책 ${rule.id} 삭제됨`, { tone: 'warn' }); select(''); }).catch((e) => { error = errText(e); render(); }); } }) : null,
               saveBtn));
         }
         function switchMode(next) {
@@ -263,15 +333,18 @@
         }
         function save() {
           error = '';
-          try { const r = current(); if (isNew && state.rules.some((x) => x.id === r.id)) throw new Error(`409 · 이미 있는 id: ${r.id}`); applyRule(r); draft = toDraft(r); saved = true; renderList(); U.toast(`정책 ${r.id} 저장 후 엔진 리로드`, { tone: 'ok' }); if (isNew) { select(r.id); return; } }
-          catch (e) { error = e.message; }
-          render();
+          let r;
+          try { r = current(); if (isNew && state.source === 'sim' && state.rules.some((x) => x.id === r.id)) throw new Error(`409 · 이미 있는 id: ${r.id}`); }
+          catch (e) { error = e.message; render(); return; }
+          U.api.saveRule(r).then((savedRule) => U.api.listRules().then(() => savedRule || r)).then((sr) => { draft = toDraft(sr); saved = true; renderList(); U.toast(`정책 ${sr.id} 저장 후 엔진 리로드`, { tone: 'ok' }); if (isNew) select(sr.id); else render(); })
+            .catch((e) => { error = errText(e); render(); });
         }
         render();
         return root;
       }
-      renderList(); renderEditor();
-      return {};
+      const load = () => U.api.listRules().then(() => { renderList(); renderEditor(); }).catch((e) => { replace(list, h('p', { class: 'pad tone-danger small' }, `불러오기 실패: ${errText(e)}`)); });
+      renderList(); renderEditor(); load();
+      return { update() { tokenRow.hidden = !state.info.authRequired; } }; // 실제 모드에서 /api/info 가 늦게 와도 반영
     },
   };
 
@@ -281,33 +354,34 @@
     mount(page) {
       const PAGE = 100;
       const f = { kind: '', action: '', rule: '', container: '', since: '', until: '' };
-      let shown = PAGE, timer;
+      let rows = [], hasMore = false, loading = false, timer, seq = 0;
       const tbody = h('tbody');
-      const more = h('div', { class: 'more', hidden: true }, h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => { shown += PAGE; draw(); } }, '더 보기'));
+      const more = h('div', { class: 'more', hidden: true }, h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => fetchPage(rows.length ? rows[rows.length - 1].id : undefined) }, '더 보기'));
       const table = h('table', { class: 'table' }, h('thead', null, h('tr', null, ['#', '시각', '컨테이너', 'Kind', '상세', '규칙', '판정', '사유'].map((t) => h('th', null, t)))), tbody);
       const emptyEl = empty('조건에 맞는 기록 없음');
-      const wrap = h('div', { class: 'grow scroll' }, table, emptyEl, more);
-      const setF = (k) => (e) => { f[k] = e.target.value; clearTimeout(timer); timer = setTimeout(() => { shown = PAGE; draw(); }, 300); };
-      const refresh = h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => { refresh.classList.add('spin'); setTimeout(() => refresh.classList.remove('spin'), 600); draw(); } }, '⟳ 새로고침');
+      const errEl = h('p', { class: 'pad tone-danger small', hidden: true });
+      const wrap = h('div', { class: 'grow scroll' }, errEl, table, emptyEl, more);
+      const toIso = (v) => (v ? new Date(v).toISOString() : '');
+      function fetchPage(before) {
+        const my = ++seq; loading = true; refresh.classList.add('spin');
+        U.api.audit({ kind: f.kind, action: f.action, rule: f.rule, container: f.container, since: toIso(f.since), until: toIso(f.until), limit: PAGE, before })
+          .then((pageRows) => { if (my !== seq) return; rows = before ? rows.concat(pageRows) : pageRows; hasMore = pageRows.length === PAGE; errEl.hidden = true; draw(); })
+          .catch((e) => { if (my !== seq) return; errEl.hidden = false; errEl.textContent = `조회 실패: ${e.message}`; })
+          .finally(() => { loading = false; refresh.classList.remove('spin'); });
+      }
+      const setF = (k) => (v) => { f[k] = v; clearTimeout(timer); timer = setTimeout(() => fetchPage(), 300); }; // 필터 변경 300ms 뒤 첫 페이지부터
+      const refresh = h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => fetchPage() }, '⟳ 새로고침');
       page.append(panel({ title: '감사 로그 · 위반 판정 이력', class: 'grow', actions: refresh, body: h('div', { class: 'col' },
         h('div', { class: 'filters' },
-          U.select([['', 'Kind 전체'], ...KINDS.map((k) => [k, k])], '', (v) => setF('kind')({ target: { value: v } })),
-          U.select([['', '대응 전체'], ['alert', 'alert'], ['kill', 'kill']], '', (v) => setF('action')({ target: { value: v } })),
-          h('input', { class: 'ctl w-40', placeholder: '규칙 id', oninput: setF('rule') }),
-          h('input', { class: 'ctl w-40', placeholder: '컨테이너', oninput: setF('container') }),
-          h('label', null, '기간 ', h('input', { type: 'datetime-local', class: 'ctl', 'aria-label': '시작', onchange: setF('since') }), ' ~ ', h('input', { type: 'datetime-local', class: 'ctl', 'aria-label': '끝', onchange: setF('until') }))),
+          U.select([['', 'Kind 전체'], ...KINDS.map((k) => [k, k])], '', setF('kind')),
+          U.select([['', '대응 전체'], ['alert', 'alert'], ['kill', 'kill']], '', setF('action')),
+          h('input', { class: 'ctl w-40', placeholder: '규칙 id', oninput: (e) => setF('rule')(e.target.value) }),
+          h('input', { class: 'ctl w-40', placeholder: '컨테이너', oninput: (e) => setF('container')(e.target.value) }),
+          h('label', null, '기간 ', h('input', { type: 'datetime-local', class: 'ctl', 'aria-label': '시작', onchange: (e) => setF('since')(e.target.value) }), ' ~ ', h('input', { type: 'datetime-local', class: 'ctl', 'aria-label': '끝', onchange: (e) => setF('until')(e.target.value) }))),
         wrap) }));
-      function rows() {
-        const since = f.since ? new Date(f.since).getTime() : 0, until = f.until ? new Date(f.until).getTime() : Infinity;
-        return state.audit.filter((a) => {
-          const t = new Date(a.event.timestamp).getTime();
-          return (!f.kind || a.event.kind === f.kind) && (!f.action || a.action === f.action) && (!f.rule || (a.ruleId || '').includes(f.rule)) && (!f.container || a.event.containerName.includes(f.container)) && t >= since && t <= until;
-        });
-      }
       function draw() {
-        const all = rows(); const page = all.slice(0, shown);
-        emptyEl.hidden = page.length > 0; table.hidden = page.length === 0; more.hidden = all.length <= shown;
-        replace(tbody, page.map((a) => h('tr', null,
+        emptyEl.hidden = rows.length > 0 || loading; table.hidden = rows.length === 0; more.hidden = !hasMore;
+        replace(tbody, rows.map((a) => h('tr', null,
           h('td', { class: 'num muted right' }, a.id),
           h('td', { class: 'num mono nowrap' }, fmt.dateTime(a.event.timestamp)),
           h('td', null, h('div', { class: 'strong' }, a.event.containerName), h('div', { class: 'mono muted small', title: a.event.imageName }, `${fmt.shortId(a.event.containerId)} · ${a.event.imageName}`)),
@@ -317,7 +391,7 @@
           h('td', null, verdictBadge(a)),
           h('td', { class: 'small' }, a.reason, a.enforceError ? h('div', { class: 'tone-danger' }, `격리 오류: ${a.enforceError}`) : null))));
       }
-      draw();
+      fetchPage();
       return {};
     },
   };

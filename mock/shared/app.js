@@ -60,22 +60,31 @@
       const e = v.event; if (!e.containerName) return;
       const now = new Date(e.timestamp).getTime() || Date.now();
       const level = levelOf(v);
-      const c = this.touch(`c:${e.containerName}`, 'container', e.containerName, e.containerName, level, now);
-      const p = this.touch(`p:${e.containerName}:${e.comm}`, 'process', e.comm, e.containerName, level, now);
-      this.link(c.id, p.id, 'exec', level, now);
-      if (e.kind === 'open' && e.path) { const f = this.touch(`f:${e.containerName}:${e.path}`, 'file', e.path, e.containerName, level, now); this.link(p.id, f.id, 'open', level, now); }
-      else if (e.kind === 'connect') { const d = detailOf(e); const dn = this.touch(`d:${e.containerName}:${d}`, 'dest', d, e.containerName, level, now); this.link(p.id, dn.id, 'connect', level, now); }
+      const c = this.touch(`c:${e.containerName}`, 'container', e.containerName, e.containerName, level, now, v);
+      const p = this.touch(`p:${e.containerName}:${e.comm}`, 'process', e.comm, e.containerName, level, now, v);
+      this.link(c.id, p.id, 'exec', level, now, v);
+      if (e.kind === 'open' && e.path) { const f = this.touch(`f:${e.containerName}:${e.path}`, 'file', e.path, e.containerName, level, now, v); this.link(p.id, f.id, 'open', level, now, v); }
+      else if (e.kind === 'connect') { const d = detailOf(e); const dn = this.touch(`d:${e.containerName}:${d}`, 'dest', d, e.containerName, level, now, v); this.link(p.id, dn.id, 'connect', level, now, v); }
     }
-    touch(id, type, label, container, level, now) {
+    // mark: 횟수·최악 판정을 누적하고, 위반이면 kind 별 최악 판정(byKind)·규칙별 횟수(rules)·규칙의 kind(ruleKinds)를 기록한다.
+    mark(x, level, now, v) {
+      x.count++; x.level = worse(x.level, level); x.lastSeen = Math.max(x.lastSeen, now);
+      if (!v.matched) return;
+      const k = v.event.kind;
+      x.violations++; x.rules.set(v.ruleId, (x.rules.get(v.ruleId) || 0) + 1); x.ruleKinds.set(v.ruleId, k);
+      x.byKind[k] = worse(x.byKind[k] || 'normal', level);
+      if (SEV[level] >= SEV[x.worstLevel || 'normal']) { x.worstLevel = level; x.reason = v.reason; x.lastViolation = now; }
+    }
+    touch(id, type, label, container, level, now, v) {
       let n = this.nodes.get(id);
-      if (!n) { n = { id, type, label, container, level, count: 0, lastSeen: now }; this.nodes.set(id, n); }
-      n.count++; n.level = worse(n.level, level); n.lastSeen = Math.max(n.lastSeen, now); return n;
+      if (!n) { n = { id, type, label, container, level: 'normal', count: 0, violations: 0, rules: new Map(), ruleKinds: new Map(), byKind: {}, lastSeen: now }; this.nodes.set(id, n); }
+      this.mark(n, level, now, v); return n;
     }
-    link(source, target, kind, level, now) {
+    link(source, target, kind, level, now, v) {
       const id = `${source}->${target}`;
       let ed = this.edges.get(id);
-      if (!ed) { ed = { id, source, target, kind, level, count: 0, lastSeen: now }; this.edges.set(id, ed); }
-      ed.count++; ed.level = worse(ed.level, level); ed.lastSeen = Math.max(ed.lastSeen, now);
+      if (!ed) { ed = { id, source, target, kind, level: 'normal', count: 0, violations: 0, rules: new Map(), ruleKinds: new Map(), byKind: {}, lastSeen: now }; this.edges.set(id, ed); }
+      this.mark(ed, level, now, v);
     }
     snapshot(windowMs, container) {
       const now = Date.now(); const cut = now - windowMs;
@@ -97,7 +106,13 @@
   }
 
   // ── 상태 ────────────────────────────────────────────────
+  const params = new URLSearchParams(location.search);
+  const saved = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
   const state = {
+    // source: 'sim'(내장 시뮬레이션) | 'live'(실제 백엔드 REST+WS). ?source=live&api=http://127.0.0.1:8000 또는 데모 제어에서 바꾼다
+    source: params.get('source') || saved('supplyguard.mock.source', 'sim'),
+    apiBase: (params.get('api') || saved('supplyguard.mock.api', 'http://127.0.0.1:8000')).replace(/\/$/, ''),
+    liveError: '',
     connected: true, paused: false, verdicts: [], unseen: 0, token: '',
     rules: JSON.parse(JSON.stringify(M.rules)),
     info: { source: 'mock', gadgets: KINDS, enforceKill: true, authRequired: true, gadgetVersion: 'v0.56.1' },
@@ -156,6 +171,18 @@
   function runAttack(now, opts) {
     for (const c of sim.containers) if (c.attacker && !c.killedAt) for (const a of M.attack) pipeline(c, mkEvent(c, a, now), now, opts);
   }
+  // 데모 제어 "지금 실행": 어떤 상태에서든 바로 시나리오 1→2→3 이 흐른다
+  function runAttackNow() {
+    if (state.source !== 'sim') { toast('실제 백엔드 모드 — 공격은 백엔드 mock 소스가 20초마다 자동 실행합니다', { tone: 'warn' }); return; }
+    const now = Date.now();
+    if (!state.connected) { state.connected = true; start(); }
+    if (state.paused) { state.paused = false; toast('일시정지를 해제하고 공격 시나리오를 실행합니다', { tone: 'info' }); }
+    for (const c of sim.containers) if (c.attacker && c.killedAt) { c.killedAt = 0; c.id = M.hexId(Math.random, 64); toast(`${c.name} 재기동 (격리 중이던 컨테이너를 다시 띄움)`, { tone: 'info' }); }
+    runAttack(now);
+    sim.nextAttack = now + sim.attackEvery;
+    flush(); state.stats = snapshot(); emit();
+    toast(`공격 시나리오 실행 — exec(curl|sh) → open(/etc/shadow) → connect(:4444) ${M.attack.length}개 이벤트`, { tone: 'danger', action: { label: '이벤트 보기', go: '#/events?verdict=violation' } });
+  }
   function flush() {
     if (sim.queue.length) { const batch = sim.queue.reverse(); sim.queue = []; state.verdicts = batch.concat(state.verdicts).slice(0, 500); }
   }
@@ -188,17 +215,83 @@
   // ── 실시간 연결 상태 (WS) 시뮬레이션 ─────────────────────
   let tickTimer, flushTimer, statsTimer;
   function start() {
-    tickTimer = setInterval(tick, sim.interval);
+    stop();
+    if (state.source === 'sim') { tickTimer = setInterval(tick, sim.interval); statsTimer = setInterval(() => { state.stats = snapshot(); }, 1000); }
     flushTimer = setInterval(() => { flush(); emit(); }, 250);
-    statsTimer = setInterval(() => { state.stats = snapshot(); }, 1000);
   }
   function stop() { clearInterval(tickTimer); clearInterval(flushTimer); clearInterval(statsTimer); }
   function disconnect(ms) {
+    if (state.source !== 'sim') { live.ws && live.ws.close(); return; } // 실제 모드: 소켓을 끊어 재연결 백오프를 그대로 본다
     if (!state.connected) return;
     state.connected = false; stop(); emit();
     UI.toast('실시간 연결이 끊겼습니다 — 재연결 중 (1s → 10s 백오프)', { tone: 'warn' });
     setTimeout(() => { state.connected = true; start(); emit(); UI.toast('실시간 연결 복구', { tone: 'ok' }); }, ms || 3000);
   }
+
+  // ── 실제 백엔드 (frontend/src/hooks/useEventStream.ts 와 같은 동작) ──
+  const live = { ws: null, retry: null, attempt: 0, closed: false };
+  async function fetchJSON(path, init) {
+    const headers = new Headers((init && init.headers) || {});
+    if (state.token && init && init.method && init.method !== 'GET') headers.set('Authorization', `Bearer ${state.token}`);
+    const res = await fetch(state.apiBase + path, Object.assign({}, init, { headers }));
+    if (!res.ok) { let msg = res.statusText; try { msg = (await res.json()).error || msg; } catch { /* 본문 없음 */ } throw new Error(`${res.status} · ${msg}`); }
+    if (res.status === 204) return null;
+    return (res.headers.get('Content-Type') || '').includes('json') ? res.json() : res.text();
+  }
+  function liveConnect() {
+    live.closed = false;
+    const url = state.apiBase.replace(/^http/, 'ws') + '/ws/events';
+    const ws = new WebSocket(url); live.ws = ws;
+    ws.onopen = () => { live.attempt = 0; state.connected = true; state.liveError = ''; emit(); };
+    ws.onclose = () => { state.connected = false; emit(); if (live.closed) return; const delay = Math.min(1000 * 2 ** live.attempt, 10000); live.attempt++; live.retry = setTimeout(liveConnect, delay); };
+    ws.onerror = () => { state.liveError = `${url} 연결 실패 — 백엔드가 떠 있고 ALLOWED_ORIGINS 에 ${location.origin} 이 있는지 확인`; };
+    ws.onmessage = (e) => {
+      let msg; try { msg = JSON.parse(e.data); } catch { return; }
+      if (msg.type === 'verdict') { const v = msg.data; state.topology.ingest(v); if (v.matched) state.unseen++; if (!state.paused) sim.queue.push(Object.assign({ key: ++sim.seq }, v)); }
+      else if (msg.type === 'stats') state.stats = msg.data;
+    };
+  }
+  async function liveStart() {
+    state.verdicts = []; state.stats = null; state.unseen = 0; state.topology = new TopologyStore(); state.liveError = '';
+    start(); liveConnect();
+    try {
+      const [info, recent, stats, rules] = await Promise.all([fetchJSON('/api/info'), fetchJSON('/api/events/recent?limit=500'), fetchJSON('/api/stats'), fetchJSON('/api/policies')]);
+      state.info = info; state.stats = stats; state.rules = rules || [];
+      [...recent].reverse().forEach((v) => state.topology.ingest(v));
+      state.verdicts = recent.map((v) => Object.assign({ key: ++sim.seq }, v));
+      emit(); toast(`실제 백엔드 연결: ${state.apiBase} (${info.source} 소스 · IG ${info.gadgetVersion})`, { tone: 'ok' });
+    } catch (e) { state.liveError = `${state.apiBase} REST 실패 — ${e.message}`; emit(); toast(state.liveError, { tone: 'danger' }); }
+  }
+  function liveStop() { live.closed = true; clearTimeout(live.retry); if (live.ws) live.ws.close(); live.ws = null; }
+  function setSource(source, apiBase) {
+    try { localStorage.setItem('supplyguard.mock.source', source); if (apiBase) localStorage.setItem('supplyguard.mock.api', apiBase); } catch { /* 저장소 차단 */ }
+    stop(); liveStop();
+    state.source = source; if (apiBase) state.apiBase = apiBase.replace(/\/$/, '');
+    if (source === 'live') { liveStart(); }
+    else {
+      state.verdicts = []; state.stats = null; state.unseen = 0; state.topology = new TopologyStore(); state.liveError = '';
+      state.rules = JSON.parse(JSON.stringify(M.rules)); state.info = { source: 'mock', gadgets: KINDS, enforceKill: true, authRequired: true, gadgetVersion: 'v0.56.1' };
+      sim.total = 0; sim.violations = 0; sim.killed = []; sim.perContainer = new Map(); sim.recent = []; sim.trend = []; sim.queue = [];
+      for (const c of sim.containers) { c.killedAt = 0; c.id = M.hexId(Math.random, 64); }
+      seed(); state.connected = true; start(); toast('내장 시뮬레이션으로 전환', { tone: 'info' });
+    }
+    emit();
+  }
+
+  // ── 화면이 쓰는 데이터 API — sim 은 메모리, live 는 REST (frontend/src/lib/api.ts 와 같은 계약) ──
+  const api = {
+    listRules: () => (state.source === 'live' ? fetchJSON('/api/policies').then((rs) => { state.rules = rs || []; return state.rules; }) : Promise.resolve(state.rules)),
+    saveRule: (r) => (state.source === 'live' ? fetchJSON('/api/policies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r) }) : Promise.resolve().then(() => { const i = state.rules.findIndex((x) => x.id === r.id); if (i >= 0) state.rules[i] = r; else state.rules.push(r); return r; })),
+    deleteRule: (id) => (state.source === 'live' ? fetchJSON(`/api/policies/${encodeURIComponent(id)}`, { method: 'DELETE' }) : Promise.resolve().then(() => { state.rules = state.rules.filter((x) => x.id !== id); })),
+    exportYaml: () => (state.source === 'live' ? fetchJSON('/api/policies/export') : Promise.resolve(null)),
+    applyYaml: (yaml) => (state.source === 'live' ? fetchJSON('/api/policies', { method: 'PUT', headers: { 'Content-Type': 'application/yaml' }, body: yaml }).then((rs) => { state.rules = rs; return rs; }) : Promise.resolve(null)),
+    audit: (p) => {
+      if (state.source === 'live') { const q = new URLSearchParams(); for (const [k, v] of Object.entries(p)) if (v !== undefined && v !== '') q.set(k, String(v)); return fetchJSON(`/api/audit?${q}`); }
+      const since = p.since ? new Date(p.since).getTime() : 0, until = p.until ? new Date(p.until).getTime() : Infinity;
+      let rows = state.audit.filter((a) => { const t = new Date(a.event.timestamp).getTime(); return (!p.kind || a.event.kind === p.kind) && (!p.action || a.action === p.action) && (!p.rule || (a.ruleId || '').includes(p.rule)) && (!p.container || a.event.containerName.includes(p.container)) && t >= since && t <= until && (!p.before || a.id < p.before); });
+      return Promise.resolve(rows.slice(0, p.limit || 100));
+    },
+  };
 
   // ── 공통 컴포넌트 ────────────────────────────────────────
   const kindBadge = (kind) => h('span', { class: `badge badge-kind badge-kind-${kind}` }, kind);
@@ -327,55 +420,84 @@
     return root;
   }
 
-  // 토폴로지 그래프 (TopologyPage.tsx 의 3열 고정 레이아웃을 SVG 로)
-  const NODE = { w: 230, h: 32, rowH: 52, colX: { container: 0, process: 280, file: 580, dest: 580 } };
+  // 토폴로지 그래프 — 컨테이너 → 프로세스 → 파일/목적지 3열 고정 레이아웃 SVG.
+  // 엣지 위에는 글자를 두지 않는다(화살표와 겹침). 종류는 말단 노드 안의 kind 칩으로, 횟수는 ×N 으로 보인다.
+  const NODE = { w: 240, leafW: 290, h: 34, rowH: 56, colX: { container: 0, process: 330, file: 690, dest: 690 } };
   const NODE_STYLE = { normal: ['#ffffff', '#cbd5e1', '#334155'], alert: ['#fffbeb', '#f59e0b', '#78350f'], held: ['#fef2f2', '#f87171', '#991b1b'], killed: ['#dc2626', '#b91c1c', '#ffffff'] };
   const EDGE_COLOR = { normal: '#cbd5e1', alert: '#f59e0b', held: '#ef4444', killed: '#dc2626' };
   const ICON = { container: '▣', process: '⚙', file: '▤', dest: '◎' };
-  function topologyGraph() {
-    const root = h('div', { class: 'topo' });
-    root.set = ({ nodes, edges }) => {
-      root.replaceChildren();
-      if (!nodes.length) { root.append(empty('표시할 활동 없음 — 이벤트가 들어오면 그래프가 그려집니다')); return; }
-      const children = new Map(); for (const e of edges) children.set(e.source, [...(children.get(e.source) || []), e.target]);
-      const byId = new Map(nodes.map((n) => [n.id, n])); const pos = new Map(); let row = 0;
-      const containers = nodes.filter((n) => n.type === 'container').sort((a, b) => a.label.localeCompare(b.label));
-      for (const c of containers) {
-        const start = row;
-        const procs = (children.get(c.id) || []).map((id) => byId.get(id)).filter(Boolean).sort((a, b) => a.label.localeCompare(b.label));
-        for (const p of procs) {
-          const pStart = row;
-          const leaves = (children.get(p.id) || []).map((id) => byId.get(id)).filter(Boolean).sort((a, b) => (a.level === b.level ? a.label.localeCompare(b.label) : a.level === 'normal' ? 1 : -1));
-          for (const l of leaves) pos.set(l.id, { x: NODE.colX[l.type], y: row++ * NODE.rowH });
-          if (!leaves.length) row++;
-          pos.set(p.id, { x: NODE.colX.process, y: ((pStart + row - 1) / 2) * NODE.rowH });
-        }
-        if (row === start) row++;
-        pos.set(c.id, { x: NODE.colX.container, y: ((start + row - 1) / 2) * NODE.rowH });
-        row++;
+  const CHIP = { open: ['#e0f2fe', '#0369a1'], connect: ['#ccfbf1', '#0f766e'] };
+  const ellipsize = (t, max) => (t.length <= max ? t : t.slice(0, Math.max(4, Math.floor(max * 0.35))) + '…' + t.slice(-(max - Math.floor(max * 0.35) - 1)));
+  function layoutTopology(nodes, edges) {
+    const children = new Map(); for (const e of edges) children.set(e.source, [...(children.get(e.source) || []), e.target]);
+    const byId = new Map(nodes.map((n) => [n.id, n])); const pos = new Map(); let row = 0;
+    const containers = nodes.filter((n) => n.type === 'container').sort((a, b) => (SEV[b.level] - SEV[a.level]) || a.label.localeCompare(b.label));
+    for (const c of containers) {
+      const start = row;
+      const procs = (children.get(c.id) || []).map((id) => byId.get(id)).filter(Boolean).sort((a, b) => (SEV[b.level] - SEV[a.level]) || a.label.localeCompare(b.label));
+      for (const p of procs) {
+        const pStart = row;
+        const leaves = (children.get(p.id) || []).map((id) => byId.get(id)).filter(Boolean).sort((a, b) => (SEV[b.level] - SEV[a.level]) || (a.type === b.type ? a.label.localeCompare(b.label) : a.type === 'file' ? -1 : 1));
+        for (const l of leaves) pos.set(l.id, { x: NODE.colX[l.type], y: row++ * NODE.rowH });
+        if (!leaves.length) row++;
+        pos.set(p.id, { x: NODE.colX.process, y: ((pStart + row - 1) / 2) * NODE.rowH });
       }
-      const W = 580 + NODE.w + 40, Hh = Math.max(1, row) * NODE.rowH + 20;
-      const svg = s('svg', { viewBox: `-20 -10 ${W} ${Hh}`, class: 'topo-svg', preserveAspectRatio: 'xMidYMin meet' });
+      if (row === start) row++;
+      pos.set(c.id, { x: NODE.colX.container, y: ((start + row - 1) / 2) * NODE.rowH });
+      row++;
+    }
+    return { pos, rows: row };
+  }
+  function topologyGraph({ onSelect } = {}) {
+    const root = h('div', { class: 'topo' });
+    let snap = { nodes: [], edges: [] }, selectedId = null;
+    function draw() {
+      const { nodes, edges } = snap;
+      replace(root);
+      if (!nodes.length) { root.append(empty('표시할 활동 없음 — 이벤트가 들어오면 그래프가 그려집니다. 데모 제어 → 지금 실행으로 공격 시나리오를 바로 볼 수 있습니다.')); return; }
+      const { pos, rows } = layoutTopology(nodes, edges);
+      const W = NODE.colX.file + NODE.leafW + 24, Hh = Math.max(1, rows) * NODE.rowH + 16;
+      const svg = s('svg', { viewBox: `-12 -8 ${W} ${Hh}`, class: 'topo-svg', style: `min-height:${Math.min(Hh, 2000)}px` });
       const defs = s('defs');
       for (const [lv, c] of Object.entries(EDGE_COLOR)) defs.append(s('marker', { id: `arrow-${lv}`, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, s('path', { d: 'M0,0 L10,5 L0,10 z', fill: c })));
       svg.append(defs);
+      const edgeEls = [];
       for (const e of edges) {
         const a = pos.get(e.source), b = pos.get(e.target); if (!a || !b) continue;
-        const x1 = a.x + NODE.w, y1 = a.y + NODE.h / 2, x2 = b.x, y2 = b.y + NODE.h / 2, c = (x1 + x2) / 2;
-        svg.append(s('path', { d: `M${x1},${y1} C${c},${y1} ${c},${y2} ${x2},${y2}`, fill: 'none', stroke: EDGE_COLOR[e.level], 'stroke-width': e.level === 'normal' ? 1 : 2, 'marker-end': `url(#arrow-${e.level})`, class: e.level !== 'normal' ? 'edge-hot' : '' }));
-        if (e.kind !== 'exec') svg.append(s('text', { x: c, y: (y1 + y2) / 2 - 4, 'text-anchor': 'middle', class: 'edge-label' }, e.kind));
+        const aw = byType(e.source) === 'container' || byType(e.source) === 'process' ? NODE.w : NODE.leafW;
+        const x1 = a.x + aw, y1 = a.y + NODE.h / 2, x2 = b.x, y2 = b.y + NODE.h / 2, c = (x1 + x2) / 2;
+        const touches = selectedId && (e.source === selectedId || e.target === selectedId);
+        const el = s('path', { d: `M${x1},${y1} C${c},${y1} ${c},${y2} ${x2},${y2}`, fill: 'none', stroke: EDGE_COLOR[e.level], 'stroke-width': e.level === 'normal' ? 1.25 : 2.25, 'marker-end': `url(#arrow-${e.level})`, class: `edge ${e.level !== 'normal' ? 'edge-hot' : ''} ${selectedId ? (touches ? 'hl' : 'dim') : ''}`, 'data-src': e.source, 'data-dst': e.target }, s('title', null, `${e.kind} ×${e.count}${e.violations ? ` · 위반 ${e.violations}` : ''}`));
+        svg.append(el); edgeEls.push(el);
       }
+      function byType(id) { const n = nodes.find((x) => x.id === id); return n ? n.type : 'file'; }
       for (const n of nodes) {
         const p = pos.get(n.id); if (!p) continue; const [bg, bd, fg] = NODE_STYLE[n.level];
-        const g = s('g', { transform: `translate(${p.x},${p.y})` }, s('title', null, `${n.label} · ${n.count}회`));
-        g.append(s('rect', { width: NODE.w, height: NODE.h, rx: 6, fill: bg, stroke: bd, 'stroke-dasharray': n.level === 'held' ? '4 3' : null }));
-        g.append(s('text', { x: 10, y: 21, class: 'node-icon', fill: fg }, ICON[n.type]));
-        const label = n.label.length > 28 ? '…' + n.label.slice(-27) : n.label;
-        g.append(s('text', { x: 30, y: 21, fill: fg, class: n.type === 'file' || n.type === 'dest' ? 'node-mono' : 'node-label' }, label));
+        const leaf = n.type === 'file' || n.type === 'dest'; const w = leaf ? NODE.leafW : NODE.w;
+        const g = s('g', { transform: `translate(${p.x},${p.y})`, class: `node ${n.id === selectedId ? 'selected' : ''} ${onSelect ? 'clickable' : ''}`, tabindex: onSelect ? 0 : null, role: onSelect ? 'button' : null },
+          s('title', null, `${n.label}\n${n.count}회${n.violations ? ` · 위반 ${n.violations}` : ''}${n.reason ? `\n${n.reason}` : ''}`));
+        g.append(s('rect', { width: w, height: NODE.h, rx: 6, fill: bg, stroke: n.id === selectedId ? '#4f46e5' : bd, 'stroke-width': n.id === selectedId ? 2 : 1, 'stroke-dasharray': n.level === 'held' ? '4 3' : null }));
+        let x = 10;
+        if (leaf) { const kind = n.type === 'file' ? 'open' : 'connect'; const [cb, cf] = n.level === 'killed' ? ['rgba(255,255,255,.22)', '#fff'] : CHIP[kind]; g.append(s('rect', { x: 8, y: 8, width: 54, height: 18, rx: 4, fill: cb }), s('text', { x: 35, y: 21, 'text-anchor': 'middle', fill: cf, class: 'node-chip' }, kind)); x = 70; }
+        else { g.append(s('text', { x: 10, y: 22, class: 'node-icon', fill: fg }, ICON[n.type])); x = 30; }
+        const countW = n.count > 1 ? 36 : 0;
+        const statusW = n.type === 'container' && n.level !== 'normal' ? 62 : 0;
+        const maxChars = Math.floor((w - x - 12 - countW - statusW) / (leaf ? 6.7 : 7));
+        g.append(s('text', { x, y: 22, fill: fg, class: leaf ? 'node-mono' : 'node-label' }, ellipsize(n.label, maxChars)));
+        if (statusW) { const label = LEVEL_LABEL[n.level]; const bx = w - 8 - statusW - countW; g.append(s('rect', { x: bx, y: 8, width: statusW, height: 18, rx: 9, fill: n.level === 'killed' ? 'rgba(255,255,255,.22)' : n.level === 'alert' ? '#fde68a' : '#fecaca' }), s('text', { x: bx + statusW / 2, y: 21, 'text-anchor': 'middle', fill: n.level === 'killed' ? '#fff' : fg, class: 'node-chip' }, label)); }
+        if (countW) g.append(s('text', { x: w - 10, y: 22, 'text-anchor': 'end', fill: fg, class: 'node-count', opacity: .75 }, `×${n.count}`));
+        if (onSelect) {
+          g.addEventListener('click', () => onSelect(n));
+          g.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onSelect(n); } });
+          g.addEventListener('mouseenter', () => { for (const el of edgeEls) { const on = el.dataset.src === n.id || el.dataset.dst === n.id; el.classList.toggle('hl', on); el.classList.toggle('dim', !on); } });
+          g.addEventListener('mouseleave', () => { for (const el of edgeEls) { const touches = selectedId && (el.dataset.src === selectedId || el.dataset.dst === selectedId); el.classList.toggle('hl', !!touches); el.classList.toggle('dim', !!selectedId && !touches); } });
+        }
         svg.append(g);
       }
       root.append(svg);
-    };
+    }
+    root.set = (sn) => { snap = sn; draw(); };
+    root.select = (id) => { selectedId = id; draw(); };
     return root;
   }
 
@@ -418,16 +540,18 @@
     const bell = h('a', { href: '#/events?verdict=violation', class: 'bell', 'aria-label': '새 위반', onclick: () => { state.unseen = 0; emit(); } }, h('span', { 'aria-hidden': true }, '🔔'), h('span', { class: 'bell-badge num', hidden: true }));
     const flow = h('div', { class: 'flow' }, FLOW.map(([to, label]) => h('a', { href: '#' + to, class: 'flow-step', 'data-to': to }, label)));
     const header = h('header', { class: 'topbar' }, flow, h('div', { class: 'topbar-right' }, h('span', { class: 'ws-status', role: 'status' }, ws, eps), bell, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => $('#help').showModal(), title: '사용 안내 (?)' }, '? 안내'), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => $('#demo').classList.toggle('open') }, '데모 제어')));
+    const banner = h('div', { class: 'banner banner-danger', hidden: true, role: 'alert' });
     const page = h('main', { class: 'page', id: 'page' });
-    const main = h('div', { class: 'main' }, header, page);
+    const main = h('div', { class: 'main' }, header, banner, page);
     const root = h('div', { class: 'shell' }, aside, main);
     function sync() {
       const { path } = route();
       for (const a of nav.children) a.classList.toggle('active', a.dataset.to === path);
       for (const a of flow.children) a.classList.toggle('active', a.dataset.to === path);
       const st = state.stats, enforce = state.info.enforceKill;
+      banner.hidden = !state.liveError; banner.textContent = state.liveError;
       replace(foot, 
-        h('div', null, h('span', null, '수집'), h('span', null, 'Mock 데모')),
+        h('div', null, h('span', null, '수집'), h('span', null, state.source === 'live' ? (state.info.source === 'gadget' ? 'eBPF 가젯' : 'Mock 데모') + ' · 실제' : 'Mock 데모 · 시뮬')),
         h('div', null, h('span', null, '격리'), h('span', { class: enforce ? 'tone-danger-soft' : 'tone-warn-soft' }, enforce ? '자동 종료' : 'dry-run')),
         h('div', null, h('span', null, 'IG'), h('span', { class: 'num' }, state.info.gadgetVersion)));
       ws.className = `ws ${state.connected ? 'on' : 'off'}`; ws.textContent = state.connected ? '실시간 연결됨' : '재연결 중…';
@@ -458,17 +582,24 @@
 
   function demoDrawer() {
     const countdown = h('span', { class: 'num' });
+    let srcSel = state.source;
+    const apiInput = h('input', { class: 'ctl mono', value: state.apiBase, placeholder: 'http://127.0.0.1:8000', disabled: state.source !== 'live', 'aria-label': '백엔드 주소' });
     const body = h('div', { class: 'drawer-body' },
       h('h3', null, '데모 제어'),
       h('p', { class: 'muted' }, '실제 앱에는 없는 목업 전용 패널. 백엔드 mock 소스가 하는 일을 손으로 일으킨다.'),
+      h('div', { class: 'card' },
+        h('label', { class: 'row' }, h('span', null, '데이터 소스'), select([['sim', '내장 시뮬레이션'], ['live', '실제 백엔드']], state.source, (v) => { srcSel = v; apiInput.disabled = v !== 'live'; })),
+        apiInput,
+        h('div', { class: 'row' }, h('small', { class: 'muted' }, '실제: REST + /ws/events 로 붙는다. 백엔드는 ALLOWED_ORIGINS 에 이 페이지 출처를 넣어 띄운다'), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => setSource(srcSel, apiInput.value.trim()) }, '연결'))),
       h('label', { class: 'row' }, h('span', null, '격리 모드 ', h('small', { class: 'muted' }, 'ENFORCE_KILL')), switchEl(state.info.enforceKill, (on) => { state.info.enforceKill = on; emit(); toast(on ? '격리 모드: 자동 종료' : '격리 모드: dry-run (알림만)', { tone: on ? 'danger' : 'warn' }); })),
-      h('div', { class: 'row' }, h('span', null, '다음 공격 시나리오까지 ', countdown), h('button', { type: 'button', class: 'btn btn-danger btn-xs', onclick: () => { runAttack(Date.now()); sim.nextAttack = Date.now() + sim.attackEvery; } }, '지금 실행')),
+      h('div', { class: 'row' }, h('span', null, '다음 공격 시나리오까지 ', countdown), h('button', { type: 'button', class: 'btn btn-danger btn-xs', onclick: runAttackNow }, '지금 실행')),
+      h('p', { class: 'muted small' }, '지금 실행은 격리 중이던 컨테이너를 먼저 재기동하고, 일시정지 상태면 해제한 뒤 시나리오 1→2→3 을 바로 흘린다.'),
       h('div', { class: 'row' }, h('span', null, '실시간 연결'), h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => disconnect(3000) }, '3초 끊기')),
       h('label', { class: 'row' }, h('span', null, '정상 이벤트 속도'), select([['300', '느리게'], ['100', '보통'], ['40', '빠르게']], '100', (v) => { sim.interval = Number(v); if (state.connected) { stop(); start(); } })),
       h('label', { class: 'row' }, h('span', null, '공격 반복 주기'), select([['10000', '10초'], ['20000', '20초'], ['60000', '60초']], '20000', (v) => { sim.attackEvery = Number(v); })),
       h('div', { class: 'row muted small' }, h('span', null, '격리된 컨테이너는 15초 뒤 새 ID 로 재기동한다 (재배포 흉내).')));
     const d = h('aside', { id: 'demo', class: 'drawer' }, h('button', { type: 'button', class: 'drawer-x', 'aria-label': '닫기', onclick: () => d.classList.remove('open') }, '×'), body);
-    setInterval(() => { countdown.textContent = Math.max(0, Math.ceil((sim.nextAttack - Date.now()) / 1000)) + '초'; }, 500);
+    setInterval(() => { countdown.textContent = state.source === 'live' ? '(백엔드 주기)' : Math.max(0, Math.ceil((sim.nextAttack - Date.now()) / 1000)) + '초'; }, 500);
     return d;
   }
 
@@ -486,7 +617,7 @@
   }
 
   function boot() {
-    seed();
+    if (state.source !== 'live') seed();
     const sh = shell();
     UI.shellEl = sh;
     document.body.append(sh, h('div', { id: 'toasts', class: 'toasts', 'aria-live': 'polite' }), helpDialog(), demoDrawer());
@@ -494,9 +625,9 @@
     window.addEventListener('hashchange', mount);
     document.addEventListener('keydown', (e) => { if (e.key === '?' && !/input|textarea|select/i.test(e.target.tagName)) $('#help').showModal(); });
     mount();
-    start();
+    if (state.source === 'live') { state.verdicts = []; state.stats = null; state.unseen = 0; state.topology = new TopologyStore(); liveStart(); } else start();
   }
 
-  window.UI = { h, s, $, replace, fmt, KINDS, levelOf, detailOf, LEVEL_LABEL, state, emit, listeners, kindBadge, verdictBadge, kpi, panel, empty, pauseToggle, confirmButton, switchEl, select, feed, lineChart, topologyGraph, toast, route, navigate, setQuery, screens: {}, sim, runAttack };
+  window.UI = { h, s, $, replace, fmt, KINDS, levelOf, detailOf, LEVEL_LABEL, state, emit, listeners, kindBadge, verdictBadge, kpi, panel, empty, pauseToggle, SEV, confirmButton, switchEl, select, feed, lineChart, topologyGraph, toast, route, navigate, setQuery, screens: {}, sim, runAttack, runAttackNow, api, setSource };
   document.addEventListener('DOMContentLoaded', boot);
 })();

@@ -137,6 +137,7 @@ func run() error {
 		Stats: snapshot, Checks: checks,
 		AdminToken:           cfg.AdminToken,
 		AllowAnonymousWrites: cfg.AdminToken == "" && cfg.EventSource == "mock",
+		AllowedOrigins:       cfg.AllowedOrigins,
 		Info: api.Info{Source: cfg.EventSource, Gadgets: cfg.Gadgets, EnforceKill: cfg.EnforceKill,
 			GadgetVersion: ingestion.GadgetVersion},
 	}))

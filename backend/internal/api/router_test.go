@@ -111,3 +111,52 @@ func TestAuditQuery(t *testing.T) {
 		t.Fatalf("bad kind: %d", r.StatusCode)
 	}
 }
+
+func TestCORS(t *testing.T) {
+	mem := store.NewMemory()
+	srv := httptest.NewServer(Router(Deps{
+		Engine: rules.New(nil), Policies: mem, Audit: mem, Buffer: mem, Stats: stats.New().Snapshot,
+		AllowAnonymousWrites: true, AllowedOrigins: []string{"http://127.0.0.1:8765", "null"},
+	}))
+	t.Cleanup(srv.Close)
+
+	get := func(origin string) *http.Response {
+		req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/info", nil)
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { resp.Body.Close() })
+		return resp
+	}
+	if got := get("http://127.0.0.1:8765").Header.Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:8765" {
+		t.Fatalf("allowed origin: got %q", got)
+	}
+	if got := get("null").Header.Get("Access-Control-Allow-Origin"); got != "null" {
+		t.Fatalf("file origin: got %q", got)
+	}
+	if got := get("http://evil.example").Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("unlisted origin must get no CORS header, got %q", got)
+	}
+	if got := get("").Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("same-origin request must get no CORS header, got %q", got)
+	}
+
+	req, _ := http.NewRequest(http.MethodOptions, srv.URL+"/api/policies", nil)
+	req.Header.Set("Origin", "http://127.0.0.1:8765")
+	req.Header.Set("Access-Control-Request-Method", "PUT")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent || !strings.Contains(resp.Header.Get("Access-Control-Allow-Methods"), "PUT") {
+		t.Fatalf("preflight: status %d methods %q", resp.StatusCode, resp.Header.Get("Access-Control-Allow-Methods"))
+	}
+	if resp.Header.Get("Access-Control-Allow-Headers") != "Authorization, Content-Type" {
+		t.Fatalf("preflight headers: %q", resp.Header.Get("Access-Control-Allow-Headers"))
+	}
+}

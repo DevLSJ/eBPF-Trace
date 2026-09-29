@@ -90,6 +90,13 @@ export const KINDS: Kind[] = ['exec', 'open', 'connect'];
 // 판정 표시 단계: 정상 · 경고 · 격리 대상(dry-run/실패) · 격리됨
 export type Level = 'normal' | 'alert' | 'held' | 'killed';
 
+export const LEVEL_LABEL: Record<Level, string> = {
+  normal: '정상',
+  alert: '경고',
+  held: '격리 대상',
+  killed: '격리됨',
+};
+
 export function levelOf(v: Verdict): Level {
   if (!v.matched) return 'normal';
   if (v.action !== 'kill') return 'alert';

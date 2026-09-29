@@ -17,32 +17,30 @@
 | 프론트엔드 | React 18 · TypeScript · Vite 7 · Tailwind 4 · React Flow · Recharts | `frontend/` |
 | 배포 | Docker Compose (nginx · backend · frontend · PostgreSQL 17 · Redis 7 · 선택 Caddy HTTPS) · GitHub Actions → Docker Hub → EC2 | `deploy/` · `.github/workflows/` |
 | 문서 | 개발 계획 · 단계별 문서 · 진행 현황 | `docs/` |
-| 목업 | 백엔드 없이 열리는 정적 HTML 대시보드 (화면 검토용) | `mock/` |
+| 목업 | 정적 HTML 대시보드 — 내장 시뮬레이션 또는 실제 백엔드에 붙여서 화면·흐름 검토 (UI 설계는 여기서 먼저 확정해 React 에 이식) | `mock/` |
 
 ## 빠른 시작 (로컬, 커널 없이)
 
-macOS/Windows 에서는 eBPF 를 못 돌리므로 `EVENT_SOURCE=mock` 이 데모 시나리오(정상 컨테이너 2개 + 타이포스쿼팅 패키지
-`pkg-reqeusts` 가 20초마다 공격 3종)를 재생한다.
+macOS/Windows 에서는 eBPF 를 못 돌리므로 `EVENT_SOURCE=mock` 이 데모 시나리오(정상 컨테이너 `web-api`·`worker` + 타이포스쿼팅 패키지
+`pkg-reqeusts` 가 20초마다 공격 3종)를 재생한다. 대시보드 피드는 `/ws/events` 로 실시간 갱신된다.
 
 ```bash
-# 백엔드 (메모리 저장소, :8000)
-cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true go run ./cmd/server
-
-# 프론트엔드 (Vite dev, http://127.0.0.1:5173 → /api·/ws 를 :8000 으로 프록시)
-cd frontend && npm ci && npm run dev
+make dev        # 백엔드(mock, :8000) + Vite(:5173) 를 함께 띄운다 → http://127.0.0.1:5173
 ```
+
+따로 띄우려면 `make backend` / `make frontend`. 백엔드는 `ALLOWED_ORIGINS` 에 Vite 와 목업 출처가 들어간 채로 뜨므로
+목업(`mock/`)의 "실제 백엔드" 모드도 바로 붙는다 (`make mock` → http://127.0.0.1:8766).
 
 전체 스택을 컨테이너로 보려면 (nginx 경유, 저장소는 실제 Postgres·Redis):
 
 ```bash
 cp .env.example .env            # POSTGRES_PASSWORD 채우고 EVENT_SOURCE=mock, HTTP_PORT 조정
-docker compose -p supplyguard-mock --project-directory . \
-  -f deploy/docker-compose.yml -f deploy/docker-compose.mock.yml up -d --build --wait
-curl http://127.0.0.1:${HTTP_PORT:-80}/health
+make stack-up                   # docker compose … -f deploy/docker-compose.yml -f deploy/docker-compose.mock.yml up -d --build --wait
+make stack-down
 ```
 
 개발용 Postgres·Redis 만 필요하면 `docker compose -f deploy/docker-compose.dev.yml up -d`
-(127.0.0.1:25432 / 127.0.0.1:26379).
+(127.0.0.1:25432 / 127.0.0.1:26379). `make test` 가 백엔드 vet·race 테스트와 프론트 lint·build 를 돈다.
 
 ## 운영 배포 (EC2, 실제 eBPF)
 
@@ -85,6 +83,7 @@ EC2 에는 `/home/ubuntu/supplyguard/.env` 가 미리 있어야 한다.
 | GET | `/api/policies` · `/api/policies/export` (YAML) | |
 | POST / PUT / DELETE | `/api/policies` · `/api/policies/{id}` | 토큰 필요 · PUT 은 YAML 전체 교체 |
 | GET | `/api/audit?kind&action&rule&container&since&until&before&limit` | 최신순, `id` 커서 |
+| OPTIONS | (모든 경로) | `ALLOWED_ORIGINS` 에 있는 Origin 에만 CORS 허용 (Vite dev·목업이 REST 를 직접 부를 때) |
 | WS | `/ws/events` | `{type:"verdict"|"stats", data}` — 위반은 전부, 정상은 초당 `NORMAL_EVENT_RATE` 개 |
 
 ## 검증

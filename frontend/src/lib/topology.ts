@@ -1,33 +1,44 @@
-import { detailOf, levelOf, type Level, type Verdict } from './types';
+import { detailOf, levelOf, type Kind, type Level, type Verdict } from './types';
 
 // 토폴로지: 컨테이너 → 프로세스 → (파일 | 외부 목적지)
 export type NodeType = 'container' | 'process' | 'file' | 'dest';
 
-export interface TopoNode {
+// 노드·엣지가 공유하는 누적치. 위반은 kind 별로도 따로 기록해 "공격 체인"(1 exec → 2 open → 3 connect)을 만든다.
+export interface TopoStats {
+  level: Level; // 이 노드/엣지가 유발한 가장 심각한 판정
+  count: number;
+  violations: number;
+  lastSeen: number;
+  rules: Map<string, number>; // 규칙 id → 위반 횟수
+  ruleKinds: Map<string, Kind>; // 규칙 id → 그 규칙의 kind
+  byKind: Partial<Record<Kind, Level>>; // kind 별 최악 판정
+  reason?: string; // 가장 심각한 위반의 사유
+  lastViolation?: number;
+}
+
+export interface TopoNode extends TopoStats {
   id: string;
   type: NodeType;
   label: string;
   container: string;
-  level: Level; // 이 노드가 유발한 가장 심각한 판정
-  count: number;
-  lastSeen: number;
 }
 
-export interface TopoEdge {
+export interface TopoEdge extends TopoStats {
   id: string;
   source: string;
   target: string;
-  kind: 'exec' | 'open' | 'connect';
-  level: Level;
-  count: number;
-  lastSeen: number;
+  kind: Kind;
 }
 
 const RETAIN_MS = 15 * 60_000;
 const MAX_NORMAL_LEAVES = 6; // 컨테이너당 정상 파일/목적지 노드 상한 (위험 노드는 전부 표시)
 
-const severity: Record<Level, number> = { normal: 0, alert: 1, held: 2, killed: 3 };
+export const severity: Record<Level, number> = { normal: 0, alert: 1, held: 2, killed: 3 };
 const worse = (a: Level, b: Level) => (severity[b] > severity[a] ? b : a);
+
+const blank = (now: number): TopoStats => ({
+  level: 'normal', count: 0, violations: 0, lastSeen: now, rules: new Map(), ruleKinds: new Map(), byKind: {},
+});
 
 export class TopologyStore {
   private nodes = new Map<string, TopoNode>();
@@ -37,42 +48,54 @@ export class TopologyStore {
     const e = v.event;
     if (!e.containerName) return;
     const now = new Date(e.timestamp).getTime() || Date.now();
-    const level = levelOf(v);
-    const c = this.touch(`c:${e.containerName}`, 'container', e.containerName, e.containerName, level, now);
-    const p = this.touch(`p:${e.containerName}:${e.comm}`, 'process', e.comm, e.containerName, level, now);
-    this.link(c.id, p.id, 'exec', level, now);
+    const c = this.touch(`c:${e.containerName}`, 'container', e.containerName, e.containerName, now, v);
+    const p = this.touch(`p:${e.containerName}:${e.comm}`, 'process', e.comm, e.containerName, now, v);
+    this.link(c.id, p.id, 'exec', now, v);
     if (e.kind === 'open' && e.path) {
-      const f = this.touch(`f:${e.containerName}:${e.path}`, 'file', e.path, e.containerName, level, now);
-      this.link(p.id, f.id, 'open', level, now);
+      const f = this.touch(`f:${e.containerName}:${e.path}`, 'file', e.path, e.containerName, now, v);
+      this.link(p.id, f.id, 'open', now, v);
     } else if (e.kind === 'connect') {
       const dst = detailOf(e);
-      const d = this.touch(`d:${e.containerName}:${dst}`, 'dest', dst, e.containerName, level, now);
-      this.link(p.id, d.id, 'connect', level, now);
+      const d = this.touch(`d:${e.containerName}:${dst}`, 'dest', dst, e.containerName, now, v);
+      this.link(p.id, d.id, 'connect', now, v);
     }
   }
 
-  private touch(id: string, type: NodeType, label: string, container: string, level: Level, now: number) {
+  private mark(x: TopoStats, now: number, v: Verdict) {
+    const level = levelOf(v);
+    x.count++;
+    x.level = worse(x.level, level);
+    x.lastSeen = Math.max(x.lastSeen, now);
+    if (!v.matched || !v.ruleId) return;
+    const k = v.event.kind;
+    x.violations++;
+    x.rules.set(v.ruleId, (x.rules.get(v.ruleId) ?? 0) + 1);
+    x.ruleKinds.set(v.ruleId, k);
+    x.byKind[k] = worse(x.byKind[k] ?? 'normal', level);
+    if (severity[level] >= severity[x.level] || x.reason === undefined) {
+      x.reason = v.reason;
+      x.lastViolation = now;
+    }
+  }
+
+  private touch(id: string, type: NodeType, label: string, container: string, now: number, v: Verdict) {
     let n = this.nodes.get(id);
     if (!n) {
-      n = { id, type, label, container, level, count: 0, lastSeen: now };
+      n = { id, type, label, container, ...blank(now) };
       this.nodes.set(id, n);
     }
-    n.count++;
-    n.level = worse(n.level, level);
-    n.lastSeen = Math.max(n.lastSeen, now);
+    this.mark(n, now, v);
     return n;
   }
 
-  private link(source: string, target: string, kind: TopoEdge['kind'], level: Level, now: number) {
+  private link(source: string, target: string, kind: Kind, now: number, v: Verdict) {
     const id = `${source}->${target}`;
     let ed = this.edges.get(id);
     if (!ed) {
-      ed = { id, source, target, kind, level, count: 0, lastSeen: now };
+      ed = { id, source, target, kind, ...blank(now) };
       this.edges.set(id, ed);
     }
-    ed.count++;
-    ed.level = worse(ed.level, level);
-    ed.lastSeen = Math.max(ed.lastSeen, now);
+    this.mark(ed, now, v);
   }
 
   // windowMs 안에 보인 노드만, 컨테이너별 정상 말단 노드는 상한까지
@@ -115,4 +138,47 @@ export class TopologyStore {
     for (const [id, n] of this.nodes) if (now - n.lastSeen > RETAIN_MS) this.nodes.delete(id);
     for (const [id, e] of this.edges) if (now - e.lastSeen > RETAIN_MS) this.edges.delete(id);
   }
+}
+
+// 공격 체인: 컨테이너별로 위반을 일으킨 노드를 데모 시나리오 순서로 — 1 실행(exec) → 2 파일(open) → 3 통신(connect)
+export interface ChainStep {
+  kind: Kind;
+  node: TopoNode;
+  level: Level;
+  rules: string[];
+  at: number;
+}
+export interface Chain {
+  container: TopoNode;
+  steps: ChainStep[];
+}
+
+const KIND_ORDER: Record<Kind, number> = { exec: 1, open: 2, connect: 3 };
+
+export function attackChains(nodes: TopoNode[]): Chain[] {
+  const step = (kind: Kind, node: TopoNode): ChainStep => ({
+    kind,
+    node,
+    level: node.byKind[kind] ?? 'normal',
+    rules: [...node.rules.entries()]
+      .filter(([id]) => node.ruleKinds.get(id) === kind)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id]) => id),
+    at: node.lastViolation ?? node.lastSeen,
+  });
+  const out: Chain[] = [];
+  const containers = nodes.filter((n) => n.type === 'container').sort((a, b) => severity[b.level] - severity[a.level]);
+  for (const c of containers) {
+    const steps: ChainStep[] = [];
+    for (const n of nodes) {
+      if (n.container !== c.label) continue;
+      if (n.type === 'process' && n.byKind.exec) steps.push(step('exec', n));
+      if (n.type === 'file' && n.byKind.open) steps.push(step('open', n));
+      if (n.type === 'dest' && n.byKind.connect) steps.push(step('connect', n));
+    }
+    if (!steps.length) continue;
+    steps.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || severity[b.level] - severity[a.level] || a.at - b.at);
+    out.push({ container: c, steps });
+  }
+  return out;
 }

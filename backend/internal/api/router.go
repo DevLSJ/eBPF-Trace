@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -37,7 +38,10 @@ type Deps struct {
 	AdminToken string
 	// AllowAnonymousWrites: ADMIN_TOKEN 없이 정책 변경 허용 (mock 소스 로컬 개발 전용)
 	AllowAnonymousWrites bool
-	Info                 Info
+	// AllowedOrigins: 다른 출처(Vite dev, mock/ 목업)에서 REST 를 직접 부를 때 CORS 로 허용할 Origin.
+	// nginx 뒤 동일 출처 요청에는 Origin 이 없거나 같은 호스트라 영향이 없다. 파일에서 연 페이지는 "null".
+	AllowedOrigins []string
+	Info           Info
 }
 
 // Info: 대시보드가 표시하는 런타임 설정
@@ -65,7 +69,27 @@ func Router(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/policies", h.auth(h.savePolicy))
 	mux.HandleFunc("PUT /api/policies", h.auth(h.replacePolicies))
 	mux.HandleFunc("DELETE /api/policies/{id}", h.auth(h.deletePolicy))
-	return mux
+	return cors(d.AllowedOrigins, mux)
+}
+
+// cors: 허용 목록에 있는 Origin 에만 CORS 헤더를 붙이고 preflight(OPTIONS)에 204 로 답한다.
+func cors(allowed []string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" && slices.Contains(allowed, origin) {
+			hd := w.Header()
+			hd.Set("Access-Control-Allow-Origin", origin)
+			hd.Add("Vary", "Origin")
+			if r.Method == http.MethodOptions {
+				hd.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE")
+				hd.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+				hd.Set("Access-Control-Max-Age", "600")
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 type handlers struct{ Deps }
