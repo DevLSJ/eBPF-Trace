@@ -1,0 +1,20 @@
+# 빌드 컨텍스트 = backend/  (docker build -f deploy/Dockerfile.backend backend)
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+ENV CGO_ENABLED=0 GOFLAGS=-mod=readonly
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -trimpath -ldflags='-s -w' -o /out/server ./cmd/server \
+ && go build -trimpath -ldflags='-s -w' -o /out/healthcheck ./cmd/healthcheck
+
+# 정적 바이너리 + CA 인증서(가젯 이미지 pull) + tzdata 만 있는 최소 이미지. 셸 없음.
+# eBPF 로드·파일시스템 마운트에 root 가 필요해 root 로 실행한다 (컨테이너는 privileged 로 뜬다)
+FROM gcr.io/distroless/static-debian12
+COPY --from=build /out/server /server
+COPY --from=build /out/healthcheck /healthcheck
+COPY policies/default.yaml /policies/default.yaml
+ENV BACKEND_PORT=8000 POLICY_FILE=/policies/default.yaml
+EXPOSE 8000
+HEALTHCHECK --interval=10s --timeout=5s --start-period=40s --retries=6 CMD ["/healthcheck"]
+ENTRYPOINT ["/server"]

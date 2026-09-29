@@ -1,0 +1,14 @@
+# 커널 없이(macOS·CI) 전체 스택을 띄워 보는 오버라이드: 가젯 대신 mock 이벤트 소스.
+#   docker compose -p supplyguard-mock --project-directory . \
+#     -f deploy/docker-compose.yml -f deploy/docker-compose.mock.yml up -d --build
+# 호스트 권한·마운트는 전부 뺀다 (!reset 은 Compose v2.24+).
+services:
+  backend:
+    environment:
+      EVENT_SOURCE: mock
+      ENFORCE_KILL: "true"
+      HOST_ROOT: !reset null
+      DOCKER_HOST: !reset null
+    privileged: false
+    pid: !reset null
+    volumes: !reset []

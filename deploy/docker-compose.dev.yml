@@ -1,0 +1,31 @@
+# 로컬 개발용 Postgres·Redis 만 (백엔드는 go run, 프론트는 vite 로 직접 띄운다).
+#   docker compose -f deploy/docker-compose.dev.yml up -d
+#   DATABASE_URL=postgres://supplyguard:supplyguard-dev@127.0.0.1:25432/supplyguard?sslmode=disable
+#   REDIS_URL=redis://127.0.0.1:26379
+name: supplyguard-dev
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: supplyguard
+      POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-supplyguard-dev}
+      POSTGRES_DB: supplyguard
+    ports: ["127.0.0.1:25432:5432"]
+    volumes: ["postgres_dev_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U supplyguard -d supplyguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:26379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  postgres_dev_data:

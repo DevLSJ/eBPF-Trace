@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+*.pem
+node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+*.tsbuildinfo
+mock/screenshots/
+.DS_Store
+._*

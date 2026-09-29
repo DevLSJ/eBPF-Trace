@@ -1,0 +1,5 @@
+# Dockerfile.backend의 빌드 컨텍스트는 backend/ 이다.
+.git
+**/*_test.go
+**/._*
+.DS_Store

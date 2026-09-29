@@ -1,0 +1,196 @@
+//go:build linux
+
+package ingestion
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/datasource"
+	gadgetcontext "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-context"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators"
+	_ "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/ebpf"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators/formatters"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators/localmanager"
+	ocihandler "github.com/inspektor-gadget/inspektor-gadget/pkg/operators/oci-handler"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/operators/simple"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/runtime/local"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/utils/host"
+
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
+)
+
+// Gadget: 1단계의 `ig run <gadget> --runtimes=docker [--containername=...]`를
+// Go 패키지로 옮긴 것. 가젯마다 gadget context 하나, 런타임·localmanager는 공유한다.
+type Gadget struct {
+	Kinds         []model.Kind
+	ContainerName string
+	dropped       atomic.Uint64
+}
+
+const opPriority = 50000
+
+func (g *Gadget) Run(ctx context.Context, out chan<- model.Event) error {
+	// 컨테이너 안에서 돌 때(HOST_ROOT=/host) bpffs·debugfs·tracefs가 없으면 마운트
+	if err := host.Init(host.Config{AutoMountFilesystems: true}); err != nil {
+		return fmt.Errorf("host init: %w", err)
+	}
+	rt := local.New()
+	if err := rt.Init(nil); err != nil {
+		return fmt.Errorf("runtime init: %w", err)
+	}
+	defer rt.Close()
+
+	// 컨테이너 메타데이터 부착 (docker). host.Init 이후에 초기화해야 한다.
+	lm := localmanager.LocalManagerOperator
+	lmParams := lm.GlobalParamDescs().ToParams()
+	if err := lmParams.Get(localmanager.Runtimes).Set("docker"); err != nil {
+		return err
+	}
+	if err := lm.Init(lmParams); err != nil {
+		return fmt.Errorf("localmanager init: %w", err)
+	}
+	defer lm.Close()
+
+	go g.reportDrops(ctx)
+
+	var wg sync.WaitGroup
+	for _, k := range g.Kinds {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			g.runWithRetry(ctx, rt, lm, k, out)
+		}()
+	}
+	wg.Wait()
+	return ctx.Err()
+}
+
+// runWithRetry: 이미지 pull 실패 등으로 가젯이 멈추면 백오프 후 다시 띄운다.
+func (g *Gadget) runWithRetry(ctx context.Context, rt *local.Runtime, lm operators.DataOperator, k model.Kind, out chan<- model.Event) {
+	backoff := time.Second
+	for ctx.Err() == nil {
+		start := time.Now()
+		slog.Info("gadget starting", "kind", k, "image", GadgetImage[k])
+		err := g.runOne(ctx, rt, lm, k, out)
+		if ctx.Err() != nil {
+			return
+		}
+		if time.Since(start) > time.Minute {
+			backoff = time.Second
+		}
+		slog.Error("gadget stopped; retrying", "kind", k, "err", err, "in", backoff)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, time.Minute)
+	}
+}
+
+func (g *Gadget) runOne(ctx context.Context, rt *local.Runtime, lm operators.DataOperator, k model.Kind, out chan<- model.Event) error {
+	consumer := simple.New("supplyguard-consumer-"+string(k),
+		simple.OnInit(func(gadgetCtx operators.GadgetContext) error {
+			for _, d := range gadgetCtx.GetDataSources() {
+				if err := g.subscribe(d, k, out); err != nil {
+					return err
+				}
+			}
+			return nil
+		}),
+	)
+	gctx := gadgetcontext.New(ctx, GadgetImage[k],
+		gadgetcontext.WithDataOperators(ocihandler.OciHandler, lm, formatters.FormattersOperator, consumer),
+	)
+	params := map[string]string{}
+	if g.ContainerName != "" {
+		params["operator.LocalManager.containername"] = g.ContainerName
+	}
+	if k == model.KindConnect {
+		params["operator.oci.ebpf.connect-only"] = "true"
+	}
+	err := rt.RunGadget(gctx, nil, params)
+	if err == nil {
+		err = errors.New("gadget exited")
+	}
+	return err
+}
+
+// subscribe: 필드 이름은 `ig run <gadget> -o json` 출력 키와 같다.
+func (g *Gadget) subscribe(d datasource.DataSource, k model.Kind, out chan<- model.Event) error {
+	commF := d.GetField("proc.comm")
+	pidF := d.GetField("proc.pid")
+	cNameF := d.GetField("runtime.containerName")
+	cIDF := d.GetField("runtime.containerId")
+	imgF := d.GetField("runtime.containerImageName")
+	argsF := d.GetField("args")        // exec
+	fnameF := d.GetField("fname")      // open
+	dstAddrF := d.GetField("dst.addr") // connect (l4endpoint → addr/port)
+	dstPortF := d.GetField("dst.port") // connect
+	if commF == nil || cIDF == nil {
+		return fmt.Errorf("datasource %q: proc.comm/runtime.containerId 필드 없음", d.Name())
+	}
+
+	str := func(f datasource.FieldAccessor, data datasource.Data) string {
+		if f == nil {
+			return ""
+		}
+		s, _ := f.String(data)
+		return s
+	}
+
+	return d.Subscribe(func(_ datasource.DataSource, data datasource.Data) error {
+		ev := model.Event{
+			Kind:          k,
+			Timestamp:     time.Now().UTC(),
+			ContainerID:   str(cIDF, data),
+			ContainerName: str(cNameF, data),
+			ImageName:     str(imgF, data),
+			Comm:          str(commF, data),
+		}
+		if pidF != nil {
+			ev.Pid, _ = pidF.Uint32(data)
+		}
+		switch k {
+		case model.KindExec:
+			if argsF != nil {
+				b, _ := argsF.Bytes(data)
+				ev.Args = cleanArgs(b)
+			}
+		case model.KindOpen:
+			ev.Path = str(fnameF, data)
+		case model.KindConnect:
+			ev.DstIP = str(dstAddrF, data)
+			if dstPortF != nil {
+				ev.DstPort, _ = dstPortF.Uint16(data)
+			}
+		}
+		if !send(out, ev) {
+			g.dropped.Add(1)
+		}
+		return nil
+	}, opPriority)
+}
+
+func (g *Gadget) reportDrops(ctx context.Context) {
+	t := time.NewTicker(30 * time.Second)
+	defer t.Stop()
+	var last uint64
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if n := g.dropped.Load(); n != last {
+				slog.Warn("events dropped by backpressure", "total", n, "since_last", n-last)
+				last = n
+			}
+		}
+	}
+}

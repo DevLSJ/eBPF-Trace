@@ -1,0 +1,40 @@
+# SupplyGuard 기본 정책 — DB(policies 테이블)가 비어 있을 때 한 번 시드된다.
+# 이후 변경은 대시보드 정책 화면(POST /api/policies)에서 한다.
+# 전역 ENFORCE_KILL=false 이면 action: kill 도 알림만 보낸다.
+rules:
+  - id: sensitive-files
+    description: 자격 증명·계정 파일 접근 (데모 시나리오 2)
+    kind: open
+    action: kill
+    denyPaths:
+      - /etc/shadow
+      - /etc/gshadow
+      - /root/.ssh/
+      - /home/*/.ssh/*
+      - /root/.aws/
+      - /var/run/secrets/
+
+  - id: no-shell-download
+    description: 설치 스크립트 없이 컨테이너 안에서 외부 스크립트 내려받기 (데모 시나리오 1)
+    kind: exec
+    action: kill
+    denyComms: [wget, curl, nc, ncat]
+
+  - id: pipe-to-shell
+    description: 내려받은 내용을 바로 셸에 넘기는 패턴
+    kind: exec
+    action: kill
+    denyArgs: ["| sh", "|sh", "| bash", "|bash", "base64 -d"]
+
+  - id: reverse-shell-ports
+    description: 리버스 셸에 흔한 포트로 나가는 연결
+    kind: connect
+    action: kill
+    denyPorts: [4444, 1337, 31337]
+
+  - id: egress-allowlist
+    description: 내부망이 아니면서 허용 포트(HTTP·HTTPS·DNS)도 아닌 아웃바운드 연결 (데모 시나리오 3)
+    kind: connect
+    action: alert
+    allowPorts: [80, 443, 53]
+    allowCidrs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, "::1"]

@@ -1,0 +1,154 @@
+name: CI/CD Pipeline
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore: ['docs/**', 'README.md', 'mock/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: Test backend and build dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Vet, test and static-build backend
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          GOOS=linux go vet ./...
+          go test -race ./...
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/server
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/healthcheck
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Lint and build dashboard
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+      - name: Validate compose files
+        run: |
+          set -euo pipefail
+          printf 'POSTGRES_DB=ci\nPOSTGRES_USER=ci\nPOSTGRES_PASSWORD=ci-only\nPUBLIC_HOST=example.invalid\n' > .env
+          docker compose -p supplyguard --project-directory . -f deploy/docker-compose.yml config --quiet
+          docker compose -p supplyguard --project-directory . -f deploy/docker-compose.yml -f deploy/docker-compose.https.yml config --quiet
+          docker compose -p supplyguard --project-directory . -f deploy/docker-compose.yml -f deploy/docker-compose.mock.yml config --quiet
+          rm -f .env
+
+  images:
+    name: Build images off the production server
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    env:
+      REGISTRY: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build and push amd64 release images
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY"
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$REGISTRY" --password-stdin
+          docker build --pull -f deploy/Dockerfile.backend -t "$REGISTRY/supplyguard-backend:$GITHUB_SHA" backend
+          docker build --pull -f deploy/Dockerfile.frontend -t "$REGISTRY/supplyguard-frontend:$GITHUB_SHA" frontend
+          # 이미지가 실제로 기동하는지: mock 소스로 띄워 /health 확인
+          cid=$(docker run -d -e EVENT_SOURCE=mock "$REGISTRY/supplyguard-backend:$GITHUB_SHA")
+          for i in $(seq 1 15); do
+            if [ "$(docker inspect -f '{{.State.Health.Status}}' "$cid")" = healthy ]; then break; fi
+            sleep 2
+          done
+          docker inspect -f '{{.State.Health.Status}}' "$cid" | grep -qx healthy
+          docker rm -f "$cid" >/dev/null
+          docker push "$REGISTRY/supplyguard-backend:$GITHUB_SHA"
+          docker push "$REGISTRY/supplyguard-frontend:$GITHUB_SHA"
+      - name: Remove registry credentials
+        if: always()
+        run: docker logout
+
+  deploy:
+    name: Deploy verified images on EC2
+    needs: images
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: self-hosted
+    timeout-minutes: 20
+    environment: production
+    env:
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+      EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+      REGISTRY: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Configure pinned SSH host and release archive
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY" && test -n "$EC2_KNOWN_HOSTS"
+          [[ "$REGISTRY" =~ ^[a-z0-9][a-z0-9_-]+$ ]]
+          mkdir -p "$RUNNER_TEMP/sg-ssh"
+          chmod 700 "$RUNNER_TEMP/sg-ssh"
+          printf '%s\n' "$EC2_SSH_KEY" > "$RUNNER_TEMP/sg-ssh/key"
+          printf '%s\n' "$EC2_KNOWN_HOSTS" > "$RUNNER_TEMP/sg-ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/sg-ssh/key"
+          git archive --format=tar.gz -o "$RUNNER_TEMP/release.tgz" HEAD
+      - name: Upload verified source
+        run: |
+          set -euo pipefail
+          ssh -i "$RUNNER_TEMP/sg-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/sg-ssh/known_hosts" -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" "mkdir -p /home/ubuntu/supplyguard-releases/$GITHUB_SHA"
+          scp -i "$RUNNER_TEMP/sg-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/sg-ssh/known_hosts" -o StrictHostKeyChecking=yes "$RUNNER_TEMP/release.tgz" "$EC2_USER@$EC2_HOST:/home/ubuntu/supplyguard-releases/$GITHUB_SHA/source.tgz"
+      - name: Registry login on EC2
+        run: |
+          set -euo pipefail
+          printf '%s' "$DOCKERHUB_TOKEN" | ssh -i "$RUNNER_TEMP/sg-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/sg-ssh/known_hosts" -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" "docker login -u '$REGISTRY' --password-stdin"
+      - name: Pull images and deploy the exact commit
+        run: |
+          set -euo pipefail
+          ssh -i "$RUNNER_TEMP/sg-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/sg-ssh/known_hosts" -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" bash -s -- "$GITHUB_SHA" "$REGISTRY" <<'REMOTE'
+          set -euo pipefail
+          export IMAGE_TAG="$1" DOCKERHUB_USERNAME="$2"
+          cd "/home/ubuntu/supplyguard-releases/$IMAGE_TAG"
+          tar -xzf source.tgz
+          # 운영 .env 는 릴리스 밖(/home/ubuntu/supplyguard/.env)에 한 번만 두고 링크한다
+          test -s /home/ubuntu/supplyguard/.env
+          ln -sfn /home/ubuntu/supplyguard/.env .env
+          # 링크된 .env 에 IMAGE_TAG/DOCKERHUB_USERNAME 이 있으면 compose 가 그 값을 우선하므로 셸 환경으로 덮어쓴다
+          docker compose -p supplyguard --project-directory . -f deploy/docker-compose.yml config --quiet
+          df -Pm / | awk 'NR==2 && $4 < 900 { print "insufficient disk: " $4 " MiB"; exit 1 }'
+          docker compose -p supplyguard --project-directory . -f deploy/docker-compose.yml pull backend frontend
+          bash deploy/deploy.sh </dev/null
+          ln -sfn "/home/ubuntu/supplyguard-releases/$IMAGE_TAG" /home/ubuntu/supplyguard-current
+          test "$(readlink /home/ubuntu/supplyguard-current)" = "/home/ubuntu/supplyguard-releases/$IMAGE_TAG"
+          docker image prune -f >/dev/null
+          REMOTE
+      - name: Remove temporary credentials
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/sg-ssh/key" "$RUNNER_TEMP/sg-ssh/known_hosts"

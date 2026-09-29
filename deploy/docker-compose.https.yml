@@ -1,0 +1,22 @@
+# HTTPS_ENABLED=true 일 때 deploy.sh 가 덧붙인다. Caddy 가 443 을 받고 nginx 와 같은 라우팅을 한다.
+services:
+  https:
+    image: caddy:2.11.4-alpine
+    ports:
+      - "443:443"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?Set PUBLIC_HOST for HTTPS}
+    volumes:
+      - ./deploy/nginx/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
