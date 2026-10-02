@@ -5,10 +5,33 @@ import { env } from './env.js';
 import { logger } from './logger.js';
 import { healthReport } from './health.js';
 import { attachWs } from './ws.js';
+import { login, logout, me } from './auth.js';
 
 const app = express();
 app.use(pinoHttp({ logger }));
+
+// 로컬 개발: web(3000) ↔ gateway(4000) 교차 출처 + 쿠키 허용
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'content-type');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
 app.use(express.json());
+
+// 인증 (docs/05 §1.5)
+app.post('/api/auth/login', login);
+app.post('/api/auth/logout', logout);
+app.get('/api/auth/me', me);
 
 app.get('/health', async (_req, res) => {
   const report = await healthReport();
