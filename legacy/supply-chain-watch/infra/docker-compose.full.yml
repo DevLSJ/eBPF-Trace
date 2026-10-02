@@ -1,0 +1,58 @@
+# EC2 전체 스택 (docs/09 ADR-010). 로컬 개발은 docker-compose.yml(인프라만)+pnpm dev 사용.
+name: scw-full
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: capstone
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-capstone}
+      POSTGRES_DB: capstone
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U capstone -d capstone"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  engine:
+    build: { context: .., dockerfile: apps/engine/Dockerfile }
+    env_file: [../.env]
+    environment:
+      ENGINE_PORT: 8000
+    depends_on: { postgres: { condition: service_healthy } }
+
+  gateway:
+    build: { context: .., dockerfile: apps/gateway/Dockerfile }
+    env_file: [../.env]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://capstone:${POSTGRES_PASSWORD:-capstone}@postgres:5432/capstone
+      REDIS_URL: redis://redis:6379/0
+      ENGINE_URL: http://engine:8000
+    ports: ["4000:4000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      engine: { condition: service_started }
+
+  web:
+    build: { context: .., dockerfile: apps/web/Dockerfile }
+    environment:
+      NEXT_PUBLIC_GATEWAY_URL: ${PUBLIC_GATEWAY_URL:-http://localhost:4000}
+      NEXT_PUBLIC_WS_URL: ${PUBLIC_WS_URL:-ws://localhost:4000/ws}
+    ports: ["3000:3000"]
+    depends_on: { gateway: { condition: service_started } }
+
+volumes:
+  pgdata:
+  redisdata:

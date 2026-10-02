@@ -17,7 +17,8 @@
     "dev:engine": "bash -c 'cd apps/engine && uv run uvicorn app.main:app --reload --port ${ENGINE_PORT:-8000}'",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
-    "migrate": "pnpm --filter @scw/gateway migrate"
+    "migrate": "pnpm --filter @scw/gateway migrate",
+    "tunnel": "bash scripts/tunnel.sh"
   },
   "devDependencies": {
     "typescript": "^5.6.3"
