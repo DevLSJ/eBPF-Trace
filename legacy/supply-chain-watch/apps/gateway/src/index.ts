@@ -7,6 +7,8 @@ import { healthReport } from './health.js';
 import { attachWs } from './ws.js';
 import { login, logout, me, requireAuth } from './auth.js';
 import { reposRouter } from './routes/repos.js';
+import { PollingScheduler } from './collector/polling.js';
+import { handleNewCommit } from './collector/handle.js';
 
 const app = express();
 app.use(pinoHttp({ logger }));
@@ -50,13 +52,19 @@ app.get('/api/health', async (_req, res) => {
 const server = createServer(app);
 attachWs(server);
 
+const scheduler = new PollingScheduler((repo, sha, branch) =>
+  handleNewCommit(repo, sha, branch, 'polling_events'),
+);
+
 server.listen(env.GATEWAY_PORT, () => {
   logger.info(`[gateway] listening on :${env.GATEWAY_PORT} (ws /ws, engine ${env.ENGINE_URL})`);
+  scheduler.start();
 });
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {
     logger.info(`[gateway] ${sig} received, shutting down`);
+    scheduler.stop();
     server.close(() => process.exit(0));
   });
 }
