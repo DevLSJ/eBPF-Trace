@@ -5,7 +5,8 @@ import { env } from './env.js';
 import { logger } from './logger.js';
 import { healthReport } from './health.js';
 import { attachWs } from './ws.js';
-import { login, logout, me } from './auth.js';
+import { login, logout, me, requireAuth } from './auth.js';
+import { reposRouter } from './routes/repos.js';
 
 const app = express();
 app.use(pinoHttp({ logger }));
@@ -32,6 +33,9 @@ app.use(express.json());
 app.post('/api/auth/login', login);
 app.post('/api/auth/logout', logout);
 app.get('/api/auth/me', me);
+
+// 보호 API (docs/05 §1)
+app.use('/api/repos', requireAuth, reposRouter);
 
 app.get('/health', async (_req, res) => {
   const report = await healthReport();
