@@ -7,6 +7,8 @@ import { healthReport } from './health.js';
 import { attachWs } from './ws.js';
 import { login, logout, me, requireAuth } from './auth.js';
 import { reposRouter } from './routes/repos.js';
+import { commitsRouter } from './routes/commits.js';
+import { statsRouter } from './routes/stats.js';
 import { PollingScheduler } from './collector/polling.js';
 import { handleNewCommit } from './collector/handle.js';
 import { analysisQueue } from './analysis/index.js';
@@ -39,6 +41,8 @@ app.get('/api/auth/me', me);
 
 // 보호 API (docs/05 §1)
 app.use('/api/repos', requireAuth, reposRouter);
+app.use('/api/commits', requireAuth, commitsRouter);
+app.use('/api/stats', requireAuth, statsRouter);
 
 app.get('/health', async (_req, res) => {
   const report = await healthReport();
