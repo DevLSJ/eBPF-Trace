@@ -8,7 +8,7 @@ config({ path: resolve(process.cwd(), '../../.env') });
 const schema = z.object({
   GATEWAY_PORT: z.coerce.number().default(4000),
   ENGINE_URL: z.string().url().default('http://localhost:8000'),
-  DATABASE_URL: z.string().default('postgresql://capstone:capstone@localhost:5432/capstone'),
+  DATABASE_URL: z.string().default('postgresql://capstone:capstone@localhost:5433/capstone'),
   REDIS_URL: z.string().default('redis://localhost:6379/0'),
   GITHUB_TOKEN: z.string().optional(),
   GITHUB_WEBHOOK_SECRET: z.string().optional(),

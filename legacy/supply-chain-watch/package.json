@@ -4,7 +4,9 @@
   "private": true,
   "description": "LLM 기반 오픈소스 커밋 실시간 악성 행위 탐지 시스템",
   "packageManager": "pnpm@9.12.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build:types": "pnpm --filter @scw/shared-types build",
     "typecheck": "pnpm -r --if-present typecheck",
@@ -12,7 +14,10 @@
     "dev": "bash scripts/dev.sh",
     "dev:gateway": "pnpm --filter @scw/gateway dev",
     "dev:web": "pnpm --filter @scw/web dev",
-    "dev:engine": "bash -c 'cd apps/engine && uv run uvicorn app.main:app --reload --port ${ENGINE_PORT:-8000}'"
+    "dev:engine": "bash -c 'cd apps/engine && uv run uvicorn app.main:app --reload --port ${ENGINE_PORT:-8000}'",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "migrate": "pnpm --filter @scw/gateway migrate"
   },
   "devDependencies": {
     "typescript": "^5.6.3"
