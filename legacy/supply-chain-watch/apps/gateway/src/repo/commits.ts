@@ -74,3 +74,14 @@ export function fromCommitDetail(
     })),
   };
 }
+
+export async function updateCommitDiff(
+  commitId: number,
+  d: { diffText: string; diffHash: string; sizeBytes: number; truncated: boolean; filesJson: unknown; filesChanged: number; additions: number; deletions: number },
+): Promise<void> {
+  await pool.query(
+    `UPDATE commits SET diff_text=$2, diff_hash=$3, diff_size_bytes=$4, diff_truncated=$5,
+       files_json=$6, files_changed=$7, additions=$8, deletions=$9 WHERE id=$1`,
+    [commitId, d.diffText, d.diffHash, d.sizeBytes, d.truncated, JSON.stringify(d.filesJson), d.filesChanged, d.additions, d.deletions],
+  );
+}
