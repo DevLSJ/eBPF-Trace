@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 디자인 토큰 — docs/prototype/dashboard.html :root 이식 (라이트 세미플랫 + 인디고) */
+:root {
+  --bg: #f6f7fa; --surface: #ffffff; --surface-2: #f1f3f8; --line: #e4e7ef; --line-strong: #cfd4e0;
+  --fg: #111827; --fg-2: #4b5563; --fg-3: #8a93a6;
+  --accent: #4f46e5; --accent-soft: #eef0fd; --accent-ink: #3730a3;
+  --crit: #d03b3b; --crit-soft: #fdecec; --crit-ink: #9f2727;
+  --warn: #d98c08; --warn-soft: #fff4dc; --warn-ink: #8a5a00;
+  --good: #0ca30c; --good-soft: #e7f7e7; --good-ink: #0a6b0a;
+  --info: #2a78d6; --info-soft: #e8f1fc;
+  --shadow: 0 1px 2px rgba(17,24,39,.04), 0 1px 1px rgba(17,24,39,.03);
+  --font-sans: "IBM Plex Sans KR", -apple-system, "Apple SD Gothic Neo", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1117; --surface: #171a22; --surface-2: #1e222c; --line: #2a2f3b; --line-strong: #3a4050;
+    --fg: #f3f4f6; --fg-2: #c3c8d3; --fg-3: #8a93a6;
+    --accent: #8b86f2; --accent-soft: #262649; --accent-ink: #c7c4ff;
+    --crit: #e66767; --crit-soft: #3a1f1f; --crit-ink: #ffb3b3;
+    --warn: #fab219; --warn-soft: #3a2d12; --warn-ink: #ffd98a;
+    --good: #2fbf2f; --good-soft: #153a15; --good-ink: #9fe29f;
+    --info: #5b9ae6; --info-soft: #1b2b44; --shadow: none;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1117; --surface: #171a22; --surface-2: #1e222c; --line: #2a2f3b; --line-strong: #3a4050;
+  --fg: #f3f4f6; --fg-2: #c3c8d3; --fg-3: #8a93a6;
+  --accent: #8b86f2; --accent-soft: #262649; --accent-ink: #c7c4ff;
+  --crit: #e66767; --crit-soft: #3a1f1f; --crit-ink: #ffb3b3;
+  --warn: #fab219; --warn-soft: #3a2d12; --warn-ink: #ffd98a;
+  --good: #2fbf2f; --good-soft: #153a15; --good-ink: #9fe29f;
+  --info: #5b9ae6; --info-soft: #1b2b44; --shadow: none;
+  color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); }

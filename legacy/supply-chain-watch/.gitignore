@@ -24,3 +24,8 @@ __pycache__/
 # local data
 data/
 *.db
+
+# next
+.next/
+next-env.d.ts
+*.tsbuildinfo
