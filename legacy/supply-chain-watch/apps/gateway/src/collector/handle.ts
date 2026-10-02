@@ -6,6 +6,7 @@ import { fromCommitDetail, insertCommit, updateCommitDiff } from '../repo/commit
 import { broadcast } from '../ws.js';
 import { seenBefore } from './dedup.js';
 import { preprocessDiff, type InputFile } from './preprocess.js';
+import { analysisQueue } from '../analysis/index.js';
 
 export async function handleNewCommit(
   repo: RepoRow,
@@ -39,11 +40,11 @@ export async function handleNewCommit(
       sha, shortSha: sha.slice(0, 7), branch, source, status: 'QUEUED',
       filesChanged: pre.files.length, sensitiveFiles: pre.sensitiveFiles, truncated: pre.truncated,
     });
+    await analysisQueue.enqueue({ commitId: inserted.id, repoFullName: repo.full_name, sha });
     logger.info(
       { repo: repo.full_name, sha: sha.slice(0, 7), source, files: pre.files.length, sensitive: pre.sensitiveFiles.length, bytes: pre.sizeBytes },
-      'new commit processed',
+      'new commit processed + enqueued',
     );
-    // feature 5: enqueue(inserted.id)
   } catch (err) {
     logger.warn({ repo: repo.full_name, sha: sha.slice(0, 7), err: (err as Error).message }, 'handleNewCommit failed');
   }

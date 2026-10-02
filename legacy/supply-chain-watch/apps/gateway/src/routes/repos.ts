@@ -6,7 +6,7 @@ import { logger } from '../logger.js';
 import {
   deleteRepo, insertRepo, listRepos, updateRepo, type RepoRow,
 } from '../repo/repos.js';
-import { fromCommitDetail, insertCommit } from '../repo/commits.js';
+import { handleNewCommit } from '../collector/handle.js';
 import { broadcast } from '../ws.js';
 
 export const reposRouter: ExpressRouter = Router();
@@ -103,14 +103,9 @@ reposRouter.delete('/:id', async (req, res) => {
 async function backfill(repo: RepoRow, owner: string, name: string, branch: string): Promise<void> {
   try {
     const recent = await github.getRecentCommits(owner, name, { perPage: 5, sha: branch });
-    for (const item of recent.data ?? []) {
-      // list 응답엔 files가 없으므로 상세로 보강
-      const detail = await github.getCommitDetail(owner, name, item.sha);
-      if (!detail.data) continue;
-      const inserted = await insertCommit(fromCommitDetail(repo.id, branch, 'backfill', detail.data));
-      if (inserted?.inserted) {
-        broadcast('commit.received', { repoId: repo.id, repoFullName: repo.full_name, sha: detail.data.sha, source: 'backfill' });
-      }
+    // 오래된 것부터 처리(피드 순서) — dedup·diff·enqueue는 handleNewCommit이 담당
+    for (const item of [...(recent.data ?? [])].reverse()) {
+      await handleNewCommit(repo, item.sha, branch, 'backfill');
     }
     logger.info({ repo: repo.full_name }, 'backfill done');
   } catch (err) {

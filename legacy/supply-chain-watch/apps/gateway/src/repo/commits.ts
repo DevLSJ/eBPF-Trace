@@ -85,3 +85,37 @@ export async function updateCommitDiff(
     [commitId, d.diffText, d.diffHash, d.sizeBytes, d.truncated, JSON.stringify(d.filesJson), d.filesChanged, d.additions, d.deletions],
   );
 }
+
+export interface CommitForAnalysis {
+  id: number;
+  repo_full_name: string;
+  owner: string;
+  name: string;
+  sha: string;
+  branch: string | null;
+  author_login: string | null;
+  author_name: string | null;
+  message: string;
+  committed_at: string | null;
+  html_url: string;
+  diff_text: string | null;
+  files_json: unknown;
+  always_llm: boolean;
+  default_branch: string | null;
+  stars: number | null;
+}
+
+export async function loadCommitForAnalysis(commitId: number): Promise<CommitForAnalysis | null> {
+  const { rows } = await pool.query<CommitForAnalysis>(
+    `SELECT c.id, r.full_name AS repo_full_name, r.owner, r.name, c.sha, c.branch,
+            c.author_login, c.author_name, c.message, c.committed_at, c.html_url,
+            c.diff_text, c.files_json, r.always_llm, r.default_branch, r.stars
+     FROM commits c JOIN repositories r ON r.id = c.repo_id WHERE c.id = $1`,
+    [commitId],
+  );
+  return rows[0] ?? null;
+}
+
+export async function setCommitStatus(commitId: number, status: CommitStatus): Promise<void> {
+  await pool.query(`UPDATE commits SET status = $2 WHERE id = $1`, [commitId, status]);
+}

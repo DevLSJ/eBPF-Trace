@@ -9,6 +9,7 @@ import { login, logout, me, requireAuth } from './auth.js';
 import { reposRouter } from './routes/repos.js';
 import { PollingScheduler } from './collector/polling.js';
 import { handleNewCommit } from './collector/handle.js';
+import { analysisQueue } from './analysis/index.js';
 
 const app = express();
 app.use(pinoHttp({ logger }));
@@ -59,12 +60,14 @@ const scheduler = new PollingScheduler((repo, sha, branch) =>
 server.listen(env.GATEWAY_PORT, () => {
   logger.info(`[gateway] listening on :${env.GATEWAY_PORT} (ws /ws, engine ${env.ENGINE_URL})`);
   scheduler.start();
+  void analysisQueue.start();
 });
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {
     logger.info(`[gateway] ${sig} received, shutting down`);
     scheduler.stop();
+    void analysisQueue.stop();
     server.close(() => process.exit(0));
   });
 }
