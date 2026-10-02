@@ -115,3 +115,8 @@ export async function updateSyncState(
     [id, s.etag ?? null, s.lastEventId ?? null, s.status ?? null, s.rateLimitRemaining ?? null, s.nextPollAt ?? null, s.lastError ?? null],
   );
 }
+
+export async function getRepoByFullName(owner: string, name: string): Promise<RepoRow | null> {
+  const { rows } = await pool.query<RepoRow>(`SELECT ${COLS} FROM repositories WHERE owner = $1 AND name = $2`, [owner, name]);
+  return rows[0] ?? null;
+}

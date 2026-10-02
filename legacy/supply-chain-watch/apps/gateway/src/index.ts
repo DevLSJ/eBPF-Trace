@@ -9,6 +9,7 @@ import { login, logout, me, requireAuth } from './auth.js';
 import { reposRouter } from './routes/repos.js';
 import { commitsRouter } from './routes/commits.js';
 import { statsRouter } from './routes/stats.js';
+import { githubWebhook } from './collector/webhook.js';
 import { PollingScheduler } from './collector/polling.js';
 import { handleNewCommit } from './collector/handle.js';
 import { analysisQueue } from './analysis/index.js';
@@ -32,7 +33,10 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.json());
+app.use(express.json({ verify: (req, _res, buf) => { (req as express.Request & { rawBody?: Buffer }).rawBody = buf; } }));
+
+// GitHub Webhook (공개, 서명 검증). /api 프리픽스 없음
+app.post('/webhooks/github', githubWebhook);
 
 // 인증 (docs/05 §1.5)
 app.post('/api/auth/login', login);
