@@ -14,6 +14,7 @@ const schema = z.object({
   GITHUB_WEBHOOK_SECRET: z.string().optional(),
   ADMIN_PASSWORD: z.string().optional(),
   SESSION_SECRET: z.string().default('dev-secret-change-me'),
+  AGENT_TOKEN: z.string().optional(), // 런타임 에이전트 /agent-ws 인증 (docs/13 §3.2)
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
 

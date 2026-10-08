@@ -1,0 +1,17 @@
+{
+  "name": "carrot-pay-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "공격 시연용 모사 결제 서비스 (docs/13 §8). 실제 결제·외부 전송 없음.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.1",
+    "ioredis": "^5.4.1",
+    "pg": "^8.13.1",
+    "pay-analytics-demo": "file:vendor/pay-analytics-demo"
+  }
+}

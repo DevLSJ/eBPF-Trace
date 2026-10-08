@@ -4,11 +4,13 @@ import { pinoHttp } from 'pino-http';
 import { env } from './env.js';
 import { logger } from './logger.js';
 import { healthReport } from './health.js';
-import { attachWs } from './ws.js';
+import { handleWebUpgrade } from './ws.js';
+import { attachAgentWs, handleAgentUpgrade } from './runtime/agentWs.js';
 import { login, logout, me, requireAuth } from './auth.js';
 import { reposRouter } from './routes/repos.js';
 import { commitsRouter } from './routes/commits.js';
 import { statsRouter } from './routes/stats.js';
+import { runtimeRouter } from './routes/runtime.js';
 import { githubWebhook } from './collector/webhook.js';
 import { PollingScheduler } from './collector/polling.js';
 import { handleNewCommit } from './collector/handle.js';
@@ -47,6 +49,7 @@ app.get('/api/auth/me', me);
 app.use('/api/repos', requireAuth, reposRouter);
 app.use('/api/commits', requireAuth, commitsRouter);
 app.use('/api/stats', requireAuth, statsRouter);
+app.use('/api/runtime', requireAuth, runtimeRouter);
 
 app.get('/health', async (_req, res) => {
   const report = await healthReport();
@@ -59,7 +62,15 @@ app.get('/api/health', async (_req, res) => {
 });
 
 const server = createServer(app);
-attachWs(server);
+attachAgentWs();
+
+// WS 업그레이드 경로 라우팅: /ws(web) · /agent-ws(에이전트). 그 외는 거절.
+server.on('upgrade', (req, socket, head) => {
+  const pathname = new URL(req.url ?? '', 'http://localhost').pathname;
+  if (pathname === '/ws') handleWebUpgrade(req, socket, head);
+  else if (pathname === '/agent-ws') handleAgentUpgrade(req, socket, head);
+  else socket.destroy();
+});
 
 const scheduler = new PollingScheduler((repo, sha, branch) =>
   handleNewCommit(repo, sha, branch, 'polling_events'),

@@ -144,7 +144,10 @@ export type WsEventType =
   | 'stats.tick'
   | 'alert.sent'
   | 'agent.tick'
-  | 'fix.completed';
+  | 'fix.completed'
+  | 'runtime.incident'
+  | 'runtime.topology'
+  | 'runtime.action';
 
 export interface WsEnvelope<T = unknown> {
   type: WsEventType;
@@ -163,4 +166,63 @@ export interface HealthReport {
   service: string;
   checks: Record<string, { ok: boolean; detail?: string; latencyMs?: number }>;
   ts: string;
+}
+
+// ===== 런타임 축 (eBPF, docs/13) =====
+export type RuntimeRuleId =
+  | 'PROC_CHAIN_SUSPECT'
+  | 'NET_UNALLOWED_CONNECT'
+  | 'TOOL_EXEC_IN_CONTAINER'
+  | 'TMP_EXEC';
+
+export interface SbomComponent {
+  purl: string;
+  name?: string;
+  version?: string;
+  ecosystem?: string;
+}
+
+export interface RuntimeEvent {
+  id: number;
+  incidentKey: string;
+  container: string;
+  image?: string;
+  kind: 'EXECVE' | 'CONNECT';
+  pid?: number;
+  ppid?: number;
+  comm?: string;
+  filename?: string;
+  destIp?: string;
+  destPort?: number;
+  ruleId: RuntimeRuleId;
+  riskLevel: RiskLevel;
+  purl?: string;
+  commitSha?: string;
+  createdAt: string;
+}
+
+export interface RuntimeIncident {
+  incidentKey: string;
+  container: string;
+  image?: string;
+  riskLevel: RiskLevel;
+  score: number;
+  rules: RuntimeRuleId[];
+  purl?: string;
+  commitSha?: string;
+  blocked: boolean;
+  firstAt: string;
+  lastAt: string;
+  eventCount: number;
+}
+
+export interface RuntimeAction {
+  id: number;
+  incidentKey: string;
+  container: string;
+  action: 'KILL_PROCESS' | 'BLOCK_DEST';
+  target?: string;
+  status: 'REQUESTED' | 'DONE' | 'FAILED';
+  result?: string;
+  createdAt: string;
 }

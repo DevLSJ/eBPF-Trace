@@ -1,0 +1,14 @@
+# Docker 빌드 컨텍스트에서 제외 (context: .. 를 쓰는 compose들 공통)
+**/node_modules
+**/.next
+**/dist
+**/.venv
+**/__pycache__
+**/*.pyc
+.git
+docs/prototype/assets
+scripts
+corpus
+**/.env
+**/.env.*
+!**/.env.example
