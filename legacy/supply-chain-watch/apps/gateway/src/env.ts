@@ -15,6 +15,7 @@ const schema = z.object({
   ADMIN_PASSWORD: z.string().optional(),
   SESSION_SECRET: z.string().default('dev-secret-change-me'),
   AGENT_TOKEN: z.string().optional(), // 런타임 에이전트 /agent-ws 인증 (docs/13 §3.2)
+  RUNTIME_EDGE_URL: z.string().url().default('http://localhost:8088'), // 모사 스택 입구(공격 시연 트리거)
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });
 

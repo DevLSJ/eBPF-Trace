@@ -29,10 +29,11 @@ type Resolver struct {
 	http       *http.Client
 	cgroupRoot string
 
-	mu      sync.RWMutex
-	byCID   map[string]*Container // containerID → meta
-	byCg    map[uint64]*Container // cgroup id(inode) → meta
-	byName  map[string]*Container
+	mu       sync.RWMutex
+	byCID    map[string]*Container // containerID → meta
+	byCg     map[uint64]*Container // cgroup id(inode) → meta
+	byName   map[string]*Container
+	cgPaths  map[string]string // container name → 대표 cgroup 디렉터리(connect4 부착용)
 }
 
 func newResolver() *Resolver {
@@ -54,6 +55,7 @@ func newResolver() *Resolver {
 		byCID:      map[string]*Container{},
 		byCg:       map[uint64]*Container{},
 		byName:     map[string]*Container{},
+		cgPaths:    map[string]string{},
 	}
 }
 
@@ -99,6 +101,7 @@ func (r *Resolver) refresh(ctx context.Context) error {
 	}
 	// cgroupfs를 훑어 추적 컨테이너 id가 경로에 든 디렉터리의 inode를 cgroup id로 매핑.
 	byCg := map[uint64]*Container{}
+	cgPaths := map[string]string{}
 	_ = filepath.WalkDir(r.cgroupRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || !d.IsDir() {
 			return nil
@@ -110,12 +113,16 @@ func (r *Resolver) refresh(ctx context.Context) error {
 						byCg[st.Ino] = c
 					}
 				}
+				// 대표 cgroup 경로 = 가장 짧은(최상위 컨테이너) 경로
+				if cur, ok := cgPaths[c.Name]; !ok || len(p) < len(cur) {
+					cgPaths[c.Name] = p
+				}
 			}
 		}
 		return nil
 	})
 	r.mu.Lock()
-	r.byCID, r.byName, r.byCg = byCID, byName, byCg
+	r.byCID, r.byName, r.byCg, r.cgPaths = byCID, byName, byCg, cgPaths
 	r.mu.Unlock()
 	return nil
 }
@@ -125,6 +132,16 @@ func (r *Resolver) lookup(cgroupID uint64) (*Container, bool) {
 	c, ok := r.byCg[cgroupID]
 	r.mu.RUnlock()
 	return c, ok
+}
+
+func (r *Resolver) cgroupDirs() map[string]string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make(map[string]string, len(r.cgPaths))
+	for k, v := range r.cgPaths {
+		out[k] = v
+	}
+	return out
 }
 
 func (r *Resolver) containers() []*Container {

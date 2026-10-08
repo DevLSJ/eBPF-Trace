@@ -1,13 +1,23 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, Target, GitCommitHorizontal, ScrollText, Settings } from 'lucide-react';
+import {
+  LayoutGrid,
+  Target,
+  GitCommitHorizontal,
+  ScrollText,
+  Settings,
+  ShieldAlert,
+  Store,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const items = [
-  { href: '/', label: 'Overview', icon: LayoutGrid },
+  { href: '/', label: '대시보드', icon: LayoutGrid },
   { href: '/targets', label: '검사 레포지토리', icon: Target },
   { href: '/commits', label: '커밋 상세 분석', icon: GitCommitHorizontal },
+  { href: '/runtime', label: '런타임 추적·차단', icon: ShieldAlert },
+  { href: '/demoshop', label: '공격 시연', icon: Store },
   { href: '/audit', label: '감사 로그', icon: ScrollText },
   { href: '/settings', label: '설정 · 백오피스', icon: Settings },
 ];

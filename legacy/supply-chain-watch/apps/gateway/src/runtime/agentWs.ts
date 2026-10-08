@@ -14,9 +14,14 @@ import {
   storeSbom,
   touchAgent,
   upsertAgent,
+  resolveAction,
+  createAction,
   type HelloContainer,
 } from './store.js';
 import { aggregateIncident, topology } from '../repo/runtime.js';
+import { getAutoBlock } from './config.js';
+
+const autoBlocked = new Set<string>(); // 자동 차단 1회 보장(인시던트별)
 
 interface AgentConn {
   ws: WebSocket;
@@ -120,11 +125,33 @@ async function handleMessage(ws: WebSocket, text: string, setUid: (u: string) =>
       const incident = await aggregateIncident(stored.incidentKey);
       if (incident) broadcast('runtime.incident', incident);
       broadcast('runtime.topology', await topology());
+
+      // 자동 차단(설정): HIGH 외부 접속이면 인시던트당 1회 자동으로 목적지 차단
+      if (getAutoBlock() && stored.riskLevel === 'HIGH' && String(msg.rule) === 'NET_UNALLOWED_CONNECT') {
+        if (!autoBlocked.has(stored.incidentKey)) {
+          autoBlocked.add(stored.incidentKey);
+          const destIp = msg.dst_ip as string | undefined;
+          if (destIp) {
+            const actionId = await createAction(stored.incidentKey, String(msg.container ?? ''), 'BLOCK_DEST', destIp, 'auto');
+            sendToAgent(uid, { type: 'cmd.block', actionId, destIp });
+            logger.info({ incidentKey: stored.incidentKey, destIp }, '[agent-ws] auto-block issued');
+          }
+        }
+      }
       break;
     }
     case 'action.result': {
-      // R-10에서 runtime_actions 갱신
-      logger.info({ msg }, '[agent-ws] action result');
+      const actionId = Number(msg.actionId ?? 0);
+      if (!actionId) break;
+      const status = (msg.status as 'DONE' | 'FAILED') ?? 'DONE';
+      const resolved = await resolveAction(actionId, status, String(msg.result ?? ''));
+      logger.info({ actionId, status, result: msg.result }, '[agent-ws] action result');
+      if (resolved) {
+        const incident = await aggregateIncident(resolved.incidentKey);
+        if (incident) broadcast('runtime.incident', incident);
+        broadcast('runtime.topology', await topology());
+        broadcast('runtime.action', { incidentKey: resolved.incidentKey, status, result: String(msg.result ?? '') });
+      }
       break;
     }
     default:
@@ -138,6 +165,13 @@ export function sendToAgent(agentUid: string, payload: Record<string, unknown>):
   if (!conn || conn.ws.readyState !== conn.ws.OPEN) return false;
   conn.ws.send(JSON.stringify(payload));
   return true;
+}
+
+// 모든 연결 에이전트에 전송 (화이트리스트 동적 갱신 등).
+export function broadcastToAgents(payload: Record<string, unknown>): number {
+  let n = 0;
+  for (const uid of agents.keys()) if (sendToAgent(uid, payload)) n++;
+  return n;
 }
 
 export function connectedAgents(): string[] {

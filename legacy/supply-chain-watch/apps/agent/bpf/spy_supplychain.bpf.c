@@ -36,6 +36,14 @@ struct {
     __uint(max_entries, 1 << 20); // 1 MiB
 } events SEC(".maps");
 
+// 차단 목적지 맵 (docs/13 §7). key=IPv4(network order), 존재하면 cgroup/connect4에서 거부.
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __type(key, __u32);
+    __type(value, __u8);
+    __uint(max_entries, 256);
+} blocked_dests SEC(".maps");
+
 // Go 쪽 타입 생성을 위한 더미 인스턴스
 struct event *unused_event __attribute__((unused));
 
@@ -90,4 +98,15 @@ int handle_connect(struct trace_event_raw_sys_enter *ctx)
 
     bpf_ringbuf_submit(e, 0);
     return 0;
+}
+
+// 역방향 차단 (docs/13 §7): 차단 목록에 있는 목적지로의 connect를 커널에서 거부한다.
+// 서비스(node/uvicorn)는 살아 있어도 해당 외부 서버로는 더 이상 나가지 못한다.
+SEC("cgroup/connect4")
+int block_connect4(struct bpf_sock_addr *ctx)
+{
+    __u32 ip = ctx->user_ip4; // network byte order
+    if (bpf_map_lookup_elem(&blocked_dests, &ip))
+        return 0; // 거부 (connect() → -EPERM)
+    return 1;     // 허용
 }

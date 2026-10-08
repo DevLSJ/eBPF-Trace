@@ -106,3 +106,32 @@ export async function storeEvent(agentId: number, e: IncomingEvent): Promise<Sto
   logger.debug({ container: e.container, rule: e.rule, risk, incidentKey }, 'runtime event stored');
   return { id: rows[0].id, incidentKey, riskLevel: risk, purl };
 }
+
+// ===== 역방향 차단 액션 (docs/13 §7) =====
+export async function createAction(
+  incidentKey: string,
+  container: string,
+  action: 'KILL_PROCESS' | 'BLOCK_DEST',
+  target: string | null,
+  requestedBy = 'admin',
+): Promise<number> {
+  const { rows } = await pool.query<{ id: number }>(
+    `INSERT INTO runtime_actions (incident_key, container, action, target, requested_by, status)
+       VALUES ($1,$2,$3,$4,$5,'REQUESTED') RETURNING id`,
+    [incidentKey, container, action, target, requestedBy],
+  );
+  return Number(rows[0].id); // BIGSERIAL은 문자열로 오므로 숫자로 변환
+
+}
+
+export async function resolveAction(
+  id: number,
+  status: 'DONE' | 'FAILED',
+  result: string,
+): Promise<{ incidentKey: string } | null> {
+  const { rows } = await pool.query<{ incident_key: string }>(
+    `UPDATE runtime_actions SET status=$2, result=$3, resolved_at=now() WHERE id=$1 RETURNING incident_key`,
+    [id, status, result],
+  );
+  return rows.length ? { incidentKey: rows[0].incident_key } : null;
+}

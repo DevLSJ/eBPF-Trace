@@ -23,6 +23,9 @@ type Uplink struct {
 	mu    sync.Mutex
 	conn  *websocket.Conn
 	hello map[string]any
+
+	onKill  func(container string) string // cmd.kill 처리
+	onBlock func(ip string) string         // cmd.block 처리
 }
 
 func newUplink(wl *Whitelist) *Uplink {
@@ -146,15 +149,32 @@ func (u *Uplink) heartbeat(ctx context.Context) {
 func (u *Uplink) handleDownlink(data []byte) {
 	var m struct {
 		Type      string     `json:"type"`
+		ActionID  int        `json:"actionId"`
+		Container string     `json:"container"`
+		DestIP    string     `json:"destIp"`
 		Whitelist *Whitelist `json:"whitelist"`
 	}
 	if err := json.Unmarshal(data, &m); err != nil {
+		log.Printf("uplink: downlink parse error: %v", err)
 		return
 	}
+	log.Printf("uplink: downlink %s", m.Type)
 	switch m.Type {
 	case "cmd.whitelist_update":
 		if m.Whitelist != nil {
 			_ = u.wl.replaceFrom(m.Whitelist)
 		}
+	case "cmd.kill":
+		result := "no handler"
+		if u.onKill != nil {
+			result = u.onKill(m.Container)
+		}
+		u.send(map[string]any{"type": "action.result", "agentUid": u.uid, "actionId": m.ActionID, "status": "DONE", "result": result})
+	case "cmd.block":
+		result := "no handler"
+		if u.onBlock != nil {
+			result = u.onBlock(m.DestIP)
+		}
+		u.send(map[string]any{"type": "action.result", "agentUid": u.uid, "actionId": m.ActionID, "status": "DONE", "result": result})
 	}
 }

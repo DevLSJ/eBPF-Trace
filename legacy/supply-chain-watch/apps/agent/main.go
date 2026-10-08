@@ -125,6 +125,13 @@ func main() {
 	}
 	defer rd.Close()
 
+	enf := newEnforcer(objs.BlockedDests)
+	enf.attachConnect4(objs.BlockConnect4, resolver.cgroupDirs())
+	defer enf.close()
+	enf.cgDirOf = func(c string) string { return resolver.cgroupDirs()[c] }
+	up.onKill = func(container string) string { return enf.kill(container) }
+	up.onBlock = func(ip string) string { return enf.block(ip) }
+
 	log.Printf("agent ready: tracepoints attached, whitelist loaded, tracking %d container(s)", len(resolver.containers()))
 
 	stop := make(chan os.Signal, 1)
@@ -149,14 +156,14 @@ func main() {
 			continue
 		}
 		seen++
-		if handleEvent(wl, resolver, dd, up, &e) {
+		if handleEvent(wl, resolver, dd, up, enf, &e) {
 			suspicious++
 		}
 	}
 }
 
 // handleEvent: 컨테이너 매핑 → 화이트리스트 필터 → 룰 분류. 의심이면 emit하고 true.
-func handleEvent(wl *Whitelist, resolver *Resolver, dd *dedup, up *Uplink, e *spyEvent) bool {
+func handleEvent(wl *Whitelist, resolver *Resolver, dd *dedup, up *Uplink, enf *Enforcer, e *spyEvent) bool {
 	c, ok := resolver.lookup(e.CgroupId)
 	if !ok {
 		return false // 추적 대상(carrot-*) 아님 → 버림
@@ -169,6 +176,9 @@ func handleEvent(wl *Whitelist, resolver *Resolver, dd *dedup, up *Uplink, e *sp
 		rule := wl.classifyExec(comm, file)
 		if rule == "" || !dd.first(c.Name+"|"+strconv.Itoa(int(e.Pid))+"|"+rule) {
 			return false
+		}
+		if rule == "PROC_CHAIN_SUSPECT" {
+			enf.remember(c.Name, int(e.Pid))
 		}
 		ev := map[string]any{
 			"type": "runtime.event", "rule": rule, "kind": "exec",
