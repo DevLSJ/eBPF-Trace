@@ -21,7 +21,8 @@ export async function handleNewCommit(
     if (!detail.data) return;
 
     // DB 삽입 (UNIQUE = 최종 방어선). 이미 있으면 재처리 안 함.
-    const inserted = await insertCommit(fromCommitDetail(repo.id, branch, source, detail.data));
+    const meta = fromCommitDetail(repo.id, branch, source, detail.data);
+    const inserted = await insertCommit(meta);
     if (!inserted?.inserted) return;
 
     // Diff 전처리 (제외·절삭·민감 파일)
@@ -38,7 +39,11 @@ export async function handleNewCommit(
     broadcast('commit.received', {
       id: inserted.id, repoId: repo.id, repoFullName: repo.full_name,
       sha, shortSha: sha.slice(0, 7), branch, source, status: 'QUEUED',
-      filesChanged: pre.files.length, sensitiveFiles: pre.sensitiveFiles, truncated: pre.truncated,
+      // 피드가 재조회 없이 바로 그릴 수 있도록 메타 동봉 (이메일은 제외)
+      message: meta.message, authorLogin: meta.authorLogin, authorName: meta.authorName,
+      committedAt: meta.committedAt, htmlUrl: meta.htmlUrl,
+      filesChanged: pre.files.length, additions: meta.additions, deletions: meta.deletions,
+      sensitiveFiles: pre.sensitiveFiles, truncated: pre.truncated,
     });
     await analysisQueue.enqueue({ commitId: inserted.id, repoFullName: repo.full_name, sha });
     logger.info(

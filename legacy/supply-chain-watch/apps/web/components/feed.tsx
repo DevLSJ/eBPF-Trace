@@ -38,12 +38,39 @@ export function OverviewFeed() {
 
   useEffect(() => { void reload(); }, []);
 
+  // 카드 수치는 집계 API 재조회로 맞춘다. 이벤트가 몰려도 0.5초에 1번만
+  const statsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function scheduleStats() {
+    if (statsTimer.current) return;
+    statsTimer.current = setTimeout(() => {
+      statsTimer.current = null;
+      void reloadStats();
+    }, 500);
+  }
+  useEffect(() => () => { if (statsTimer.current) clearTimeout(statsTimer.current); }, []);
+
   const state = useWebSocket((e: WsEnvelope) => {
     const p = e.payload as Record<string, unknown>;
-    if (e.type === 'commit.received') upsert({ id: p.id as number, repoFullName: p.repoFullName as string, sha: p.sha as string, shortSha: p.shortSha as string, branch: (p.branch as string) ?? null, status: 'QUEUED', receivedAt: new Date().toISOString(), message: '', riskLevel: null } as CommitFeedItem);
-    else if (e.type === 'analysis.started') upsert({ id: p.commitId as number, status: 'ANALYZING' });
-    else if (e.type === 'analysis.completed') upsert({ id: p.commitId as number, status: 'DONE', riskScore: p.riskScore as number, riskLevel: p.riskLevel as string, tags: (p.tags as string[]) ?? [], llmStatus: p.llmStatus as string });
-    else if (e.type === 'stats.tick') void reloadStats();
+    if (e.type === 'commit.received') {
+      upsert({
+        id: p.id as number, repoId: p.repoId as number, repoFullName: p.repoFullName as string,
+        sha: p.sha as string, shortSha: p.shortSha as string, branch: (p.branch as string) ?? null,
+        source: p.source as string, status: 'QUEUED', receivedAt: new Date().toISOString(),
+        message: (p.message as string) ?? '', authorLogin: (p.authorLogin as string) ?? null,
+        authorName: (p.authorName as string) ?? null, committedAt: (p.committedAt as string) ?? null,
+        htmlUrl: (p.htmlUrl as string) ?? '', filesChanged: (p.filesChanged as number) ?? 0,
+        additions: (p.additions as number) ?? 0, deletions: (p.deletions as number) ?? 0,
+        riskLevel: null, riskScore: null, tags: [],
+      });
+      scheduleStats();
+    } else if (e.type === 'analysis.started') upsert({ id: p.commitId as number, status: 'ANALYZING' });
+    else if (e.type === 'analysis.completed') {
+      upsert({ id: p.commitId as number, status: 'DONE', riskScore: p.riskScore as number, riskLevel: p.riskLevel as string, tags: (p.tags as string[]) ?? [], llmStatus: p.llmStatus as string });
+      scheduleStats();
+    } else if (e.type === 'analysis.failed') {
+      upsert({ id: p.commitId as number, status: 'FAILED' });
+      scheduleStats();
+    } else if (e.type === 'repo.status' || e.type === 'stats.tick') scheduleStats();
   });
 
   async function reloadStats() {
@@ -119,7 +146,7 @@ function FeedRow({ c, pinned }: { c: CommitFeedItem; pinned?: boolean }) {
           <span className="font-mono text-[11.5px] text-fg-3">{c.shortSha}</span>
           {c.branch && <span className="font-mono text-[11px] text-fg-3">{c.branch}</span>}
         </div>
-        <div className="truncate text-[12.5px] text-fg-2">{c.message || (analyzing ? '분석 대기 중…' : '—')}</div>
+        <div className="truncate text-[12.5px] text-fg-2">{c.message?.split('\n')[0] || (analyzing ? '분석 대기 중…' : '—')}</div>
         {c.tags?.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1">
             {c.tags.slice(0, 4).map((t) => <span key={t} className="rounded-[6px] bg-surface-2 px-1.5 text-[11px] text-fg-2">{t}</span>)}
