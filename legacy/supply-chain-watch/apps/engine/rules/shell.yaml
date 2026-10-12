@@ -1,0 +1,66 @@
+# 셸 스크립트·Makefile 심화 룰 (docs/03 §3.2 SHELL/MAKE 표, 8종).
+
+- id: SH_DL_EXEC
+  category: DOWNLOAD_EXECUTE
+  severity: CRITICAL
+  languages: [SHELL, MAKE]
+  pattern: '\b(?:curl|wget)\b[^\n|]{0,200}\|\s*(?:sudo\s+)?(?:ba|z)?sh\b|\b(?:curl|wget)\b[^\n|]{0,200}\|\s*python3?\b|\b(?:ba)?sh\s+<\(\s*(?:curl|wget)'
+  description_ko: "내려받은 스크립트를 파이프로 바로 실행 (curl | sh, bash <(curl))"
+  false_positive_hint: "공식 설치 스크립트라도 버전·해시 고정 없이 실행하면 위험 — LLM 판단"
+
+- id: SH_B64_EVAL
+  category: OBFUSCATION
+  severity: CRITICAL
+  languages: [SHELL, MAKE]
+  pattern: '\beval\s+["'']?\$\([^\n]{0,200}(?:base64\s+(?:-d|--decode)|xxd\s+-r)|\$\((?:echo|printf)\s[^\n]{0,200}\|\s*(?:base64\s+(?:-d|--decode)|xxd\s+-r\s+-p)\)|base64\s+(?:-d|--decode)[^\n]{0,80}\|\s*(?:ba)?sh\b'
+  description_ko: "base64·hex로 숨긴 명령을 풀어서 실행"
+  false_positive_hint: "인증서 디코딩 후 파일 저장만 하는 것은 해당 없음"
+
+- id: SH_HIDDEN_WRITE
+  category: PERSISTENCE
+  severity: HIGH
+  languages: [SHELL, MAKE]
+  pattern: '>>?\s*["'']?(?:~|\$HOME|\$\{HOME\})?/?(?:\.bashrc|\.zshrc|\.profile|\.bash_profile|\.ssh/authorized_keys)\b|>>?\s*/etc/(?:cron[\w./-]*|profile\.d/\S+|rc\.local)|\|\s*crontab\s+-'
+  description_ko: "셸 시작 파일·SSH 허용 키·cron에 몰래 내용 추가"
+  false_positive_hint: "설치 스크립트의 PATH 추가는 LLM 판단"
+
+- id: SH_CRED_READ
+  category: CREDENTIAL_ACCESS
+  severity: HIGH
+  languages: [SHELL, MAKE]
+  pattern: '\b(?:cat|less|more|head|tail|cp|base64|tar)\s+[^\n]{0,40}(?:\.aws/credentials|\.npmrc|\.pypirc|\.docker/config\.json|\.git-credentials|\.ssh/id_\w+|/etc/shadow|\.kube/config)|-[dF]\s*@[^\s]*(?:\.aws/credentials|\.npmrc|\.ssh/id_\w+|\.git-credentials)'
+  description_ko: "자격증명 파일(AWS·npm·Docker·SSH 키·git)을 읽거나 첨부"
+  false_positive_hint: "CI에서 .npmrc를 생성(쓰기)하는 것은 해당 없음"
+
+- id: SH_HISTORY_CLEAR
+  category: EVASION
+  severity: MEDIUM
+  languages: [SHELL, MAKE]
+  pattern: '\bhistory\s+-c\b|\bunset\s+HISTFILE\b|HISTFILE=/dev/null|\brm\s+(?:-\w+\s+)*\S*\.(?:bash|zsh)_history\b|export\s+HISTSIZE=0'
+  description_ko: "명령 기록을 지워 흔적을 없앰"
+  false_positive_hint: "정상 스크립트가 기록을 지울 이유는 드묾"
+
+- id: SH_REVERSE_SHELL
+  category: C2_CONNECTION
+  severity: CRITICAL
+  languages: [SHELL, MAKE, PY, JS, DOCKER, OTHER]
+  pattern: '/dev/(?:tcp|udp)/[\w.$-]+/\d+|\bnc(?:at)?\s[^\n]*\s-e\s|\bbash\s+-i\s*>&|\bsocat\s[^\n]*exec:|\bmkfifo\s[^\n]*\bnc\b|os\.dup2\(\s*\w+\.fileno\(\)'
+  exclude_pattern: '^\s*(?://|#)'
+  description_ko: "외부로 셸을 넘겨주는 역방향 셸 패턴"
+  false_positive_hint: "정상 코드에 쓰일 일이 거의 없음. 주석 언급은 제외"
+
+- id: SH_OBF_VAR_SPLIT
+  category: OBFUSCATION
+  severity: MEDIUM
+  languages: [SHELL, MAKE]
+  pattern: '(?:^|[\s;|&(])(?:[a-z]["''](?:["'']?)){2,}[a-z]\b|^\s*\$\{?\w+\}?\$\{?\w+\}?(?:\$\{?\w+\}?)?\s+-|\$''(?:\\x[0-9a-fA-F]{2}){3,}'''
+  description_ko: "명령어 이름을 따옴표·변수로 쪼개 숨김 (c\"u\"r\"l, $a$b)"
+  false_positive_hint: "일반 문자열 이어붙이기와 구분이 어려워 주의(MEDIUM)"
+
+- id: MAKE_HIDDEN_TARGET
+  category: DOWNLOAD_EXECUTE
+  severity: HIGH
+  languages: [MAKE]
+  pattern: '^\t[^\n]*(?:\bcurl\b|\bwget\b|base64\s+(?:-d|--decode)|/dev/tcp|\|\s*(?:ba)?sh\b)'
+  description_ko: "Makefile 실행 단계(레시피)에 네트워크·디코딩·셸 실행 추가"
+  false_positive_hint: "의존성 다운로드 타겟은 정상일 수 있음 — LLM 판단"

@@ -1,12 +1,14 @@
-"""FastAPI 진입점. 정적·LLM 분석은 Phase 3·4에서 구현. 지금은 빈 결과 왕복 스켈레톤."""
+"""FastAPI 진입점. 정적 분석(Phase 3) 연결. LLM은 Phase 4."""
 from __future__ import annotations
 
 from fastapi import FastAPI
 
+from app.analyze import analyze as run_analysis
 from app.config import settings
-from app.models import AnalysisResult, AnalyzeRequest, PreprocessSection
+from app.models import AnalysisResult, AnalyzeRequest
+from app.static.rules_loader import get_rules
 
-app = FastAPI(title="Supply Chain Watch Engine", version="0.1.0")
+app = FastAPI(title="Supply Chain Watch Engine", version="0.2.0")
 
 
 @app.get("/health")
@@ -16,21 +18,17 @@ def health() -> dict:
         "service": "engine",
         "model": settings.llm_model,
         "provider": "anthropic",
-        "rulesLoaded": 0,
+        "rulesLoaded": len(get_rules()),
         "promptVersion": None,
     }
 
 
 @app.post("/analyze", response_model=AnalysisResult, response_model_by_alias=True)
 def analyze(req: AnalyzeRequest) -> AnalysisResult:
-    # Phase 3: 정적 분석 → Phase 4: LLM. 현재는 입력을 받아 빈 결과를 돌려준다.
-    return AnalysisResult(
-        preprocess=PreprocessSection(analyzed_bytes=len(req.diff.encode("utf-8"))),
-    )
+    return run_analysis(req)
 
 
 @app.post("/analyze/static", response_model=AnalysisResult, response_model_by_alias=True)
 def analyze_static(req: AnalyzeRequest) -> AnalysisResult:
-    return AnalysisResult(
-        preprocess=PreprocessSection(analyzed_bytes=len(req.diff.encode("utf-8"))),
-    )
+    """LLM 없이 정적 분석만 (평가 스크립트·디버깅용)."""
+    return run_analysis(req, allow_llm=False)

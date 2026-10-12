@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     llm_model: str = "claude-opus-5"
     llm_model_cheap: str = "claude-haiku-4-5"
     llm_effort: str = "medium"
+    llm_threshold: int = 20  # docs/03 §4 게이트 기본값
 
 
 settings = Settings()

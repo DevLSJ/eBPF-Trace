@@ -1,0 +1,118 @@
+# GitHub Actions 워크플로우 심화 룰 (docs/03 §3.2 WORKFLOW 표, 10종). 대상: .github/workflows/*.yml
+# 워크플로우 변경은 게이트와 무관하게 항상 LLM(ci 프롬프트) — app/static/gate.py
+
+- id: CI_SECRET_ECHO
+  category: CI_SECRET_LEAK
+  severity: HIGH
+  languages: [WORKFLOW]
+  pattern: '\b(?:echo|printf|cat)\b[^\n]{0,80}\$\{\{\s*secrets\.\w+|\bprintenv\b|^\s*(?:-\s*)?run:\s*env\s*$|\benv\s*\|\s*(?:sort|grep|base64|tee)\b'
+  description_ko: "run 단계에서 secrets나 전체 환경변수를 로그로 출력"
+  false_positive_hint: "GitHub 로그 마스킹이 있어도 변형 출력과 결합되면 유출"
+
+- id: CI_SECRET_TO_NET
+  category: CI_SECRET_LEAK
+  severity: CRITICAL
+  languages: [WORKFLOW]
+  pattern: '\b(?:curl|wget|Invoke-WebRequest|iwr)\b[^\n]{0,300}(?:secrets\.|github\.token|GITHUB_TOKEN|\$\{?[A-Z_]*(?:TOKEN|SECRET|KEY|PASSWORD)\b)'
+  also_pattern: '\s(?:-d|--data(?:-\w+)?|--post-data|-F|--form|-T|--upload-file|-X\s*POST|--request\s+POST)\b|-Method\s+Post'
+  exclude_pattern: 'api\.github\.com|uploads\.github\.com|registry\.npmjs\.org|codecov\.io|ghcr\.io|hooks\.slack\.com/services/\$\{\{'
+  description_ko: "secrets·토큰을 curl/wget 데이터로 외부에 전송"
+  false_positive_hint: "GitHub API·공식 레지스트리 호출의 인증 헤더는 제외"
+
+- id: CI_SECRET_TO_ARTIFACT
+  category: CI_SECRET_LEAK
+  severity: HIGH
+  mode: window
+  window: 15
+  languages: [WORKFLOW]
+  pattern: '\$\{\{\s*secrets\.[^}]+\}\}[^\n]*>>?\s*\S|\b(?:echo|printf)\b[^\n]*secrets\.[^\n]*>\s*\S'
+  with_pattern: 'uses:\s*actions/(?:upload-artifact|cache)|\bgh\s+release\s+upload|softprops/action-gh-release'
+  description_ko: "secrets를 파일로 쓴 뒤 아티팩트·캐시·릴리스로 업로드"
+  false_positive_hint: "설정 파일 생성 후 업로드하지 않는 경우는 해당 없음"
+
+- id: CI_SECRET_MASK_BYPASS
+  category: EVASION
+  severity: HIGH
+  languages: [WORKFLOW]
+  pattern: 'secrets\.[^\n]{0,80}\|\s*(?:base64|rev|xxd|od)\b|secrets\.[^\n]{0,80}\|\s*sed\b|\b(?:base64|rev|xxd)\b[^\n]{0,40}<<<\s*["'']?\$\{\{\s*secrets\.'
+  description_ko: "secrets를 base64·rev·sed로 바꿔 출력해 로그 마스킹을 우회"
+  false_positive_hint: "정상 워크플로우에서 secrets를 변형할 이유는 거의 없음"
+
+- id: CI_RUN_DL_EXEC
+  category: DOWNLOAD_EXECUTE
+  severity: CRITICAL
+  languages: [WORKFLOW]
+  pattern: '\b(?:curl|wget)\b[^\n|]{0,200}\|\s*(?:sudo\s+)?(?:ba|z)?sh\b|\bpip3?\s+install\s+(?:git\+)?https?://|\bnpx\s+(?:-y\s+)?[\w@./-]+@latest\b|\bbash\s+<\(\s*(?:curl|wget)'
+  description_ko: "run 단계에서 내려받은 스크립트를 바로 실행하거나 고정되지 않은 원격 패키지 실행"
+  false_positive_hint: "공식 설치 스크립트라도 버전·해시 고정이 권장됨 — LLM 판단"
+
+- id: CI_RUN_B64_EXEC
+  category: OBFUSCATION
+  severity: CRITICAL
+  languages: [WORKFLOW]
+  pattern: 'base64\s+(?:-d|--decode)[^\n]{0,100}\|\s*(?:ba)?sh\b|\beval\s+["'']?\$\((?:echo|printf)[^\n]{0,200}base64\s+(?:-d|--decode)|\becho\s+[A-Za-z0-9+/=]{40,}\s*\|\s*base64\s+(?:-d|--decode)'
+  description_ko: "run 단계에서 base64로 숨긴 명령을 풀어 실행"
+  false_positive_hint: "인증서·설정 파일을 디코딩해 저장만 하는 것은 해당 없음"
+
+- id: CI_PERMISSIONS_ESCALATE
+  category: CI_PRIVILEGE_ESCALATION
+  severity: HIGH
+  mode: window
+  window: 40
+  languages: [WORKFLOW]
+  # write-all 한 줄이면 두 패턴이 같은 줄에서 맞는다. 아니면 OIDC 토큰(id-token: write) + 외부 PR 트리거 조합
+  # (contents: write + id-token: write 는 npm 출처 증명 배포의 표준 설정이라 그것만으로는 걸지 않는다)
+  pattern: 'permissions:\s*write-all|\bid-token:\s*write\b'
+  with_pattern: 'permissions:\s*write-all|\bpull_request_target\b'
+  description_ko: "워크플로우 권한을 전체 쓰기(write-all)로 확대하거나, 외부 PR 트리거에 배포 토큰(OIDC) 권한 부여"
+  false_positive_hint: "릴리스 워크플로우의 contents: write·id-token: write(출처 증명)는 정상"
+
+- id: CI_TOKEN_SCOPE_ABUSE
+  category: CI_PRIVILEGE_ESCALATION
+  severity: MEDIUM
+  languages: [WORKFLOW]
+  pattern: '\bgh\s+api\s+(?:-X|--method)\s*(?:PATCH|POST|PUT|DELETE)\b[^\n]{0,160}(?:/actions/secrets|/hooks|/collaborators|/protection|/keys|/orgs/)|\bgh\s+secret\s+set\b|\bgh\s+repo\s+edit\b'
+  description_ko: "GITHUB_TOKEN으로 레포 설정·시크릿·웹훅·보호 규칙 변경"
+  false_positive_hint: "레포 관리 자동화 워크플로우는 정상일 수 있음"
+
+- id: CI_UNPINNED_ACTION
+  category: CI_UNTRUSTED_ACTION
+  severity: MEDIUM
+  languages: [WORKFLOW]
+  # 공식이 아닌 외부 액션을 브랜치(main 등)나 ref 없이 사용 — 언제든 내용이 바뀜
+  pattern: 'uses:\s*[''"]?(?!actions/|github/|docker/|aws-actions/|azure/|google-github-actions/|\./|docker://)[\w.-]+/[\w./-]+(?:@(?:main|master|latest|dev|develop|HEAD|trunk)\b[\w./-]*)?[''"]?\s*(?:#.*)?$'
+  exclude_pattern: '@[\w.-]*\d'
+  description_ko: "검증되지 않은 외부 액션을 브랜치(main·latest)나 버전 없이 사용"
+  false_positive_hint: "공식 액션·로컬 액션은 제외. 태그 고정은 CI_ACTION_TAG_REF(참고)"
+
+- id: CI_ACTION_TAG_REF
+  category: CI_UNTRUSTED_ACTION
+  severity: LOW
+  languages: [WORKFLOW]
+  # 태그(v4 등) 고정은 흔한 정상 관행이지만 태그는 옮겨질 수 있다 — 참고용(OpenSSF Scorecard 권고: 해시 고정)
+  pattern: 'uses:\s*[''"]?(?!actions/|github/|docker/|aws-actions/|azure/|google-github-actions/|\./|docker://)[\w.-]+/[\w./-]+@(?![0-9a-fA-F]{40}\b)[\w./-]*\d[\w./-]*[''"]?\s*(?:#.*)?$'
+  description_ko: "외부 액션을 커밋 해시가 아닌 태그로 고정 (참고 — 해시 고정 권장)"
+  false_positive_hint: "대부분 정상. 태그를 만들지 않는 참고 룰"
+
+- id: CI_PR_TARGET_CHECKOUT
+  category: CI_UNTRUSTED_ACTION
+  severity: HIGH
+  mode: window
+  window: 60
+  languages: [WORKFLOW]
+  # pull_request_target(비밀값 접근 가능한 트리거)에서 외부 PR의 코드를 체크아웃 — 대표적인 CI 탈취 경로
+  pattern: '\bpull_request_target\b'
+  with_pattern: 'ref:\s*\$\{\{\s*github\.event\.pull_request\.head\.(?:sha|ref)\b|github\.head_ref\b|refs/pull/'
+  description_ko: "비밀값에 접근 가능한 pull_request_target 트리거에서 외부 PR 코드를 체크아웃"
+  false_positive_hint: "라벨 지정·코멘트만 하는 pull_request_target은 해당 없음"
+
+- id: CI_SELF_HOSTED_RUNNER_CHANGE
+  category: CI_PRIVILEGE_ESCALATION
+  severity: MEDIUM
+  mode: window
+  window: 30
+  languages: [WORKFLOW]
+  pattern: 'runs-on:\s*\[?\s*[''"]?self-hosted'
+  with_pattern: '\bpull_request_target\b|\bcurl\b|\bwget\b|\bnpx\b|\bpip3?\s+install\b'
+  description_ko: "자체 호스팅 러너에서 외부 코드를 실행하도록 변경"
+  false_positive_hint: "사내 빌드용 자체 러너 자체는 정상 — 외부 입력 실행 결합이 핵심"

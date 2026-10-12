@@ -63,6 +63,8 @@ class MatchedRule(CamelModel):
     file: str
     snippet: str
     line_hint: str
+    count: int = 1
+    description_ko: str = ""
 
 
 class StaticSection(CamelModel):
@@ -81,6 +83,10 @@ class LlmSection(CamelModel):
     usage: dict | None = None
     latency_ms: int | None = None
     error: str | None = None
+    # 게이트 판단 (docs/03 §4). Phase 3에서는 판단만 하고 실제 호출은 Phase 4
+    gate_passed: bool = False
+    gate_reasons: list[str] = []
+    prompt_name: str | None = None
 
 
 class PreprocessSection(CamelModel):
