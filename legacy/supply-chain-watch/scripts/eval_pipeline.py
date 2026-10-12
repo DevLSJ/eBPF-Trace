@@ -8,6 +8,7 @@
 - datadog   : 실제 악성 npm·PyPI 패키지 (암호 zip을 메모리에서만 읽음, 디스크에 풀지 않음)
 - zizmor    : GitHub Actions 테스트 워크플로우 중 우리 CI 룰 범위에 대응하는 것
 - benign-npm/benign-py : 이 프로젝트에 설치된 실제 인기 패키지(node_modules, engine venv) — 오탐 측정
+- benign-pypi : 다운로드 상위 PyPI 패키지 휠 (data/benign-pypi, 메모리에서만 읽음) — 오탐 측정
 - corpus    : corpus/positives·negatives (파일 이름 앞 = 룰 ID). 있으면 함께 평가
 
 판정 기준:
@@ -59,6 +60,7 @@ class Sample:
     label: str  # positive | negative | info
     files: dict[str, str]  # path → text
     expect: set[str] = field(default_factory=set)  # 이 룰 중 하나가 걸려야 함 (비면 아무 MEDIUM+)
+    nocode: bool = False  # 분석할 코드가 사실상 없음(빈 index.js·바이너리만) — 이름·버전 같은 메타데이터로만 판단 가능
     forbid: set[str] = field(default_factory=set)  # 이 룰이 걸리면 오탐 (비면 아무 MEDIUM+)
 
 
@@ -101,17 +103,17 @@ def _wanted(path: str) -> bool:
 
 GUARDDOG_MAP: dict[str, set[str]] = {
     # GuardDog 룰 → 우리 룰 중 하나라도 걸리면 탐지로 본다 (같은 위협 범주)
-    "exec-base64": {"OBF_BASE64_DECODE_EXEC", "OBF_EVAL_DYNAMIC", "OBF_LONG_B64_LITERAL", "OBF_DYNAMIC_LOOKUP_CALL"},
-    "npm-exec-base64": {"OBF_BASE64_DECODE_EXEC", "OBF_EVAL_DYNAMIC", "OBF_LONG_B64_LITERAL"},
-    "exfiltrate-sensitive-data": {"ENV_PLUS_NET", "ENV_ACCESS_BULK", "ENV_ACCESS_SECRET_KEY", "FS_SENSITIVE_PATH", "SYSINFO_TO_NET", "NET_DNS_EXFIL"},
+    "exec-base64": {"AST_DECODE_TO_EXEC", "OBF_BASE64_DECODE_EXEC", "OBF_EVAL_DYNAMIC", "OBF_LONG_B64_LITERAL", "OBF_DYNAMIC_LOOKUP_CALL"},
+    "npm-exec-base64": {"AST_DECODE_TO_EXEC", "OBF_BASE64_DECODE_EXEC", "OBF_EVAL_DYNAMIC", "OBF_LONG_B64_LITERAL"},
+    "exfiltrate-sensitive-data": {"AST_SENSITIVE_TO_NET", "ENV_PLUS_NET", "ENV_ACCESS_BULK", "ENV_ACCESS_SECRET_KEY", "FS_SENSITIVE_PATH", "SYSINFO_TO_NET", "NET_DNS_EXFIL"},
     "npm-exfiltrate-sensitive-data": {"ENV_PLUS_NET", "ENV_ACCESS_BULK", "ENV_ACCESS_SECRET_KEY", "FS_SENSITIVE_PATH", "SYSINFO_TO_NET", "NET_DNS_EXFIL"},
     "npm-serialize-environment": {"ENV_ACCESS_BULK", "ENV_PLUS_NET"},
-    "download-executable": {"DL_WRITE_THEN_EXEC", "DL_EXEC_PIPE"},
+    "download-executable": {"AST_DOWNLOAD_TO_EXEC", "DL_WRITE_THEN_EXEC", "DL_EXEC_PIPE"},
     "shady-links": {"NET_SUSPICIOUS_TLD", "NET_RAW_IP_URL", "NET_WEBHOOK_ENDPOINT"},
     "obfuscation": {"OBF_HEX_ESCAPE_STRING", "OBF_STRING_SPLIT_JOIN", "OBF_CHARCODE_ARITH", "OBF_LONG_B64_LITERAL", "OBF_EVAL_DYNAMIC", "OBF_DYNAMIC_LOOKUP_CALL", "OBF_HEX_ENCODED_WORD"},
     "npm-obfuscation": {"OBF_HEX_ESCAPE_STRING", "OBF_STRING_SPLIT_JOIN", "OBF_CHARCODE_ARITH", "OBF_LONG_B64_LITERAL", "OBF_EVAL_DYNAMIC", "OBF_JS_OBFUSCATOR_IDENT", "OBF_DYNAMIC_LOOKUP_CALL", "OBF_HEX_ENCODED_WORD", "OBF_LONG_LINE"},
     "npm-install-script": {"INSTALL_HOOK_ADDED", "INSTALL_HOOK_SHELL"},
-    "code-execution": {"OBF_EVAL_DYNAMIC", "NET_OUTBOUND_IN_INSTALL", "DL_EXEC_PIPE", "INSTALL_SETUP_EXEC", "OBF_DYNAMIC_LOOKUP_CALL"},
+    "code-execution": {"AST_DECODE_TO_EXEC", "AST_DOWNLOAD_TO_EXEC", "OBF_EVAL_DYNAMIC", "NET_OUTBOUND_IN_INSTALL", "DL_EXEC_PIPE", "INSTALL_SETUP_EXEC", "OBF_DYNAMIC_LOOKUP_CALL"},
 }
 _ANNOT = re.compile(r"^\s*(?:#|//)\s*(ruleid|ok)\s*:\s*([a-z0-9_-]+)")
 
@@ -187,7 +189,8 @@ def load_datadog(limit: int | None) -> list[Sample]:
             try:
                 with zipfile.ZipFile(zp) as zf:
                     for n in zf.namelist():
-                        if n.endswith("/") or zf.getinfo(n).file_size > 5_000_000:
+                        # package_info-*.json 은 DataDog이 붙인 레지스트리 메타데이터(패키지 내용 아님)
+                        if n.endswith("/") or zf.getinfo(n).file_size > 5_000_000 or n.rsplit("/", 1)[-1].startswith("package_info-"):
                             continue
                         raw = zf.read(n, pwd=ZIP_PASSWORD)
                         if n.endswith((".tgz", ".tar.gz", ".whl", ".zip")):
@@ -197,7 +200,10 @@ def load_datadog(limit: int | None) -> list[Sample]:
             except (zipfile.BadZipFile, RuntimeError, NotImplementedError):
                 continue
             if files:
-                out.append(Sample(f"datadog-{eco}", zp.stem, "positive", _strip_root(files)))
+                stripped = _strip_root(files)
+                code = sum(len(t) for p, t in stripped.items() if re.search(r"\.(?:[cm]?js|ts|py|sh|pth|ps1|bat)$|(?:^|/)(?:setup\.py|Makefile)$", p))
+                hooks = any(re.search(r'"(?:pre|post)?install"\s*:', t) for p, t in stripped.items() if p.endswith("package.json"))
+                out.append(Sample(f"datadog-{eco}", zp.stem, "positive", stripped, nocode=code < 200 and not hooks))
     return out
 
 
@@ -259,7 +265,7 @@ def load_benign_npm(n: int, seed: int) -> list[Sample]:
         if cand.is_dir():
             pkgs.append((d.name, cand))
     random.Random(seed).shuffle(pkgs)
-    return [Sample("benign-npm", sid, "negative", files) for sid, path in pkgs[:n] if (files := _pkg_files(path))]
+    return [Sample("benign-npm", sid, "negative", files) for sid, path in pkgs[: n or None] if (files := _pkg_files(path))]
 
 
 def load_benign_py(n: int, seed: int) -> list[Sample]:
@@ -268,7 +274,28 @@ def load_benign_py(n: int, seed: int) -> list[Sample]:
         return []
     pkgs = sorted(p for p in site.iterdir() if p.is_dir() and not p.name.endswith((".dist-info", ".data")) and not p.name.startswith(("_", ".")))
     random.Random(seed).shuffle(pkgs)
-    return [Sample("benign-py", p.name, "negative", {f"{p.name}/{k}": v for k, v in files.items()}) for p in pkgs[:n] if (files := _pkg_files(p))]
+    return [Sample("benign-py", p.name, "negative", {f"{p.name}/{k}": v for k, v in files.items()}) for p in pkgs[: n or None] if (files := _pkg_files(p))]
+
+
+def load_benign_pypi_wheels(n: int | None) -> list[Sample]:
+    """다운로드 상위 PyPI 패키지의 휠(zip) — 메모리에서만 읽는다 (scripts/fetch_benign_pypi.py)."""
+    out: list[Sample] = []
+    for whl in sorted((DATA / "benign-pypi").glob("*.whl"))[: n or None]:
+        files: dict[str, str] = {}
+        try:
+            with zipfile.ZipFile(whl) as zf:
+                for name in zf.namelist():
+                    if ".dist-info/" in name or name.endswith("/") or not _wanted(name) or zf.getinfo(name).file_size > 1_000_000:
+                        continue
+                    if (txt := _decode(zf.read(name))) is not None:
+                        files[name] = txt
+                    if len(files) >= 400:
+                        break
+        except zipfile.BadZipFile:
+            continue
+        if files:
+            out.append(Sample("benign-pypi", whl.name.split("-py")[0], "negative", files))
+    return out
 
 
 def load_corpus() -> list[Sample]:
@@ -299,7 +326,7 @@ class Result:
 
 
 def evaluate(s: Sample, rules) -> Result:
-    whole_pkg = s.source.startswith(("datadog", "benign-"))
+    whole_pkg = s.source.startswith(("datadog", "benign-"))  # benign-npm·benign-py·benign-pypi
     diff = s.files["__diff__"] if "__diff__" in s.files else build_diff(s.files, None if whole_pkg else TOTAL_CAP)
     t0 = time.perf_counter()
     files = parse_diff(diff)
@@ -326,8 +353,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--static-only", action="store_true", help="정적 분석만 (현재 유일한 모드)")
     ap.add_argument("--datadog-limit", type=int, default=None)
-    ap.add_argument("--benign-npm", type=int, default=150)
-    ap.add_argument("--benign-py", type=int, default=38)
+    ap.add_argument("--benign-npm", type=int, default=0, help="0 = 설치된 전체")
+    ap.add_argument("--benign-py", type=int, default=0, help="0 = engine venv 전체")
+    ap.add_argument("--benign-pypi", type=int, default=0, help="0 = data/benign-pypi 전체")
     ap.add_argument("--seed", type=int, default=20261012)
     ap.add_argument("--csv", type=Path)
     ap.add_argument("--write-log", action="store_true", help="docs/eval-log.md에 결과 표 추가")
@@ -337,7 +365,8 @@ def main() -> int:
 
     rules = get_rules()
     samples = (load_corpus() + load_guarddog() + load_datadog(args.datadog_limit) + load_zizmor()
-               + load_benign_npm(args.benign_npm, args.seed) + load_benign_py(args.benign_py, args.seed))
+               + load_benign_npm(args.benign_npm, args.seed) + load_benign_py(args.benign_py, args.seed)
+               + load_benign_pypi_wheels(args.benign_pypi))
     results = [evaluate(s, rules) for s in samples]
 
     by_src: dict[str, list[Result]] = defaultdict(list)
@@ -377,6 +406,12 @@ def main() -> int:
               f"- 전체: 양성 {tot['pos']} · 음성 {tot['neg']} → **탐지율 {pct(tot['tp'], tot['pos'])} · 오탐률 {pct(tot['fp'], tot['neg'])}** · Precision {precision:.3f} · Recall {recall:.3f} · F1 {f1:.3f}",
               f"- 지연(커밋 크기 샘플, 120KB 이하): p95 {p95:.1f}ms · 최대 {all_ms[-1] if all_ms else 0:.1f}ms (목표 ≤ 200ms)",
               "- 패키지 세트(datadog·benign)는 패키지 전체를 새 파일 커밋으로 보고 전체 상한 없이 평가(파일당 20KB 상한만)"]
+    real = [r for r in results if r.sample.source.startswith("datadog")]
+    if real:
+        withcode = [r for r in real if not r.sample.nocode]
+        lines.append(f"- **실제 악성 패키지(DataDog) 탐지율 {pct(sum(r.ok for r in real), len(real))}** ({sum(r.ok for r in real)}/{len(real)}) · "
+                     f"분석할 코드가 있는 패키지만 {pct(sum(r.ok for r in withcode), len(withcode))} ({sum(r.ok for r in withcode)}/{len(withcode)}) · "
+                     f"코드가 사실상 없는 패키지 {len(real) - len(withcode)}개(빈 파일·바이너리만, 이름·버전으로만 판단 가능)")
     info = [r for r in results if r.sample.label == "info"]
     if info:
         lines.append(f"- 범위 밖 참고 세트 {len(info)}개(라벨이 우리 룰과 대응하지 않음) 중 주의 이상 룰 발화 {sum(bool(r.strong) for r in info)}개")

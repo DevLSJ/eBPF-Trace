@@ -2,7 +2,7 @@
 # 외부 평가 데이터 내려받기 (Phase 3 정적 분석 평가용). 결과는 data/ 아래, git 추적 제외.
 #
 #   bash scripts/fetch-datasets.sh            # 4개 모두 (큰 데이터셋은 일부만)
-#   bash scripts/fetch-datasets.sh zizmor     # 하나만: zizmor | guarddog | ossf | datadog
+#   bash scripts/fetch-datasets.sh zizmor     # 하나만: zizmor | guarddog | ossf | datadog | benign-pypi
 #   OSSF_LIMIT=500 DATADOG_LIMIT=100 bash scripts/fetch-datasets.sh datadog   # 개수 늘리기
 #
 # 안전 규칙 (CLAUDE.md §5-5, data/README.md):
@@ -13,7 +13,8 @@ cd "$(dirname "$0")/.."
 
 DATA=data
 OSSF_LIMIT="${OSSF_LIMIT:-300}"          # ecosystem별 OSV 보고서 개수
-DATADOG_LIMIT="${DATADOG_LIMIT:-30}"     # ecosystem별 악성 패키지 zip 개수
+DATADOG_LIMIT="${DATADOG_LIMIT:-300}"    # ecosystem별 악성 패키지 zip 개수 (2026-10-12 사용자 결정: 300)
+BENIGN_PYPI_LIMIT="${BENIGN_PYPI_LIMIT:-300}"  # 정상 대조군 PyPI 휠 개수
 mkdir -p "$DATA"
 
 log() { printf '▶ %s\n' "$*"; }
@@ -40,13 +41,15 @@ checkout_dirs() {
   git -C "$dir" checkout --quiet HEAD
 }
 
-# 큰 디렉토리에서 파일 N개만 (트리 목록은 blob 없이도 볼 수 있다)
+# 큰 디렉토리에서 파일 N개만, 고정 시드 무작위 표본 (트리 목록은 blob 없이도 볼 수 있다)
 checkout_sample() {
   local dir="$DATA/$1" limit=$2 pattern=$3; shift 3
   local list
   list=$(for prefix in "$@"; do
     # head가 먼저 닫으면 앞쪽이 SIGPIPE로 끝나므로 실패로 보지 않는다
-    git -C "$dir" ls-tree -r --name-only HEAD -- "$prefix" | grep -E "$pattern" | head -n "$limit" || true
+    git -C "$dir" ls-tree -r --name-only HEAD -- "$prefix" | grep -E "$pattern" \
+      | python3 -I -c 'import random,sys; xs=sys.stdin.read().split(); random.Random(20261012).shuffle(xs); print("\n".join(xs))' \
+      | head -n "$limit" || true
   done)
   printf '%s\n' "$list" "$EXTRA_PATHS" | grep -v '^$' | git -C "$dir" sparse-checkout set --no-cone --stdin
   git -C "$dir" checkout --quiet HEAD
@@ -92,9 +95,16 @@ fetch_datadog() {
   record datadog "$url"
 }
 
+fetch_benign_pypi() {
+  log "benign-pypi: 다운로드 상위 PyPI 패키지 휠 ${BENIGN_PYPI_LIMIT}개 (설치·실행 안 함)"
+  # engine 환경(certifi 포함) 파이썬으로 실행
+  uv run --quiet --project apps/engine python -I scripts/fetch_benign_pypi.py "$DATA/benign-pypi" "$BENIGN_PYPI_LIMIT"
+  printf 'benign-pypi\thttps://pypi.org (top-pypi-packages 30일)\t-\t%s files\t%s\n' "$(ls "$DATA/benign-pypi" | wc -l | tr -d ' ')" "$(date +%F)" >> "$DATA/SOURCES.tsv.tmp"
+}
+
 EXTRA_PATHS=""
 targets=("$@")
-[ ${#targets[@]} -eq 0 ] && targets=(zizmor guarddog ossf datadog)
+[ ${#targets[@]} -eq 0 ] && targets=(zizmor guarddog ossf datadog benign-pypi)
 
 : > "$DATA/SOURCES.tsv.tmp"
 for t in "${targets[@]}"; do
@@ -103,7 +113,8 @@ for t in "${targets[@]}"; do
     guarddog) fetch_guarddog ;;
     ossf) fetch_ossf ;;
     datadog) fetch_datadog ;;
-    *) echo "알 수 없는 대상: $t (zizmor|guarddog|ossf|datadog)" >&2; exit 1 ;;
+    benign-pypi) fetch_benign_pypi ;;
+    *) echo "알 수 없는 대상: $t (zizmor|guarddog|ossf|datadog|benign-pypi)" >&2; exit 1 ;;
   esac
 done
 
