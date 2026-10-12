@@ -28,7 +28,7 @@ export default function LoginPage() {
         setErr(d?.error?.message ?? '로그인에 실패했습니다');
       }
     } catch {
-      setErr('gateway에 연결할 수 없습니다 (localhost:4000)');
+      setErr(`gateway에 연결할 수 없습니다 (${GATEWAY_URL})`);
     } finally {
       setBusy(false);
     }
