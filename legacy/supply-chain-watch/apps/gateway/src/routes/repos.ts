@@ -96,7 +96,9 @@ reposRouter.patch('/:id', async (req, res) => {
 });
 
 reposRouter.delete('/:id', async (req, res) => {
-  const ok = await deleteRepo(Number(req.params.id));
+  const id = Number(req.params.id);
+  const ok = await deleteRepo(id);
+  if (ok) broadcast('repo.status', { repoId: id, status: 'DELETED' });
   res.status(ok ? 200 : 404).json({ ok, data: { deleted: ok } });
 });
 
@@ -116,7 +118,12 @@ async function backfill(repo: RepoRow, owner: string, name: string, branch: stri
 function handleGhError(err: unknown, res: import('express').Response) {
   if (err instanceof GitHubError) {
     if (err.rateLimited) return res.status(429).json({ ok: false, error: { code: 'RATE_LIMITED', message: 'GitHub rate limit', resetAt: err.resetAt } });
-    return res.status(err.status).json({ ok: false, error: { code: 'GITHUB', message: err.message } });
+    if (err.status === 404) {
+      return res.status(404).json({ ok: false, error: { code: 'NOT_FOUND', message: '레포를 찾을 수 없습니다. 주소를 확인하세요(비공개 레포는 검사할 수 없습니다)' } });
+    }
+    // 화면에는 GitHub 원문 대신 짧은 한글 사유만
+    logger.warn({ status: err.status, err: err.message }, 'github error');
+    return res.status(err.status).json({ ok: false, error: { code: 'GITHUB', message: `GitHub 요청 실패 (${err.status})` } });
   }
   logger.error({ err: (err as Error).message }, 'repos route error');
   return res.status(500).json({ ok: false, error: { code: 'INTERNAL', message: '서버 오류' } });

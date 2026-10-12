@@ -25,17 +25,18 @@ const items = [
 export function Sidebar() {
   const path = usePathname();
   return (
-    <aside className="flex w-[232px] flex-col gap-4 border-r border-line bg-surface p-3">
-      <div className="flex items-center gap-2.5 px-2 py-1.5">
+    // 좁은 화면(폰)에서는 상단 가로 메뉴 띠로 바뀐다 (docs/06 §0.9)
+    <aside className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-line bg-surface p-2 md:w-[232px] md:flex-col md:items-stretch md:gap-4 md:overflow-visible md:border-b-0 md:border-r md:p-3">
+      <div className="flex shrink-0 items-center gap-2.5 px-1 md:px-2 md:py-1.5">
         <div className="grid h-8 w-8 place-items-center rounded-[9px] bg-fg text-[14px] font-bold text-surface">
           SW
         </div>
-        <div>
+        <div className="hidden md:block">
           <b className="block text-[13.5px]">Supply Chain Watch</b>
           <small className="text-[11.5px] text-fg-3">DevLSJ · 캡스톤</small>
         </div>
       </div>
-      <nav className="flex flex-col gap-0.5">
+      <nav className="flex gap-0.5 md:flex-col">
         {items.map(({ href, label, icon: Icon }) => {
           const active = href === '/' ? path === '/' : path.startsWith(href);
           return (
@@ -43,7 +44,7 @@ export function Sidebar() {
               key={href}
               href={href}
               className={cn(
-                'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium text-fg-2 hover:bg-surface-2',
+                'flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-[13px] font-medium text-fg-2 hover:bg-surface-2',
                 active && 'bg-accent-soft font-semibold text-accent-ink',
               )}
             >

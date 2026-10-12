@@ -10,13 +10,13 @@ export function Topbar({ crumb }: { crumb: string }) {
   const [last, setLast] = useState<string>('');
   const state = useWebSocket((e) => setLast(e.type));
   return (
-    <div className="flex flex-wrap items-center gap-3 border-b border-line px-6 py-3">
-      <span className="text-[12.5px] text-fg-3">{crumb}</span>
+    <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-2.5 md:px-6 md:py-3">
+      <span className="hidden text-[12.5px] text-fg-3 sm:inline">{crumb}</span>
       <span className="flex-1" />
       <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-[12px] text-fg-2">
         <span className={cn('h-[7px] w-[7px] rounded-full', dot[state])} />
         WebSocket {labels[state]}
-        {last && <span className="text-fg-3">· {last}</span>}
+        {last && <span className="hidden text-fg-3 sm:inline">· {last}</span>}
       </span>
     </div>
   );

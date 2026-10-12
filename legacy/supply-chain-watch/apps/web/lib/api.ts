@@ -2,9 +2,9 @@ import { GATEWAY_URL } from './utils';
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${GATEWAY_URL}${path}`, { credentials: 'include', ...init });
-  if (!res.ok) throw new Error(`${path} ${res.status}`);
-  const body = (await res.json()) as { ok: boolean; data?: T; error?: { message: string } };
-  if (!body.ok) throw new Error(body.error?.message ?? 'api error');
+  const body = (await res.json().catch(() => null)) as { ok: boolean; data?: T; error?: { message: string } } | null;
+  // 서버가 준 한글 사유를 그대로 화면에 쓸 수 있게 전달
+  if (!res.ok || !body?.ok) throw new Error(body?.error?.message ?? `${path} ${res.status}`);
   return body.data as T;
 }
 

@@ -58,7 +58,7 @@ export default function RuntimePage() {
   const c2 = topo?.c2Visible ?? false;
 
   return (
-    <section className="flex h-full flex-col gap-3">
+    <section className="flex flex-col gap-3 lg:h-full">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-[20px] font-semibold tracking-tight">런타임 추적·차단</h1>
         <div className="flex items-center gap-2 text-[12px]">
@@ -69,7 +69,7 @@ export default function RuntimePage() {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3.5 lg:grid-cols-[7fr_3fr]">
+      <div className="grid grid-cols-1 gap-3.5 lg:min-h-0 lg:flex-1 lg:grid-cols-[7fr_3fr]">
         {/* 서비스 연결도 */}
         <div className="flex min-h-0 flex-col rounded-2xl border border-line bg-surface">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">

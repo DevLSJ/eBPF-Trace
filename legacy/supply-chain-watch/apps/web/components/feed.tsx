@@ -119,7 +119,11 @@ export function OverviewFeed() {
           {high.map((c) => <FeedRow key={c.id} c={c} pinned />)}
           <div className="sticky top-0 bg-surface-2 px-4 py-1.5 text-[12px] font-semibold text-fg-2">최근 수집 · 최신순</div>
           {shown.filter((c) => c.riskLevel !== 'HIGH').map((c) => <FeedRow key={c.id} c={c} />)}
-          {shown.length === 0 && <div className="p-6 text-[13px] text-fg-3">수집된 커밋이 없습니다. 검사 레포지토리에서 레포를 등록하세요.</div>}
+          {shown.length === 0 && (overview?.repos.total === 0 ? <FirstRunGuide /> : (
+            <div className="p-6 text-[13px] text-fg-3">
+              {filter === 'ALL' ? '아직 들어온 커밋이 없습니다. 새 커밋이 올라오면 여기에 바로 표시됩니다.' : '이 조건에 맞는 커밋이 없습니다.'}
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -160,5 +164,21 @@ function FeedRow({ c, pinned }: { c: CommitFeedItem; pinned?: boolean }) {
         </span>
       </div>
     </Link>
+  );
+}
+
+// 처음 로그인해 검사할 레포가 하나도 없을 때: 무엇을 하면 되는지 바로 안내
+function FirstRunGuide() {
+  return (
+    <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+      <div className="text-[15px] font-semibold">아직 검사할 레포가 없습니다</div>
+      <p className="max-w-[440px] text-[13px] leading-relaxed text-fg-2">
+        GitHub 레포 주소를 등록하면 새 커밋이 올라올 때마다 자동으로 검사해 이 화면에 보여줍니다.
+        등록하면 최근 커밋 5개를 먼저 가져옵니다.
+      </p>
+      <Link href="/targets" className="rounded-lg bg-accent px-4 py-2 text-[13px] font-bold text-white">
+        레포 추가하기
+      </Link>
+    </div>
   );
 }

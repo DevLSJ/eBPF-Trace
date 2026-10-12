@@ -106,7 +106,7 @@ export async function updateSyncState(
     `UPDATE repositories SET
        etag = COALESCE($2, etag),
        last_event_id = COALESCE($3, last_event_id),
-       status = COALESCE($4, status),
+       status = CASE WHEN status = 'PAUSED' THEN status ELSE COALESCE($4, status) END, -- 폴링 도중 일시정지되면 유지
        rate_limit_remaining = COALESCE($5, rate_limit_remaining),
        next_poll_at = COALESCE($6, next_poll_at),
        last_error = $7,
