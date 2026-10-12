@@ -5,7 +5,7 @@ import type { WsEnvelope } from '@scw/shared-types';
 import { api, type CommitFeedItem, type Overview } from '@/lib/api';
 import { useWebSocket } from '@/lib/ws';
 import { cn } from '@/lib/utils';
-import { levelClass, levelIcon, statusLabel } from '@/lib/risk';
+import { levelClass, levelIcon, statusLabel, tagGroups } from '@/lib/risk';
 
 const MAX = 200;
 
@@ -88,8 +88,8 @@ export function OverviewFeed() {
         <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
           <Kpi label="검사 레포" value={`${overview.repos.total}`} foot={`${overview.repos.active} 활성`} />
           <Kpi label="오늘 커밋" value={`${overview.today.commits}`} foot="실시간" />
-          <Kpi label="위협 감지" value={`${overview.today.high} HIGH`} foot={`${overview.today.medium} MEDIUM`} accent={overview.today.high > 0} />
-          <Kpi label="LLM 호출" value={`${overview.today.llm_calls}`} foot={overview.engine.healthy ? overview.engine.model ?? '' : 'engine 꺼짐'} />
+          <Kpi label="위협 감지" value={`위험 ${overview.today.high}`} foot={`주의 ${overview.today.medium}`} accent={overview.today.high > 0} />
+          <Kpi label="AI 정밀 분석" value={`${overview.today.llm_calls}`} foot={overview.engine.healthy ? overview.engine.model ?? '' : 'engine 꺼짐'} />
         </div>
       )}
 
@@ -101,7 +101,7 @@ export function OverviewFeed() {
               onClick={() => setFilter(f)}
               className={cn('rounded-lg border border-line-strong bg-surface px-2.5 py-1 text-[12.5px] font-medium', filter === f && 'border-accent bg-accent text-white')}
             >
-              {f === 'ALL' ? `전체 ${items.length}` : f === 'ANALYZING' ? '분석중' : f}
+              {f === 'ALL' ? `전체 ${items.length}` : f === 'ANALYZING' ? '분석중' : f === 'HIGH' ? '위험' : '주의'}
             </button>
           ))}
           <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[12px] text-fg-2">
@@ -113,7 +113,7 @@ export function OverviewFeed() {
         <div className="min-h-0 flex-1 overflow-auto">
           {high.length > 0 && (
             <div className="sticky top-0 z-10 bg-surface-2 px-4 py-1.5 text-[12px] font-semibold text-fg-2">
-              즉시 확인 · HIGH {high.length}
+              즉시 확인 · 위험 {high.length}
             </div>
           )}
           {high.map((c) => <FeedRow key={c.id} c={c} pinned />)}
@@ -151,10 +151,8 @@ function FeedRow({ c, pinned }: { c: CommitFeedItem; pinned?: boolean }) {
           {c.branch && <span className="font-mono text-[11px] text-fg-3">{c.branch}</span>}
         </div>
         <div className="truncate text-[12.5px] text-fg-2">{c.message?.split('\n')[0] || (analyzing ? '분석 대기 중…' : '—')}</div>
-        {c.tags?.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {c.tags.slice(0, 4).map((t) => <span key={t} className="rounded-[6px] bg-surface-2 px-1.5 text-[11px] text-fg-2">{t}</span>)}
-          </div>
+        {tagGroups(c.tags).length > 0 && (
+          <div className="truncate text-[11.5px] text-fg-3">의심 행위: {tagGroups(c.tags).join(' · ')}</div>
         )}
       </div>
       <div className="flex flex-col items-end gap-1 whitespace-nowrap text-[11.5px] text-fg-3">

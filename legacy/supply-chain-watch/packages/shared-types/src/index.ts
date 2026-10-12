@@ -54,6 +54,10 @@ export interface MatchedRule {
   file: string;
   snippet: string;
   lineHint: string;
+  /** 같은 파일에서 이 룰이 맞은 줄 수 */
+  count?: number;
+  /** 룰의 쉬운 설명 (engine rules/*.yaml description_ko) */
+  descriptionKo?: string;
 }
 
 export interface Evidence {
@@ -98,6 +102,10 @@ export interface AnalysisResult {
     usage?: LlmUsage;
     latencyMs?: number;
     error?: string;
+    /** 게이트 판단 (docs/03 §4): LLM 2차 분석으로 넘길지, 그 이유, 사용할 프롬프트 */
+    gatePassed?: boolean;
+    gateReasons?: string[];
+    promptName?: string | null;
   };
   preprocess: {
     truncated: boolean;
