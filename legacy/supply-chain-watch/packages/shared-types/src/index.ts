@@ -249,4 +249,6 @@ export interface AnalysisJob {
   repoFullName: string;
   sha: string;
   attempt: number;
+  /** 상세 화면의 "다시 분석(AI 정밀)" — 게이트·캐시와 무관하게 LLM 실행 */
+  forceLlm?: boolean;
 }

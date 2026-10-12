@@ -9,7 +9,7 @@ import { closeEvents } from './events.js';
 import { AnalysisQueue } from './queue.js';
 import { processCommit } from './worker.js';
 
-const queue = new AnalysisQueue(env.AGENT_CONCURRENCY, (commitId, onStep) => processCommit(commitId, onStep));
+const queue = new AnalysisQueue(env.AGENT_CONCURRENCY, (commitId, onStep, forceLlm) => processCommit(commitId, onStep, forceLlm));
 
 async function check(fn: () => Promise<void>): Promise<{ ok: boolean; latencyMs: number; detail?: string }> {
   const t = Date.now();

@@ -6,7 +6,7 @@ import { logger } from './logger.js';
 import { publish } from './events.js';
 import { insertAnalysis, loadCommitForAnalysis, setCommitStatus } from './store.js';
 
-export async function processCommit(commitId: number, onStep?: (step: string) => void): Promise<void> {
+export async function processCommit(commitId: number, onStep?: (step: string) => void, forceLlm = false): Promise<void> {
   const c = await loadCommitForAnalysis(commitId);
   if (!c) return;
   await setCommitStatus(commitId, 'ANALYZING');
@@ -21,7 +21,7 @@ export async function processCommit(commitId: number, onStep?: (step: string) =>
     },
     files: Array.isArray(c.files_json) ? c.files_json : [],
     diff: c.diff_text ?? '',
-    options: { alwaysLlm: c.always_llm },
+    options: { alwaysLlm: c.always_llm, forceLlm },
   };
 
   const res = await request(`${env.ENGINE_URL}/analyze`, {

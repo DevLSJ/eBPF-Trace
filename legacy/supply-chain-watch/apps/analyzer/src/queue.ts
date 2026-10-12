@@ -17,7 +17,7 @@ export interface AgentState {
   idle: boolean;
 }
 
-type ProcessFn = (commitId: number, onStep: (step: string) => void) => Promise<void>;
+type ProcessFn = (commitId: number, onStep: (step: string) => void, forceLlm?: boolean) => Promise<void>;
 
 export class AnalysisQueue {
   private cmd: Redis;
@@ -100,7 +100,7 @@ export class AnalysisQueue {
       try {
         await this.processFn(job.commitId, (step) => {
           agent.step = step;
-        });
+        }, job.forceLlm ?? false);
         this.processed++;
       } catch (err) {
         await this.onFailure(job, err as Error);
