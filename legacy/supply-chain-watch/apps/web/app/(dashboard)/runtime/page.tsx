@@ -3,17 +3,16 @@ import { useCallback, useEffect, useState } from 'react';
 import type { WsEnvelope, RuntimeIncident } from '@scw/shared-types';
 import { useWebSocket } from '@/lib/ws';
 import {
-  blockIncident,
   getIncidents,
   getSummary,
   getTopology,
-  killIncident,
   purlShort,
   RULE_LABEL,
   type RuntimeSummary,
   type Topology,
 } from '@/lib/runtime';
 import { cn } from '@/lib/utils';
+import { RuntimeConfirm, type RuntimeAction } from '@/components/runtime-confirm';
 
 const POS: Record<string, { x: number; y: number }> = {
   edge: { x: 30, y: 188 },
@@ -31,6 +30,8 @@ export default function RuntimePage() {
   const [summary, setSummary] = useState<RuntimeSummary | null>(null);
   const [topo, setTopo] = useState<Topology | null>(null);
   const [incidents, setIncidents] = useState<RuntimeIncident[]>([]);
+  const [pending, setPending] = useState<{ key: string; action: RuntimeAction } | null>(null);
+  const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
 
   const load = useCallback(() => {
     void getSummary().then(setSummary).catch(() => {});
@@ -158,12 +159,37 @@ export default function RuntimePage() {
                   아직 경보가 없습니다. 공격 시연에서 시나리오를 실행하면 여기에 표시됩니다.
                 </p>
               ) : (
-                incidents.map((i) => <IncidentCard key={i.incidentKey} inc={i} />)
+                incidents.map((i) => (
+                  <IncidentCard key={i.incidentKey} inc={i} onAction={(action) => setPending({ key: i.incidentKey, action })} />
+                ))
               )}
             </div>
           </div>
         </div>
       </div>
+      {notice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={cn('fixed bottom-5 right-5 z-40 rounded-lg px-4 py-2.5 text-[13px] font-semibold shadow-card', notice.ok ? 'bg-good-soft text-good-ink' : 'bg-crit-soft text-crit-ink')}
+        >
+          {notice.message}
+        </div>
+      )}
+      {pending && (
+        <RuntimeConfirm
+          incidentKey={pending.key}
+          action={pending.action}
+          onClose={(r) => {
+            setPending(null);
+            if (r) {
+              setNotice(r);
+              setTimeout(() => setNotice(null), 5000);
+              load();
+            }
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -177,7 +203,7 @@ function SummaryCard({ label, value, danger }: { label: string; value: number; d
   );
 }
 
-function IncidentCard({ inc }: { inc: RuntimeIncident }) {
+function IncidentCard({ inc, onAction }: { inc: RuntimeIncident; onAction: (a: RuntimeAction) => void }) {
   return (
     <div
       className={cn(
@@ -204,13 +230,13 @@ function IncidentCard({ inc }: { inc: RuntimeIncident }) {
       {!inc.blocked && (
         <div className="mt-2 flex gap-2">
           <button
-            onClick={() => void killIncident(inc.incidentKey).catch(() => {})}
+            onClick={() => onAction('kill')}
             className="flex-1 rounded-lg bg-crit px-3 py-1.5 text-[12px] font-bold text-white"
           >
             공격 프로그램 종료
           </button>
           <button
-            onClick={() => void blockIncident(inc.incidentKey).catch(() => {})}
+            onClick={() => onAction('block')}
             className="flex-1 rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-[12px] font-bold"
           >
             접속 차단

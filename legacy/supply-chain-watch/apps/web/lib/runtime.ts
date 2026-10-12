@@ -56,6 +56,19 @@ export const killIncident = (key: string) =>
 export const blockIncident = (key: string) =>
   api(`/api/runtime/incidents/${encodeURIComponent(key)}/block`, { method: 'POST' });
 
+export interface IncidentPreview {
+  container: string;
+  service: string;
+  agentOnline: boolean;
+  kill: { loops: { ppid: number; tools: string[]; runs: number }[]; keeps: string };
+  block: {
+    destIp: string | null; ports: number[]; destLabel: string; internalService: string | null;
+    affected: string[]; undo: string;
+  };
+}
+export const getIncidentPreview = (key: string) =>
+  api<IncidentPreview>(`/api/runtime/incidents/${encodeURIComponent(key)}/preview`);
+
 export const simulate = (scenario: 'pay' | 'image' | 'normal' | 'reset') =>
   api<{ scenario: string }>('/api/runtime/simulate', {
     method: 'POST',

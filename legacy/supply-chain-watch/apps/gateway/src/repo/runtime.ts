@@ -79,13 +79,15 @@ export async function listIncidentEvents(incidentKey: string) {
 }
 
 // 토폴로지 노드(고정) + DB에서 감염 상태 계산. c2는 미차단 인시던트가 있으면 노출.
+// ip = infra/docker-compose.runtime.yml의 carrot-net 고정 주소 (차단 미리보기에서 내부 서비스 판별용)
 const NODES = [
-  { key: 'edge', name: '입구 서버', role: '요청을 나눠 보냄', container: 'carrot-edge' },
-  { key: 'image', name: '이미지 서비스', role: '사진 올리기', container: 'carrot-image-service' },
-  { key: 'pay', name: '결제 서비스', role: '안전결제 처리', container: 'carrot-pay-service' },
-  { key: 'postgres', name: '주문 DB', role: '주문·회원 저장', container: 'carrot-postgres' },
-  { key: 'redis', name: '캐시', role: '로그인 정보 저장', container: 'carrot-redis' },
+  { key: 'edge', name: '입구 서버', role: '요청을 나눠 보냄', container: 'carrot-edge', ip: '10.77.0.2' },
+  { key: 'image', name: '이미지 서비스', role: '사진 올리기', container: 'carrot-image-service', ip: '10.77.0.12' },
+  { key: 'pay', name: '결제 서비스', role: '안전결제 처리', container: 'carrot-pay-service', ip: '10.77.0.11' },
+  { key: 'postgres', name: '주문 DB', role: '주문·회원 저장', container: 'carrot-postgres', ip: '10.77.0.10' },
+  { key: 'redis', name: '캐시', role: '로그인 정보 저장', container: 'carrot-redis', ip: '10.77.0.13' },
 ];
+const serviceName = (container: string) => NODES.find((n) => n.container === container)?.name ?? container;
 const EDGES = [
   ['edge', 'image'], ['edge', 'pay'], ['image', 'postgres'],
   ['pay', 'postgres'], ['pay', 'redis'],
@@ -100,7 +102,7 @@ export async function topology() {
                             AND a.action = 'KILL_PROCESS' AND a.status = 'DONE')`,
   );
   const infected = new Set(rows.map((r) => r.container));
-  const nodes = NODES.map((n) => ({ ...n, infected: infected.has(n.container) }));
+  const nodes = NODES.map(({ ip: _ip, ...n }) => ({ ...n, infected: infected.has(n.container) }));
   return { nodes, edges: EDGES, c2Visible: infected.size > 0 };
 }
 
@@ -157,4 +159,71 @@ export async function incidentTarget(
   );
   if (!rows.length) return null;
   return { container: rows[0].container, agentUid: rows[0].agent_uid, destIp: rows[0].dest_ip };
+}
+
+// 종료·차단 실행 전 예상 결과 (ADR-020 U3). 실제 실행은 하지 않고 DB 기록만으로 계산한다.
+export interface IncidentPreview {
+  container: string;
+  service: string;
+  agentOnline: boolean;
+  kill: {
+    loops: { ppid: number; tools: string[]; runs: number }[]; // 반복 실행 중인 부모 프로세스 → 실행한 도구
+    keeps: string;
+  };
+  block: {
+    destIp: string | null;
+    ports: number[];
+    destLabel: string;
+    internalService: string | null; // 막으면 서비스가 멈추는 내부 주소
+    affected: string[]; // 최근 24시간 이 주소로 접속한 서비스 (차단은 모사 서비스 전체에 적용)
+    undo: string;
+  };
+}
+
+export async function incidentPreview(incidentKey: string): Promise<IncidentPreview | null> {
+  const t = await incidentTarget(incidentKey);
+  if (!t) return null;
+  const [loops, ports, affected, agent] = await Promise.all([
+    pool.query<{ ppid: number; tools: string[]; runs: number }>(
+      `SELECT ppid, array_agg(DISTINCT coalesce(filename, comm)) AS tools, count(*)::int AS runs
+         FROM runtime_events WHERE incident_key = $1 AND kind = 'EXECVE' AND ppid IS NOT NULL
+        GROUP BY ppid ORDER BY runs DESC LIMIT 5`,
+      [incidentKey],
+    ),
+    t.destIp
+      ? pool.query<{ port: number }>(
+          `SELECT DISTINCT dest_port AS port FROM runtime_events
+            WHERE incident_key = $1 AND host(dest_ip) = $2 AND dest_port IS NOT NULL ORDER BY 1`,
+          [incidentKey, t.destIp],
+        )
+      : Promise.resolve({ rows: [] as { port: number }[] }),
+    t.destIp
+      ? pool.query<{ container: string }>(
+          `SELECT DISTINCT container FROM runtime_events
+            WHERE host(dest_ip) = $1 AND created_at > now() - interval '24 hours' ORDER BY 1`,
+          [t.destIp],
+        )
+      : Promise.resolve({ rows: [] as { container: string }[] }),
+    t.agentUid
+      ? pool.query<{ status: string }>(`SELECT status FROM runtime_agents WHERE agent_uid = $1`, [t.agentUid])
+      : Promise.resolve({ rows: [] as { status: string }[] }),
+  ]);
+  const internal = t.destIp ? NODES.find((n) => n.ip === t.destIp) : undefined;
+  return {
+    container: t.container,
+    service: serviceName(t.container),
+    agentOnline: agent.rows[0]?.status === 'ONLINE',
+    kill: {
+      loops: loops.rows.map((r) => ({ ppid: Number(r.ppid), tools: r.tools, runs: r.runs })),
+      keeps: `${serviceName(t.container)} 본체(컨테이너의 첫 프로세스)는 그대로 두므로 서비스는 계속 동작합니다`,
+    },
+    block: {
+      destIp: t.destIp,
+      ports: ports.rows.map((r) => r.port),
+      destLabel: internal ? `내부 서비스 · ${internal.name}` : '허용 목록에 없는 외부 서버',
+      internalService: internal?.name ?? null,
+      affected: affected.rows.map((r) => serviceName(r.container)),
+      undo: '해제 버튼은 아직 없습니다. 런타임 에이전트를 다시 시작하면 풀립니다',
+    },
+  };
 }

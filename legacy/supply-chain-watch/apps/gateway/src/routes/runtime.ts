@@ -5,6 +5,7 @@ import { logger } from '../logger.js';
 import { pool } from '../db/pool.js';
 import {
   aggregateIncident,
+  incidentPreview,
   incidentTarget,
   listAgents,
   listIncidentEvents,
@@ -78,6 +79,13 @@ runtimeRouter.get('/incidents/:key', async (req, res) => {
   }
   const events = await listIncidentEvents(req.params.key);
   res.json({ ok: true, data: { incident, events } });
+});
+
+// 실행 전 미리보기: 종료하면 무엇이 꺼지고, 차단하면 어디가 막히는지 (ADR-020 U3)
+runtimeRouter.get('/incidents/:key/preview', async (req, res) => {
+  const p = await incidentPreview(req.params.key);
+  if (!p) return res.status(404).json({ ok: false, error: { code: 'NOT_FOUND', message: '경보를 찾을 수 없습니다' } });
+  res.json({ ok: true, data: p });
 });
 
 // 역방향 차단 (docs/13 §7): 종료=악성 프로세스 SIGKILL, 차단=목적지 eBPF 차단.
