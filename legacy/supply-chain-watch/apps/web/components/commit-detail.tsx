@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { WsEnvelope } from '@scw/shared-types';
 import { useWebSocket } from '@/lib/ws';
@@ -25,8 +25,13 @@ export function CommitDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // 재분석 직후엔 요청 직후·시작·완료 이벤트로 load가 겹친다. 늦게 도착한 옛 응답이 최신 상태를 덮지 않게 순번으로 거른다.
+  const seq = useRef(0);
   const load = useCallback(() => {
-    getCommit(id).then((x) => { setD(x); setErr(null); }).catch((e: Error) => setErr(e.message));
+    const n = ++seq.current;
+    getCommit(id)
+      .then((x) => { if (n === seq.current) { setD(x); setErr(null); } })
+      .catch((e: Error) => { if (n === seq.current) setErr(e.message); });
   }, [id]);
   useEffect(load, [load]);
 
@@ -110,10 +115,11 @@ export function CommitDetail({ id }: { id: string }) {
         {/* 우: 분석 결과 */}
         <aside className="flex min-w-0 flex-col gap-3">
           <div className="rounded-xl border border-line bg-surface p-4 shadow-card">
-            {analyzing || !a ? (
-              <div className="text-[13px] text-fg-2">{analyzing ? '분석 대기·진행 중입니다…' : '아직 분석 결과가 없습니다.'}</div>
+            {analyzing && <div role="status" className={cn('text-[13px] text-fg-2', a && 'mb-3 rounded-lg bg-info-soft px-3 py-2 text-[12.5px]')}>{a ? '다시 분석하는 중입니다… 아래는 이전 결과입니다.' : '분석 대기·진행 중입니다…'}</div>}
+            {!a ? (
+              !analyzing && <div className="text-[13px] text-fg-2">아직 분석 결과가 없습니다.</div>
             ) : (
-              <>
+              <div className={cn(analyzing && 'opacity-50')}>
                 <div className="flex items-end justify-between gap-3">
                   <div>
                     <div className="text-[12px] text-fg-3">위험 점수</div>
@@ -135,12 +141,12 @@ export function CommitDetail({ id }: { id: string }) {
                 </dl>
                 {tagGroups(a.tags).length > 0 && <div className="mt-2 text-[12px] text-fg-2">의심 행위: <b>{tagGroups(a.tags).join(' · ')}</b></div>}
                 <div className="mt-1 text-[11.5px] text-fg-3">{LLM_STATUS_LABEL[a.llmStatus] ?? a.llmStatus}{a.llmModel ? ` · ${a.llmModel}` : ''}{a.promptVersion ? ` · 지침 v${a.promptVersion}` : ''}</div>
-              </>
+              </div>
             )}
           </div>
 
           {a?.llm && (
-            <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4 shadow-card">
+            <div className={cn('flex flex-col gap-2 rounded-xl border border-line bg-surface p-4 shadow-card', analyzing && 'opacity-50')}>
               <b className="text-[13.5px]">AI 요약</b>
               <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{a.llm.attackNarrativeKo}</p>
               {a.llm.benignExplanationKo && (
