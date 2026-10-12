@@ -21,8 +21,9 @@ __pycache__/
 .idea/
 .vscode/
 
-# local data
-data/
+# local data — 외부 평가 데이터는 추적 제외, 안내 문서만 커밋 (data/README.md)
+data/*
+!data/README.md
 *.db
 
 # next
