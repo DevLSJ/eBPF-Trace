@@ -50,7 +50,9 @@ export async function insertAnalysis(commitId: number, result: AnalysisResult): 
       commitId, result.riskScore, result.riskLevel, result.tags,
       result.static.score, result.static.level, JSON.stringify(result.static.matchedRules),
       result.static.sensitiveFiles, result.llm.status, result.llm.model ?? null,
-      result.llm.result ? JSON.stringify({ ...result.llm.result, _summaryKo: summaryKo }) : null,
+      result.llm.result
+        ? JSON.stringify({ ...result.llm.result, _summaryKo: summaryKo, _stages: result.llm.stages ?? [], _gateReasons: result.llm.gateReasons ?? [] })
+        : null,
       result.llm.promptVersion ?? null,
       result.llm.usage?.inputTokens ?? null, result.llm.usage?.outputTokens ?? null,
       result.llm.usage?.cacheReadTokens ?? null, result.llm.latencyMs ?? null, result.static.latencyMs,

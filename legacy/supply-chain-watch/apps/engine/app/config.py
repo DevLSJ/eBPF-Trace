@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     llm_model_cheap: str = "claude-haiku-4-5"
     llm_effort: str = "medium"
     llm_threshold: int = 20  # docs/03 §4 게이트 기본값
+    llm_max_per_hour: int = 200  # 전역 시간당 LLM 호출 상한 (docs/03 §4)
+    llm_max_per_repo_hour: int = 30  # 레포별 시간당 상한
+    llm_timeout_s: float = 30.0
+    llm_two_stage: bool = True  # 1차 저렴한 모델로 거르고 위험한 것만 정밀 모델 (2026-10-12 사용자 결정)
+    llm_triage_threshold: int = 40  # 1차 점수가 이 이상이면 2차 정밀 분석
+    llm_cache_ttl_s: int = 86400  # 같은 diff 결과 재사용 (docs/04 llm:cache)
+    database_url: str = "postgresql://capstone:capstone@localhost:5433/capstone"
+    redis_url: str = "redis://localhost:6380/0"
 
 
 settings = Settings()

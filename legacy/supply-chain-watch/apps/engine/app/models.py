@@ -87,6 +87,8 @@ class LlmSection(CamelModel):
     gate_passed: bool = False
     gate_reasons: list[str] = []
     prompt_name: str | None = None
+    # 2단계 분석 기록: [{model, status, riskScore, latencyMs, error}] (1단계 저렴한 모델 → 2단계 정밀 모델)
+    stages: list[dict] = []
 
 
 class PreprocessSection(CamelModel):

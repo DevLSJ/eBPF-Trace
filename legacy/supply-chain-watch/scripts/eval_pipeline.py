@@ -349,6 +349,89 @@ def pct(a: int, b: int) -> str:
     return f"{a / b * 100:.1f}%" if b else "—"
 
 
+# ---------- LLM 포함 평가 (--with-llm, 비용 발생 → 사전 승인 · 호출 상한 강제) ----------
+
+HAIKU_PRICE = (1.0, 5.0)  # $/MTok 입력·출력 — Anthropic 정가 기준 추정(중계 과금과 다를 수 있음)
+
+
+def run_with_llm(n: int, max_calls: int, seed: int, note: str, write_log: bool) -> int:
+    import asyncio
+
+    from app.analyze import analyze
+    from app.llm import provider as prov
+    from app.models import AnalyzeRequest, CommitMeta
+
+    real = prov.AnthropicProvider()
+    calls = {"n": 0}
+
+    class CappedProvider:
+        async def analyze(self, system, user, model):  # noqa: ANN001
+            if calls["n"] >= max_calls:
+                return prov.LlmCallResult("ERROR", model, error=f"평가 호출 상한 {max_calls}회 도달")
+            calls["n"] += 1
+            return await real.analyze(system, user, model)
+
+    prov.set_provider(CappedProvider())
+    rng = random.Random(seed)
+    pos = [s for s in load_datadog(None) if not s.nocode]
+    neg = load_benign_npm(0, seed) + load_benign_pypi_wheels(None)
+    rng.shuffle(pos)
+    rng.shuffle(neg)
+    n_pos = round(n * 0.6)
+    picked = pos[:n_pos] + neg[: n - n_pos]
+
+    async def one(s: Sample):
+        diff = build_diff(s.files, TOTAL_CAP)  # 실제 커밋과 같은 120KB 상한
+        req = AnalyzeRequest(commit=CommitMeta(repo_full_name=f"eval/{s.source}", sha=hashlib.sha1(s.sid.encode()).hexdigest(), message="update"), diff=diff)
+        return s, await analyze(req)
+
+    async def run_all():
+        return [await one(s) for s in picked]  # 순차 실행(중계 서버 부하·상한 계산 단순화)
+
+    import hashlib  # noqa: E401
+    rows = asyncio.run(run_all())
+    prov.set_provider(None)
+
+    stat = {lab: Counter() for lab in ("positive", "negative")}
+    tok = Counter()
+    lat: list[int] = []
+    for s, r in rows:
+        st = stat[s.label]
+        st["n"] += 1
+        strong = [m for m in r.static.matched_rules if m.severity != "LOW"]
+        st["static"] += bool(strong)
+        st["gate"] += r.llm.gate_passed
+        st[r.llm.status] += 1
+        if r.llm.result:
+            st["llm_flag"] += r.llm.result["riskScore"] >= 40
+        st["fused_flag"] += r.risk_level != "LOW"
+        for k, v in (r.llm.usage or {}).items():
+            tok[k] += v
+        if r.llm.latency_ms:
+            lat.append(r.llm.latency_ms)
+    cost = tok["inputTokens"] / 1e6 * HAIKU_PRICE[0] + tok["outputTokens"] / 1e6 * HAIKU_PRICE[1]
+    lines = [f"### LLM 포함 평가 — {date.today().isoformat()} (모델 {settings.llm_model_cheap}→{settings.llm_model}, 실제 호출 {calls['n']}회 / 상한 {max_calls})", "",
+             "| 종류 | 샘플 | 정적 탐지 | LLM 분석 완료 | LLM 위험(≥40) | 최종 주의 이상 | 거부 | 오류 |", "|---|---:|---:|---:|---:|---:|---:|---:|"]
+    for lab, name in (("positive", "실제 악성"), ("negative", "정상")):
+        st = stat[lab]
+        done = st["OK"] + st["CACHED"]
+        lines.append(f"| {name} | {st['n']} | {st['static']} | {done} | {st['llm_flag']} | {st['fused_flag']} | {st['REFUSED']} | {st['ERROR']} |")
+    p, ng = stat["positive"], stat["negative"]
+    lines += ["",
+              f"- 실제 악성: 정적 {pct(p['static'], p['n'])} → **최종(LLM 융합) {pct(p['fused_flag'], p['n'])}** · LLM 단독 {pct(p['llm_flag'], p['OK'] + p['CACHED'])}",
+              f"- 정상: 정적 오탐 {pct(ng['static'], ng['n'])} → **최종 오탐 {pct(ng['fused_flag'], ng['n'])}** · LLM 단독 오탐 {pct(ng['llm_flag'], ng['OK'] + ng['CACHED'])}",
+              f"- 토큰: 입력 {tok['inputTokens']:,} · 출력 {tok['outputTokens']:,} · 캐시 읽기 {tok['cacheReadTokens']:,} → 추정 비용 ${cost:.3f} (haiku 정가 기준)",
+              f"- LLM 지연: 평균 {sum(lat) / max(1, len(lat)) / 1000:.1f}s · 최대 {max(lat, default=0) / 1000:.1f}s"]
+    if note:
+        lines.append(f"- 메모: {note}")
+    report = "\n".join(lines)
+    print(report)
+    if write_log:
+        with (ROOT / "docs" / "eval-log.md").open("a", encoding="utf-8") as fh:
+            fh.write(report + "\n\n")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--static-only", action="store_true", help="정적 분석만 (현재 유일한 모드)")
@@ -361,7 +444,11 @@ def main() -> int:
     ap.add_argument("--write-log", action="store_true", help="docs/eval-log.md에 결과 표 추가")
     ap.add_argument("--note", default="", help="eval-log 메모")
     ap.add_argument("--misses", action="store_true", help="놓친 양성·오탐 음성 ID와 룰만 출력 (코드 미출력)")
+    ap.add_argument("--with-llm", type=int, default=0, metavar="N", help="LLM 포함 평가 표본 수 (비용 발생, 실제 악성 60%·정상 40%)")
+    ap.add_argument("--max-calls", type=int, default=50, help="LLM 실제 호출 상한 (2026-10-12 사용자 결정: 50)")
     args = ap.parse_args()
+    if args.with_llm:
+        return run_with_llm(args.with_llm, args.max_calls, args.seed, args.note, args.write_log)
 
     rules = get_rules()
     samples = (load_corpus() + load_guarddog() + load_datadog(args.datadog_limit) + load_zizmor()

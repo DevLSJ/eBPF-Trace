@@ -106,6 +106,8 @@ export interface AnalysisResult {
     gatePassed?: boolean;
     gateReasons?: string[];
     promptName?: string | null;
+    /** 2단계 분석 기록 (1단계 저렴한 모델 → 2단계 정밀 모델) */
+    stages?: { model: string; status: string; riskScore?: number | null; latencyMs?: number; error?: string | null }[];
   };
   preprocess: {
     truncated: boolean;

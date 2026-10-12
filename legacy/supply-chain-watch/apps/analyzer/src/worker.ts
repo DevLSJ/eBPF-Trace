@@ -28,8 +28,9 @@ export async function processCommit(commitId: number, onStep?: (step: string) =>
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-    headersTimeout: 60_000,
-    bodyTimeout: 60_000,
+    // LLM 2단계(저렴한 모델 → 정밀 모델)까지 포함하므로 여유 있게
+    headersTimeout: 120_000,
+    bodyTimeout: 120_000,
   });
   if (res.statusCode !== 200) {
     const txt = await res.body.text();
