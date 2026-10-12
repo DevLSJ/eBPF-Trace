@@ -7,10 +7,12 @@ import {
   setAutoBlock as apiSetAutoBlock,
 } from '@/lib/runtime';
 import { cn } from '@/lib/utils';
+import { WhitelistEditor } from '@/components/whitelist-editor';
+import { validateWhitelist, type Whitelist } from '@/lib/whitelist';
 
 export default function SettingsPage() {
   const [autoBlock, setAutoBlock] = useState(false);
-  const [wl, setWl] = useState(JSON.stringify(DEFAULT_WHITELIST, null, 2));
+  const [wl, setWl] = useState<Whitelist>(DEFAULT_WHITELIST);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState(false);
 
@@ -18,7 +20,8 @@ export default function SettingsPage() {
     void getRuntimeConfig()
       .then((c) => {
         setAutoBlock(c.autoBlock);
-        if (c.whitelist && typeof c.whitelist === 'object') setWl(JSON.stringify(c.whitelist, null, 2));
+        const v = c.whitelist ? validateWhitelist(c.whitelist).value : undefined;
+        if (v) setWl(v);
       })
       .catch(() => {});
   }, []);
@@ -41,19 +44,14 @@ export default function SettingsPage() {
     }
   };
 
-  const save = async () => {
-    let parsed: unknown;
+  const save = async (next: Whitelist) => {
     try {
-      parsed = JSON.parse(wl);
-    } catch {
-      flash('화이트리스트 JSON 형식이 올바르지 않습니다', true);
-      return;
-    }
-    try {
-      const r = await pushWhitelist(parsed);
-      flash(`화이트리스트를 에이전트 ${r.pushed}대에 적용했습니다`);
-    } catch {
-      flash('화이트리스트 적용 실패', true);
+      const r = await pushWhitelist(next);
+      setWl(next);
+      flash(r.pushed > 0 ? `검사 기준을 에이전트 ${r.pushed}대에 적용했습니다` : '저장했지만 연결된 에이전트가 없어 아직 적용되지 않았습니다', r.pushed === 0);
+    } catch (e) {
+      flash(`적용하지 못했습니다: ${(e as Error).message}`, true);
+      throw e;
     }
   };
 
@@ -71,7 +69,7 @@ export default function SettingsPage() {
             <span>
               <b className="text-[13.5px]">위험 시 자동 차단</b>
               <span className="mt-0.5 block text-[12px] text-fg-2">
-                위험(HIGH) 외부 접속이 탐지되면 관리자 확인 없이 목적지를 즉시 차단합니다.
+                위험 단계의 외부 접속이 탐지되면 관리자 확인 없이 그 주소를 즉시 차단합니다.
               </span>
             </span>
             <button
@@ -84,23 +82,7 @@ export default function SettingsPage() {
             </button>
           </label>
 
-          <div>
-            <div className="flex items-center justify-between">
-              <b className="text-[13.5px]">허용 목록(화이트리스트)</b>
-              <button onClick={save} className="rounded-lg bg-accent px-3 py-1.5 text-[12px] font-bold text-white">
-                저장 후 에이전트에 적용
-              </button>
-            </div>
-            <p className="mt-0.5 text-[12px] text-fg-2">
-              여기 해당하는 프로세스·목적지는 정상으로 보고 경보를 내지 않습니다. 저장하면 연결된 에이전트에 즉시 반영됩니다.
-            </p>
-            <textarea
-              value={wl}
-              onChange={(e) => setWl(e.target.value)}
-              spellCheck={false}
-              className="mt-2 h-72 w-full resize-y rounded-lg border border-line-strong bg-surface-2 p-3 font-mono text-[12px] leading-relaxed"
-            />
-          </div>
+          <WhitelistEditor value={wl} defaults={DEFAULT_WHITELIST} onSave={save} />
 
           {msg && (
             <div className={cn('rounded-lg px-3 py-2 text-[12.5px]', err ? 'bg-crit-soft text-crit-ink' : 'bg-good-soft text-good-ink')}>

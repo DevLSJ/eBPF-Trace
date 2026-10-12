@@ -1,5 +1,6 @@
 // 런타임 축 REST (docs/13 §9). web /runtime·/demoshop 화면이 소비한다.
 import { Router } from 'express';
+import { z } from 'zod';
 import { env } from '../env.js';
 import { logger } from '../logger.js';
 import { pool } from '../db/pool.js';
@@ -126,11 +127,31 @@ runtimeRouter.post('/config', (req, res) => {
 });
 
 // 화이트리스트 동적 갱신 → 모든 에이전트에 cmd.whitelist_update 푸시
+// 에이전트(apps/agent/whitelist.go)가 받는 형태와 같게 강제한다. 화면을 거치지 않은 요청도 여기서 막힌다.
+const procName = z.string().regex(/^[A-Za-z0-9._+-]{1,64}$/, '프로그램 이름 형식');
+const ipv4Cidr = z.string().refine((s) => {
+  const m = s.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
+  return !!m && m.slice(1, 5).every((o) => Number(o) <= 255) && Number(m[5]) <= 32;
+}, '주소 범위 형식(a.b.c.d/n)');
+const whitelistSchema = z.object({
+  service_comms: z.array(procName),
+  shell_names: z.array(procName),
+  tool_names: z.array(procName),
+  benign_comms: z.array(procName),
+  allowed_dest_cidrs: z.array(ipv4Cidr),
+  allowed_dest_ports: z.array(z.number().int('포트는 정수').min(1, '포트는 1~65535').max(65535, '포트는 1~65535')),
+}).strict('알 수 없는 항목이 있습니다');
+
 runtimeRouter.post('/whitelist', (req, res) => {
-  const wl = (req.body as { whitelist?: unknown } | undefined)?.whitelist;
-  if (wl == null || typeof wl !== 'object') {
-    return res.status(400).json({ ok: false, error: { code: 'BAD_WHITELIST', message: 'whitelist 객체가 필요합니다' } });
+  const parsed = whitelistSchema.safeParse((req.body as { whitelist?: unknown } | undefined)?.whitelist);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'BAD_WHITELIST', message: `검사 기준 형식 오류: ${first.path.join('.') || '전체'} — ${first.message}` },
+    });
   }
+  const wl = parsed.data;
   setWhitelist(wl);
   const pushed = broadcastToAgents({ type: 'cmd.whitelist_update', whitelist: wl });
   res.json({ ok: true, data: { pushed } });
