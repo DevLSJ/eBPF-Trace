@@ -410,12 +410,13 @@ def run_with_llm(n: int, max_calls: int, seed: int, note: str, write_log: bool) 
         if r.llm.latency_ms:
             lat.append(r.llm.latency_ms)
     cost = tok["inputTokens"] / 1e6 * HAIKU_PRICE[0] + tok["outputTokens"] / 1e6 * HAIKU_PRICE[1]
-    lines = [f"### LLM 포함 평가 — {date.today().isoformat()} (모델 {settings.llm_model_cheap}→{settings.llm_model}, 실제 호출 {calls['n']}회 / 상한 {max_calls})", "",
-             "| 종류 | 샘플 | 정적 탐지 | LLM 분석 완료 | LLM 위험(≥40) | 최종 주의 이상 | 거부 | 오류 |", "|---|---:|---:|---:|---:|---:|---:|---:|"]
+    models = f"{settings.llm_model_cheap}→{settings.llm_model}" if settings.llm_two_stage else settings.llm_model
+    lines = [f"### LLM 포함 평가 — {date.today().isoformat()} (모델 {models}, 실제 호출 {calls['n']}회 / 상한 {max_calls})", "",
+             "| 종류 | 샘플 | 정적 탐지 | LLM 분석 완료 | LLM 위험(≥40) | 최종 주의 이상 | 거부 | 오류 | 예산 건너뜀 |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for lab, name in (("positive", "실제 악성"), ("negative", "정상")):
         st = stat[lab]
         done = st["OK"] + st["CACHED"]
-        lines.append(f"| {name} | {st['n']} | {st['static']} | {done} | {st['llm_flag']} | {st['fused_flag']} | {st['REFUSED']} | {st['ERROR']} |")
+        lines.append(f"| {name} | {st['n']} | {st['static']} | {done} | {st['llm_flag']} | {st['fused_flag']} | {st['REFUSED']} | {st['ERROR']} | {st['SKIPPED_BUDGET']} |")
     p, ng = stat["positive"], stat["negative"]
     lines += ["",
               f"- 실제 악성: 정적 {pct(p['static'], p['n'])} → **최종(LLM 융합) {pct(p['fused_flag'], p['n'])}** · LLM 단독 {pct(p['llm_flag'], p['OK'] + p['CACHED'])}",
