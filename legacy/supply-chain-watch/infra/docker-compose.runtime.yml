@@ -1,6 +1,6 @@
 # 런타임 축 모사 환경 (Phase R-1, docs/13 §8). 공격 시연 전용 — 모든 서비스는 carrot-net 내부에서만 통신하고,
 # 호스트에는 입구 서버(edge)만 노출한다. fake-c2는 받은 요청의 메타데이터만 로그로 남긴다(외부 전송 없음).
-# 실행: docker compose -f infra/docker-compose.runtime.yml up -d --build
+# 실행: docker compose --env-file .env -f infra/docker-compose.runtime.yml [--profile agent] up -d --build
 name: scw-runtime
 
 x-carrot-db: &carrot-db
@@ -96,6 +96,9 @@ services:
     pid: host
     environment:
       AGENT_SMOKE_SECONDS: "${AGENT_SMOKE_SECONDS:-0}"
+      # gateway 업링크(docs/13 §5). 루트 .env의 AGENT_TOKEN을 쓰려면 `--env-file .env`로 기동
+      GATEWAY_WS_URL: "${GATEWAY_WS_URL:-ws://host.docker.internal:4000/agent-ws}"
+      AGENT_TOKEN: "${AGENT_TOKEN:-}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
