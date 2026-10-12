@@ -44,7 +44,7 @@
   category: C2_CONNECTION
   severity: CRITICAL
   languages: [SHELL, MAKE, PY, JS, DOCKER, OTHER]
-  pattern: '/dev/(?:tcp|udp)/[\w.$-]+/\d+|\bnc(?:at)?\s[^\n]*\s-e\s|\bbash\s+-i\s*>&|\bsocat\s[^\n]*exec:|\bmkfifo\s[^\n]*\bnc\b|os\.dup2\(\s*\w+\.fileno\(\)'
+  pattern: '/dev/(?:tcp|udp)/[\w.$-]+/\d+|\bnc(?:at)?\s[^\n]*\s-e\s|\bbash\s+-i\s*>&|\bsocat\s[^\n]*exec:|\bmkfifo\s[^\n]*\bnc\b|os\.dup2\(\s*(?:s|so|sock|socket|conn|client|c)\w{0,6}\.fileno\(\)'
   exclude_pattern: '^\s*(?://|#)'
   description_ko: "외부로 셸을 넘겨주는 역방향 셸 패턴"
   false_positive_hint: "정상 코드에 쓰일 일이 거의 없음. 주석 언급은 제외"

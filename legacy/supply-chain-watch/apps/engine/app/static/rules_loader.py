@@ -45,6 +45,7 @@ class Rule:
     window: int = 5
     exclude_pattern: re.Pattern[str] | None = None
     path_pattern: re.Pattern[str] | None = None
+    exclude_path_pattern: re.Pattern[str] | None = None
     unless_added_pattern: re.Pattern[str] | None = None
     combos: tuple[tuple[tuple[str, ...], ...], ...] = ()
     detector: str | None = None
@@ -101,6 +102,7 @@ def _parse_rule(raw: dict, source: str) -> Rule:
         window=int(raw.get("window", 5)),
         exclude_pattern=_compile(raw, "exclude_pattern", rid),
         path_pattern=_compile(raw, "path_pattern", rid),
+        exclude_path_pattern=_compile(raw, "exclude_path_pattern", rid),
         unless_added_pattern=_compile(raw, "unless_added_pattern", rid),
         combos=tuple(tuple(tuple(g) for g in c["all"]) for c in raw.get("combos", [])),
         detector=raw.get("detector"),

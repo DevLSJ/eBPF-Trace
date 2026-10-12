@@ -17,9 +17,9 @@
   severity: MEDIUM
   languages: [JS, PY, SHELL, CONFIG, OTHER, MAKE]
   # 악용이 잦은 TLD(호스트의 끝) · 무료 터널/동적 DNS · 단축 URL · IP 로거 · 공인 IP 조회(정찰)
-  pattern: 'https?://[\w.-]+\.(?:xyz|top|tk|pw|su|gq|ml|cf|ga|zip|ru|cn)(?=[/:''"`\s?#)]|$)|[\w-]+\.(?:ngrok(?:-free)?\.(?:io|app|dev)|duckdns\.org|no-ip\.(?:org|com|biz)|ddns\.net|serveo\.net|trycloudflare\.com|workers\.dev)\b|\b(?:bit\.ly|tinyurl\.com|is\.gd|t\.ly|cutt\.ly|rb\.gy|grabify\.link|iplogger\.(?:org|com)|2no\.co)/|\b(?:api\.ipify\.org|ipinfo\.io|ifconfig\.me|icanhazip\.com|ip\.me|checkip\.amazonaws\.com)\b'
+  pattern: 'https?://[\w.-]+\.(?:xyz|top|tk|pw|su|gq|ml|cf|ga|zip)(?=[/:''"`\s?#)]|$)|[\w-]+\.(?:ngrok(?:-free)?\.(?:io|app|dev)|duckdns\.org|no-ip\.(?:org|com|biz)|ddns\.net|serveo\.net|trycloudflare\.com|workers\.dev)\b|\b(?:bit\.ly|tinyurl\.com|is\.gd|t\.ly|cutt\.ly|rb\.gy|grabify\.link|iplogger\.(?:org|com)|2no\.co)/|\b(?:api\.ipify\.org|ipinfo\.io|ifconfig\.me|icanhazip\.com|ip\.me|checkip\.amazonaws\.com)\b'
   # 주석·문서 링크·package.json 작성자 메타는 제외
-  exclude_pattern: '^\s*(?:#|//|\*)|<https?://[^>]+>`|"(?:author|homepage|url|email|bugs|funding|contributors|maintainers)"\s*:|<[^>\s]+@[^>\s]+>'
+  exclude_pattern: '^\s*(?:#|//|\*)|<https?://[^>]+>`|\]\(https?://|"(?:author|homepage|url|email|bugs|funding|contributors|maintainers)"\s*:|<[^>\s]+@[^>\s]+>'
   description_ko: "악용이 잦은 도메인·무료 터널·단축 URL·IP 조회 서비스로의 접속"
   false_positive_hint: "주석·문서 링크·작성자 정보는 제외. 단독으로는 주의(MEDIUM)"
 
@@ -81,7 +81,7 @@
   severity: HIGH
   languages: [JS, PY, SHELL, OTHER]
   pattern: '\.ssh[\\/]+id_[a-z0-9]+|\.ssh[\\/]+authorized_keys|\.aws[\\/]+credentials|\.npmrc\b|\.pypirc\b|\.docker[\\/]+config\.json|\.git-credentials|\.kube[\\/]+config|/etc/shadow\b|/etc/passwd\b|(?:Google[\\/]+Chrome|BraveSoftware|Microsoft[\\/]+Edge|Opera Software)[\\/]+[^''"\n]{0,30}(?:User Data|Login Data|Cookies)|Login Data[''"]|Local State[''"]|\.mozilla[\\/]+firefox|discord(?:canary|ptb)?[\\/]+Local Storage|Local Storage[\\/]+leveldb'
-  exclude_pattern: '^\s*(?://|#)'
+  exclude_pattern: '^\s*(?://|#|\*)|``|(?i:\bdefault\b|configuration file|is used|if present|e\.g\.|for example|a value like)'
   description_ko: "SSH 키·클라우드 자격증명·레지스트리 토큰·브라우저/메신저 저장소 등 민감 파일 경로 접근"
   false_positive_hint: "주석의 경로 언급은 제외. 배포 스크립트가 .npmrc를 쓰는 경우는 LLM 판단"
 
@@ -106,11 +106,21 @@
 - id: OBF_EVAL_DYNAMIC
   category: OBFUSCATION
   severity: HIGH
-  languages: [JS, PY]
+  languages: [JS]
   pattern: '(?<![.\w$])(?:eval|exec)\(\s*[A-Za-z_$(\[]|(?<![.\w$])compile\([^)\n]*,\s*[''"](?:exec|eval|single)[''"]|\bnew\s+Function\(\s*[A-Za-z_$(\[]|\bvm\.runIn(?:This|New)?Context\(|\bexecSync\(\s*[A-Za-z_$(\[]'
   # 정상 관용구: 버전 파일 exec(open(..)), 네임스페이스를 넘기는 코드 생성 exec(code, ns), AST로만 컴파일
   exclude_pattern: '^\s*(?://|#)|exec\(\s*(?:open\(|compile\(\s*open\(|f\.read\(\)|fp\.read\(\)|fh\.read\(\)|Path\([^)\n]*\)\.read_text\(\))|(?<![.\w$])(?:eval|exec)\(\s*[\w.]+\s*,\s*[\w*{]|PyCF_ONLY_AST|\beval\(\s*line\b|version\w*\s*=\s*eval\('
   description_ko: "문자열이 아닌 동적 값을 코드로 실행 (eval/exec/new Function/vm)"
+  false_positive_hint: "정규식 .exec()·re.compile()·버전 파일 exec·네임스페이스 지정 코드 생성은 제외"
+
+- id: OBF_EVAL_DYNAMIC_PY
+  category: OBFUSCATION
+  severity: LOW
+  languages: [PY]
+  pattern: '(?<![.\w$])(?:eval|exec)\(\s*[A-Za-z_$(\[]|(?<![.\w$])compile\([^)\n]*,\s*[''"](?:exec|eval|single)[''"]|\bnew\s+Function\(\s*[A-Za-z_$(\[]|\bvm\.runIn(?:This|New)?Context\(|\bexecSync\(\s*[A-Za-z_$(\[]'
+  # 정상 관용구: 버전 파일 exec(open(..)), 네임스페이스를 넘기는 코드 생성 exec(code, ns), AST로만 컴파일
+  exclude_pattern: '^\s*(?://|#)|exec\(\s*(?:open\(|compile\(\s*open\(|f\.read\(\)|fp\.read\(\)|fh\.read\(\)|Path\([^)\n]*\)\.read_text\(\))|(?<![.\w$])(?:eval|exec)\(\s*[\w.]+\s*,\s*[\w*{]|PyCF_ONLY_AST|\beval\(\s*line\b|version\w*\s*=\s*eval\('
+  description_ko: "파이썬 eval/exec에 동적 값 (단독으로는 흔함 — 디코딩·다운로드 흐름과 결합은 AST 룰이 판단)"
   false_positive_hint: "정규식 .exec()·re.compile()·버전 파일 exec·네임스페이스 지정 코드 생성은 제외"
 
 - id: OBF_BASE64_DECODE_EXEC
@@ -138,8 +148,8 @@
   severity: MEDIUM
   languages: [JS, PY, SHELL, OTHER]
   # 이스케이프 20개 이상 연속, 또는 인쇄 가능한 문자를 \x로 6글자 이상 연속 표기(이름·명령 숨기기)
-  pattern: '(?:\\x[0-9a-fA-F]{2}){20,}|(?:\\u[0-9a-fA-F]{4}){20,}|(?:\\x[2-7][0-9a-fA-F]){6,}|(?:\\(?:1[0-7][0-7]|0?[4-7][0-7])){4,}'
-  exclude_pattern: '\bb[''"]\\x|\[\\x[0-9a-fA-F]{2}-\\x'
+  pattern: '(?:\\x[0-9a-fA-F]{2}){20,}|(?:\\x[2-7][0-9a-fA-F]){6,}|(?:\\u00[2-7][0-9a-fA-F]){6,}|(?:\\(?:1[0-7][0-7]|0?[4-7][0-7])){4,}'
+  exclude_pattern: '\bb[''"]\\x|\[\\x[0-9a-fA-F]{2}-\\x|r[''"]\[|^\s*b[''"]'
   description_ko: "\\x·\\u 이스케이프로 문자열·이름을 숨김"
   false_positive_hint: "바이트 리터럴(b'\\x..')·정규식 문자 범위는 제외"
 
@@ -164,7 +174,7 @@
   severity: MEDIUM
   languages: [JS, PY]
   # 영문자 코드만으로 된 16진 문자열 리터럴 ('72657175697265' = require) — 함수·모듈 이름 숨기기
-  pattern: '[''"](?:(?:4[1-9a-fA-F]|5[0-9aA]|6[1-9a-fA-F]|7[0-9aA]|5[fF]|2[eE])){3,40}[''"]'
+  pattern: '[''"](?:(?:4[1-9a-fA-F]|5[0-9aA]|6[1-9a-fA-F]|7[0-9aA]|5[fF]|2[eE])){4,40}[''"]'
   description_ko: "영문자 코드만으로 된 16진 문자열 (함수·모듈 이름을 숨김)"
   false_positive_hint: "해시·색상 값은 무작위라 이 형태가 되기 어려움"
 
@@ -183,7 +193,7 @@
   severity: HIGH
   languages: [JS, PY]
   # 실행 함수를 이름 문자열로 꺼내 호출 (__import__('os'), getattr(builtins,'exec'), globals()['eval'], global['eval'])
-  pattern: '__import__\(\s*[''"](?:os|subprocess|base64|zlib|marshal|socket|builtins|codecs|ctypes)[''"]\s*\)|getattr\(\s*(?:__builtins__|builtins|globals\(\)|__import__)|\b(?:globals|locals|vars)\(\)\s*\[\s*[''"](?:eval|exec|compile|__import__)[''"]|\[\s*[''"](?:eval|exec|compile|system|popen|execSync|spawn)[''"]\s*\]\s*\(|\b(?:global|globalThis|window|this)\[\s*[''"](?:eval|require|Function)[''"]\s*\]'
+  pattern: '__import__\(\s*[''"](?:os|subprocess|base64|zlib|marshal|socket|builtins|codecs|ctypes)[''"]\s*\)|getattr\(\s*(?:__builtins__|builtins)\s*,\s*[''"](?:exec|eval|compile|__import__)[''"]|\b(?:globals|locals|vars)\(\)\s*\[\s*[''"](?:eval|exec|compile|__import__)[''"]|\[\s*[''"](?:eval|exec|compile|system|popen|execSync|spawn)[''"]\s*\]\s*\(|\b(?:global|globalThis|window|this)\[\s*[''"](?:eval|require|Function)[''"]\s*\]'
   exclude_pattern: '^\s*(?://|#)'
   description_ko: "실행 함수를 이름 문자열로 꺼내 호출 (탐지 우회용 동적 조회)"
   false_positive_hint: "플러그인 로더의 __import__(변수)는 해당 없음(고정 모듈명만 매칭)"
@@ -222,6 +232,7 @@
   languages: [JS, PY, SHELL, OTHER]
   # gateway 전처리가 2000자 넘는 줄을 잘라 붙이는 표시. 사람이 쓴 코드에는 거의 없는 한 줄 덩어리
   pattern: '…\[OBFUSCATION_SUSPECT \d+자\]'
+  exclude_pattern: 'AddSerializedFile|serialized_pb|_descriptor|^\s*b[''"]|^\s*DESCRIPTOR'
   description_ko: "한 줄이 2000자를 넘는 코드 덩어리 (번들·난독화된 페이로드 의심)"
   false_positive_hint: "빌드 산출물(dist/·*.min.js)은 gateway에서 이미 제외. 남은 경우는 LLM 판단"
 
@@ -252,7 +263,7 @@
   path_pattern: '(?:^|/)setup\.py$'
   # setup.py의 프로세스 실행 중, 같은 줄에 내려받기·네트워크·디코딩·셸 래퍼·실행 파일이 함께 있는 것만.
   # 빌드·배포 명령(twine, cmake, pip freeze, pandoc)은 흔한 정상 관용구라 제외된다
-  pattern: '\bos\.(?:system|popen)\(|\bsubprocess\.(?:run|call|Popen|check_output|check_call|getoutput)\(|\bcmdclass\s*=\s*\{[^}\n]*[''"]install[''"]'
+  pattern: '\bos\.(?:system|popen)\(|\bsubprocess\.(?:run|call|Popen|check_output|check_call|getoutput)\(|\bcmdclass\s*=\s*\{[^}\n]*[''"]install[''"]|^\s*[''"]install[''"]\s*:\s*\w+'
   also_pattern: '\b(?:curl|wget|powershell|certutil|bitsadmin|mshta|nc|ncat)\b|\b(?:ba)?sh\s+-c\b|python3?\s+-c\b|base64|b64decode|https?://|\.(?:exe|ps1|vbs|bat|scr)\b|/tmp/|\bstart\s+\S+\.exe|cmdclass'
   description_ko: "setup.py(설치 시 실행)에서 내려받기·네트워크·디코딩이 섞인 명령 실행 또는 install 명령 바꿔치기"
   false_positive_hint: "빌드·배포 보조 명령(twine·cmake·pandoc 등)은 제외"
@@ -264,9 +275,22 @@
   path_pattern: '\.pth$'
   # .pth 파일의 import 줄은 파이썬이 시작될 때마다 자동 실행된다
   pattern: '^\s*import\s'
-  exclude_pattern: '__editable__|_virtualenv|distutils-precedence|_distutils_hack'
+  exclude_pattern: '__editable__|_virtualenv|distutils-precedence|_distutils_hack|COVERAGE_PROCESS_START|f_locals\[''sitedir''\]'
   description_ko: ".pth 파일에 실행 코드 추가 — 파이썬을 켤 때마다 자동 실행됨"
   false_positive_hint: "편집 가능 설치(__editable__)·virtualenv 내부 .pth는 제외"
+
+- id: INSTALL_SETUP_CMD_OVERRIDE
+  category: INSTALL_HOOK
+  severity: HIGH
+  mode: window
+  window: 25
+  languages: [PY]
+  path_pattern: '(?:^|/)setup\.py$'
+  # install·develop·egg_info 명령을 바꿔치기한 클래스 안에서 프로세스·네트워크·동적 실행
+  pattern: '\bclass\s+\w+\(\s*(?:install|develop|egg_info|build_py|_install|bdist_egg|sdist)\b'
+  with_pattern: '\bsubprocess\.|\bos\.(?:system|popen|startfile)\(|\bPopen\(|\burlopen\(|\burllib\.|\brequests\.|\bsocket\.|(?<![.\w])(?:exec|eval)\(|\.exe\b|https?://'
+  description_ko: "setup.py에서 설치 명령을 바꿔치기하고 그 안에서 프로세스·네트워크·동적 코드를 실행"
+  false_positive_hint: "빌드용 C 확장(build_ext)은 대상 아님. 설치 후처리(데이터 다운로드)는 LLM 판단"
 
 # ---------- 다운로드 실행 (DOWNLOAD_EXECUTE) ----------
 - id: DL_EXEC_PIPE
@@ -277,16 +301,26 @@
   description_ko: "내려받은 스크립트를 파이프로 바로 실행 (curl | sh)"
   false_positive_hint: "README의 공식 설치 안내는 문서 배수(0.2)로 약화. 셸·Dockerfile·CI는 전용 룰"
 
-- id: DL_WRITE_THEN_EXEC
+- id: DL_WRITE_EXEC_NEAR
   category: DOWNLOAD_EXECUTE
-  severity: HIGH
+  severity: LOW
   mode: window
   window: 8
   languages: [JS, PY, SHELL, MAKE]
   # 파일을 (바이너리로) 쓰거나 내려받은 뒤 8줄 이내에서 실행 권한 부여·실행
   pattern: '\b(?:curl|wget)\s[^\n]*(?:\s-o\s|\s-O\s|--output)|\burlretrieve\(|\bopen\([^)\n]*[''"]wb[''"]|createWriteStream\(|writeFileSync\([^)\n]*\.(?:exe|sh|bin)'
   with_pattern: '\bchmod\s+\+?[0-7]*x|\bchmod\(\s*[^,\n]+,\s*0o?7|\bos\.chmod\(|\bspawn\(|\bexecFile\(|\bsubprocess\.(?:run|Popen|call|check_call)\(|\bos\.system\(|\bos\.startfile\(|\bPopen\('
-  description_ko: "파일을 내려받거나 쓴 뒤 8줄 이내에서 실행 권한 부여·실행"
+  description_ko: "파일을 쓴 뒤 8줄 이내 실행 (단독으로는 압축 해제·로그 등 흔함 — 결합 판단용 보조 룰)"
+  false_positive_hint: "공식 바이너리 설치 스크립트는 정상일 수 있음 — 출처 URL을 LLM이 판단"
+
+- id: DL_WRITE_THEN_EXEC
+  category: DOWNLOAD_EXECUTE
+  severity: HIGH
+  mode: combo
+  languages: [JS, PY, SHELL, MAKE]
+  combos:
+    - all: [[DL_WRITE_EXEC_NEAR], [NET_OUTBOUND_CALL, DL_EXECUTABLE_URL, NET_RAW_IP_URL, NET_SUSPICIOUS_TLD]]
+  description_ko: "같은 파일에서 내려받은 뒤 파일로 쓰고 곧바로 실행 (내려받기 + 쓰기 + 실행)"
   false_positive_hint: "공식 바이너리 설치 스크립트는 정상일 수 있음 — 출처 URL을 LLM이 판단"
 
 - id: DL_EXECUTABLE_URL
@@ -372,6 +406,36 @@
   exclude_pattern: '"(?:homepage|url|repository|bugs|funding|author|\$schema|registry|publishConfig|email|twitter|github|website|blog|docs|documentation|changelog|license)"\s*:'
   description_ko: "의존성을 공식 레지스트리 대신 git·http 주소에서 설치"
   false_positive_hint: "homepage·repository 같은 메타 URL은 제외"
+
+- id: DEP_CONFUSION_VERSION
+  category: SUPPLY_CHAIN
+  severity: MEDIUM
+  languages: [CONFIG]
+  path_pattern: '(?:^|/)(?:package\.json|setup\.py|setup\.cfg|pyproject\.toml)$'
+  # 사내 패키지 이름을 공개 레지스트리에 99.x 같은 큰 버전으로 올려 설치를 가로채는 수법
+  pattern: '^\s*"?version"?\s*[:=]\s*[''"]?(?:9\d|[1-9]\d{2,})\.\d+\.\d+'
+  description_ko: "패키지 버전을 비정상적으로 크게(99.x 등) 설정 — 의존성 혼동 공격 의심"
+  false_positive_hint: "버전이 90 이상인 정상 패키지는 드묾"
+
+- id: NPM_SELF_PUBLISH
+  category: SUPPLY_CHAIN
+  severity: HIGH
+  languages: [JS, PY, SHELL]
+  # 코드가 직접 npm publish·토큰 발급을 실행 — 탈취한 토큰으로 다른 패키지를 다시 배포하는 웜형 공급망 공격
+  pattern: '\b(?:exec|execSync|spawn|spawnSync|execFile|execFileSync|system|run|call|Popen|check_output)\w*\(\s*[^)\n]{0,30}?[''"`\[]\s*[''"]?(?:npm|pnpm|yarn)[''"]?\s*[, ]\s*[''"]?(?:publish|token|adduser|login|whoami|owner)\b'
+  exclude_path_pattern: '(?:^|/)(?:scripts?|tools|\.github|release)/|(?:^|/)(?:release|publish)[\w.-]*\.(?:[cm]?js|ts|py|sh)$'
+  description_ko: "코드가 npm publish·토큰 발급을 직접 실행 (탈취 토큰으로 재배포하는 웜형 공격 의심)"
+  false_positive_hint: "레포의 배포 스크립트(scripts/release*)는 제외. 패키지 실행 코드가 배포할 이유는 드묾"
+
+- id: NET_MESSENGER_C2
+  category: C2_CONNECTION
+  severity: MEDIUM
+  languages: [JS, PY]
+  # 텔레그램 봇·디스코드 API를 명령·수집 서버로 쓰는 원격 조종·정보 탈취 구조
+  pattern: '\btelebot\.TeleBot\(|\bTelegramClient\(|\bnew\s+TelegramBot\(|discord(?:app)?\.com/api/v\d+/(?:users/@me|channels/\d+/messages)|\bapi\.telegram\.org\b'
+  exclude_pattern: '^\s*(?:#|//|\*)'
+  description_ko: "텔레그램 봇·디스코드 API를 서버처럼 사용 (원격 조종·수집 의심)"
+  false_positive_hint: "봇 개발 레포 자체는 정상 — 커밋 맥락은 LLM 판단"
 
 # ---------- 회피 (EVASION) ----------
 - id: ENV_CHECK_EVASION

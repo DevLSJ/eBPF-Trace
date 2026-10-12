@@ -29,6 +29,8 @@ def _snip(line: str) -> str:
 def _applies(rule: Rule, f: ParsedFile) -> bool:
     if f.lang not in rule.languages:
         return False
+    if rule.exclude_path_pattern is not None and rule.exclude_path_pattern.search(f.path):
+        return False
     return rule.path_pattern is None or bool(rule.path_pattern.search(f.path))
 
 
@@ -114,7 +116,20 @@ def _detect_typosquat(rule: Rule, f: ParsedFile) -> list[str]:
     return out
 
 
-DETECTORS: dict[str, Callable[[Rule, ParsedFile], list[str]]] = {"typosquat": _detect_typosquat}
+def _detect_py_flow(rule: Rule, f: ParsedFile) -> list[str]:
+    """AST 데이터 흐름 (app/static/ast_py.py). 결과는 파일 객체에 붙여 한 번만 파싱한다
+    (id() 키 캐시는 객체가 사라진 뒤 id가 재사용돼 다른 파일 결과가 섞이므로 쓰지 않는다)."""
+    from app.static.ast_py import analyze_python  # noqa: PLC0415
+
+    flows = getattr(f, "_py_flows", None)
+    if flows is None:
+        flows = analyze_python("\n".join(f.added))
+        object.__setattr__(f, "_py_flows", flows)
+    want = rule.params.get("flow")
+    return [fl.snippet or f"line {fl.line}" for fl in flows if fl.kind == want]
+
+
+DETECTORS: dict[str, Callable[[Rule, ParsedFile], list[str]]] = {"typosquat": _detect_typosquat, "py_flow": _detect_py_flow}
 
 
 # ---- 실행 ----
