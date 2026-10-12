@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import json
 import random
 import re
 import sys
@@ -433,6 +434,89 @@ def run_with_llm(n: int, max_calls: int, seed: int, note: str, write_log: bool) 
     return 0
 
 
+# ---------- LLM 호출 비율 (--gate-rate, 비용 없음) ----------
+# 실제 공개 레포 최근 커밋(scripts/fetch_real_commits.py)에 gateway 전처리 → 정적 검사 → 게이트를 그대로 적용해
+# "AI 분석까지 가는 커밋 비율"을 잰다 (Phase 4 완료 기준 ≤ 30%). 레포 설정 '항상 LLM'은 끈 상태 기준.
+
+_GW_EXCLUDE_EXACT = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "uv.lock", "Cargo.lock", "composer.lock"}
+_GW_EXCLUDE_RE = re.compile(r"(^|/)(node_modules|dist|build|vendor)/|\.(min\.js|map|png|jpe?g|gif|webp|ico|woff2?|ttf|eot|pdf|zip|gz|lock)$", re.I)
+_GW_SENSITIVE_RE = re.compile(
+    r"(^|/)(package\.json|setup\.py|setup\.cfg|pyproject\.toml|\.npmrc|\.pypirc|Dockerfile[^/]*|Makefile|index\.js|main\.js|__init__\.py)$"
+    r"|^\.github/workflows/|(^|/)bin/|\.env|\.pem$|\.key$|credentials", re.I)
+
+
+def gateway_diff(files: list[dict]) -> str:
+    """apps/gateway/src/collector/preprocess.ts preprocessDiff 의 파이썬 이식 (제외·민감 우선·긴 줄·20KB/120KB 절삭)."""
+    kept = [f for f in files if f["filename"].rsplit("/", 1)[-1] not in _GW_EXCLUDE_EXACT and not _GW_EXCLUDE_RE.search(f["filename"])]
+    kept.sort(key=lambda f: not _GW_SENSITIVE_RE.search(f["filename"]))
+    parts, total = [], 0
+    for f in kept:
+        if not f.get("patch"):
+            continue
+        patch = "\n".join(f"{ln[:500]} …[OBFUSCATION_SUSPECT {len(ln)}자]" if len(ln) > LONG_LINE else ln for ln in f["patch"].split("\n"))
+        if len(patch) > FILE_CAP:
+            patch = f"{patch[:FILE_CAP]}\n…[파일 절삭]"
+        block = f"diff --- {f['filename']} ({f['status']}, +{f['additions']} -{f['deletions']})\n{patch}\n"
+        if total + len(block) > TOTAL_CAP:
+            break
+        parts.append(block)
+        total += len(block)
+    return "".join(parts)
+
+
+def _reason_kind(reason: str) -> str:
+    for prefix, kind in (("정적 점수", "정적 점수 ≥ 임계치"), ("치명 룰", "치명 룰"), ("CI·Dockerfile", "CI·Dockerfile 변경"), ("민감 파일", "민감 파일 변경")):
+        if reason.startswith(prefix):
+            return kind
+    return reason
+
+
+def run_gate_rate(note: str, write_log: bool) -> int:
+    root = ROOT / "data" / "real-commits"
+    commits = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(root.glob("*/*.json"))]
+    if not commits:
+        print("data/real-commits 가 비어 있음 → python3 -I scripts/fetch_real_commits.py data/real-commits 20")
+        return 1
+    rules = get_rules()
+    by_repo: dict[str, Counter] = defaultdict(Counter)
+    kinds, only_kind, sens_files = Counter(), Counter(), Counter()
+    for c in commits:
+        files = parse_diff(gateway_diff(c["files"]))
+        outcome = run_rules(rules, files)
+        g = decide(outcome, files, AnalyzeOptions(), settings.llm_threshold)
+        st = by_repo[c["repo"]]
+        st["n"] += 1
+        st["llm"] += g.call_llm
+        ks = sorted({_reason_kind(r) for r in g.reasons})
+        for k in ks:
+            kinds[k] += 1
+        if len(ks) == 1:
+            only_kind[ks[0]] += 1
+        if "민감 파일 변경" in ks:
+            for f in files:
+                if f.is_sensitive:
+                    sens_files[f.path.rsplit("/", 1)[-1]] += 1
+    n = sum(st["n"] for st in by_repo.values())
+    llm = sum(st["llm"] for st in by_repo.values())
+    lines = [f"### LLM 호출 비율 — {date.today().isoformat()} (룰 {len(rules)}개, 게이트 임계치 {settings.llm_threshold}, 실제 커밋 {n}개)", "",
+             "| 레포 | 커밋 | AI 분석 대상 | 비율 |", "|---|---:|---:|---:|"]
+    for repo, st in sorted(by_repo.items()):
+        lines.append(f"| {repo} | {st['n']} | {st['llm']} | {pct(st['llm'], st['n'])} |")
+    lines += ["", f"- 전체: **{llm}/{n} = {pct(llm, n)}** (목표 ≤ 30%)",
+              "- 이유별(중복 포함): " + " · ".join(f"{k} {v}" for k, v in kinds.most_common()),
+              "- 그 이유 하나만으로 넘어간 커밋: " + " · ".join(f"{k} {v}" for k, v in only_kind.most_common()),
+              "- 민감 파일 이름 상위: " + " · ".join(f"{k} {v}" for k, v in sens_files.most_common(8)),
+              "- 측정: 각 레포 기본 브랜치 최근 커밋, gateway 전처리 이식(scripts/eval_pipeline.py gateway_diff), 레포 '항상 LLM' 꺼짐 기준"]
+    if note:
+        lines.append(f"- 메모: {note}")
+    report = "\n".join(lines)
+    print(report)
+    if write_log:
+        with (ROOT / "docs" / "eval-log.md").open("a", encoding="utf-8") as fh:
+            fh.write(report + "\n\n")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--static-only", action="store_true", help="정적 분석만 (현재 유일한 모드)")
@@ -447,7 +531,10 @@ def main() -> int:
     ap.add_argument("--misses", action="store_true", help="놓친 양성·오탐 음성 ID와 룰만 출력 (코드 미출력)")
     ap.add_argument("--with-llm", type=int, default=0, metavar="N", help="LLM 포함 평가 표본 수 (비용 발생, 실제 악성 60%·정상 40%)")
     ap.add_argument("--max-calls", type=int, default=50, help="LLM 실제 호출 상한 (2026-10-12 사용자 결정: 50)")
+    ap.add_argument("--gate-rate", action="store_true", help="실제 공개 레포 커밋의 LLM 호출 비율(게이트 통과율) — 비용 없음")
     args = ap.parse_args()
+    if args.gate_rate:
+        return run_gate_rate(args.note, args.write_log)
     if args.with_llm:
         return run_with_llm(args.with_llm, args.max_calls, args.seed, args.note, args.write_log)
 
