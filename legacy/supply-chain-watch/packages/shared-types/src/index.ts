@@ -226,3 +226,17 @@ export interface RuntimeAction {
   result?: string;
   createdAt: string;
 }
+
+// ---- 서비스 간 Redis 계약 (ADR-020 U5) ----
+// gateway가 큐에 넣고(LPUSH) analyzer가 꺼낸다(BRPOP). analyzer의 화면 이벤트는
+// EVENTS_CHANNEL로 발행(PUBLISH)하고 gateway가 구독해 /ws로 중계한다.
+export const ANALYSIS_QUEUE_KEY = 'analysis:queue';
+export const ANALYSIS_INFLIGHT_KEY = 'analysis:inflight';
+export const EVENTS_CHANNEL = 'scw:events';
+
+export interface AnalysisJob {
+  commitId: number;
+  repoFullName: string;
+  sha: string;
+  attempt: number;
+}

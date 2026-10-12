@@ -12,12 +12,13 @@ async function timed(fn: () => Promise<void>): Promise<Check> {
     await fn();
     return { ok: true, latencyMs: Date.now() - t };
   } catch (err) {
-    return { ok: false, detail: (err as Error).message, latencyMs: Date.now() - t };
+    const e = err as Error & { code?: string };
+    return { ok: false, detail: e.message || e.code || '연결 실패', latencyMs: Date.now() - t };
   }
 }
 
 export async function healthReport(): Promise<HealthReport> {
-  const [db, cache, engine] = await Promise.all([
+  const [db, cache, engine, analyzer] = await Promise.all([
     timed(async () => {
       await pool.query('SELECT 1');
     }),
@@ -30,8 +31,13 @@ export async function healthReport(): Promise<HealthReport> {
       if (res.statusCode !== 200) throw new Error(`engine status ${res.statusCode}`);
       await res.body.dump();
     }),
+    timed(async () => {
+      const res = await request(`${env.ANALYZER_URL}/health`, { method: 'GET', headersTimeout: 3000, bodyTimeout: 3000 });
+      await res.body.dump();
+      if (res.statusCode !== 200) throw new Error(`analyzer status ${res.statusCode}`);
+    }),
   ]);
-  const checks = { db, redis: cache, engine };
+  const checks = { db, redis: cache, engine, analyzer };
   return {
     ok: Object.values(checks).every((c) => c.ok),
     service: 'gateway',

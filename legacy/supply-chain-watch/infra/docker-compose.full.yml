@@ -31,6 +31,19 @@ services:
       ENGINE_PORT: 8000
     depends_on: { postgres: { condition: service_healthy } }
 
+  analyzer:
+    build: { context: .., dockerfile: apps/analyzer/Dockerfile }
+    env_file: [../.env]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://capstone:${POSTGRES_PASSWORD:-capstone}@postgres:5432/capstone
+      REDIS_URL: redis://redis:6379/0
+      ENGINE_URL: http://engine:8000
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      engine: { condition: service_started }
+
   gateway:
     build: { context: .., dockerfile: apps/gateway/Dockerfile }
     env_file: [../.env]
@@ -39,6 +52,7 @@ services:
       DATABASE_URL: postgresql://capstone:${POSTGRES_PASSWORD:-capstone}@postgres:5432/capstone
       REDIS_URL: redis://redis:6379/0
       ENGINE_URL: http://engine:8000
+      ANALYZER_URL: http://analyzer:4100
     ports: ["4000:4000"]
     depends_on:
       postgres: { condition: service_healthy }

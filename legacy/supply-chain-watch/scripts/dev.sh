@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 로컬 개발 전체 기동 (docs/08 Phase 1). 인프라(docker) + engine + gateway + web.
+# 로컬 개발 전체 기동 (docs/08 Phase 1, ADR-020). 인프라(docker) + engine + analyzer + gateway + web.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -24,10 +24,12 @@ trap cleanup EXIT INT TERM
 
 echo "▶ engine(:8000) 기동…"
 ( cd apps/engine && uv run uvicorn app.main:app --reload --port "${ENGINE_PORT:-8000}" ) & pids+=($!)
+echo "▶ analyzer(:4100) 기동…"
+pnpm --filter @scw/analyzer dev & pids+=($!)
 echo "▶ gateway(:4000) 기동…"
 pnpm --filter @scw/gateway dev & pids+=($!)
 echo "▶ web(:3000) 기동…"
 pnpm --filter @scw/web dev & pids+=($!)
 
-echo "✓ http://localhost:3000 (web) · :4000 (gateway) · :8000 (engine)"
+echo "✓ http://localhost:3000 (web) · :4000 (gateway) · :4100 (analyzer) · :8000 (engine)"
 wait

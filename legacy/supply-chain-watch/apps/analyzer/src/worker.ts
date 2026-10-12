@@ -1,17 +1,16 @@
-// 분석 워커: engine 호출 → 저장 → 상태·WS (docs/01 §2, docs/05 §2).
+// 커밋 1건 분석: engine 호출 → 저장 → 상태·이벤트 (docs/01 §2, docs/05 §2). gateway에서 이전 (ADR-020 U5).
 import { request } from 'undici';
 import type { AnalysisResult } from '@scw/shared-types';
-import { env } from '../env.js';
-import { logger } from '../logger.js';
-import { insertAnalysis } from '../repo/analyses.js';
-import { loadCommitForAnalysis, setCommitStatus } from '../repo/commits.js';
-import { broadcast } from '../ws.js';
+import { env } from './env.js';
+import { logger } from './logger.js';
+import { publish } from './events.js';
+import { insertAnalysis, loadCommitForAnalysis, setCommitStatus } from './store.js';
 
 export async function processCommit(commitId: number, onStep?: (step: string) => void): Promise<void> {
   const c = await loadCommitForAnalysis(commitId);
   if (!c) return;
   await setCommitStatus(commitId, 'ANALYZING');
-  broadcast('analysis.started', { commitId, repoFullName: c.repo_full_name, sha: c.sha });
+  publish('analysis.started', { commitId, repoFullName: c.repo_full_name, sha: c.sha });
   onStep?.('정적 분석');
 
   const body = {
@@ -42,8 +41,8 @@ export async function processCommit(commitId: number, onStep?: (step: string) =>
   const analysisId = await insertAnalysis(commitId, result);
   await setCommitStatus(commitId, 'DONE');
 
-  broadcast('analysis.completed', {
-    commitId, analysisId, repoId: undefined, repoFullName: c.repo_full_name,
+  publish('analysis.completed', {
+    commitId, analysisId, repoFullName: c.repo_full_name,
     sha: c.sha, shortSha: c.sha.slice(0, 7), riskScore: result.riskScore, riskLevel: result.riskLevel,
     tags: result.tags, llmStatus: result.llm.status,
     summaryKo: result.llm.result?.attackNarrativeKo ?? null,

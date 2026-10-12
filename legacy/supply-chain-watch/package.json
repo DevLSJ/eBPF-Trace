@@ -13,6 +13,7 @@
     "lint": "pnpm -r --if-present lint",
     "dev": "bash scripts/dev.sh",
     "dev:gateway": "pnpm --filter @scw/gateway dev",
+    "dev:analyzer": "pnpm --filter @scw/analyzer dev",
     "dev:web": "pnpm --filter @scw/web dev",
     "dev:engine": "bash -c 'cd apps/engine && uv run uvicorn app.main:app --reload --port ${ENGINE_PORT:-8000}'",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",

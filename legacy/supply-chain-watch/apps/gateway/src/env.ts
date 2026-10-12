@@ -8,6 +8,7 @@ config({ path: resolve(process.cwd(), '../../.env') });
 const schema = z.object({
   GATEWAY_PORT: z.coerce.number().default(4000),
   ENGINE_URL: z.string().url().default('http://localhost:8000'),
+  ANALYZER_URL: z.string().url().default('http://localhost:4100'), // 분석 처리 서비스 (ADR-020 U5)
   DATABASE_URL: z.string().default('postgresql://capstone:capstone@localhost:5433/capstone'),
   REDIS_URL: z.string().default('redis://localhost:6379/0'),
   GITHUB_TOKEN: z.string().optional(),

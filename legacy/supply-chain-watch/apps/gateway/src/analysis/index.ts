@@ -1,10 +1,10 @@
-import { env } from '../env.js';
-import { AnalysisQueue } from './queue.js';
-import { processCommit } from './worker.js';
+// 분석 큐 생산자 (ADR-020 U5). 분석 처리는 apps/analyzer가 한다 — gateway는 큐에 넣기만 한다.
+import { ANALYSIS_QUEUE_KEY, type AnalysisJob } from '@scw/shared-types';
+import { redis } from '../db/redis.js';
 
-const CONCURRENCY = Number(process.env.AGENT_CONCURRENCY ?? 6);
-void env; // env 로딩 보장
-
-export const analysisQueue = new AnalysisQueue(CONCURRENCY, (commitId, onStep) =>
-  processCommit(commitId, onStep),
-);
+export const analysisQueue = {
+  async enqueue(job: Omit<AnalysisJob, 'attempt'>): Promise<void> {
+    if (redis.status === 'wait' || redis.status === 'end') await redis.connect();
+    await redis.lpush(ANALYSIS_QUEUE_KEY, JSON.stringify({ attempt: 1, ...job } satisfies AnalysisJob));
+  },
+};
