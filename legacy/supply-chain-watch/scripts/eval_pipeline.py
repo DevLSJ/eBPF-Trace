@@ -352,7 +352,11 @@ def pct(a: int, b: int) -> str:
 
 # ---------- LLM 포함 평가 (--with-llm, 비용 발생 → 사전 승인 · 호출 상한 강제) ----------
 
-HAIKU_PRICE = (1.0, 5.0)  # $/MTok 입력·출력 — Anthropic 정가 기준 추정(중계 과금과 다를 수 있음)
+HAIKU_PRICE = (1.0, 5.0)  # $/MTok 입력·출력 — haiku 4.5 정가 기준 참고치(다른 모델·중계 과금과 다를 수 있음)
+
+
+class LlmCallFailed(Exception):
+    """평가 중 LLM 호출 오류 — 결과를 남기지 않고 즉시 중단한다 (2026-10-13 사용자 결정)."""
 
 
 def run_with_llm(n: int, max_calls: int, seed: int, note: str, write_log: bool) -> int:
@@ -370,7 +374,10 @@ def run_with_llm(n: int, max_calls: int, seed: int, note: str, write_log: bool) 
             if calls["n"] >= max_calls:
                 return prov.LlmCallResult("ERROR", model, error=f"평가 호출 상한 {max_calls}회 도달")
             calls["n"] += 1
-            return await real.analyze(system, user, model)
+            res = await real.analyze(system, user, model)
+            if res.status == "ERROR":
+                raise LlmCallFailed(f"{calls['n']}번째 호출 실패 · {model} · {res.error}")
+            return res
 
     prov.set_provider(CappedProvider())
     rng = random.Random(seed)
@@ -390,8 +397,13 @@ def run_with_llm(n: int, max_calls: int, seed: int, note: str, write_log: bool) 
         return [await one(s) for s in picked]  # 순차 실행(중계 서버 부하·상한 계산 단순화)
 
     import hashlib  # noqa: E401
-    rows = asyncio.run(run_all())
-    prov.set_provider(None)
+    try:
+        rows = asyncio.run(run_all())
+    except LlmCallFailed as e:
+        print(f"중단: {e} — eval-log에 기록하지 않음")
+        return 2
+    finally:
+        prov.set_provider(None)
 
     stat = {lab: Counter() for lab in ("positive", "negative")}
     tok = Counter()
@@ -422,7 +434,7 @@ def run_with_llm(n: int, max_calls: int, seed: int, note: str, write_log: bool) 
     lines += ["",
               f"- 실제 악성: 정적 {pct(p['static'], p['n'])} → **최종(LLM 융합) {pct(p['fused_flag'], p['n'])}** · LLM 단독 {pct(p['llm_flag'], p['OK'] + p['CACHED'])}",
               f"- 정상: 정적 오탐 {pct(ng['static'], ng['n'])} → **최종 오탐 {pct(ng['fused_flag'], ng['n'])}** · LLM 단독 오탐 {pct(ng['llm_flag'], ng['OK'] + ng['CACHED'])}",
-              f"- 토큰: 입력 {tok['inputTokens']:,} · 출력 {tok['outputTokens']:,} · 캐시 읽기 {tok['cacheReadTokens']:,} → 추정 비용 ${cost:.3f} (haiku 정가 기준)",
+              f"- 토큰: 입력 {tok['inputTokens']:,} · 출력 {tok['outputTokens']:,} · 캐시 읽기 {tok['cacheReadTokens']:,} → 추정 비용 ${cost:.3f} (haiku 4.5 정가 참고치)",
               f"- LLM 지연: 평균 {sum(lat) / max(1, len(lat)) / 1000:.1f}s · 최대 {max(lat, default=0) / 1000:.1f}s"]
     if note:
         lines.append(f"- 메모: {note}")
