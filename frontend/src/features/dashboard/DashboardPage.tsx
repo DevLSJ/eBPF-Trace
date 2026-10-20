@@ -1,102 +1,83 @@
+import { ChevronRight, CircleCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { EventFeed, PauseToggle } from '../../components/EventFeed';
-import { KpiCard } from '../../components/KpiCard';
-import { Empty, Panel } from '../../components/Panel';
-import { TrendChart } from '../../components/TrendChart';
-import { useStream } from '../../hooks/stream-context';
+import { Empty, LoadError, Panel } from '../../components/Panel';
+import { Overview } from './Overview';
+import { LevelBadge } from '../../components/VerdictBadge';
+import { useCases } from '../../hooks/cases-context';
 import { fmtNum, fmtTime } from '../../lib/format';
+import { caseLabel, type Case } from '../../lib/types';
 
+// 대시보드 — 「지금 처리할 일이 있나?」(판정 대기) + 「지금까지 무엇을 수집 · 탐지했나?」(eBPF 수집 종합, 10/16)
 export function DashboardPage() {
-  const { verdicts, stats, paused, pause, resume } = useStream();
-  const risk = stats?.riskScore ?? 0;
-  const top = stats?.topContainers ?? [];
-  const maxTop = Math.max(1, ...top.map((c) => c.violations));
-  const lastKilled = stats?.killed[0];
+  const { cases, error } = useCases();
+
+  const pending = (cases ?? []).filter((c) => c.state === 'open').sort((a, b) => b.openedAt.localeCompare(a.openedAt));
+  const awaitingApply = (cases ?? []).filter((c) => c.state === 'decided').length;
 
   return (
-    <div className="flex h-full min-h-[640px] flex-col gap-4">
-      <div className="grid shrink-0 grid-cols-4 gap-4">
-        <KpiCard label="총 이벤트 (1분)" value={fmtNum(stats?.eventsLastMinute ?? 0)} hint={`누적 ${fmtNum(stats?.totalEvents ?? 0)}`} />
-        <KpiCard
-          label="위반 건수"
-          value={fmtNum(stats?.totalViolations ?? 0)}
-          tone={stats?.totalViolations ? 'warn' : 'default'}
-          hint="서버 기동 이후 누적"
-        />
-        <KpiCard
-          label="격리된 컨테이너"
-          value={fmtNum(stats?.killedCount ?? 0)}
-          tone={stats?.killedCount ? 'danger' : 'default'}
-          hint={
-            lastKilled
-              ? `최근 ${lastKilled.name} · ${fmtTime(lastKilled.at)}`
-              : stats && !stats.enforceKill
-                ? 'dry-run — 종료하지 않고 알림만'
-                : '격리 기록 없음'
-          }
-        />
-        <KpiCard
-          label="위험 점수"
-          value={
-            <>
-              {risk}
-              <span className="text-base font-normal text-slate-400"> / 100</span>
-            </>
-          }
-          tone={risk >= 60 ? 'danger' : risk >= 20 ? 'warn' : 'default'}
-          hint="최근 5분 위반 가중합 (격리 20 · 격리 대상 12 · 경고 5)"
-        />
-      </div>
+    <div className="grid h-full min-h-0 grid-rows-[minmax(7rem,1fr)_auto] gap-4">
+      <Panel
+        testId="pending"
+        title={
+          <span className="flex items-baseline gap-2">
+            판정 대기
+            <b className={`num text-lg ${pending.length ? 'text-amber-600' : 'text-slate-400'}`} data-testid="pending-count">
+              {cases ? pending.length : '—'}
+            </b>
+          </span>
+        }
+        actions={
+          awaitingApply > 0 && (
+            <Link to="/policies" className="text-xs text-indigo-600 hover:underline" data-testid="awaiting-apply">
+              적용 대기 제안 {awaitingApply}건 → 정책
+            </Link>
+          )
+        }
+      >
+        {error && !cases ? (
+          <LoadError error={error} what="건(판정 대기)" />
+        ) : !cases ? (
+          <Empty>불러오는 중…</Empty>
+        ) : pending.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-500" data-testid="nothing-to-do">
+            <CircleCheck className="size-8 text-emerald-500" aria-hidden />
+            <b className="text-base text-slate-700">처리할 일 없음</b>
+            <span className="text-sm">설치 검사 · 런타임 감시가 계속 돌고 있습니다.</span>
+          </div>
+        ) : (
+          <ul className="h-full overflow-y-auto" data-testid="pending-list">
+            {pending.map((c) => (
+              <PendingRow key={c.id} c={c} />
+            ))}
+          </ul>
+        )}
+      </Panel>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-4">
-        <Panel
-          title="실시간 이벤트 피드"
-          actions={
-            <div className="flex items-center gap-3">
-              <Link to="/events" className="text-xs text-indigo-600 hover:underline">
-                전체 보기
-              </Link>
-              <PauseToggle paused={paused} onPause={pause} onResume={resume} />
-            </div>
-          }
-        >
-          <EventFeed verdicts={verdicts} />
-        </Panel>
-
-        <div className="grid min-h-0 grid-rows-[minmax(0,3fr)_minmax(0,2fr)] gap-4">
-          <Panel title="시스템콜 추이 (최근 5분)">
-            <div className="h-full p-2">
-              <TrendChart data={stats?.trend} />
-            </div>
-          </Panel>
-          <Panel title="위반 Top 컨테이너">
-            {top.length === 0 ? (
-              <Empty>위반 없음</Empty>
-            ) : (
-              <ul className="space-y-2.5 overflow-y-auto p-4">
-                {top.map((c) => (
-                  <li key={c.name}>
-                    <Link
-                      to={`/topology?container=${encodeURIComponent(c.name)}`}
-                      className="group grid grid-cols-[8rem_1fr_3rem] items-center gap-3 text-sm"
-                      title="토폴로지에서 보기"
-                    >
-                      <span className="truncate font-medium text-slate-700 group-hover:text-indigo-600">{c.name}</span>
-                      <span className="h-2.5 rounded-full bg-slate-100">
-                        <span
-                          className="block h-full rounded-full bg-red-500"
-                          style={{ width: `${(c.violations / maxTop) * 100}%` }}
-                        />
-                      </span>
-                      <span className="num text-right text-slate-600">{fmtNum(c.violations)}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
-        </div>
-      </div>
+      <Overview />
     </div>
+  );
+}
+
+function PendingRow({ c }: { c: Case }) {
+  const to =
+    c.source === 'install' && c.installId
+      ? `/installs?status=pending&id=${encodeURIComponent(c.installId)}`
+      : `/topology?container=${encodeURIComponent(c.container)}&node=${encodeURIComponent(`c:${c.container}`)}`;
+  return (
+    <li className="border-b border-slate-100">
+      <Link to={to} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto_3.5rem_4.5rem_1rem] items-center gap-3 px-4 py-3 text-sm hover:bg-slate-50" data-case={c.id}>
+        <span className={`rounded px-1.5 py-0.5 text-center text-[11px] font-medium ${c.source === 'install' ? 'bg-indigo-50 text-indigo-700' : 'bg-teal-50 text-teal-700'}`}>
+          {c.source === 'install' ? '설치 검사' : '런타임'}
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate font-mono font-medium text-slate-800">{caseLabel(c)}</span>
+          <span className="block truncate text-xs text-slate-500">{c.ruleIds.join(' · ')}</span>
+        </span>
+        <LevelBadge level={c.level} />
+        <span className="num text-right text-xs text-slate-500">위반 {fmtNum(c.violations)}</span>
+        <span className="num text-right font-mono text-xs text-slate-500">{fmtTime(c.openedAt)}</span>
+        <ChevronRight className="size-4 text-slate-400" aria-hidden />
+      </Link>
+    </li>
   );
 }

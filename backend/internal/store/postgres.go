@@ -42,6 +42,17 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS audit_log_ts_idx ON audit_log (ts DESC);
 CREATE INDEX IF NOT EXISTS audit_log_container_idx ON audit_log (container_name);
+CREATE TABLE IF NOT EXISTS scans (
+	id         text PRIMARY KEY,
+	started_at timestamptz NOT NULL,
+	doc        jsonb NOT NULL
+);
+CREATE TABLE IF NOT EXISTS collected_minutes (
+	minute  timestamptz PRIMARY KEY,
+	exec    bigint NOT NULL DEFAULT 0,
+	open    bigint NOT NULL DEFAULT 0,
+	connect bigint NOT NULL DEFAULT 0
+);
 `
 
 func NewPostgres(ctx context.Context, url string) (*Postgres, error) {
@@ -53,7 +64,7 @@ func NewPostgres(ctx context.Context, url string) (*Postgres, error) {
 		pool.Close()
 		return nil, fmt.Errorf("postgres ping: %w", err)
 	}
-	if _, err := pool.Exec(ctx, schema); err != nil {
+	if _, err := pool.Exec(ctx, schema+reviewSchema); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("postgres migrate: %w", err)
 	}
@@ -90,13 +101,15 @@ func (p *Postgres) UpsertPolicy(ctx context.Context, r rules.Rule) error {
 	if err != nil {
 		return err
 	}
-	// 새 정책은 목록 끝에 붙이고, 기존 정책은 위치를 유지한다
-	_, err = p.pool.Exec(ctx, `
-		INSERT INTO policies (id, position, spec)
-		VALUES ($1, (SELECT COALESCE(MAX(position), -1) + 1 FROM policies), $2)
-		ON CONFLICT (id) DO UPDATE SET spec = EXCLUDED.spec, updated_at = now()`, r.ID, b)
+	_, err = p.pool.Exec(ctx, upsertPolicySQL, r.ID, b)
 	return err
 }
+
+// upsertPolicySQL: 새 정책은 목록 끝에 붙이고, 기존 정책은 위치를 유지한다
+const upsertPolicySQL = `
+		INSERT INTO policies (id, position, spec)
+		VALUES ($1, (SELECT COALESCE(MAX(position), -1) + 1 FROM policies), $2)
+		ON CONFLICT (id) DO UPDATE SET spec = EXCLUDED.spec, updated_at = now()`
 
 func (p *Postgres) DeletePolicy(ctx context.Context, id string) (bool, error) {
 	tag, err := p.pool.Exec(ctx, `DELETE FROM policies WHERE id = $1`, id)

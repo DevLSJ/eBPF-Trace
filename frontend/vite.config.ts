@@ -9,9 +9,8 @@ const api = process.env.API_TARGET || 'http://127.0.0.1:8000';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
-    chunkSizeWarningLimit: 600, // recharts 단독 청크(~520kB, gzip 156kB)
     rollupOptions: {
-      output: { manualChunks: { charts: ['recharts'], flow: ['@xyflow/react'], yaml: ['yaml'] } },
+      output: { manualChunks: { flow: ['@xyflow/react'], yaml: ['yaml'] } },
     },
   },
   server: {

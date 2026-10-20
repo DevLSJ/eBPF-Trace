@@ -6,6 +6,11 @@ const style: Record<Kind, string> = {
   connect: 'bg-teal-50 text-teal-700',
 };
 
-export function KindBadge({ kind }: { kind: Kind }) {
-  return <span className={`inline-block w-16 rounded px-1.5 py-0.5 text-center font-mono text-xs ${style[kind]}`}>{kind}</span>;
+// label: 쉬운 말 표기(정책 목록 「파일 · 실행 · 통신」). 없으면 kind 그대로
+export function KindBadge({ kind, label }: { kind: Kind; label?: string }) {
+  return (
+    <span className={`inline-block rounded px-1.5 py-0.5 text-center text-xs ${label ? 'w-10' : 'w-16 font-mono'} ${style[kind]}`} title={kind}>
+      {label ?? kind}
+    </span>
+  );
 }

@@ -18,3 +18,11 @@ export const fmtTime = (iso: string) => timeFmt.format(new Date(iso));
 export const fmtDateTime = (iso: string) => dateTimeFmt.format(new Date(iso));
 export const fmtNum = (n: number) => numFmt.format(n);
 export const shortId = (id: string) => id.slice(0, 12);
+
+// 오늘(로컬 날짜) 안의 시각인지
+export const isToday = (iso: string | null | undefined, now: number) => {
+  if (!iso) return false;
+  const d = new Date(iso);
+  const n = new Date(now);
+  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+};

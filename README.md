@@ -16,7 +16,7 @@
 | 백엔드 | Go 1.26 · Inspektor Gadget v0.56.1 (Go 패키지, 가젯 3종 in-process) · gorilla/websocket · pgx · go-redis | `backend/` |
 | 프론트엔드 | React 18 · TypeScript · Vite 7 · Tailwind 4 · React Flow · Recharts | `frontend/` |
 | 배포 | Docker Compose (nginx · backend · frontend · PostgreSQL 17 · Redis 7 · 선택 Caddy HTTPS) · GitHub Actions → Docker Hub → EC2 | `deploy/` · `.github/workflows/` |
-| 문서 | 개발 계획 · 단계별 문서 · 진행 현황 | `docs/` |
+| 문서 | 개발 계획 · 방향 결정 · 진행 기록 · 남은 일 | Claude Docs (아래 「문서」) |
 | 목업 | 정적 HTML 대시보드 — 내장 시뮬레이션 또는 실제 백엔드에 붙여서 화면·흐름 검토 (UI 설계는 여기서 먼저 확정해 React 에 이식) | `mock/` |
 
 ## 빠른 시작 (로컬, 커널 없이)
@@ -112,11 +112,9 @@ cd backend && go vet ./... && GOOS=linux go vet ./... && go test -race ./...
 cd frontend && npm run lint && npm run build
 ```
 
-eBPF 가젯 실행 검증은 커널이 있는 EC2/VM 에서만 한다 — `docs/01-1단계-환경구축.md` 체크리스트.
+eBPF 가젯 실행 검증은 커널이 있는 EC2/VM 에서만 한다 — 개발 문서의 「1단계 환경 구축」 체크리스트.
 
 ## 문서
 
-- `docs/00-개발-계획.md` — 무엇을 왜 만드는가, 아키텍처, 로드맵, 데모 시나리오
-- `docs/01~03` — 환경 구축 · 백엔드 · 프론트 단계별 설계
-- `docs/04-진행-현황.md` — 현재 상태와 남은 일 (새 세션은 여기서 시작)
+- [SupplyGuard 개발 문서](https://claude.ai/code/artifact/5fc4e674-2b54-4bb2-9cd6-a03cae190285) — 개요 · 방향 결정 · 아키텍처 · 정책 · API · 진행 기록 · 단계별 설계 · 남은 일 (새 세션은 여기서 시작)
 - `mock/README.md` — 목업 사용법

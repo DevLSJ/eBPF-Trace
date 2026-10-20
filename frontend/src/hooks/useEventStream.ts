@@ -21,6 +21,8 @@ export interface EventStream {
   ackAlerts: () => void;
   topology: TopologyStore;
   topologyVersion: number;
+  // WS 메시지 원본 구독(토스트 · 건 갱신). 반환값으로 해제
+  subscribe: (fn: (m: WsMessage) => void) => () => void;
 }
 
 // 백엔드 /ws/events 구독. 메시지는 FLUSH_MS마다 묶어서 렌더링한다(초당 수십 건 대비).
@@ -36,6 +38,13 @@ export function useEventStream(url = defaultUrl()): EventStream {
   const queue = useRef<StreamVerdict[]>([]);
   const seq = useRef(0);
   const [topology] = useState(() => new TopologyStore());
+  const listeners = useRef(new Set<(m: WsMessage) => void>());
+  const subscribe = useCallback((fn: (m: WsMessage) => void) => {
+    listeners.current.add(fn);
+    return () => {
+      listeners.current.delete(fn);
+    };
+  }, []);
 
   const accept = useCallback((v: Verdict) => {
     topology.ingest(v); // 토폴로지는 일시정지와 무관하게 누적
@@ -81,8 +90,9 @@ export function useEventStream(url = defaultUrl()): EventStream {
         setConnected(true);
       };
       ws.onclose = () => {
-        setConnected(false);
+        // 이미 정리된 연결(StrictMode 재마운트 · 화면 이탈)의 늦은 close 가 새 연결 상태를 덮지 않게
         if (closed) return;
+        setConnected(false);
         const delay = Math.min(1000 * 2 ** attempt, 10_000); // 1s → 10s 백오프
         attempt++;
         retry = window.setTimeout(connect, delay);
@@ -96,6 +106,7 @@ export function useEventStream(url = defaultUrl()): EventStream {
         }
         if (msg.type === 'verdict') accept(msg.data);
         else if (msg.type === 'stats') setStats(msg.data);
+        listeners.current.forEach((fn) => fn(msg));
       };
     };
     connect();
@@ -133,6 +144,7 @@ export function useEventStream(url = defaultUrl()): EventStream {
     ackAlerts: () => setUnseen(0),
     topology,
     topologyVersion,
+    subscribe,
   };
 }
 

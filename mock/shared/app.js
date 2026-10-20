@@ -48,6 +48,12 @@
 
   const KINDS = ['exec', 'open', 'connect'];
   const LEVEL_LABEL = { normal: '정상', alert: '경고', held: '격리 대상', killed: '격리됨' };
+  const INSTALL_STATUS = { isolated: '격리', warned: '경고', passed: '통과', failed: '설치 실패', unknown: '결과 미확인', running: '진행 중', refused: '설치 전 거부' };
+  // 용어 [10/15 목표]: 엔진이 내리는 것은 「탐지 결과」(LEVEL_LABEL), 사람이 내리는 것은 「판정」(DECISION_LABEL)
+  const DECISION_LABEL = { pending: '판정 대기', malicious: '악성', false_positive: '오탐', none: '건 없음' };
+  const ACTOR = '보안 담당자'; // 처리자 — 데모 계정 하나 (백엔드 설정 ACTOR_NAME 기본값)
+  const SANDBOX = 'sg-install-';
+  const LIST_LABEL = { packages: '패키지', images: '이미지', hosts: '도메인' };
   const levelOf = (v) => (!v.matched ? 'normal' : v.action !== 'kill' ? 'alert' : v.enforced ? 'killed' : 'held');
   const detailOf = (e) => (e.kind === 'exec' ? e.args || e.comm : e.kind === 'open' ? e.path || '' : e.dstHost ? `${e.dstIp}:${e.dstPort} (${e.dstHost})` : `${e.dstIp}:${e.dstPort}`);
 
@@ -57,7 +63,7 @@
   class TopologyStore {
     constructor() { this.nodes = new Map(); this.edges = new Map(); }
     ingest(v) {
-      const e = v.event; if (!e.containerName) return;
+      const e = v.event; if (!e.containerName || e.containerName.startsWith(SANDBOX)) return; // 토폴로지는 런타임만 [10/15 목표]
       const now = new Date(e.timestamp).getTime() || Date.now();
       const level = levelOf(v);
       const c = this.touch(`c:${e.containerName}`, 'container', e.containerName, e.containerName, level, now, v);
@@ -108,6 +114,10 @@
   // ── 상태 ────────────────────────────────────────────────
   const params = new URLSearchParams(location.search);
   const saved = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
+  // ?fresh=1 — 빈 서버(설치 검사 · 감사 기록 없음). 처음 구축 흐름 · 빈 상태 시연용
+  const fresh = params.get('fresh') === '1';
+  const now0 = Date.now();
+  const installs0 = fresh ? [] : M.buildInstalls(now0);
   const state = {
     // source: 'sim'(내장 시뮬레이션) | 'live'(실제 백엔드 REST+WS). ?source=live&api=http://127.0.0.1:8000 또는 데모 제어에서 바꾼다
     source: params.get('source') || saved('supplyguard.mock.source', 'sim'),
@@ -115,9 +125,14 @@
     liveError: '',
     connected: true, paused: false, verdicts: [], unseen: 0, token: '',
     rules: JSON.parse(JSON.stringify(M.rules)),
-    info: { source: 'mock', gadgets: KINDS, enforceKill: true, authRequired: true, gadgetVersion: 'v0.56.1' },
-    stats: null, audit: M.buildAudit(Date.now()), topology: new TopologyStore(),
+    info: { source: 'mock', gadgets: KINDS, enforceKill: true, authRequired: true, gadgetVersion: 'v0.56.1', watchContainers: [], ignoreContainers: ['supplyguard-*'] },
+    stats: null, audit: fresh ? [] : M.buildAudit(now0, installs0), topology: new TopologyStore(),
+    installs: installs0, installSeq: installs0.length, scans: [],
+    // 판정 흐름 [10/15 목표] — 모의 서버가 들고 있는 건 · 제안 · 차단 목록 · 변경 이력 (API 계약 「데이터 모양」)
+    cases: [], proposals: [], changes: [], blocklist: { packages: [], images: [], hosts: [] },
+    seq: { case: 0, prop: 0, chg: 0, scan: 0 },
   };
+  state.auditSeq = state.audit.reduce((m, a) => Math.max(m, a.id), 0);
   const listeners = new Set();
   const emit = () => { for (const f of listeners) f(); };
 
@@ -126,8 +141,9 @@
     containers: M.containers.map((c) => Object.assign({ id: M.hexId(Math.random, 64), killedAt: 0 }, c)),
     queue: [], seq: 0, total: 0, violations: 0, killed: [], perContainer: new Map(),
     recent: [], // 최근 60초 이벤트 시각
-    trend: [], // 5초 버킷 60개
-    nextAttack: Date.now() + 5000, interval: 100, attackEvery: 20000, restartIn: 15000, rnd: Math.random,
+    trend: [], // 5초 버킷 120개 (10분)
+    // 자동 공격은 기본 꺼짐 [10/15 목표] — 데모 대본은 「판정 대기 0」에서 시작하고, 런타임 공격은 데모 제어 「지금 실행」으로 일으킨다
+    nextAttack: Infinity, interval: 100, attackEvery: 0, restartIn: 15000, rnd: Math.random, collectedLive: new Map(), bootMinute: Math.floor(Date.now() / 60000),
   };
   const rnd = (n) => Math.floor(Math.random() * n);
   function mkEvent(c, tpl, at) {
@@ -137,36 +153,60 @@
   function record(v, at) {
     const level = levelOf(v);
     sim.total++; sim.recent.push(at);
+    // 종합(10/16): 수집량을 1분 단위로 쌓는다 — 실제 백엔드는 Postgres 에 1분 단위로 저장
+    const mk = Math.floor(at / 60000); const mc = sim.collectedLive.get(mk) || { exec: 0, open: 0, connect: 0 }; mc[v.event.kind]++; sim.collectedLive.set(mk, mc);
     let b = sim.trend[sim.trend.length - 1];
-    if (!b || b.ts !== bucketOf(at)) { b = { ts: bucketOf(at), t: new Date(bucketOf(at)).toISOString(), exec: 0, open: 0, connect: 0, violations: 0, w: 0 }; sim.trend.push(b); if (sim.trend.length > 60) sim.trend.shift(); }
+    if (!b || b.ts !== bucketOf(at)) { b = { ts: bucketOf(at), t: new Date(bucketOf(at)).toISOString(), exec: 0, open: 0, connect: 0, violations: 0 }; sim.trend.push(b); if (sim.trend.length > 120) sim.trend.shift(); }
     b[v.event.kind]++;
-    if (v.matched) { sim.violations++; b.violations++; b.w += level === 'killed' ? 20 : level === 'held' ? 12 : 5; sim.perContainer.set(v.event.containerName, (sim.perContainer.get(v.event.containerName) || 0) + 1); }
+    if (v.matched) { sim.violations++; b.violations++; sim.perContainer.set(v.event.containerName, (sim.perContainer.get(v.event.containerName) || 0) + 1); }
   }
-  // pipeline: 판정 → (kill 이면) 격리 → 큐
+  // pipeline: 평가(탐지 결과) → (kill 이면) 격리 → 감사 로그 저장(위반만) · 런타임 건 → 큐
+  // opts: silent(시드) · count(같은 이벤트 n 번) · session(설치 세션 — 감사 행에 install · caseId)
   function pipeline(c, e, at, opts) {
+    const o = opts || {};
     const v = M.evaluate(state.rules, e);
     if (v.matched && v.action === 'kill') {
       if (!state.info.enforceKill || v.dryRun) v.dryRun = true;
       else if (c.killedAt) v.enforced = true; // 이미 격리 중 — 중복 kill 안 함
-      else { v.enforced = true; c.killedAt = at; sim.killed.unshift({ id: c.id, name: c.name, at: new Date(at).toISOString() }); if (!opts || !opts.silent) UI.toast(`${c.name} 격리됨 — ${v.reason}`, { tone: 'danger', action: { label: '이벤트 보기', go: '#/events?verdict=kill' } }); }
+      else { v.enforced = true; c.killedAt = at; sim.killed.unshift({ id: c.id, name: c.name, at: new Date(at).toISOString() }); if (!o.silent && !o.session) UI.toast(`${c.name} 격리됨 — ${v.reason}`, { tone: 'danger', key: `kill:${c.name}`, action: { label: '이벤트 보기', go: '#/events?verdict=kill' } }); }
     }
     record(v, at);
     state.topology.ingest(v);
-    if (v.matched && !(opts && opts.silent)) state.unseen++;
-    if (!state.paused || (opts && opts.silent)) sim.queue.push(Object.assign({ key: ++sim.seq }, v));
+    if (v.matched) {
+      const lvl = levelOf(v);
+      let caseId = null;
+      if (o.session) caseId = o.session.caseId;
+      else if (!e.containerName.startsWith(SANDBOX)) { const rc = srv.touchRuntimeCase(e, v, at, lvl === 'alert'); caseId = rc ? rc.id : null; } // 경고는 열린 건에만 묶인다
+      srv.storeAudit(v, o.count || 1, caseId, o.session ? { id: o.session.id, label: `${o.session.manager} ${o.session.packages.join(' ')}` } : null);
+    }
+    if (v.matched && !o.silent) state.unseen++;
+    if (!state.paused || o.silent) sim.queue.push(Object.assign({ key: ++sim.seq }, v));
     return v;
   }
   function tick() {
     const now = Date.now();
     for (const c of sim.containers) {
       if (c.killedAt) {
-        if (now - c.killedAt < sim.restartIn) continue;
-        c.killedAt = 0; c.id = M.hexId(Math.random, 64);
-        UI.toast(`${c.name} 새 컨테이너 ID 로 재기동됨 (데모: 재배포)`, { tone: 'info' });
+        if (c.blockedImage || now - c.killedAt < sim.restartIn) continue; // 차단 이미지는 다시 띄우지 않는다
+        if (restart(c, now)) continue;
+        UI.toast(`${c.name} 새 컨테이너 ID 로 재기동됨 (데모: 재배포)`, { tone: 'info', key: `restart:${c.name}` });
       }
       if (rnd(3) === 0) pipeline(c, mkEvent(c, c.normal[rnd(c.normal.length)], now), now);
     }
-    if (now >= sim.nextAttack) { runAttack(now); sim.nextAttack = now + sim.attackEvery; }
+    if (sim.attackEvery && now >= sim.nextAttack) { runAttack(now); sim.nextAttack = now + sim.attackEvery; }
+  }
+  // 재기동 — 이미지가 차단 목록에 있으면 기동 즉시 격리(사유 blocked-image)하고 true [10/15 목표]. 건은 새로 열지 않는다(이미 악성으로 판정된 이미지)
+  function restart(c, now) {
+    c.killedAt = 0; c.id = M.hexId(Math.random, 64);
+    if (!state.blocklist.images.some((x) => x.value === c.image)) { c.blockedImage = false; return false; }
+    c.killedAt = now; c.blockedImage = true;
+    sim.killed.unshift({ id: c.id, name: c.name, at: new Date(now).toISOString(), reason: 'blocked-image' });
+    // 감사 행은 그 차단을 만든 건의 caseId 로 남긴다(새 건 없음)
+    const entry = state.blocklist.images.find((x) => x.value === c.image);
+    const bv = { event: mkEvent(c, { kind: 'exec', comm: 'container-start', args: '' }, now), matched: true, ruleId: 'blocked-image', action: 'kill', reason: `차단된 이미지 ${c.image}`, enforced: true };
+    record(bv, now); srv.storeAudit(bv, 1, entry ? entry.caseId : null, null);
+    toast(`${c.name} 기동 즉시 격리 — 차단된 이미지 ${c.image}`, { tone: 'danger', key: `blocked:${c.name}`, action: { label: '차단 목록', go: '#/policies?id=__blocklist__' } });
+    return true;
   }
   function runAttack(now, opts) {
     for (const c of sim.containers) if (c.attacker && !c.killedAt) for (const a of M.attack) pipeline(c, mkEvent(c, a, now), now, opts);
@@ -177,11 +217,45 @@
     const now = Date.now();
     if (!state.connected) { state.connected = true; start(); }
     if (state.paused) { state.paused = false; toast('일시정지를 해제하고 공격 시나리오를 실행합니다', { tone: 'info' }); }
-    for (const c of sim.containers) if (c.attacker && c.killedAt) { c.killedAt = 0; c.id = M.hexId(Math.random, 64); toast(`${c.name} 재기동 (격리 중이던 컨테이너를 다시 띄움)`, { tone: 'info' }); }
+    for (const c of sim.containers) if (c.attacker && c.killedAt) { if (!restart(c, now)) toast(`${c.name} 재기동 (격리 중이던 컨테이너를 다시 띄움)`, { tone: 'info', key: `restart:${c.name}` }); }
     runAttack(now);
-    sim.nextAttack = now + sim.attackEvery;
+    sim.nextAttack = sim.attackEvery ? now + sim.attackEvery : Infinity;
     flush(); state.stats = snapshot(); emit();
-    toast(`공격 시나리오 실행 — exec(curl|sh) → open(/etc/shadow) → connect(:4444) ${M.attack.length}개 이벤트`, { tone: 'danger', action: { label: '이벤트 보기', go: '#/events?verdict=violation' } });
+    toast(`공격 시나리오 실행 — exec(curl|sh) → open(/etc/shadow) → connect(:4444) ${M.attack.length}개 이벤트`, { tone: 'danger', key: 'attack-run', action: { label: '이벤트 보기', go: '#/events?verdict=violation' } });
+  }
+  // 데모 제어 「설치 검사 실행」: sg-install 이 하는 일을 흉내 낸다 — 차단 확인 → 세션 시작 보고 → 감시 컨테이너 이벤트 → 끝 보고.
+  // 차단된 패키지면 컨테이너를 띄우지 않고 「설치 전 거부」 세션만 남긴다(CLI 종료 코드 3) [10/15 목표].
+  // 이벤트는 런타임 파이프라인도 그대로 지나가므로(같은 엔진) 이벤트 피드에도 보인다. kind = benign | malicious | warn | (테스트용) 세션 명세
+  function runInstallDemo(kind) {
+    if (state.source !== 'sim') { toast('실제 백엔드 모드 — 설치 검사는 CLI(sg-install)로 실행합니다', { tone: 'warn' }); return null; }
+    const spec = kind && typeof kind === 'object' ? kind : M.demoSpecs[kind] || M.demoSpecs.benign;
+    const chk = srv.blocklistCheck(spec.manager, spec.pkg);
+    if (chk.blocked) {
+      const id = srv.installsRefused({ manager: spec.manager, packages: [spec.pkg], value: chk.value }).id;
+      emit();
+      toast(`설치 전 거부 — 차단된 패키지 ${chk.value} (sg-install 종료 코드 3, 컨테이너 없음)`, { tone: 'danger', key: `install:${id}`, action: { label: '보기', go: `#/installs?status=all&id=${id}` } });
+      return id;
+    }
+    const s = M.newSession(spec, Date.now(), ++state.installSeq);
+    state.installs.unshift(s); emit();
+    const label = `${s.manager} ${s.packages.join(' ')}`;
+    toast(`설치 검사 시작 — sg-install ${label}`, { tone: 'info', key: `install:${s.id}`, replace: true });
+    const c = { name: s.container, image: s.image, id: s.containerId, killedAt: 0 };
+    spec.events.forEach(([tpl, n], i) => setTimeout(() => {
+      const at = Date.now(); const v = pipeline(c, mkEvent(c, tpl, at), at, { count: n, session: s });
+      M.addToSession(s, v.event, v, n); srv.syncInstallCase(s); emit();
+    }, 400 + i * 180));
+    setTimeout(() => {
+      const end = new Date().toISOString(); s.containerExitedAt = end; s.finishedAt = end; s.exitCode = c.killedAt ? 137 : spec.exitCode;
+      const st = M.statusOf(s); emit();
+      toast(`설치 검사 결과: ${INSTALL_STATUS[st]} — ${label}`, { tone: st === 'isolated' ? 'danger' : st === 'warned' ? 'warn' : 'ok', key: `install:${s.id}`, replace: true, action: { label: '보기', go: s.caseId ? `#/installs?id=${s.id}` : `#/installs?status=all&id=${s.id}` } });
+    }, 400 + spec.events.length * 180 + 600);
+    return s.id;
+  }
+  // 테스트 · 데모용: 런타임 컨테이너 하나에 이벤트 하나를 흘린다
+  function simEvent(name, tpl) {
+    const c = sim.containers.find((x) => x.name === name); if (!c) return null;
+    const at = Date.now(); const v = pipeline(c, mkEvent(c, tpl, at), at); flush(); emit(); return v;
   }
   function flush() {
     if (sim.queue.length) { const batch = sim.queue.reverse(); sim.queue = []; state.verdicts = batch.concat(state.verdicts).slice(0, 500); }
@@ -189,25 +263,22 @@
   function snapshot() {
     const now = Date.now();
     sim.recent = sim.recent.filter((t) => now - t < 60000);
-    const cut = now - 5 * 60000;
+    const cut = now - 10 * 60000;
     const trend = sim.trend.filter((b) => b.ts >= cut);
-    const risk = Math.min(100, trend.reduce((a, b) => a + b.w, 0));
     return {
       timestamp: new Date(now).toISOString(), totalEvents: sim.total, eventsLastMinute: sim.recent.length,
-      eventsPerSec: sim.recent.filter((t) => now - t < 5000).length / 5, totalViolations: sim.violations, riskScore: Math.round(risk),
+      eventsPerSec: sim.recent.filter((t) => now - t < 5000).length / 5, totalViolations: sim.violations,
       killed: sim.killed.slice(0, 20), killedCount: sim.killed.length,
       topContainers: [...sim.perContainer].map(([name, violations]) => ({ name, violations })).sort((a, b) => b.violations - a.violations).slice(0, 5),
       trend: trend.map(({ t, exec, open, connect, violations }) => ({ t, exec, open, connect, violations })),
       wsClients: 1, dropped: 0, enforceKill: state.info.enforceKill, source: 'mock',
     };
   }
-  // 시작 시 최근 5분을 미리 채운다 (새로고침 직후 빈 화면 방지 — 실제 앱은 /api/events/recent)
+  // 시작 시 최근 10분 정상 이벤트를 미리 채운다 (새로고침 직후 빈 화면 방지 — 실제 앱은 /api/events/recent). 공격은 넣지 않는다 [10/15 목표]
   function seed() {
-    const start = Date.now() - 300000;
+    const start = Date.now() - 600000;
     for (let t = start; t < Date.now() - 500; t += 100) {
       for (const c of sim.containers) if (rnd(3) === 0) pipeline(c, mkEvent(c, c.normal[rnd(c.normal.length)], t), t, { silent: true });
-      if ((t - start) % 40000 === 20000) { runAttack(t, { silent: true }); }
-      for (const c of sim.containers) if (c.killedAt && t - c.killedAt >= sim.restartIn) { c.killedAt = 0; c.id = M.hexId(Math.random, 64); }
     }
     flush(); state.unseen = 0; state.stats = snapshot();
   }
@@ -270,26 +341,365 @@
     if (source === 'live') { liveStart(); }
     else {
       state.verdicts = []; state.stats = null; state.unseen = 0; state.topology = new TopologyStore(); state.liveError = '';
-      state.rules = JSON.parse(JSON.stringify(M.rules)); state.info = { source: 'mock', gadgets: KINDS, enforceKill: true, authRequired: true, gadgetVersion: 'v0.56.1' };
+      state.rules = JSON.parse(JSON.stringify(M.rules)); state.info = { source: 'mock', gadgets: KINDS, enforceKill: true, authRequired: true, gadgetVersion: 'v0.56.1', watchContainers: [], ignoreContainers: ['supplyguard-*'] };
       sim.total = 0; sim.violations = 0; sim.killed = []; sim.perContainer = new Map(); sim.recent = []; sim.trend = []; sim.queue = [];
-      for (const c of sim.containers) { c.killedAt = 0; c.id = M.hexId(Math.random, 64); }
+      for (const c of sim.containers) { c.killedAt = 0; c.blockedImage = false; c.id = M.hexId(Math.random, 64); }
       seed(); state.connected = true; start(); toast('내장 시뮬레이션으로 전환', { tone: 'info' });
     }
     emit();
   }
 
-  // ── 화면이 쓰는 데이터 API — sim 은 메모리, live 는 REST (frontend/src/lib/api.ts 와 같은 계약) ──
+  // ── 모의 서버 (sim) — 판정 흐름 [10/15 목표]. Claude Docs 「API 계약」 탭의 데이터 모양 · 동작 규칙을 그대로 따른다 ──
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+  const iso = (at) => new Date(at || Date.now()).toISOString();
+  const nextId = (k, prefix) => `${prefix}-${String(++state.seq[k]).padStart(4, '0')}`;
+  const httpErr = (status, msg) => Object.assign(new Error(`${status} · ${msg}`), { status });
+  const SEV_ORDER = ['normal', 'alert', 'held', 'killed'];
+  const srv = {
+    caseById: (id) => state.cases.find((c) => c.id === id),
+    // 감사 로그 저장 — 위반만, 같은 이벤트 n 번이면 n 행
+    storeAudit(v, n, caseId, install) {
+      for (let i = 0; i < n; i++) { const row = Object.assign({}, v, { id: ++state.auditSeq, caseId, install: install || null }); delete row.key; state.audit.unshift(row); }
+    },
+    // 건 열기(설치): 세션 결과가 격리 또는 경고가 되는 순간 세션당 1개. 위반 수 · 규칙 · 최악 탐지 결과는 세션에서 다시 센다
+    syncInstallCase(s) {
+      const st = M.statusOf(s);
+      if (!s.caseId && (st === 'isolated' || st === 'warned')) {
+        const c = { id: nextId('case', 'case'), source: 'install', installId: s.id, container: s.container, label: `${s.manager} ${s.packages.join(' ')}`, image: s.image, package: M.pkgKey(s.manager, s.packages[0]),
+          openedAt: iso(), level: 'normal', violations: 0, ruleIds: [], state: 'open', decision: 'pending', decidedAt: null, decidedBy: null, note: '', proposalId: null, closedAt: null };
+        state.cases.unshift(c); s.caseId = c.id;
+        for (const a of state.audit) if (a.install && a.install.id === s.id) a.caseId = c.id;
+      }
+      const c = srv.caseById(s.caseId); if (!c) return;
+      c.violations = s.violations.reduce((n, v) => n + (v.count || 1), 0);
+      c.ruleIds = [...new Set(s.violations.map((v) => v.ruleId))];
+      c.level = s.violations.map(levelOf).reduce((a, b) => (SEV_ORDER.indexOf(b) > SEV_ORDER.indexOf(a) ? b : a), 'normal');
+    },
+    // 건 열기(런타임): sg-install-* 가 아닌 컨테이너에 격리됨 · 격리 대상이 나오면, 그 이름으로 열린(open · decided) 건이 없을 때 새 건. 있으면 위반 수만 늘린다
+    // joinOnly(경고): 열린 건이 있을 때만 그 건에 더하고, 없으면 null — 경고만으로 새 건은 열지 않는다 [10/15 3차]
+    touchRuntimeCase(e, v, at, joinOnly) {
+      let c = state.cases.find((x) => x.source === 'runtime' && x.container === e.containerName && (x.state === 'open' || x.state === 'decided'));
+      if (!c && joinOnly) return null;
+      if (!c) {
+        c = { id: nextId('case', 'case'), source: 'runtime', installId: null, container: e.containerName, label: e.containerName, image: e.imageName,
+          openedAt: iso(at), level: 'normal', violations: 0, ruleIds: [], state: 'open', decision: 'pending', decidedAt: null, decidedBy: null, note: '', proposalId: null, closedAt: null };
+        state.cases.unshift(c);
+      }
+      c.violations++; if (!c.ruleIds.includes(v.ruleId)) c.ruleIds.push(v.ruleId);
+      const lvl = levelOf(v); if (SEV_ORDER.indexOf(lvl) > SEV_ORDER.indexOf(c.level)) c.level = lvl;
+      return c;
+    },
+    // 판정 → 제안 만들기 (동작 규칙 표 — 백엔드 review/cases.go 와 같은 규칙) → { changes, notes }
+    // 악성: 설치 = 세션의 패키지 전부 차단, 런타임 = 이미지 차단. 위반 통신의 도메인 차단 — 어느 규칙의 allowHosts 에 있는 도메인 · IP 만 있는 통신은 빼고 안내 [10/15 3차]
+    // 오탐: 걸린 규칙마다 가장 좁은 예외 — 파일 allowPaths · 통신은 규칙에 원래 allowHosts 가 있고 도메인을 알면 allowHosts, 아니면 allowCidrs IP/32.
+    //       실행 규칙 · 예외로 안 풀리는 금지 목록(deny*) · 시스템 규칙 · blocked-image 는 변경 없이 안내만
+    proposalChanges(c, decision) {
+      const rows = state.audit.filter((a) => a.caseId === c.id);
+      const out = [], seen = new Set(), notes = [];
+      const add = (ch) => { const k = JSON.stringify(ch); if (!seen.has(k)) { seen.add(k); out.push(ch); } };
+      const note = (n) => { if (!notes.includes(n)) notes.push(n); };
+      const blocked = (list, value) => state.blocklist[list].some((x) => x.value === value);
+      const hostIn = (pat, host) => { pat = pat.toLowerCase().replace(/\.$/, ''); return host === pat || host.endsWith('.' + pat); };
+      if (decision === 'malicious') {
+        if (c.source === 'scan') { if (!blocked('packages', c.package)) add({ op: 'block', list: 'packages', value: c.package }); } // 공급망 검사에서 올린 것(10/16)
+        else if (c.source === 'install') {
+          const s = state.installs.find((x) => x.id === c.installId);
+          const keys = s ? s.packages.map((p) => M.pkgKey(s.manager, p)) : [c.package];
+          for (const k of keys) if (!blocked('packages', k)) add({ op: 'block', list: 'packages', value: k });
+        } else if (!blocked('images', c.image)) add({ op: 'block', list: 'images', value: c.image });
+        for (const a of rows) {
+          if (a.event.kind !== 'connect') continue;
+          const host = (a.event.dstHost || '').toLowerCase().replace(/\.$/, '');
+          if (!host) { note(`${a.event.dstIp} 은 도메인을 몰라 도메인 차단을 만들지 않았습니다`); continue; }
+          const by = state.rules.find((r) => (r.allowHosts || []).some((h) => hostIn(h, host)));
+          if (by) { note(`도메인 ${host} 은 규칙 ${by.id} 의 허용 도메인이라 차단하지 않았습니다`); continue; }
+          if (!blocked('hosts', host)) add({ op: 'block', list: 'hosts', value: host });
+        }
+        return { changes: out, notes };
+      }
+      let work = clone(state.rules);
+      const hadHosts = new Set(work.filter((r) => (r.allowHosts || []).length).map((r) => r.id));
+      for (const a of rows) {
+        if (a.ruleId === 'blocked-image') { note('이미지 차단은 예외가 아니라 차단 목록에서 해제합니다'); continue; }
+        for (let i = 0; i <= work.length; i++) {
+          const v = M.evaluate(work, a.event); if (!v.matched) break;
+          if (v.ruleId === M.SYSTEM_RULE) { note(`도메인 ${a.event.dstHost} 은 차단 목록에 있습니다 — 차단 목록에서 해제하세요`); break; }
+          const rule = work.find((r) => r.id === v.ruleId), e = a.event; let field = null, value = null;
+          if (e.kind === 'open' && e.path) { field = 'allowPaths'; value = e.path; }
+          else if (e.kind === 'connect') {
+            const host = (e.dstHost || '').toLowerCase().replace(/\.$/, '');
+            if (host && hadHosts.has(rule.id)) { field = 'allowHosts'; value = host; } else { field = 'allowCidrs'; value = `${e.dstIp}/32`; }
+          }
+          if (!field) { note(`실행 규칙 ${rule.id} 은 자동 예외를 만들지 않습니다 — 정책 탭에서 직접 수정하세요`); break; }
+          const trial = srv.rulesWith([{ op: 'except', ruleId: rule.id, field, value }], work);
+          const again = M.evaluate(trial, a.event);
+          if (again.matched && again.ruleId === rule.id) { note(`규칙 ${rule.id} 은 금지 목록에 걸려 예외로 풀 수 없습니다 — 정책 탭에서 직접 수정하세요`); break; }
+          work = trial;
+          add({ op: 'except', ruleId: rule.id, field, value });
+        }
+      }
+      return { changes: out, notes };
+    },
+    decide(id, body, at) {
+      const c = srv.caseById(id);
+      if (!c) throw httpErr(404, '건 없음');
+      if (c.state !== 'open') throw httpErr(409, '이미 판정된 건');
+      const decision = body && body.decision;
+      if (!['malicious', 'false_positive'].includes(decision)) throw httpErr(400, 'decision 은 malicious | false_positive');
+      c.decision = decision; c.state = 'decided'; c.decidedAt = iso(at); c.decidedBy = ACTOR; c.note = (body && body.note) || '';
+      const { changes, notes } = srv.proposalChanges(c, decision);
+      const p = { id: nextId('prop', 'prop'), caseId: c.id, decision, state: 'draft', createdAt: c.decidedAt, createdBy: ACTOR, appliedAt: null, appliedBy: null, changes, notes };
+      state.proposals.unshift(p); c.proposalId = p.id;
+      return { case: clone(c), proposal: clone(p) };
+    },
+    // 제안을 적용한 정책 사본(규칙 예외 + blocklist-hosts 도메인)으로 저장된 감사 로그를 다시 평가해, 탐지 결과가 바뀌는 행만 돌려준다.
+    // 패키지 · 이미지 차단은 과거 이벤트를 바꾸지 않는다 — 화면이 「다음 설치 · 기동부터」로 따로 보인다
+    rulesWith(changes, base) {
+      const rules = clone(base || state.rules);
+      for (const ch of changes) {
+        if (ch.op === 'except') { const r = rules.find((x) => x.id === ch.ruleId); if (r && !(r[ch.field] || []).includes(ch.value)) r[ch.field] = [...(r[ch.field] || []), ch.value]; }
+        if (ch.op === 'block' && ch.list === 'hosts') { const r = rules.find((x) => x.id === M.SYSTEM_RULE); if (r && !(r.denyHosts || []).includes(ch.value)) r.denyHosts = [...(r.denyHosts || []), ch.value]; }
+      }
+      return rules;
+    },
+    preview(id) {
+      const p = state.proposals.find((x) => x.id === id); if (!p) throw httpErr(404, '제안 없음');
+      const nextOnly = p.changes.filter((x) => x.op === 'block' && x.list !== 'hosts').map((x) => ({ list: x.list, value: x.value }));
+      return Object.assign(srv.reevaluate(srv.rulesWith(p.changes)), { nextOnly });
+    },
+    // 정책 하나를 바꾼(또는 더한) 규칙 사본으로 감사 로그를 다시 평가 — 저장 전 확인 [10/16 정책 개편]. POST /api/policies/preview {rule} → Preview
+    previewRule(rule) {
+      const rules = clone(state.rules); const i = rules.findIndex((x) => x.id === rule.id);
+      if (i >= 0) rules[i] = clone(rule); else rules.unshift(clone(rule));
+      return srv.reevaluate(rules);
+    },
+    reevaluate(rules) {
+      const changed = [];
+      for (const a of state.audit) {
+        const before = levelOf(a); const v = M.evaluate(rules, a.event);
+        const after = !v.matched ? 'normal' : v.action !== 'kill' ? 'alert' : v.dryRun || before === 'held' ? 'held' : 'killed';
+        if (after !== before) changed.push({ auditId: a.id, before, after, container: a.event.containerName, ruleId: a.ruleId });
+      }
+      const blocking = (l) => l === 'killed' || l === 'held';
+      return { evaluated: state.audit.length, changed, counts: { toNormal: changed.filter((x) => x.after === 'normal').length, toBlocked: changed.filter((x) => blocking(x.after) && !blocking(x.before)).length } };
+    },
+    // ── 공급망 검사(10/16) — POST /api/scans → 백엔드가 격리된 검사 컨테이너에서 GuardDog(코드) · OSV-Scanner(의존성)를 돌린다 ──
+    scanStart(body) {
+      const b = body || {}, t = { kind: b.kind };
+      if (b.kind === 'package') {
+        if (!['pip', 'npm'].includes(b.manager)) throw httpErr(400, 'manager 는 pip | npm');
+        const name = String(b.name || '').trim(); if (!/^(@[\w.-]+\/)?[\w.-]+$/.test(name)) throw httpErr(400, '패키지 이름을 확인하세요');
+        Object.assign(t, { manager: b.manager, name, version: String(b.version || '').trim(), label: `${b.manager} ${name}${b.version ? (b.manager === 'pip' ? '==' : '@') + b.version : ''}` });
+      } else if (b.kind === 'repo') {
+        const m = String(b.url || '').trim().match(/^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(\.git)?\/?$/); if (!m) throw httpErr(400, 'https://github.com/<소유자>/<저장소> 형식으로 써 주세요');
+        Object.assign(t, { url: `https://github.com/${m[1]}/${m[2]}`, name: m[2], label: `github.com/${m[1]}/${m[2]}` });
+      } else if (b.kind === 'file') {
+        if (!b.fileName) throw httpErr(400, '파일을 고르세요'); if (b.size > 50 * 1024 * 1024) throw httpErr(413, '파일은 50MB 까지 올릴 수 있습니다');
+        Object.assign(t, { fileName: b.fileName, size: b.size, label: b.fileName });
+      } else throw httpErr(400, 'kind 는 package | repo | file');
+      const sc = { id: nextId('scan', 'scan'), target: t, status: 'running', startedAt: iso(), finishedAt: null, verdict: null, risk: null, engines: M.scanFixtures.engines.map((e) => ({ name: e.name, version: e.version })), findings: [], vulns: [], files: {}, caseId: null };
+      state.scans.unshift(sc);
+      setTimeout(() => { srv.scanFinish(sc); emit(); }, 1200);
+      return { id: sc.id };
+    },
+    // 끝: 목업은 실측 결과(MOCK.scanFixtures)를 돌려준다 — 이름(pip reqeusts · requests), GitHub psf/requests, requirements.txt
+    scanFinish(sc) {
+      const t = sc.target, F = M.scanFixtures;
+      const key = t.kind === 'package' ? `${t.manager}:${t.name.toLowerCase()}` : t.kind === 'repo' ? `pip:${t.name.toLowerCase()}` : null;
+      const gd = key && F.guarddog[key];
+      const isDeps = t.kind === 'file' && /requirements.*\.txt$|package-lock\.json$/.test(t.fileName);
+      if (gd) { sc.risk = gd.risk; sc.findings = gd.findings.map((f) => Object.assign({}, f)); sc.files = Object.assign({}, gd.files); }
+      else if (!isDeps) sc.risk = { score: 0, label: 'no_risks_detected' };
+      if (isDeps) sc.vulns = F.osv['requirements.txt'].map((v) => Object.assign({}, v));
+      const threats = sc.findings.filter((f) => f.category === 'threat').length;
+      sc.verdict = threats || (sc.risk && sc.risk.score >= 5) ? 'malicious' : sc.vulns.length ? 'vulnerable' : 'clean';
+      sc.status = 'done'; sc.finishedAt = iso();
+    },
+    scanView(sc, full) {
+      const v = clone(sc);
+      Object.assign(v, { threats: sc.findings.filter((f) => f.category === 'threat').length, capabilities: sc.findings.filter((f) => f.category === 'capability').length, vulnCount: sc.vulns.reduce((n, x) => n + x.count, 0), vulnMax: sc.vulns.reduce((m, x) => Math.max(m, Number(x.maxSeverity)), 0) || null });
+      if (!full) { delete v.findings; delete v.files; delete v.vulns; }
+      return v;
+    },
+    // 차단 목록에 올리기: 공급망 검사 건(source scan)을 열고 「악성」으로 판정 → 패키지 차단 제안(기존 흐름: 미리보기 → 적용)
+    scanBlock(id) {
+      const sc = state.scans.find((x) => x.id === id); if (!sc) throw httpErr(404, '검사 없음');
+      if (sc.target.kind !== 'package') throw httpErr(400, '패키지 이름으로 검사한 것만 차단 목록에 올릴 수 있습니다');
+      if (!sc.caseId) {
+        const c = { id: nextId('case', 'case'), source: 'scan', installId: null, scanId: sc.id, container: '', label: sc.target.label, image: '', package: M.pkgKey(sc.target.manager, sc.target.name),
+          openedAt: iso(), level: sc.verdict === 'malicious' ? 'killed' : 'alert', violations: sc.findings.filter((f) => f.category === 'threat').length, ruleIds: [...new Set(sc.findings.filter((f) => f.category === 'threat').map((f) => f.rule))], state: 'open', decision: 'pending', decidedAt: null, decidedBy: null, note: '', proposalId: null, closedAt: null };
+        state.cases.unshift(c); sc.caseId = c.id;
+      }
+      const c = srv.caseById(sc.caseId);
+      if (c.proposalId) return { proposalId: c.proposalId, caseId: c.id };
+      const { proposal } = srv.decide(c.id, { decision: 'malicious', note: `공급망 검사 ${sc.id} — 위험 점수 ${sc.risk ? sc.risk.score : '—'}` });
+      return { proposalId: proposal.id, caseId: c.id };
+    },
+    // eBPF 수집 종합(10/16) — GET /api/summary?range=1h|24h|7d. 저장된 기록(감사 로그 · 세션 · 건 · 차단 목록) + 1분 단위 수집량
+    overview(range) {
+      const R = { '1h': [60, 60], '24h': [24, 3600], '7d': [28, 21600] }[range] || [24, 3600];
+      const [n, step] = R, stepMs = step * 1000, end = Math.ceil(Date.now() / stepMs) * stepMs, from = end - n * stepMs;
+      // 켜기 전 수집량은 목업용 합성값(하루 주기 + 결정적 잡음), 켠 뒤는 실제로 흘러간 시뮬레이션 이벤트
+      const synth = (m, k) => { const base = { exec: 18, open: 120, connect: 34 }[k]; const day = 0.65 + 0.35 * Math.sin(((m % 1440) / 1440) * 2 * Math.PI - 1.2); const noise = ((Math.imul(m ^ { exec: 7, open: 13, connect: 29 }[k], 2654435761) >>> 0) % 100) / 100; return Math.round(base * day * (0.8 + 0.4 * noise)); };
+      const series = Array.from({ length: n }, (_, i) => ({ t: new Date(from + i * stepMs).toISOString(), exec: 0, open: 0, connect: 0, killed: 0, alert: 0 }));
+      const bi = (ms) => Math.floor((ms - from) / stepMs);
+      for (let m = Math.floor(from / 60000); m < Math.floor(end / 60000); m++) {
+        const b = series[bi(m * 60000)]; if (!b) continue;
+        const live = sim.collectedLive.get(m);
+        for (const k of KINDS) b[k] += m < sim.bootMinute ? synth(m, k) : live ? live[k] : 0;
+      }
+      const rows = state.audit.filter((a) => Date.parse(a.event.timestamp) >= from);
+      const vio = { total: rows.length, killed: 0, alert: 0, held: 0 };
+      const byRule = new Map(), byCtr = new Map(), isolated = new Set();
+      for (const a of rows) {
+        const l = levelOf(a); vio[l === 'normal' ? 'alert' : l]++;
+        const b = series[bi(Date.parse(a.event.timestamp))]; if (b) b[l === 'killed' || l === 'held' ? 'killed' : 'alert']++;
+        if (l === 'killed') isolated.add(a.event.containerName);
+        const top = (m, k) => { const x = m.get(k) || { count: 0, level: 'alert' }; x.count++; if (SEV_ORDER.indexOf(l) > SEV_ORDER.indexOf(x.level)) x.level = l; m.set(k, x); };
+        if (a.ruleId) top(byRule, a.ruleId); top(byCtr, a.install ? a.install.label : a.event.containerName);
+      }
+      const sorted = (m, key) => [...m.entries()].sort((x, y) => y[1].count - x[1].count || String(x[0]).localeCompare(String(y[0]))).slice(0, 10).map(([k, v]) => ({ [key]: k, count: v.count, level: v.level }));
+      const ins = state.installs.filter((x) => Date.parse(x.startedAt) >= from).map((x) => M.statusOf(x));
+      const st = (k) => ins.filter((x) => x === k).length;
+      const dec = state.cases.filter((c) => c.decidedAt && Date.parse(c.decidedAt) >= from);
+      const collected = { total: 0, byKind: { exec: 0, open: 0, connect: 0 } };
+      for (const b of series) for (const k of KINDS) { collected.byKind[k] += b[k]; collected.total += b[k]; }
+      return { range: ['1h', '24h', '7d'].includes(range) ? range : '24h', from: new Date(from).toISOString(), to: new Date(end).toISOString(), bucketSec: step,
+        collected, violations: vio, isolatedContainers: isolated.size, series, topRules: sorted(byRule, 'ruleId'), topContainers: sorted(byCtr, 'container'),
+        installs: { total: ins.length, passed: st('passed'), isolated: st('isolated'), warned: st('warned'), refused: st('refused'), failed: st('failed') + st('unknown'), running: st('running') },
+        decisions: { malicious: dec.filter((c) => c.decision === 'malicious').length, falsePositive: dec.filter((c) => c.decision === 'false_positive').length, pending: state.cases.filter((c) => c.state === 'open').length },
+        blocklist: { packages: state.blocklist.packages.length, images: state.blocklist.images.length, hosts: state.blocklist.hosts.length } };
+    },
+    summary(changes) {
+      if (!changes.length) return '변경 없음 (건만 종결)';
+      const parts = [];
+      for (const ch of changes.filter((x) => x.op === 'block' && x.list !== 'hosts')) parts.push(`${LIST_LABEL[ch.list]} ${ch.value} 차단`);
+      const hosts = changes.filter((x) => x.op === 'block' && x.list === 'hosts').length; if (hosts) parts.push(`도메인 ${hosts}개 차단`);
+      const ex = changes.filter((x) => x.op === 'except'); if (ex.length) parts.push(`예외 ${ex.length}개 (${[...new Set(ex.map((x) => x.ruleId))].join(', ')})`);
+      return parts.join(' · ');
+    },
+    // 적용 — 한 번에: 차단 목록 추가 · 규칙 필드에 값 추가 · 엔진 리로드(state.rules 교체) · Change 기록 · 제안 applied · 건 closed
+    apply(id, at) {
+      const p = state.proposals.find((x) => x.id === id); if (!p) throw httpErr(404, '제안 없음');
+      if (p.state !== 'draft') throw httpErr(409, '초안이 아닌 제안');
+      const t = iso(at), c = srv.caseById(p.caseId);
+      state.rules = srv.rulesWith(p.changes);
+      for (const ch of p.changes) if (ch.op === 'block' && !state.blocklist[ch.list].some((x) => x.value === ch.value)) state.blocklist[ch.list].push({ value: ch.value, caseId: p.caseId, at: t, by: ACTOR });
+      const chg = { id: nextId('chg', 'chg'), at: t, by: ACTOR, kind: 'proposal_applied', caseId: p.caseId, proposalId: p.id, summary: srv.summary(p.changes) };
+      state.changes.unshift(chg);
+      p.state = 'applied'; p.appliedAt = t; p.appliedBy = ACTOR;
+      if (c) { c.state = 'closed'; c.closedAt = t; }
+      return { proposal: clone(p), case: c ? clone(c) : null, change: clone(chg) };
+    },
+    discard(id) {
+      const p = state.proposals.find((x) => x.id === id); if (!p) throw httpErr(404, '제안 없음');
+      if (p.state !== 'draft') throw httpErr(409, '초안이 아닌 제안');
+      const c = srv.caseById(p.caseId); p.state = 'discarded';
+      if (c) { c.state = 'closed'; c.closedAt = iso(); }
+      return { proposal: clone(p), case: c ? clone(c) : null };
+    },
+    unblock(list, value) {
+      const arr = state.blocklist[list]; if (!arr) throw httpErr(400, 'list 는 packages | images | hosts');
+      const i = arr.findIndex((x) => x.value === value); if (i < 0) throw httpErr(404, '차단 목록에 없음');
+      const [entry] = arr.splice(i, 1);
+      if (list === 'hosts') { const r = state.rules.find((x) => x.id === M.SYSTEM_RULE); if (r) r.denyHosts = (r.denyHosts || []).filter((x) => x !== value); }
+      if (list === 'images') for (const c of sim.containers) if (c.image === value) c.blockedImage = false; // 다음 재기동부터 다시 뜬다
+      state.changes.unshift({ id: nextId('chg', 'chg'), at: iso(), by: ACTOR, kind: 'blocklist_remove', caseId: entry.caseId, proposalId: null, summary: `${LIST_LABEL[list]} ${value} 차단 해제` });
+    },
+    recordChange(kind, summary) { state.changes.unshift({ id: nextId('chg', 'chg'), at: iso(), by: ACTOR, kind, caseId: null, proposalId: null, summary }); },
+    blocklistCheck(manager, pkg) {
+      const value = M.pkgKey(manager, pkg); const e = state.blocklist.packages.find((x) => x.value === value);
+      return { blocked: !!e, value, caseId: e ? e.caseId : null };
+    },
+    installsRefused(body) {
+      const at = Date.now(), s = M.newSession({ manager: body.manager, pkg: (body.packages || [])[0] }, at, ++state.installSeq);
+      Object.assign(s, { packages: body.packages || [], container: null, containerId: null, image: null, finishedAt: iso(at), exitCode: 3, refusedBy: { list: 'packages', value: body.value } });
+      state.installs.unshift(s);
+      return { id: s.id };
+    },
+  };
+  // 시드: 어제 격리된 세션(colourama · crossenv)은 이미 「악성」으로 판정 · 적용돼 있다 — 차단 목록 · 변경 이력이 비어 있지 않게 [10/15 목표]
+  [...state.installs].sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt)).forEach((s) => {
+    srv.syncInstallCase(s);
+    const c = srv.caseById(s.caseId); if (!c) return;
+    c.openedAt = s.containerExitedAt || s.startedAt;
+    if (!s.seedDecided) return;
+    const t = Date.parse(s.startedAt) + s.seedDecided.afterMins * 60000;
+    const { proposal } = srv.decide(c.id, { decision: s.seedDecided.decision, note: '' }, t);
+    srv.apply(proposal.id, t + 60000);
+  });
+
+  // ── 화면이 쓰는 데이터 API — sim 은 모의 서버(srv), live 는 REST (frontend/src/lib/api.ts 와 같은 계약) ──
+  // 계약: Claude Docs 「SupplyGuard 개발 문서」 › 「API 계약」 탭(엔드포인트 표). 이름 · 모양을 그대로 따른다 [10/15 목표]
+  //   CLI (Authorization: Bearer SANDBOX_TOKEN — mock 소스는 토큰 없이)
+  //     POST /api/installs {manager, packages[], container, image} → {id}   ·  PUT /api/installs/{id}/finish {exitCode}
+  //     GET  /api/blocklist/check?manager&package → {blocked, value, caseId}  ·  POST /api/installs/refused {manager, packages[], value} → {id}
+  //   화면 (쓰기는 ADMIN_TOKEN — mock 소스는 토큰 없이)
+  //     GET  /api/installs?status&manager&limit · GET /api/installs/{id}
+  //     GET  /api/cases?state&source · GET /api/cases/{id} · POST /api/cases/{id}/decide {decision, note} → {case, proposal} (판정된 건 409)
+  //     GET  /api/proposals?state · POST /api/proposals/{id}/preview → {evaluated, changed[], counts} · POST …/apply · POST …/discard (draft 아니면 409)
+  //     GET  /api/blocklist · DELETE /api/blocklist/{list}/{value} · GET /api/changes?limit · GET /api/osv?ecosystem&name
+  //   결과 미확인: 컨테이너가 끝난 뒤 10분 안에 finish 보고가 없으면 백엔드가 unknown 으로 둔다
+  // 실제 백엔드 모드에는 아직 이 API들이 없다 → 「백엔드 미지원」
+  const installView = (s) => { const v = Object.assign(clone(s), { status: M.statusOf(s), violationCount: s.violations.reduce((n, x) => n + (x.count || 1), 0) }); delete v.seedDecided; return v; };
+  const unsupported = (what) => Promise.reject(Object.assign(new Error(`백엔드 미지원 — ${what || '설치 세션 API(GET /api/installs)'}가 아직 백엔드에 없습니다`), { unsupported: true }));
+  const simOnly = (what, fn) => (...args) => (state.source === 'live' ? unsupported(what) : Promise.resolve().then(() => fn(...args)));
+  const osvCache = new Map();
+  // OSV 조회 이름: 매니저 → 생태계, 패키지는 정규화(로컬 디렉터리 basename · 버전 표기 제거)
+  const osvQuery = (manager, pkg) => ({ ecosystem: M.ECOSYSTEM[manager] || manager, name: M.pkgName(pkg) });
   const api = {
+    installs: simOnly(null, (p) => { const q = p || {}; return state.installs.map(installView).filter((s) => (!q.status || s.status === q.status) && (!q.manager || s.manager === q.manager)).slice(0, Math.min(q.limit || 50, 500)); }), // 최신순, 기본 50 · 상한 500
+    install: simOnly(null, (id) => { const s = state.installs.find((x) => x.id === id); if (!s) throw httpErr(404, '세션 없음'); return installView(s); }),
+    blocklistCheck: simOnly('차단 확인 API(GET /api/blocklist/check)', (p) => srv.blocklistCheck(p.manager, p.package)),
+    installsRefused: simOnly('거부 보고 API(POST /api/installs/refused)', (body) => { const r = srv.installsRefused(body); emit(); return r; }),
+    cases: simOnly('판정 API(GET /api/cases)', (p) => { const q = p || {}; return clone(state.cases.filter((c) => (!q.state || c.state === q.state) && (!q.source || c.source === q.source))); }),
+    case: simOnly('판정 API(GET /api/cases)', (id) => { const c = srv.caseById(id); if (!c) throw httpErr(404, '건 없음'); return clone(c); }),
+    decide: simOnly('판정 API(POST /api/cases/{id}/decide)', (id, body) => { const r = srv.decide(id, body); emit(); return r; }),
+    proposals: simOnly('제안 API(GET /api/proposals)', (p) => { const q = p || {}; return clone(state.proposals.filter((x) => !q.state || x.state === q.state)); }),
+    preview: simOnly('제안 API(POST /api/proposals/{id}/preview)', (id) => srv.preview(id)),
+    scans: simOnly('공급망 검사 API(GET /api/scans)', () => state.scans.map((x) => srv.scanView(x, false))),
+    scan: simOnly('공급망 검사 API(GET /api/scans/{id})', (id) => { const x = state.scans.find((y) => y.id === id); if (!x) throw httpErr(404, '검사 없음'); return srv.scanView(x, true); }),
+    startScan: simOnly('공급망 검사 API(POST /api/scans)', (body) => { const r = srv.scanStart(body); emit(); return r; }),
+    scanBlock: simOnly('공급망 검사 API(POST /api/scans/{id}/block)', (id) => { const r = srv.scanBlock(id); emit(); return r; }),
+    summary: (range) => (state.source === 'live' ? fetchJSON(`/api/summary?range=${encodeURIComponent(range || '24h')}`) : Promise.resolve().then(() => srv.overview(range || '24h'))),
+    previewRule: (rule) => (state.source === 'live' ? fetchJSON('/api/policies/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule) }) : Promise.resolve().then(() => srv.previewRule(rule))),
+    apply: simOnly('제안 API(POST /api/proposals/{id}/apply)', (id) => { const r = srv.apply(id); emit(); return r; }),
+    discard: simOnly('제안 API(POST /api/proposals/{id}/discard)', (id) => { const r = srv.discard(id); emit(); return r; }),
+    blocklist: simOnly('차단 목록 API(GET /api/blocklist)', () => clone(state.blocklist)),
+    unblock: simOnly('차단 목록 API(DELETE /api/blocklist)', (list, value) => { srv.unblock(list, value); emit(); return null; }),
+    changes: simOnly('변경 이력 API(GET /api/changes)', (p) => clone(state.changes.slice(0, (p && p.limit) || 200))),
+    // 목업은 브라우저에서 osv.dev 를 직접 부른다(CORS 허용 확인 2026-10-15). 실제 앱은 GET /api/osv. 실패해도 error 를 채워 돌려준다(화면이 깨지지 않게)
+    osv: ({ ecosystem, name }) => {
+      const key = `${ecosystem}:${name}`;
+      if (osvCache.has(key)) return osvCache.get(key);
+      const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 5000);
+      const pr = fetch('https://api.osv.dev/v1/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ package: { name, ecosystem } }), signal: ctl.signal })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+        .then((d) => ({ ecosystem, name, vulns: (d.vulns || []).length, ids: (d.vulns || []).map((v) => v.id), queriedAt: iso(), source: 'osv.dev', error: null }))
+        .catch((e) => { osvCache.delete(key); return { ecosystem, name, vulns: null, ids: [], queriedAt: iso(), source: 'osv.dev', error: e.name === 'AbortError' ? '시간 초과(5초)' : e.message || '네트워크 오류' }; })
+        .finally(() => clearTimeout(timer));
+      osvCache.set(key, pr);
+      return pr;
+    },
     listRules: () => (state.source === 'live' ? fetchJSON('/api/policies').then((rs) => { state.rules = rs || []; return state.rules; }) : Promise.resolve(state.rules)),
-    saveRule: (r) => (state.source === 'live' ? fetchJSON('/api/policies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r) }) : Promise.resolve().then(() => { const i = state.rules.findIndex((x) => x.id === r.id); if (i >= 0) state.rules[i] = r; else state.rules.push(r); return r; })),
-    deleteRule: (id) => (state.source === 'live' ? fetchJSON(`/api/policies/${encodeURIComponent(id)}`, { method: 'DELETE' }) : Promise.resolve().then(() => { state.rules = state.rules.filter((x) => x.id !== id); })),
+    saveRule: (r) => (state.source === 'live' ? fetchJSON('/api/policies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r) }) : Promise.resolve().then(() => {
+      if (r.id === M.SYSTEM_RULE) throw httpErr(403, '차단 목록에서 관리하는 시스템 규칙 — 직접 편집할 수 없습니다');
+      const i = state.rules.findIndex((x) => x.id === r.id); if (i >= 0) state.rules[i] = r; else state.rules.splice(Math.max(0, state.rules.findIndex((x) => x.id === M.SYSTEM_RULE)), 0, r);
+      srv.recordChange('policy_edit', `정책 ${r.id} 저장`); return r;
+    })),
+    deleteRule: (id) => (state.source === 'live' ? fetchJSON(`/api/policies/${encodeURIComponent(id)}`, { method: 'DELETE' }) : Promise.resolve().then(() => {
+      if (id === M.SYSTEM_RULE) throw httpErr(403, '차단 목록에서 관리하는 시스템 규칙 — 지울 수 없습니다');
+      state.rules = state.rules.filter((x) => x.id !== id); srv.recordChange('policy_edit', `정책 ${id} 삭제`);
+    })),
     exportYaml: () => (state.source === 'live' ? fetchJSON('/api/policies/export') : Promise.resolve(null)),
     applyYaml: (yaml) => (state.source === 'live' ? fetchJSON('/api/policies', { method: 'PUT', headers: { 'Content-Type': 'application/yaml' }, body: yaml }).then((rs) => { state.rules = rs; return rs; }) : Promise.resolve(null)),
+    // sim 의 전체 교체(화면이 YAML 을 해석한 결과) — 시스템 규칙은 그대로 둔다
+    replaceRules: (rs) => { const sys = state.rules.find((x) => x.id === M.SYSTEM_RULE); state.rules = rs.filter((x) => x.id !== M.SYSTEM_RULE).concat(sys ? [sys] : []); srv.recordChange('policy_replace', `정책 ${rs.length}개 전체 교체`); return state.rules; },
     audit: (p) => {
       if (state.source === 'live') { const q = new URLSearchParams(); for (const [k, v] of Object.entries(p)) if (v !== undefined && v !== '') q.set(k, String(v)); return fetchJSON(`/api/audit?${q}`); }
       const since = p.since ? new Date(p.since).getTime() : 0, until = p.until ? new Date(p.until).getTime() : Infinity;
       let rows = state.audit.filter((a) => { const t = new Date(a.event.timestamp).getTime(); return (!p.kind || a.event.kind === p.kind) && (!p.action || a.action === p.action) && (!p.rule || (a.ruleId || '').includes(p.rule)) && (!p.container || a.event.containerName.includes(p.container)) && t >= since && t <= until && (!p.before || a.id < p.before); });
-      return Promise.resolve(rows.slice(0, p.limit || 100));
+      return Promise.resolve(clone(rows.slice(0, p.limit || 100)));
     },
   };
 
@@ -300,8 +710,81 @@
     const title = level === 'held' ? (v.enforceError ? `격리 실패: ${v.enforceError}` : 'dry-run — 알림만 보냄') : null;
     return h('span', { class: `badge badge-level badge-level-${level}`, title }, LEVEL_LABEL[level]);
   }
-  function kpi({ label, value, hint, tone }) {
-    return h('div', { class: 'kpi' }, h('div', { class: 'kpi-label' }, label), h('div', { class: `kpi-value num tone-${tone || 'default'}` }, value), hint ? h('div', { class: 'kpi-hint' }, hint) : null);
+  function kpi({ label, value, hint, tone, key, href }) {
+    const box = h('div', { class: 'kpi', 'data-kpi': key }, h('div', { class: 'kpi-label' }, label), h('div', { class: `kpi-value num tone-${tone || 'default'}` }, value), hint ? h('div', { class: 'kpi-hint' }, hint) : null);
+    return href ? h('a', { href, class: 'kpi-link' }, box) : box;
+  }
+  const statusBadge = (st) => h('span', { class: `badge st st-${st}`, 'data-status': st }, INSTALL_STATUS[st]);
+  // 판정(사람의 결론) 배지 — pending · malicious · false_positive · none(건 없음)
+  const decisionBadge = (d) => h('span', { class: `badge dec dec-${d || 'none'}`, 'data-decision': d || 'none' }, DECISION_LABEL[d || 'none']);
+
+  // ── 판정 흐름 공통 부품 [10/15 목표] — 공격 체인 · 판정 버튼 · 미리보기 표는 여기 한 곳에만 있다 ──
+  const KIND_ORDER = { exec: 1, open: 2, connect: 3 };
+  const KIND_STEP = { exec: '1 실행', open: '2 파일', connect: '3 통신' };
+  const fakeVerdict = (level) => ({ matched: level !== 'normal', action: level === 'alert' ? 'alert' : 'kill', enforced: level === 'killed' });
+  // 공격 체인: steps = [{ id?, kind, label, title?, rules[], level }]. onPick 이 있으면 단계가 버튼(토폴로지), 없으면 정적(설치 검사 시트)
+  function attackChain(steps, opts) {
+    const o = opts || {}, max = o.maxChars || 22; // 긴 인자 · 경로는 가운데 말줄임 — 끝(… | sh, :4444)이 보이게
+    const label = (t) => ellipsize(String(t), max);
+    const sorted = [...steps].sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || SEV[b.level] - SEV[a.level] || (a.at || 0) - (b.at || 0));
+    return h('ol', { class: 'chain-steps', 'data-part': 'attack-chain' }, sorted.map((st) => {
+      const inner = [h('span', { class: `step-no step-${st.kind}` }, KIND_STEP[st.kind]), h('span', { class: 'step-label mono', title: st.title || st.label }, label(st.label)),
+        h('span', { class: 'step-rule small muted', title: (st.rules || []).join(', ') }, (st.rules || [])[0] || ''), verdictBadge(fakeVerdict(st.level))];
+      return h('li', null, o.onPick ? h('button', { type: 'button', class: `chain-step ${o.selectedId && o.selectedId === st.id ? 'on' : ''}`, onclick: () => o.onPick(st) }, inner) : h('div', { class: 'chain-step static' }, inner));
+    }));
+  }
+  // 설치 검사 시트용 단계 — 통신은 토폴로지 목적지 노드처럼 「도메인:포트」(없으면 IP:포트), 전체는 툴팁
+  const chainFromVerdicts = (vs) => vs.map((v) => { const e = v.event; return { kind: e.kind, label: e.kind === 'connect' ? `${e.dstHost || e.dstIp}:${e.dstPort}` : detailOf(e), title: detailOf(e), rules: [v.ruleId], level: levelOf(v), at: Date.parse(e.timestamp) }; });
+  // 판정 버튼: 열린 건이면 「악성 확정」 · 「오탐」, 판정된 건이면 결과 · 처리자 · 시각(+ 제안 적용 대기 / 종결)
+  function decisionBar(c, opts) {
+    const o = opts || {};
+    const root = h('div', { class: 'decision', 'data-part': 'decision', 'data-case-id': c.id });
+    if (c.state === 'open') {
+      // 판정 칸 = 질문 · 메모(선택) · 큰 버튼 2개 · 안내 한 줄 [10/15 3차 — React DecisionBox 모습]. 시트 아래에 고정된다
+      const what = c.label || c.package || c.container;
+      const memo = h('input', { class: 'ctl', type: 'text', placeholder: '판단 근거', 'aria-label': '메모 (선택)', 'data-memo': '' });
+      const go = (d) => api.decide(c.id, { decision: d, note: memo.value.trim() }).then(({ proposal }) => {
+        toast(d === 'malicious' ? `${what} 악성 확정 — 차단 제안 ${proposal.id} 초안을 만들었습니다` : `${what} 오탐 — 예외 제안 ${proposal.id} 초안을 만들었습니다`, { tone: 'ok', key: 'decide', replace: true, action: { label: '제안 보기 →', go: `#/policies?proposal=${proposal.id}` } });
+        if (o.onDone) o.onDone();
+      }).catch((e) => toast(`판정 실패: ${e.message}`, { tone: 'danger' }));
+      root.classList.add('decision-v');
+      append(root, [h('div', { class: 'row-inline' }, h('span', { class: 'decision-q' }, o.question || '이 건은 악성인가?'), decisionBadge('pending')),
+        h('label', { class: 'memo-row' }, h('span', { class: 'small muted' }, '메모 (선택)'), memo),
+        h('div', { class: 'decision-btns' },
+          h('button', { type: 'button', class: 'btn btn-danger', 'aria-label': '악성 확정', title: '차단 제안을 만든다(패키지 · 이미지 · 도메인)', onclick: () => go('malicious') }, '악성 확정'),
+          h('button', { type: 'button', class: 'btn btn-outline', 'aria-label': '오탐', title: '걸린 규칙에 가장 좁은 예외 제안을 만든다', onclick: () => go('false_positive') }, '오탐')),
+        h('p', { class: 'small muted' }, '악성 확정 → 차단 제안 / 오탐 → 걸린 규칙에 예외 제안 (정책에서 미리보기 후 적용)')]);
+    } else {
+      append(root, [h('span', { class: 'row-inline' }, h('span', { class: 'small muted' }, '판정'), decisionBadge(c.decision), h('span', { class: 'small muted num' }, `${c.decidedBy} · ${fmt.dateTime(c.decidedAt)}`)),
+        c.state === 'decided' ? h('a', { href: `#/policies?proposal=${c.proposalId}`, class: 'link small' }, '제안 적용 대기 → 정책') : h('span', { class: 'small muted' }, `종결 · ${fmt.dateTime(c.closedAt)}`)]);
+    }
+    return root;
+  }
+  // 미리보기 표: preview 결과 + 제안 → 바뀌는 건수 · 목록 + 「다음 설치 · 기동부터」(패키지 · 이미지 차단) + 실행 규칙 안내
+  function previewView(p, r, auditById) {
+    const root = h('section', { class: 'sheet-section', 'data-part': 'preview' }, h('h3', null, '미리보기 — 적용하면 무엇이 달라지나'));
+    if (!r) { root.append(h('p', { class: 'small muted' }, '계산 중…')); return root; }
+    // 「다음 설치 · 기동부터」 = 미리보기 응답의 nextOnly(패키지 · 이미지 차단). 옛 응답이면 제안에서 고른다
+    const next = r.nextOnly || p.changes.filter((x) => x.op === 'block' && x.list !== 'hosts');
+    if (r.error) { root.append(h('p', { class: 'small tone-danger' }, `미리보기 실패: ${r.error}`)); return root; }
+    root.append(h('p', { 'data-preview-count': '' }, `감사 로그 ${fmt.num(r.evaluated)}건을 다시 평가 — 탐지 결과가 바뀌는 과거 위반 `, h('b', { class: 'num' }, `${r.changed.length}건`),
+      r.changed.length ? ` (통과로 ${r.counts.toNormal}건 · 차단으로 ${r.counts.toBlocked}건)` : ''));
+    if (r.changed.length) root.append(h('div', { class: 'preview-table' }, h('table', { class: 'table compact' },
+      h('thead', null, h('tr', null, ['#', '시각', '대상', '규칙', '탐지 결과'].map((t) => h('th', null, t)))),
+      h('tbody', null, r.changed.slice(0, 50).map((x) => { const a = auditById(x.auditId); return h('tr', null,
+        h('td', { class: 'num muted' }, x.auditId), h('td', { class: 'num mono nowrap' }, a ? fmt.dateTime(a.event.timestamp) : '—'),
+        h('td', { class: 'trunc-cell', title: x.container }, a && a.install ? a.install.label : x.container), h('td', { class: 'mono small' }, x.ruleId),
+        h('td', { class: 'nowrap' }, verdictBadge(fakeVerdict(x.before)), ' → ', verdictBadge(fakeVerdict(x.after)))); })))));
+    if (next.length) root.append(h('div', { class: 'note-box', 'data-preview-next': '' }, h('b', null, '다음 설치 · 기동부터 적용 — 과거 이벤트는 바뀌지 않습니다'),
+      h('ul', { class: 'mono small' }, next.map((x) => h('li', null, `${LIST_LABEL[x.list]} ${x.value}`)))));
+    return root;
+  }
+  // 오른쪽 상세 시트 — 목록 위치는 그대로, 열린 항목은 URL(?id=)에 남긴다
+  // foot: 본문 스크롤과 따로 아래에 고정되는 칸(예: 판정)
+  function sheet({ kind, title, actions, body, foot, onClose }) {
+    return h('aside', { class: 'panel sheet', 'data-sheet': kind, 'aria-label': typeof title === 'string' ? title : '상세' },
+      h('header', { class: 'panel-head' }, h('h2', null, title), h('div', { class: 'panel-actions' }, actions, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'aria-label': '닫기', onclick: onClose }, '✕'))),
+      h('div', { class: 'sheet-body' }, body), foot ? h('div', { class: 'sheet-foot', 'data-part': 'sheet-foot' }, foot) : null);
   }
   function panel({ title, actions, body, class: cls }) {
     return h('section', { class: `panel ${cls || ''}` }, h('header', { class: 'panel-head' }, h('h2', null, title), actions ? h('div', { class: 'panel-actions' }, actions) : null), h('div', { class: 'panel-body' }, body));
@@ -338,7 +821,7 @@
     const ROW = 40, OVER = 8;
     const list = h('ul', { class: 'feed-list' });
     const scroller = h('div', { class: 'feed-scroll' }, list);
-    const head = full ? h('div', { class: 'feed-head' }, h('span', { class: 'c-time' }, '시각'), h('span', { class: 'c-name' }, '컨테이너'), h('span', { class: 'c-img' }, '이미지'), h('span', { class: 'c-kind' }, 'Kind'), h('span', { class: 'c-detail' }, '상세 (args · path · dst)'), h('span', { class: 'c-rule' }, '규칙'), h('span', { class: 'c-verdict' }, '판정')) : null;
+    const head = full ? h('div', { class: 'feed-head' }, h('span', { class: 'c-time' }, '시각'), h('span', { class: 'c-name' }, '컨테이너'), h('span', { class: 'c-img' }, '이미지'), h('span', { class: 'c-kind' }, '종류'), h('span', { class: 'c-detail' }, '상세 (인자 · 경로 · 목적지)'), h('span', { class: 'c-rule' }, '규칙'), h('span', { class: 'c-verdict' }, '탐지 결과')) : null;
     const root = h('div', { class: `feed ${full ? 'feed-full' : ''}` }, head, scroller);
     let rows = [], selectedKey = null, emptyEl = null;
     function rowEl(v, i) {
@@ -372,48 +855,32 @@
     return root;
   }
 
-  // 라인 차트 (TrendChart.tsx) — exec·open·connect·위반 4계열, 최근 5분
-  const SERIES = [['exec', 'exec', '#7c3aed'], ['open', 'open', '#0284c7'], ['connect', 'connect', '#0d9488'], ['violations', '위반', '#dc2626']];
-  function lineChart() {
-    const root = h('div', { class: 'chart' });
+  // 분당 위반 — stats.trend(5초 버킷)를 1분으로 묶어 최근 n분 막대로. 빈 분도 0 막대로 남긴다
+  function perMinute(trend, minutes) {
+    const n = minutes || 10, cur = Math.floor(Date.now() / 60000), out = [];
+    for (let i = n - 1; i >= 0; i--) out.push({ m: cur - i, t: new Date((cur - i) * 60000).toISOString(), n: 0 });
+    for (const b of trend || []) { const o = out.find((x) => x.m === Math.floor(Date.parse(b.t) / 60000)); if (o) o.n += b.violations || 0; }
+    return out;
+  }
+  function barChart({ name }) {
+    const root = h('div', { class: 'chart bars', 'data-chart': name });
     let data = [];
     function draw() {
       root.replaceChildren();
-      if (!data.length) { root.append(empty('추이 데이터 대기 중')); return; }
-      const W = root.clientWidth || 480, H = root.clientHeight || 220;
-      const m = { t: 12, r: 16, b: 40, l: 36 };
+      const W = root.clientWidth || 480, H = root.clientHeight || 160;
+      const m = { t: 10, r: 8, b: 24, l: 32 };
       const iw = W - m.l - m.r, ih = H - m.t - m.b;
-      const max = Math.max(4, ...data.map((d) => Math.max(d.exec, d.open, d.connect, d.violations)));
-      const x = (i) => m.l + (data.length === 1 ? iw / 2 : (i / (data.length - 1)) * iw);
+      const max = Math.max(4, ...data.map((d) => d.n));
       const y = (v) => m.t + ih - (v / max) * ih;
-      const svg = s('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, class: 'chart-svg' });
-      const yTicks = 4;
-      for (let i = 0; i <= yTicks; i++) {
-        const v = Math.round((max / yTicks) * i), yy = y(v);
-        svg.append(s('line', { x1: m.l, x2: W - m.r, y1: yy, y2: yy, stroke: '#f1f5f9' }));
-        svg.append(s('text', { x: m.l - 6, y: yy + 4, 'text-anchor': 'end', class: 'tick' }, v));
-      }
-      svg.append(s('line', { x1: m.l, x2: W - m.r, y1: m.t + ih, y2: m.t + ih, stroke: '#e2e8f0' }));
-      const step = Math.max(1, Math.ceil(data.length / Math.max(2, Math.floor(iw / 64))));
-      data.forEach((d, i) => { if (i % step === 0) svg.append(s('text', { x: x(i), y: m.t + ih + 16, 'text-anchor': 'middle', class: 'tick' }, fmt.time(d.t).slice(0, 5))); });
-      for (const [key, , color] of SERIES) {
-        const dAttr = data.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(d[key]).toFixed(1)}`).join(' ');
-        svg.append(s('path', { d: dAttr, fill: 'none', stroke: color, 'stroke-width': key === 'violations' ? 2 : 1.5, 'stroke-linejoin': 'round' }));
-      }
-      const legend = s('g', { transform: `translate(${m.l},${H - 8})` });
-      let lx = 0;
-      for (const [, name, color] of SERIES) { legend.append(s('line', { x1: lx, x2: lx + 14, y1: -4, y2: -4, stroke: color, 'stroke-width': 2 }), s('text', { x: lx + 18, y: 0, class: 'legend' }, name)); lx += 18 + name.length * 8 + 16; }
-      svg.append(legend);
-      // hover: 가장 가까운 점의 값
-      const tip = h('div', { class: 'chart-tip', hidden: true });
-      svg.addEventListener('mousemove', (ev) => {
-        const r = svg.getBoundingClientRect(); const px = ev.clientX - r.left;
-        const i = Math.max(0, Math.min(data.length - 1, Math.round(((px - m.l) / iw) * (data.length - 1))));
-        const d = data[i]; tip.hidden = false; tip.style.left = Math.min(W - 150, x(i) + 8) + 'px'; tip.style.top = '8px';
-        replace(tip, h('b', null, fmt.time(d.t)), ...SERIES.map(([k, n, c]) => h('div', null, h('i', { style: `background:${c}` }), `${n} ${d[k]}`)));
+      const slot = iw / Math.max(1, data.length), bw = Math.max(4, slot * 0.62);
+      const svg = s('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, class: 'chart-svg', role: 'img', 'aria-label': '분당 위반 막대' });
+      for (const v of [0, Math.round(max / 2), max]) svg.append(s('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), class: v ? 'grid' : 'axis' }), s('text', { x: m.l - 6, y: y(v) + 4, 'text-anchor': 'end', class: 'tick' }, v));
+      data.forEach((d, i) => {
+        const x = m.l + i * slot + (slot - bw) / 2, hgt = Math.max(2, ih - (y(d.n) - m.t));
+        svg.append(s('rect', { x, y: m.t + ih - hgt, width: bw, height: hgt, rx: 2, class: `bar ${d.n ? '' : 'zero'}` }, s('title', null, `${fmt.time(d.t).slice(0, 5)} · 위반 ${d.n}건`)));
+        if (i % 2 === (data.length - 1) % 2) svg.append(s('text', { x: x + bw / 2, y: H - 6, 'text-anchor': 'middle', class: 'tick' }, fmt.time(d.t).slice(0, 5)));
       });
-      svg.addEventListener('mouseleave', () => { tip.hidden = true; });
-      root.append(svg, tip);
+      root.append(svg);
     }
     new ResizeObserver(draw).observe(root);
     root.set = (d) => { data = d || []; draw(); };
@@ -502,13 +969,30 @@
   }
 
   // ── 토스트 ──────────────────────────────────────────────
+  // key 가 같은 토스트는 하나로 묶는다: 기본은 ×N 으로 세고, replace 면 글만 바꾼다. 8초 뒤 닫히고, 묶일 때마다 시간을 다시 잰다.
+  // 누적은 종 아이콘 배지가 맡는다. action = { label, go(주소) | run(함수) }
+  const TOAST_TTL = 8000;
+  const toastByKey = new Map();
   function toast(text, opts) {
     const region = $('#toasts'); if (!region) return;
     const o = opts || {};
-    const el = h('div', { class: `toast toast-${o.tone || 'info'}` }, h('span', null, text), o.action ? h('a', { href: o.action.go, class: 'toast-action', onclick: () => el.remove() }, o.action.label) : null, h('button', { type: 'button', class: 'toast-x', 'aria-label': '닫기', onclick: () => el.remove() }, '×'));
-    region.append(el);
+    let t = o.key ? toastByKey.get(o.key) : null;
+    if (!t || !t.el.isConnected || t.closed) {
+      t = { n: 0, text: h('span', { class: 'toast-text' }), count: h('b', { class: 'toast-count' }), slot: h('span', { class: 'toast-slot' }) };
+      const close = () => { t.closed = true; clearTimeout(t.timer); t.el.classList.add('out'); setTimeout(() => t.el.remove(), 300); };
+      t.close = close;
+      t.el = h('div', { class: 'toast', role: 'status' }, h('span', { class: 'grow' }, t.text, t.count), t.slot, h('button', { type: 'button', class: 'toast-x', 'aria-label': '닫기', onclick: close }, '×'));
+      if (o.key) toastByKey.set(o.key, t);
+    }
+    t.n = o.replace ? 1 : t.n + 1;
+    t.el.className = `toast toast-${o.tone || 'info'}`;
+    t.text.textContent = text; t.count.textContent = t.n > 1 ? ` ×${t.n}` : '';
+    replace(t.slot, o.action ? (o.action.run
+      ? h('button', { type: 'button', class: 'toast-action', onclick: () => { t.close(); o.action.run(); } }, o.action.label)
+      : h('a', { href: o.action.go, class: 'toast-action', onclick: () => t.close() }, o.action.label)) : null);
+    region.append(t.el);
     while (region.children.length > 4) region.firstChild.remove();
-    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 300); }, 6000);
+    clearTimeout(t.timer); t.timer = setTimeout(t.close, TOAST_TTL);
   }
 
   // ── 라우터 ──────────────────────────────────────────────
@@ -527,27 +1011,34 @@
     history.replaceState(null, '', '#' + path + ([...query].length ? '?' + query.toString() : ''));
   }
 
-  const NAV = [['/', '대시보드', '▦'], ['/events', '이벤트', '≣'], ['/topology', '토폴로지', '⌘'], ['/policies', '정책', '⚙'], ['/audit', '감사 로그', '◷']];
-  const FLOW = [['/', '1 관찰'], ['/events', '2 판정'], ['/topology', '3 격리'], ['/policies', '4 정책'], ['/audit', '5 감사']];
+  // 사이드바 = 시나리오별 묶음 [10/15 확정]. 묶음 제목이 없는 첫 줄은 두 시나리오 공통
+  const NAV = [
+    [null, [['/', '대시보드', '▦']]],
+    ['설치 검사', [['/installs', '설치 검사', '▣'], ['/scans', '공급망 검사', '⌕']]],
+    ['런타임 감시', [['/events', '이벤트', '≣'], ['/topology', '토폴로지', '⌘']]],
+    ['설정 · 기록', [['/policies', '정책', '⚙'], ['/audit', '감사 로그', '◷']]],
+  ];
   let current = null; // { unmount, update }
 
   function shell() {
-    const nav = h('nav', { class: 'side-nav' }, NAV.map(([to, label, icon]) => h('a', { href: '#' + to, class: 'nav-link', 'data-to': to }, h('span', { class: 'nav-icon', 'aria-hidden': true }, icon), label)));
+    const nav = h('nav', { class: 'side-nav', 'aria-label': '메뉴' }, NAV.map(([group, links]) => [
+      group ? h('div', { class: 'nav-group-title' }, group) : null,
+      links.map(([to, label, icon]) => h('a', { href: '#' + to, class: 'nav-link', 'data-to': to }, h('span', { class: 'nav-icon', 'aria-hidden': true }, icon), label,
+        to === '/' ? h('span', { class: 'nav-badge num', 'data-nav-badge': '', hidden: true }) : null))]));
     const foot = h('div', { class: 'side-foot' });
     const aside = h('aside', { class: 'sidebar' }, h('a', { href: '#/', class: 'brand' }, h('span', { class: 'brand-icon', 'aria-hidden': true }, '🛡'), 'SupplyGuard'), nav, foot);
     const ws = h('span', { class: 'ws' });
     const eps = h('span', { class: 'eps' });
     const bell = h('a', { href: '#/events?verdict=violation', class: 'bell', 'aria-label': '새 위반', onclick: () => { state.unseen = 0; emit(); } }, h('span', { 'aria-hidden': true }, '🔔'), h('span', { class: 'bell-badge num', hidden: true }));
-    const flow = h('div', { class: 'flow' }, FLOW.map(([to, label]) => h('a', { href: '#' + to, class: 'flow-step', 'data-to': to }, label)));
-    const header = h('header', { class: 'topbar' }, flow, h('div', { class: 'topbar-right' }, h('span', { class: 'ws-status', role: 'status' }, ws, eps), bell, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => $('#help').showModal(), title: '사용 안내 (?)' }, '? 안내'), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => $('#demo').classList.toggle('open') }, '데모 제어')));
+    const head = h('div', { class: 'page-head' }, h('h1', { class: 'page-title' }), h('div', { class: 'page-actions' }));
+    const header = h('header', { class: 'topbar' }, head, h('div', { class: 'topbar-right' }, h('span', { class: 'ws-status', role: 'status' }, ws, eps), bell, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => $('#help').showModal(), title: '사용 안내 (?)' }, '? 안내'), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => $('#demo').classList.toggle('open') }, '데모 제어')));
     const banner = h('div', { class: 'banner banner-danger', hidden: true, role: 'alert' });
     const page = h('main', { class: 'page', id: 'page' });
     const main = h('div', { class: 'main' }, header, banner, page);
     const root = h('div', { class: 'shell' }, aside, main);
     function sync() {
       const { path } = route();
-      for (const a of nav.children) a.classList.toggle('active', a.dataset.to === path);
-      for (const a of flow.children) a.classList.toggle('active', a.dataset.to === path);
+      for (const a of nav.querySelectorAll('.nav-link')) a.classList.toggle('active', a.dataset.to === path);
       const st = state.stats, enforce = state.info.enforceKill;
       banner.hidden = !state.liveError; banner.textContent = state.liveError;
       replace(foot, 
@@ -558,6 +1049,9 @@
       replace(eps, '초당 ', h('b', { class: 'num' }, fmt.num(Math.round((st ? st.eventsPerSec : 0) * 10) / 10)), ' evt');
       const badge = bell.lastChild; badge.hidden = state.unseen === 0; badge.textContent = state.unseen > 99 ? '99+' : state.unseen;
       bell.setAttribute('aria-label', `새 위반 ${state.unseen}건`);
+      // 사이드바 대시보드 배지 = 판정 대기 건수 [10/15 3차 — React 모습]
+      const nb = nav.querySelector('[data-nav-badge]'); const pending = state.source === 'live' ? 0 : state.cases.filter((c) => c.state === 'open').length;
+      nb.hidden = !pending; nb.textContent = pending; nb.setAttribute('aria-label', `판정 대기 ${pending}건`);
     }
     root.sync = sync;
     return root;
@@ -565,15 +1059,16 @@
 
   function helpDialog() {
     const steps = [
-      ['대시보드에서 관찰', 'KPI 4개와 실시간 피드로 지금 무슨 일이 일어나는지 본다. 위험 점수는 최근 5분 위반의 가중합.', '#/'],
-      ['이벤트에서 판정 확인', '행을 누르면 원본 JSON 과 어느 정책에 걸렸는지 보인다. 상단 종 아이콘은 새 위반으로 바로 간다.', '#/events?verdict=violation'],
-      ['토폴로지에서 격리 확인', '컨테이너 → 프로세스 → 파일/목적지 관계. 붉은 노드가 격리를 유발한 행위.', '#/topology'],
-      ['정책 조정', '폼 또는 YAML 로 편집 후 "저장 후 적용". dry-run 을 켜면 kill 정책도 알림만 보낸다(오탐 보호).', '#/policies'],
-      ['감사 로그로 되짚기', '저장된 위반 판정을 기간·규칙·컨테이너로 조회한다.', '#/audit'],
+      ['대시보드에서 판정 대기 확인', '지금 처리할 일이 있는지 본다. 판정 대기 = 격리 · 경고된 설치와 격리된 런타임 컨테이너.', '#/'],
+      ['설치 검사에서 판정', '막힌 설치의 공격 체인과 정적 분석(OSV) 결과를 보고 「악성 확정」 또는 「오탐」.', '#/installs'],
+      ['정책에서 제안 적용', '판정이 만든 제안을 미리보기(과거 위반이 어떻게 바뀌나)로 확인하고 적용하거나 버린다.', '#/policies'],
+      ['이벤트로 지금 걸리는 것 보기', '실시간 위반만. 행을 누르면 토폴로지로 이어진다.', '#/events'],
+      ['토폴로지에서 런타임 판정', '컨테이너가 무엇에 손댔는지 관계로 보고, 격리된 컨테이너를 판정한다.', '#/topology'],
+      ['감사 로그로 되짚기', '과거 위반과 판정 결과, 판정 · 정책 변경 이력을 기간으로 찾는다.', '#/audit'],
     ];
     const d = h('dialog', { id: 'help', class: 'dialog' },
       h('form', { method: 'dialog', class: 'dialog-body' },
-        h('h3', null, '사용 흐름 (5단계)'),
+        h('h3', null, '사용 흐름'),
         h('ol', { class: 'steps' }, steps.map(([t, desc, go]) => h('li', null, h('div', null, h('b', null, t), h('p', null, desc)), h('a', { href: go, class: 'btn btn-ghost btn-xs', onclick: () => d.close() }, '이동')))),
         h('p', { class: 'muted' }, '데모 제어(상단 오른쪽)에서 공격 시나리오를 바로 실행하거나 격리 모드를 dry-run 으로 바꿔 볼 수 있습니다. 키보드 ? 로 이 안내를 엽니다.'),
         h('div', { class: 'dialog-foot' }, h('button', { class: 'btn btn-primary', value: 'close' }, '닫기'))));
@@ -592,14 +1087,19 @@
         apiInput,
         h('div', { class: 'row' }, h('small', { class: 'muted' }, '실제: REST + /ws/events 로 붙는다. 백엔드는 ALLOWED_ORIGINS 에 이 페이지 출처를 넣어 띄운다'), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => setSource(srcSel, apiInput.value.trim()) }, '연결'))),
       h('label', { class: 'row' }, h('span', null, '격리 모드 ', h('small', { class: 'muted' }, 'ENFORCE_KILL')), switchEl(state.info.enforceKill, (on) => { state.info.enforceKill = on; emit(); toast(on ? '격리 모드: 자동 종료' : '격리 모드: dry-run (알림만)', { tone: on ? 'danger' : 'warn' }); })),
-      h('div', { class: 'row' }, h('span', null, '다음 공격 시나리오까지 ', countdown), h('button', { type: 'button', class: 'btn btn-danger btn-xs', onclick: runAttackNow }, '지금 실행')),
-      h('p', { class: 'muted small' }, '지금 실행은 격리 중이던 컨테이너를 먼저 재기동하고, 일시정지 상태면 해제한 뒤 시나리오 1→2→3 을 바로 흘린다.'),
+      h('div', { class: 'row' }, h('span', null, '설치 검사 실행'), h('span', { class: 'row-inline' },
+        h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'data-demo': 'install-benign', title: 'sg-install pip requests', onclick: () => runInstallDemo('benign') }, '정상'),
+        h('button', { type: 'button', class: 'btn btn-danger btn-xs', 'data-demo': 'install-malicious', title: 'sg-install pip ./reqeusts', onclick: () => runInstallDemo('malicious') }, '악성'),
+        h('button', { type: 'button', class: 'btn btn-warn-soft btn-xs', 'data-demo': 'install-warn', title: 'sg-install npm tiny-git-dep', onclick: () => runInstallDemo('warn') }, '경고'))),
+      h('p', { class: 'muted small' }, 'sg-install(CLI) 대역 — 정상 pip requests · 악성 pip ./reqeusts · 경고 npm tiny-git-dep(git:// 9418, 오탐 후보). 차단된 패키지는 컨테이너 없이 「설치 전 거부」.'),
+      h('div', { class: 'row' }, h('span', null, '런타임 공격 ', h('small', { class: 'muted' }, '자동 ', countdown)), h('button', { type: 'button', class: 'btn btn-danger btn-xs', 'data-demo': 'attack', onclick: runAttackNow }, '지금 실행')),
+      h('p', { class: 'muted small' }, '배포된 pkg-reqeusts 컨테이너에 시나리오 1→2→3 을 흘린다. 격리 중이면 먼저 재기동하고(차단 이미지면 기동 즉시 격리), 일시정지면 해제한다.'),
       h('div', { class: 'row' }, h('span', null, '실시간 연결'), h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => disconnect(3000) }, '3초 끊기')),
       h('label', { class: 'row' }, h('span', null, '정상 이벤트 속도'), select([['300', '느리게'], ['100', '보통'], ['40', '빠르게']], '100', (v) => { sim.interval = Number(v); if (state.connected) { stop(); start(); } })),
-      h('label', { class: 'row' }, h('span', null, '공격 반복 주기'), select([['10000', '10초'], ['20000', '20초'], ['60000', '60초']], '20000', (v) => { sim.attackEvery = Number(v); })),
+      h('label', { class: 'row' }, h('span', null, '자동 공격 주기'), select([['0', '끔 (데모 대본)'], ['10000', '10초'], ['20000', '20초'], ['60000', '60초']], String(sim.attackEvery), (v) => { sim.attackEvery = Number(v); sim.nextAttack = sim.attackEvery ? Date.now() + sim.attackEvery : Infinity; })),
       h('div', { class: 'row muted small' }, h('span', null, '격리된 컨테이너는 15초 뒤 새 ID 로 재기동한다 (재배포 흉내).')));
     const d = h('aside', { id: 'demo', class: 'drawer' }, h('button', { type: 'button', class: 'drawer-x', 'aria-label': '닫기', onclick: () => d.classList.remove('open') }, '×'), body);
-    setInterval(() => { countdown.textContent = state.source === 'live' ? '(백엔드 주기)' : Math.max(0, Math.ceil((sim.nextAttack - Date.now()) / 1000)) + '초'; }, 500);
+    setInterval(() => { countdown.textContent = state.source === 'live' ? '(백엔드 주기)' : !sim.attackEvery ? '꺼짐' : Math.max(0, Math.ceil((sim.nextAttack - Date.now()) / 1000)) + '초 뒤'; }, 500);
     return d;
   }
 
@@ -611,6 +1111,7 @@
     const page = $('#page');
     page.replaceChildren();
     page.classList.remove('page-enter'); void page.offsetWidth; page.classList.add('page-enter');
+    $('.page-title').textContent = def.title; headerActions();
     current = def.mount(page, query) || {};
     document.title = `${def.title} · SupplyGuard`;
     UI.shellEl.sync();
@@ -628,6 +1129,10 @@
     if (state.source === 'live') { state.verdicts = []; state.stats = null; state.unseen = 0; state.topology = new TopologyStore(); liveStart(); } else start();
   }
 
-  window.UI = { h, s, $, replace, fmt, KINDS, levelOf, detailOf, LEVEL_LABEL, state, emit, listeners, kindBadge, verdictBadge, kpi, panel, empty, pauseToggle, SEV, confirmButton, switchEl, select, feed, lineChart, topologyGraph, toast, route, navigate, setQuery, screens: {}, sim, runAttack, runAttackNow, api, setSource };
+  // 화면 머리 오른쪽(화면 이름 옆)에 그 화면의 주 버튼 · 입력을 둔다. 화면이 바뀌면 비운다
+  function headerActions(...nodes) { const el = $('.page-actions'); if (el) replace(el, nodes); }
+
+  window.UI = { h, s, $, replace, fmt, KINDS, levelOf, detailOf, LEVEL_LABEL, INSTALL_STATUS, DECISION_LABEL, LIST_LABEL, ACTOR, SANDBOX, state, emit, listeners, kindBadge, verdictBadge, statusBadge, decisionBadge, kpi, panel, sheet, empty, pauseToggle, SEV, confirmButton, switchEl, select, feed, barChart, perMinute, topologyGraph, toast, route, navigate, setQuery, headerActions, screens: {},
+    KIND_ORDER, KIND_STEP, fakeVerdict, attackChain, chainFromVerdicts, decisionBar, previewView, osvQuery, sim, runAttack, runAttackNow, runInstallDemo, simEvent, api, setSource };
   document.addEventListener('DOMContentLoaded', boot);
 })();

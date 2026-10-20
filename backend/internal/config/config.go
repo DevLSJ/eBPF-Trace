@@ -33,13 +33,19 @@ type Config struct {
 	// EnforceKill=false면 kill 정책도 알림만 (전역 dry-run)
 	EnforceKill bool
 	DockerHost  string
+	// 공급망 검사(10/16): 작업 볼륨(백엔드 경로 · Docker 볼륨 이름) · 검사기 이미지
+	ScanDir, ScanVolume, GuardDogImage, OSVImage string
 
 	DatabaseURL string
 	RedisURL    string
 	PolicyFile  string
 
-	AdminToken     string
+	AdminToken string
+	// SandboxToken: sg-install CLI 의 세션 보고 · 차단 확인 전용 (ADMIN_TOKEN 과 달라야 한다)
+	SandboxToken   string
 	AllowedOrigins []string
+	// ActorName: 판정 · 적용 · 정책 변경의 처리자 이름 (데모 계정 하나)
+	ActorName string
 
 	// NormalEventRate: 정상 판정 이벤트를 WebSocket으로 보내는 초당 상한 (위반은 항상 전송)
 	NormalEventRate int
@@ -56,10 +62,16 @@ func Load() (Config, error) {
 		WatchContainers:    list(env("WATCH_CONTAINERS", "")),
 		ContainerDiscovery: env("CONTAINER_DISCOVERY", "docker-events"),
 		DockerHost:         env("DOCKER_HOST", "unix:///var/run/docker.sock"),
+		ScanDir:            env("SCAN_DIR", "/scan"),
+		ScanVolume:         env("SCAN_VOLUME", "supplyguard_scan_work"),
+		GuardDogImage:      env("GUARDDOG_IMAGE", "ghcr.io/datadog/guarddog:latest"),
+		OSVImage:           env("OSV_SCANNER_IMAGE", "ghcr.io/google/osv-scanner:latest"),
 		DatabaseURL:        env("DATABASE_URL", ""),
 		RedisURL:           env("REDIS_URL", ""),
 		PolicyFile:         env("POLICY_FILE", "policies/default.yaml"),
 		AdminToken:         env("ADMIN_TOKEN", ""),
+		SandboxToken:       env("SANDBOX_TOKEN", ""),
+		ActorName:          env("ACTOR_NAME", "보안 담당자"),
 		AllowedOrigins:     list(env("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),
 	}
 	var err error
@@ -93,6 +105,10 @@ func Load() (Config, error) {
 	}
 	if c.EventSource != "gadget" && c.EventSource != "mock" {
 		return c, fmt.Errorf("EVENT_SOURCE: %q (gadget | mock)", c.EventSource)
+	}
+	// 같은 값이면 CLI 토큰으로 관리자 쓰기가 열린다 — 두 토큰의 분리가 무너지므로 시작하지 않는다
+	if c.AdminToken != "" && c.AdminToken == c.SandboxToken {
+		return c, fmt.Errorf("SANDBOX_TOKEN 은 ADMIN_TOKEN 과 달라야 함")
 	}
 	return c, nil
 }

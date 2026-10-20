@@ -17,7 +17,7 @@ interface Props {
   empty?: string;
   // full: 이벤트 화면용 표 — 헤더 + 이미지·규칙 열
   full?: boolean;
-  // 표 폭이 좁을 때(상세 패널 열림) 이미지 열 숨김
+  // 표 폭이 좁을 때(상세 시트 열림) 이미지 · 규칙 열 숨김 — 둘 다 시트에 보인다
   showImage?: boolean;
 }
 
@@ -47,14 +47,14 @@ export function EventFeed({ verdicts, selectedKey, onSelect, empty = '이벤트 
           <span className="w-16 shrink-0">시각</span>
           <span className="w-32 shrink-0">컨테이너</span>
           {showImage && <span className="w-40 shrink-0">이미지</span>}
-          <span className="w-16 shrink-0 text-center">Kind</span>
-          <span className="min-w-40 flex-1">상세 (args · path · dst)</span>
-          <span className="w-36 shrink-0">규칙</span>
-          <span className="w-20 shrink-0">판정</span>
+          <span className="w-16 shrink-0 text-center">종류</span>
+          <span className="min-w-0 flex-1">상세 (인자 · 경로 · 목적지)</span>
+          {showImage && <span className="w-36 shrink-0">규칙</span>}
+          <span className="w-20 shrink-0">탐지 결과</span>
         </div>
       )}
     <div ref={ref} className="min-h-0 flex-1 overflow-y-auto" onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
-      <ul className="relative" style={{ height: verdicts.length * ROW }}>
+      <ul className="relative" aria-label="이벤트" style={{ height: verdicts.length * ROW }}>
         {verdicts.slice(start, end).map((v, i) => {
           const level = levelOf(v);
           const selected = v.key === selectedKey;
@@ -62,9 +62,22 @@ export function EventFeed({ verdicts, selectedKey, onSelect, empty = '이벤트 
             <li
               key={v.key}
               style={{ top: (start + i) * ROW, height: ROW }}
+              data-key={v.key}
+              data-level={level}
+              tabIndex={onSelect ? 0 : undefined}
+              aria-selected={onSelect ? selected : undefined}
               onClick={onSelect && (() => onSelect(v))}
+              onKeyDown={
+                onSelect &&
+                ((e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelect(v);
+                  }
+                })
+              }
               className={`absolute inset-x-0 flex items-center gap-3 border-b border-slate-100 px-4 text-sm ${
-                onSelect ? 'cursor-pointer hover:bg-slate-50' : ''
+                onSelect ? 'cursor-pointer hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500' : ''
               } ${selected ? 'bg-indigo-50' : level === 'killed' || level === 'held' ? 'bg-red-50/60' : ''}`}
             >
               <span className="num w-16 shrink-0 font-mono text-xs text-slate-500">{fmtTime(v.event.timestamp)}</span>
@@ -77,13 +90,15 @@ export function EventFeed({ verdicts, selectedKey, onSelect, empty = '이벤트 
                 </span>
               )}
               <KindBadge kind={v.event.kind} />
-              <span className={`${full ? 'min-w-40' : 'min-w-0'} flex-1 truncate font-mono text-xs text-slate-600`} title={detailOf(v.event)}>
+              <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-600" title={detailOf(v.event)}>
                 {detailOf(v.event)}
               </span>
               {full ? (
-                <span className="w-36 shrink-0 truncate text-xs text-slate-500" title={v.reason}>
-                  {v.ruleId ?? '—'}
-                </span>
+                showImage && (
+                  <span className="w-36 shrink-0 truncate text-xs text-slate-500" title={v.reason}>
+                    {v.ruleId ?? '—'}
+                  </span>
+                )
               ) : (
                 v.matched && (
                   <span className="hidden max-w-48 truncate text-xs text-slate-500 xl:inline" title={v.reason}>

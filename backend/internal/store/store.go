@@ -34,6 +34,12 @@ type AuditStore interface {
 	QueryAudit(ctx context.Context, q AuditQuery) ([]model.AuditEntry, error)
 }
 
+// CollectedStore: 1분 단위 수집량(종합 대시보드, 10/16). Add 는 같은 분에 더한다. Range 는 [from, to) 시간순
+type CollectedStore interface {
+	AddCollected(ctx context.Context, ms []model.MinuteCount) error
+	CollectedRange(ctx context.Context, from, to time.Time) ([]model.MinuteCount, error)
+}
+
 // Buffer: 새로 접속한 대시보드가 받을 최근 판정 (정상 포함)
 type Buffer interface {
 	Push(ctx context.Context, v model.Verdict) error

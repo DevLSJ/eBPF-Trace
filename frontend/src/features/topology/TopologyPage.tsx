@@ -1,14 +1,19 @@
 import { Background, Controls, MarkerType, ReactFlow, type Edge, type Node, type NodeMouseHandler } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Box, Cpu, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { AttackChain } from '../../components/AttackChain';
+import { DecisionBadge } from '../../components/Badges';
+import { DecisionBox } from '../../components/DecisionBox';
+import { PageActions } from '../../components/PageActions';
 import { Empty, Panel } from '../../components/Panel';
 import { LevelBadge } from '../../components/VerdictBadge';
+import { useCases } from '../../hooks/cases-context';
 import { useStream } from '../../hooks/stream-context';
 import { fmtNum, fmtTime } from '../../lib/format';
 import { attackChains, severity, type Chain, type NodeType, type TopoEdge, type TopoNode } from '../../lib/topology';
-import { LEVEL_LABEL, type Kind, type Level } from '../../lib/types';
+import { LEVEL_LABEL, type Case, type Level } from '../../lib/types';
 
 // 3열 고정 레이아웃: 컨테이너 → 프로세스 → 파일/목적지. 위치가 결정적이라 실시간 갱신에도 흔들리지 않는다.
 // 엣지 위에는 글자를 두지 않는다(화살표와 겹침) — 종류는 말단 노드의 kind 칩, 횟수는 ×N 으로 보인다. (mock/ 에서 확정한 설계)
@@ -137,16 +142,16 @@ function layout(nodes: TopoNode[], edges: TopoEdge[], selectedId: string | null)
 }
 
 const WINDOWS = [1, 5, 15];
-const KIND_STEP: Record<Kind, string> = { exec: '1 실행', open: '2 파일', connect: '3 통신' };
-const stepTone: Record<Kind, string> = { exec: 'bg-violet-50 text-violet-700', open: 'bg-sky-50 text-sky-700', connect: 'bg-teal-50 text-teal-700' };
 const TYPE_LABEL: Record<NodeType, string> = { container: '컨테이너', process: '프로세스', file: '파일', dest: '외부 목적지' };
 
+// 토폴로지 — 질문 하나: 「이 컨테이너는 어디까지 손댔나?」 런타임 컨테이너만(sg-install-* 제외)
 export function TopologyPage() {
   const { topology } = useStream();
+  const { cases } = useCases();
   const [params, setParams] = useSearchParams();
   const container = params.get('container') ?? '';
+  const selectedId = params.get('node');
   const [windowMin, setWindowMin] = useState(5);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   // 스트림은 250ms마다 갱신되지만 그래프는 1초마다 다시 그린다
@@ -161,67 +166,100 @@ export function TopologyPage() {
   }, [topology, windowMin, container, tick]);
 
   // 선택한 노드가 창 밖으로 사라졌으면 선택이 없는 것으로 본다 (effect 로 setState 하지 않고 파생값으로)
-  const selected = selectedId ? snap.nodes.find((n) => n.id === selectedId) ?? null : null;
-  const effectiveId = selected?.id ?? null;
+  const effectiveId = selectedId && snap.nodes.some((n) => n.id === selectedId) ? selectedId : null;
   const graph = useMemo(() => layout(snap.nodes, snap.edges, effectiveId), [snap, effectiveId]);
+  const selected = effectiveId ? (snap.nodes.find((n) => n.id === effectiveId) ?? null) : null;
   const risky = snap.nodes.filter((n) => n.level !== 'normal').length;
-  const toggle = useCallback((id: string) => setSelectedId((cur) => (cur === id ? null : id)), []);
+
+  const setParam = useCallback(
+    (k: string, v: string | null) =>
+      setParams(
+        (cur) => {
+          const next = new URLSearchParams(cur);
+          if (v) next.set(k, v);
+          else next.delete(k);
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+  const toggle = useCallback((id: string) => setParam('node', id === selectedId ? null : id), [setParam, selectedId]);
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => toggle(node.id), [toggle]);
 
+  // 런타임 건: 컨테이너 이름 → 아직 닫히지 않은 건(없으면 가장 최근 건)
+  const caseFor = useCallback(
+    (name: string): Case | undefined => {
+      const mine = (cases ?? []).filter((c) => c.source === 'runtime' && c.container === name).sort((a, b) => b.openedAt.localeCompare(a.openedAt));
+      return mine.find((c) => c.state !== 'closed') ?? mine[0];
+    },
+    [cases],
+  );
+  const selectedContainer = selected ? selected.container : null;
+  const selectedCase = selectedContainer ? caseFor(selectedContainer) : undefined;
+
   return (
-    <div className="flex h-full min-h-[560px] gap-4">
+    <div className="flex h-full min-h-0 gap-4">
+      <PageActions>
+        <label className="flex items-center gap-1.5 text-sm text-slate-500">
+          컨테이너
+          <select
+            className="h-8 rounded-md border border-slate-300 bg-white px-2 text-sm"
+            value={container}
+            onChange={(e) =>
+              setParams(
+                (cur) => {
+                  const next = new URLSearchParams(cur);
+                  if (e.target.value) next.set('container', e.target.value);
+                  else next.delete('container');
+                  next.delete('node');
+                  return next;
+                },
+                { replace: true },
+              )
+            }
+          >
+            <option value="">모든 런타임 컨테이너</option>
+            {snap.containers.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-sm text-slate-500">
+          최근
+          <input
+            type="range"
+            min={0}
+            max={WINDOWS.length - 1}
+            value={WINDOWS.indexOf(windowMin)}
+            onChange={(e) => setWindowMin(WINDOWS[Number(e.target.value)])}
+            className="w-24 accent-indigo-600"
+            aria-valuetext={`${windowMin}분`}
+          />
+          <span className="num w-10 text-slate-700">{windowMin}분</span>
+        </label>
+      </PageActions>
       <Panel
         className="min-w-0 flex-1"
+        testId="topology"
         title={
           <span>
-            보안 토폴로지 <span className="num ml-1 font-normal text-slate-400">노드 {snap.nodes.length} · 위험 {risky}</span>
+            런타임 관계 <span className="num ml-1 font-normal text-slate-400">노드 {snap.nodes.length} · 위험 {risky}</span>
           </span>
-        }
-        actions={
-          <div className="flex items-center gap-4 text-sm">
-            <select
-              className="h-8 rounded-md border border-slate-300 bg-white px-2 text-sm"
-              value={container}
-              onChange={(e) => {
-                const next = new URLSearchParams(params);
-                if (e.target.value) next.set('container', e.target.value);
-                else next.delete('container');
-                setParams(next, { replace: true });
-                setSelectedId(null);
-              }}
-            >
-              <option value="">모든 컨테이너</option>
-              {snap.containers.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-            <label className="flex items-center gap-2 text-slate-500">
-              최근
-              <input
-                type="range"
-                min={0}
-                max={WINDOWS.length - 1}
-                value={WINDOWS.indexOf(windowMin)}
-                onChange={(e) => setWindowMin(WINDOWS[Number(e.target.value)])}
-                className="w-24 accent-indigo-600"
-              />
-              <span className="num w-10 text-slate-700">{windowMin}분</span>
-            </label>
-          </div>
         }
       >
         <div className="flex h-full flex-col">
           <Legend />
           <div className="relative min-h-0 flex-1">
             {graph.nodes.length === 0 ? (
-              <Empty>표시할 활동 없음 — 이벤트가 들어오면 그래프가 그려집니다</Empty>
+              <Empty>표시할 활동 없음 — 런타임 컨테이너 이벤트가 들어오면 그래프가 그려집니다</Empty>
             ) : (
               <ReactFlow
                 key={container}
                 nodes={graph.nodes}
                 edges={graph.edges}
                 onNodeClick={onNodeClick}
-                onPaneClick={() => setSelectedId(null)}
+                onPaneClick={() => setParam('node', null)}
                 fitView
                 fitViewOptions={{ padding: 0.12, maxZoom: 1.1 }}
                 minZoom={0.2}
@@ -236,9 +274,20 @@ export function TopologyPage() {
         </div>
       </Panel>
 
-      <aside className="flex w-[340px] shrink-0 flex-col gap-4">
-        {selected && <NodeDetail n={selected} onClose={() => setSelectedId(null)} />}
-        <ChainPanel chains={snap.chains} windowMin={windowMin} selectedId={effectiveId} onSelect={toggle} />
+      <aside className="flex min-h-0 w-[340px] shrink-0 flex-col gap-4">
+        {selected && (
+          <NodeDetail n={selected} onClose={() => setParam('node', null)}>
+            {selectedCase && (selected.type === 'container' || selectedCase.state !== 'closed') && (
+              <div className="mb-3 rounded-md border border-amber-200 bg-amber-50/40 p-3" data-testid="topology-decision">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  판정 · {selectedCase.container} {selectedCase.decision === 'pending' && <DecisionBadge decision="pending" />}
+                </div>
+                <DecisionBox caseId={selectedCase.id} />
+              </div>
+            )}
+          </NodeDetail>
+        )}
+        <ChainPanel chains={snap.chains} windowMin={windowMin} selectedId={effectiveId} onSelect={toggle} caseFor={caseFor} />
       </aside>
     </div>
   );
@@ -266,16 +315,17 @@ function Legend() {
   );
 }
 
-function NodeDetail({ n, onClose }: { n: TopoNode; onClose: () => void }) {
+function NodeDetail({ n, onClose, children }: { n: TopoNode; onClose: () => void; children?: ReactNode }) {
   const rules = [...n.rules.entries()].sort((a, b) => b[1] - a[1]);
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+    <section className="max-h-[68%] shrink-0 overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 text-sm" data-testid="node-detail">
       <div className="mb-2 flex items-center justify-between">
         <b>선택한 노드</b>
         <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="선택 해제">
           <X className="size-4" />
         </button>
       </div>
+      {children}
       <dl className="grid grid-cols-[4rem_1fr] gap-x-2.5 gap-y-1 text-[13px]">
         <dt className="text-slate-500">종류</dt>
         <dd>{TYPE_LABEL[n.type]}</dd>
@@ -283,7 +333,7 @@ function NodeDetail({ n, onClose }: { n: TopoNode; onClose: () => void }) {
         <dd className={`break-all ${isLeaf(n.type) ? 'font-mono text-xs' : ''}`}>{n.label}</dd>
         <dt className="text-slate-500">컨테이너</dt>
         <dd>{n.container}</dd>
-        <dt className="text-slate-500">판정</dt>
+        <dt className="text-slate-500">탐지 결과</dt>
         <dd>
           <LevelBadge level={n.level} />
         </dd>
@@ -310,7 +360,7 @@ function NodeDetail({ n, onClose }: { n: TopoNode; onClose: () => void }) {
       )}
       {n.reason && <p className="mt-2 text-xs text-slate-500">{n.reason}</p>}
       <Link
-        to={`/events?container=${encodeURIComponent(n.container)}${n.level !== 'normal' ? '&verdict=violation' : ''}`}
+        to={`/events?container=${encodeURIComponent(n.container)}${n.level === 'normal' ? '&normal=1' : ''}`}
         className="mt-3 inline-block rounded-md px-2 py-1 text-xs text-indigo-600 hover:bg-indigo-50"
       >
         이벤트에서 보기 →
@@ -319,10 +369,22 @@ function NodeDetail({ n, onClose }: { n: TopoNode; onClose: () => void }) {
   );
 }
 
-// 공격 체인: 컨테이너별 위반 노드를 데모 시나리오 순서(1 실행 → 2 파일 → 3 통신)로. 누르면 그래프에서 강조.
-function ChainPanel({ chains, windowMin, selectedId, onSelect }: { chains: Chain[]; windowMin: number; selectedId: string | null; onSelect: (id: string) => void }) {
+// 공격 체인: 컨테이너별 위반 노드를 1 실행 → 2 파일 → 3 통신 순서로. 설치 검사 시트와 같은 부품(AttackChain). 누르면 그래프에서 강조.
+function ChainPanel({
+  chains,
+  windowMin,
+  selectedId,
+  onSelect,
+  caseFor,
+}: {
+  chains: Chain[];
+  windowMin: number;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  caseFor: (name: string) => Case | undefined;
+}) {
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-lg border border-slate-200 bg-white">
+    <section className="flex min-h-0 flex-1 flex-col rounded-lg border border-slate-200 bg-white" data-testid="chains">
       <header className="flex h-11 shrink-0 items-center justify-between border-b border-slate-100 px-4">
         <h2 className="text-sm font-semibold text-slate-800">공격 체인</h2>
         <span className="num text-xs text-slate-400">
@@ -333,37 +395,29 @@ function ChainPanel({ chains, windowMin, selectedId, onSelect }: { chains: Chain
         {chains.length === 0 ? (
           <Empty>이 창에 위반 없음</Empty>
         ) : (
-          chains.map(({ container: c, steps }) => (
-            <div key={c.id} className="border-t border-slate-100 pt-2 first:border-t-0 first:pt-0">
-              <button
-                type="button"
-                onClick={() => onSelect(c.id)}
-                className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-indigo-50 ${selectedId === c.id ? 'bg-indigo-50' : ''}`}
-              >
-                <span className="font-medium text-slate-800">{c.label}</span>
-                <LevelBadge level={c.level} />
-              </button>
-              <ol className="grid gap-1 py-1">
-                {steps.map((st) => (
-                  <li key={`${st.kind}:${st.node.id}`}>
-                    <button
-                      type="button"
-                      onClick={() => onSelect(st.node.id)}
-                      title={`${st.node.label}\n${st.rules.join(', ')}`}
-                      className={`grid w-full grid-cols-[3.25rem_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border px-2 py-1 text-left text-xs hover:bg-slate-50 ${
-                        selectedId === st.node.id ? 'border-indigo-500 bg-indigo-50' : 'border-transparent'
-                      }`}
-                    >
-                      <span className={`rounded py-0.5 text-center text-[11px] font-semibold ${stepTone[st.kind]}`}>{KIND_STEP[st.kind]}</span>
-                      <span className="truncate font-mono text-slate-700">{st.node.label}</span>
-                      <span className="max-w-24 truncate text-slate-500">{st.rules[0] ?? ''}</span>
-                      <LevelBadge level={st.level} />
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          ))
+          chains.map(({ container: c, steps }) => {
+            const k = caseFor(c.label);
+            return (
+              <div key={c.id} className="border-t border-slate-100 pt-2 first:border-t-0 first:pt-0" data-chain={c.label}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(c.id)}
+                  className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-indigo-50 ${selectedId === c.id ? 'bg-indigo-50' : ''}`}
+                >
+                  <span className="min-w-0 flex-1 truncate font-medium text-slate-800">{c.label}</span>
+                  {k && <DecisionBadge decision={k.decision} />}
+                  <LevelBadge level={c.level} />
+                </button>
+                <div className="py-1">
+                  <AttackChain
+                    steps={steps.map((st) => ({ id: st.node.id, kind: st.kind, label: st.node.label, rule: st.rules[0], level: st.level }))}
+                    selectedId={selectedId}
+                    onSelect={onSelect}
+                  />
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     </section>

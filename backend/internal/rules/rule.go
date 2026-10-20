@@ -138,3 +138,35 @@ func ParseYAML(b []byte) ([]Rule, error) {
 	}
 	return f.Rules, nil
 }
+
+// SystemBlocklistHosts: 차단 목록의 도메인으로 만들어지는 시스템 규칙 id (connect · kill · denyHosts).
+// 저장소에 두지 않고 엔진을 리로드할 때마다 차단 목록에서 합성한다. 정책 API 로 만들거나 고치거나 지울 수 없다(409).
+const SystemBlocklistHosts = "blocklist-hosts"
+
+// IsSystemRule: 정책 API 로 다룰 수 없는 규칙인지
+func IsSystemRule(id string) bool { return id == SystemBlocklistHosts }
+
+// BlocklistHostsRule: 차단 도메인 목록으로 시스템 규칙을 만든다. 목록이 비면 규칙도 없다(조건 없는 규칙은 무효).
+func BlocklistHostsRule(hosts []string) (Rule, bool) {
+	if len(hosts) == 0 {
+		return Rule{}, false
+	}
+	return Rule{
+		ID:          SystemBlocklistHosts,
+		Description: "차단 목록에서 관리 — 악성 판정으로 차단한 도메인",
+		Kind:        model.KindConnect,
+		Action:      model.ActionKill,
+		DenyHosts:   append([]string(nil), hosts...),
+	}, true
+}
+
+// ValidHost: allowHosts · denyHosts 에 넣을 수 있는 도메인 이름인지
+func ValidHost(h string) bool {
+	return hostPattern.MatchString(strings.ToLower(strings.TrimSuffix(h, ".")))
+}
+
+// ValidCIDR: allowCidrs · denyCidrs 값 형식인지
+func ValidCIDR(s string) bool {
+	_, err := parsePrefix(s)
+	return err == nil
+}

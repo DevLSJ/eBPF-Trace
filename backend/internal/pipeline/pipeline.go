@@ -21,6 +21,13 @@ type Broadcaster interface {
 	Broadcast(msgType string, data any)
 }
 
+// Reviewer: review.Service — 설치 세션 · 건 묶기와 차단 이미지 확인 (테스트에서 대체)
+type Reviewer interface {
+	Observe(v *model.Verdict)
+	ContainerStarted(ev model.Event) (blockedImage string, blocked bool)
+	ContainerExited(ev model.Event)
+}
+
 type Options struct {
 	EnforceKill      bool
 	IgnoreContainers []string
@@ -39,6 +46,7 @@ type Pipeline struct {
 	stats    *stats.Aggregator
 	audit    store.AuditStore
 	buffer   store.Buffer
+	review   Reviewer
 
 	persist chan model.Verdict
 	killed  map[string]time.Time // 컨테이너 ID → 격리 시각 (중복 kill 방지)
@@ -63,6 +71,9 @@ func New(opt Options, engine *rules.Engine, enf enforcer.Enforcer, hub Broadcast
 		killed:  map[string]time.Time{},
 	}
 }
+
+// SetReview: 판정을 설치 세션 · 건에 묶는다. Run 전에 부른다.
+func (p *Pipeline) SetReview(r Reviewer) { p.review = r }
 
 // Run: events 채널이 닫히거나 ctx가 끝날 때까지 평가 루프를 돈다.
 func (p *Pipeline) Run(ctx context.Context, events <-chan model.Event) {
@@ -120,6 +131,10 @@ func (p *Pipeline) Handle(ctx context.Context, ev model.Event) {
 	if ev.ContainerID == "" || p.Ignored(ev.ContainerName) {
 		return // 호스트 프로세스 또는 보호 대상
 	}
+	if ev.Kind == model.KindStart || ev.Kind == model.KindExit {
+		p.lifecycle(ctx, ev)
+		return
+	}
 	if ev.Kind == model.KindConnect && ev.DstHost == "" {
 		ev.DstHost = p.resolver.Lookup(ev.ContainerID, ev.DstIP)
 	}
@@ -127,9 +142,17 @@ func (p *Pipeline) Handle(ctx context.Context, ev model.Event) {
 	if v.Matched && v.Action == model.ActionKill && !v.DryRun {
 		p.enforce(ctx, &v)
 	}
+	p.emit(v)
+}
+
+// emit: 건 묶기 → 통계 → WebSocket · 저장
+func (p *Pipeline) emit(v model.Verdict) {
+	if p.review != nil {
+		p.review.Observe(&v)
+	}
 	p.stats.Observe(v)
 
-	if v.Matched || p.allowNormal(ev.Timestamp) {
+	if v.Matched || p.allowNormal(v.Event.Timestamp) {
 		p.hub.Broadcast("verdict", v)
 		select {
 		case p.persist <- v:
@@ -137,6 +160,31 @@ func (p *Pipeline) Handle(ctx context.Context, ev model.Event) {
 			slog.Warn("persist queue full; dropping verdict", "matched", v.Matched)
 		}
 	}
+}
+
+// lifecycle: 컨테이너 시작 · 종료 (관찰 범위 안의 컨테이너만 — Ignored 는 Handle 에서 이미 걸렀다)
+func (p *Pipeline) lifecycle(ctx context.Context, ev model.Event) {
+	if p.review == nil {
+		return
+	}
+	if ev.Kind == model.KindExit {
+		p.review.ContainerExited(ev)
+		return
+	}
+	image, blocked := p.review.ContainerStarted(ev)
+	if !blocked {
+		return // 정상 기동은 피드에 내지 않는다
+	}
+	// 차단 목록의 이미지: 정책 규칙과 같은 격리 경로(전역 ENFORCE_KILL · 중복 kill 방지)를 탄다
+	v := model.Verdict{
+		Event: model.Event{
+			Kind: model.KindExec, Timestamp: ev.Timestamp, ContainerID: ev.ContainerID, ContainerName: ev.ContainerName,
+			ImageName: ev.ImageName, Comm: "container-start", Args: "container start " + image,
+		},
+		Matched: true, RuleID: model.RuleBlockedImage, Action: model.ActionKill, Reason: "차단된 이미지: " + image,
+	}
+	p.enforce(ctx, &v)
+	p.emit(v)
 }
 
 func (p *Pipeline) enforce(ctx context.Context, v *model.Verdict) {

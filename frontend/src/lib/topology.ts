@@ -33,6 +33,8 @@ export interface TopoEdge extends TopoStats {
 const RETAIN_MS = 15 * 60_000;
 const MAX_NORMAL_LEAVES = 6; // 컨테이너당 정상 파일/목적지 노드 상한 (위험 노드는 전부 표시)
 
+export const isInstallContainer = (name: string) => name.startsWith('sg-install-');
+
 export const severity: Record<Level, number> = { normal: 0, alert: 1, held: 2, killed: 3 };
 const worse = (a: Level, b: Level) => (severity[b] > severity[a] ? b : a);
 
@@ -46,7 +48,8 @@ export class TopologyStore {
 
   ingest(v: Verdict) {
     const e = v.event;
-    if (!e.containerName) return;
+    // 토폴로지는 런타임 컨테이너만 — 설치 검사 컨테이너(sg-install-*)는 「설치 검사」 화면이 다룬다
+    if (!e.containerName || isInstallContainer(e.containerName)) return;
     const now = new Date(e.timestamp).getTime() || Date.now();
     const c = this.touch(`c:${e.containerName}`, 'container', e.containerName, e.containerName, now, v);
     const p = this.touch(`p:${e.containerName}:${e.comm}`, 'process', e.comm, e.containerName, now, v);
@@ -158,13 +161,15 @@ export interface Chain {
 
 const KIND_ORDER: Record<Kind, number> = { exec: 1, open: 2, connect: 3 };
 
+const BLOCKED_IMAGE = 'blocked-image';
+
 export function attackChains(nodes: TopoNode[]): Chain[] {
   const step = (kind: Kind, node: TopoNode): ChainStep => ({
     kind,
     node,
     level: node.byKind[kind] ?? 'normal',
     rules: [...node.rules.entries()]
-      .filter(([id]) => node.ruleKinds.get(id) === kind)
+      .filter(([id]) => node.ruleKinds.get(id) === kind && id !== BLOCKED_IMAGE)
       .sort((a, b) => b[1] - a[1])
       .map(([id]) => id),
     at: node.lastViolation ?? node.lastSeen,
@@ -175,7 +180,11 @@ export function attackChains(nodes: TopoNode[]): Chain[] {
     const steps: ChainStep[] = [];
     for (const n of nodes) {
       if (n.container !== c.label) continue;
-      if (n.type === 'process' && n.byKind.exec) steps.push(step('exec', n));
+      // 차단 이미지 재기동(blocked-image)은 공격 행동이 아니라 기동 즉시 격리 — 체인 단계 · 규칙에서 뺀다 (10/16 sg-vm 실측)
+      if (n.type === 'process' && n.byKind.exec) {
+        const s = step('exec', n);
+        if (s.rules.length || !n.rules.has(BLOCKED_IMAGE)) steps.push(s);
+      }
       if (n.type === 'file' && n.byKind.open) steps.push(step('open', n));
       if (n.type === 'dest' && n.byKind.connect) steps.push(step('connect', n));
     }

@@ -17,6 +17,10 @@ type Memory struct {
 	audit    []model.AuditEntry
 	nextID   int64
 	recent   []model.Verdict
+	review   memReview
+	// collected: 1분 단위 수집량 (Unix 분 → 합)
+	collected map[int64]model.MinuteCount
+	scans     map[string]model.Scan
 }
 
 const memoryAuditCap = 5000
@@ -32,14 +36,18 @@ func (m *Memory) ListPolicies(context.Context) ([]rules.Rule, error) {
 func (m *Memory) UpsertPolicy(_ context.Context, r rules.Rule) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.upsertPolicyLocked(r)
+	return nil
+}
+
+func (m *Memory) upsertPolicyLocked(r rules.Rule) {
 	for i := range m.policies {
 		if m.policies[i].ID == r.ID {
 			m.policies[i] = r
-			return nil
+			return
 		}
 	}
 	m.policies = append(m.policies, r)
-	return nil
 }
 
 func (m *Memory) DeletePolicy(_ context.Context, id string) (bool, error) {

@@ -10,3 +10,4 @@ frontend/playwright-report/
 mock/screenshots/
 .DS_Store
 ._*
+docs/

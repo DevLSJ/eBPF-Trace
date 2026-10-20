@@ -74,6 +74,7 @@ type Aggregator struct {
 	total       uint64
 	violations  uint64
 	byContainer map[string]int
+	minutes     map[int64]*model.MinuteCount // 종합(10/16): 아직 저장하지 않은 1분 단위 수집량
 	killed      []Killed
 	risk        []riskHit
 }
@@ -97,13 +98,25 @@ func (a *Aggregator) Observe(v model.Verdict) {
 	defer a.mu.Unlock()
 	now := a.now()
 	b := a.slot(now)
+	mk := now.Unix() / 60
+	m := a.minutes[mk]
+	if m == nil {
+		if a.minutes == nil {
+			a.minutes = map[int64]*model.MinuteCount{}
+		}
+		m = &model.MinuteCount{Minute: time.Unix(mk*60, 0).UTC()}
+		a.minutes[mk] = m
+	}
 	switch v.Event.Kind {
 	case model.KindExec:
 		b.exec++
+		m.Exec++
 	case model.KindOpen:
 		b.open++
+		m.Open++
 	case model.KindConnect:
 		b.connect++
+		m.Connect++
 	}
 	a.total++
 	if !v.Matched {
@@ -128,6 +141,19 @@ func riskWeight(v model.Verdict) int {
 	default:
 		return 5
 	}
+}
+
+// TakeMinutes: 쌓인 1분 단위 수집량을 시간순으로 넘기고 비운다 — 저장소에 「더해」 쓴다(재시작해도 종합이 남게)
+func (a *Aggregator) TakeMinutes() []model.MinuteCount {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]model.MinuteCount, 0, len(a.minutes))
+	for _, m := range a.minutes {
+		out = append(out, *m)
+	}
+	a.minutes = nil
+	sort.Slice(out, func(i, j int) bool { return out[i].Minute.Before(out[j].Minute) })
+	return out
 }
 
 // Killed: 격리 성공한 컨테이너 기록

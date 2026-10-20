@@ -16,6 +16,10 @@ const (
 	KindConnect Kind = "connect" // trace_tcp --connect-only (sys_connect)
 	// KindDNS: trace_dns 응답. 정책 평가 대상이 아니라 connect 이벤트의 목적지 도메인(DstHost)을 채우는 내부 이벤트.
 	KindDNS Kind = "dns"
+	// KindStart · KindExit: Docker 컨테이너 시작 · 종료 (docker-events). 정책 평가 대상이 아닌 내부 이벤트 —
+	// 시작은 차단 이미지 확인, 종료는 설치 세션의 containerExitedAt 에 쓴다. ImageName 이 채워져 온다.
+	KindStart Kind = "start"
+	KindExit  Kind = "exit"
 )
 
 var Kinds = []Kind{KindExec, KindOpen, KindConnect}
@@ -93,6 +97,9 @@ type Verdict struct {
 	Enforced bool `json:"enforced,omitempty"`
 	// EnforceError: 종료 시도가 실패한 경우 사유
 	EnforceError string `json:"enforceError,omitempty"`
+	// CaseID · Install: 이 판정이 묶인 건 · 설치 세션 (없으면 null). 감사 로그 행에도 그대로 남는다.
+	CaseID  *string     `json:"caseId"`
+	Install *InstallRef `json:"install"`
 }
 
 // AuditEntry: 저장된 위반 판정 (PostgreSQL audit_log)

@@ -41,6 +41,8 @@ services:
       - /sys/kernel/debug:/sys/kernel/debug
       - /sys/fs/bpf:/sys/fs/bpf
       - ig_store:/var/lib/ig
+      # 공급망 검사(10/16) 작업 볼륨 — 검사기 컨테이너가 같은 볼륨을 /work 로 읽기 전용 마운트(이름: <프로젝트>_scan_work = SCAN_VOLUME)
+      - scan_work:/scan
     healthcheck:
       test: ["CMD", "/healthcheck"]
       interval: 10s
@@ -95,6 +97,7 @@ services:
     # 외부 포트 바인딩 없음 — Docker 내부 네트워크만 접근 가능
 
 volumes:
+  scan_work:
   postgres17_data:
   redis_data:
   ig_store:
