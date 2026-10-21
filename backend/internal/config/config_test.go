@@ -20,3 +20,23 @@ func TestTokensMustDiffer(t *testing.T) {
 		t.Fatalf("%+v %v", c, err)
 	}
 }
+
+// CONTAINER_DISCOVERY(10/20): 기본 auto(fanotify 먼저, 안 되면 docker-events). 세 값만 받는다
+func TestContainerDiscovery(t *testing.T) {
+	c, err := Load()
+	if err != nil || c.ContainerDiscovery != "auto" {
+		t.Fatalf("default: %q %v", c.ContainerDiscovery, err)
+	}
+	for _, ok := range []string{"auto", "fanotify", "docker-events"} {
+		t.Setenv("CONTAINER_DISCOVERY", ok)
+		if c, err := Load(); err != nil || c.ContainerDiscovery != ok {
+			t.Fatalf("%q: %q %v", ok, c.ContainerDiscovery, err)
+		}
+	}
+	for _, bad := range []string{"runc", "Auto", "docker"} {
+		t.Setenv("CONTAINER_DISCOVERY", bad)
+		if _, err := Load(); err == nil {
+			t.Fatalf("CONTAINER_DISCOVERY=%q must be rejected", bad)
+		}
+	}
+}

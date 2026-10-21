@@ -24,7 +24,8 @@ type Config struct {
 	// WatchContainers: 비우면 전체, 채우면 맞는 이름만 평가·격리 (예: sg-install-* — 설치 샌드박스만)
 	WatchContainers []string
 
-	// ContainerDiscovery: 가젯 소스가 컨테이너를 찾는 방법 — docker-events(기본) | fanotify(IG 기본 runc 훅, Docker Desktop 에선 동작 안 함)
+	// ContainerDiscovery: 가젯 소스가 컨테이너를 찾는 방법 — auto(기본: fanotify 를 먼저, 만들 수 없으면 docker-events)
+	// | fanotify(IG 기본 runc 훅, 시작 직후 동작까지 본다. Docker Desktop 에선 EINVAL) | docker-events(Docker 이벤트 API, 시작 직후 약 0.1초를 놓칠 수 있다)
 	ContainerDiscovery string
 
 	// ResolveDNS: trace_dns 를 함께 돌려 connect 이벤트에 목적지 도메인을 붙인다 (allowHosts/denyHosts 에 필요)
@@ -60,7 +61,7 @@ func Load() (Config, error) {
 		ContainerName:      env("CONTAINER_NAME", ""),
 		IgnoreContainers:   list(env("IGNORE_CONTAINERS", "supplyguard-*")),
 		WatchContainers:    list(env("WATCH_CONTAINERS", "")),
-		ContainerDiscovery: env("CONTAINER_DISCOVERY", "docker-events"),
+		ContainerDiscovery: env("CONTAINER_DISCOVERY", "auto"),
 		DockerHost:         env("DOCKER_HOST", "unix:///var/run/docker.sock"),
 		ScanDir:            env("SCAN_DIR", "/scan"),
 		ScanVolume:         env("SCAN_VOLUME", "supplyguard_scan_work"),
@@ -100,8 +101,10 @@ func Load() (Config, error) {
 		}
 		c.Gadgets = append(c.Gadgets, k)
 	}
-	if c.ContainerDiscovery != "docker-events" && c.ContainerDiscovery != "fanotify" {
-		return c, fmt.Errorf("CONTAINER_DISCOVERY: %q (docker-events | fanotify)", c.ContainerDiscovery)
+	switch c.ContainerDiscovery {
+	case "auto", "fanotify", "docker-events":
+	default:
+		return c, fmt.Errorf("CONTAINER_DISCOVERY: %q (auto | fanotify | docker-events)", c.ContainerDiscovery)
 	}
 	if c.EventSource != "gadget" && c.EventSource != "mock" {
 		return c, fmt.Errorf("EVENT_SOURCE: %q (gadget | mock)", c.EventSource)

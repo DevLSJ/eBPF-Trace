@@ -40,12 +40,26 @@ import (
 type Gadget struct {
 	Kinds         []model.Kind
 	ContainerName string
-	// Discovery: "docker-events"(기본, Docker 이벤트 API 로 컨테이너 추적) | "fanotify"(IG 기본 runc 훅)
+	// Discovery: 설정값 "auto"(기본, fanotify 먼저 → 안 되면 docker-events) | "fanotify"(IG 기본 runc 훅) | "docker-events"(Docker 이벤트 API)
 	Discovery  string
 	DockerHost string
 	// ResolveDNS: connect 가 켜져 있으면 trace_dns 도 함께 돌려 목적지 도메인을 배운다
 	ResolveDNS bool
 	dropped    atomic.Uint64
+	// active: Run 이 실제로 만든 컨테이너 컬렉션 방식(DiscoveryFanotify | DiscoveryDockerEvents). Run 전에는 빈 값
+	active atomic.Value
+}
+
+// ActiveDiscovery: 실제로 쓰이는 컨테이너 발견 방식 — /api/info discovery 가 쓴다. Run 이 컬렉션을 만들기 전에는 빈 값
+func (g *Gadget) ActiveDiscovery() string {
+	s, _ := g.active.Load().(string)
+	return s
+}
+
+// collection: 컨테이너 컬렉션을 감싼 LocalManager 와 그 정리 함수
+type collection struct {
+	lm    operators.DataOperator
+	close func()
 }
 
 const opPriority = 50000
@@ -62,25 +76,34 @@ func (g *Gadget) Run(ctx context.Context, out chan<- model.Event) error {
 	defer rt.Close()
 
 	// 컨테이너 메타데이터 부착 (docker). host.Init 이후에 초기화해야 한다.
-	var lm operators.DataOperator
-	if g.Discovery == "fanotify" {
-		op := localmanager.LocalManagerOperator
-		lmParams := op.GlobalParamDescs().ToParams()
-		if err := lmParams.Get(localmanager.Runtimes).Set("docker"); err != nil {
-			return err
+	// auto: fanotify 컬렉션 생성이 실패하면(Docker Desktop EINVAL 등) docker-events 로 내려간다 — 판정은 생성 단계 오류로만
+	fanotify := func() (collection, error) {
+		fc, err := newFanotifyCollection(g.DockerHost)
+		if err != nil {
+			return collection{}, err
 		}
-		if err := op.Init(lmParams); err != nil {
-			return fmt.Errorf("localmanager init: %w", err)
-		}
-		defer op.Close()
-		lm = op
-	} else {
+		return collection{localmanager.NewLocalManager(&fc.cc, fc.tc), fc.Close}, nil
+	}
+	dockerEvents := func() (collection, error) {
 		dc, err := newDockerCollection(ctx, g.DockerHost)
 		if err != nil {
-			return fmt.Errorf("container discovery (docker-events): %w", err)
+			return collection{}, err
 		}
-		defer dc.Close()
-		lm = localmanager.NewLocalManager(&dc.cc, dc.tc)
+		return collection{localmanager.NewLocalManager(&dc.cc, dc.tc), dc.Close}, nil
+	}
+	col, active, err := pickDiscovery(g.Discovery, fanotify, dockerEvents, func(err error) {
+		slog.Warn("container discovery: fanotify unavailable, falling back to docker-events", "err", err)
+	})
+	if err != nil {
+		return err
+	}
+	defer col.close()
+	lm := col.lm
+	g.active.Store(active)
+	if active == DiscoveryDockerEvents {
+		slog.Info("container discovery", "mode", active, "requested", g.Discovery, "note", "actions in the first ~0.1s after a container starts may be missed")
+	} else {
+		slog.Info("container discovery", "mode", active, "requested", g.Discovery)
 	}
 
 	// ig 와 동일하게 등록된 데이터 오퍼레이터 전체를 쓰되, 기본 LocalManager 는 제외하고

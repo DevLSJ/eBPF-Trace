@@ -26,6 +26,53 @@ type dockerCollection struct {
 	cli *dockerapi.Client
 }
 
+// fanotifyCollection: IG 기본 LocalManager 가 Init 에서 만드는 컬렉션(runc fanotify 훅)을 직접 만든다.
+// LocalManager.Init 은 컬렉션 생성 실패를 경고 로그로 삼키고 nil 을 돌려주므로, 그 오류를 auto 판정에 쓰려면 여기서 만들어야 한다.
+// 옵션 목록 · 순서는 IG v0.56.1 localmanager.initCollections 와 같다(쿠버네티스 enrich 제외).
+type fanotifyCollection struct {
+	cc containercollection.ContainerCollection
+	tc *tracercollection.TracerCollection
+}
+
+func newFanotifyCollection(dockerHost string) (*fanotifyCollection, error) {
+	cli, err := dockerapi.New(dockerHost)
+	if err != nil {
+		return nil, err
+	}
+	if cli.SocketPath == "" {
+		return nil, fmt.Errorf("CONTAINER_DISCOVERY=fanotify 는 unix 소켓 DOCKER_HOST 만 지원")
+	}
+	if err := rlimit.RemoveMemlock(); err != nil {
+		return nil, fmt.Errorf("removing memlock rlimit: %w", err)
+	}
+	f := &fanotifyCollection{}
+	f.tc, err = tracercollection.NewTracerCollection(&f.cc)
+	if err != nil {
+		return nil, fmt.Errorf("tracer collection: %w", err)
+	}
+	rc := []*containerutilsTypes.RuntimeConfig{{Name: types.RuntimeNameDocker, SocketPath: cli.SocketPath}}
+	// 실패하면(Docker Desktop: fanotify_mark EINVAL) 이미 붙은 옵션 정리 함수는 IG 처럼 남는다 — Close 는 미초기화 컬렉션에서 panic 한다.
+	// 시작 때 한 번뿐이라 감수한다.
+	if err := f.cc.Initialize(
+		containercollection.WithOCIConfigEnrichment(),
+		containercollection.WithCgroupEnrichment(),
+		containercollection.WithLinuxNamespaceEnrichment(),
+		containercollection.WithMultipleContainerRuntimesEnrichment(rc),
+		containercollection.WithOCIConfigForInitialContainer(),
+		containercollection.WithContainerFanotifyEbpf(),
+		containercollection.WithTracerCollection(f.tc),
+		containercollection.WithProcEnrichment(),
+	); err != nil {
+		return nil, fmt.Errorf("container collection: %w", err)
+	}
+	return f, nil
+}
+
+func (f *fanotifyCollection) Close() {
+	f.cc.Close()
+	f.tc.Close()
+}
+
 func newDockerCollection(ctx context.Context, dockerHost string) (*dockerCollection, error) {
 	cli, err := dockerapi.New(dockerHost)
 	if err != nil {
