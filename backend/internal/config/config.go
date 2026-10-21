@@ -45,8 +45,15 @@ type Config struct {
 	// SandboxToken: sg-install CLI 의 세션 보고 · 차단 확인 전용 (ADMIN_TOKEN 과 달라야 한다)
 	SandboxToken   string
 	AllowedOrigins []string
-	// ActorName: 판정 · 적용 · 정책 변경의 처리자 이름 (데모 계정 하나)
+	// ActorName: 판정 · 적용 · 정책 변경의 처리자 이름 — 요청자를 모를 때(로그인 전 경로 · 내부 작업)만 쓴다
 	ActorName string
+
+	// 로그인(10/20): 계정이 없을 때만 쓰는 초기 관리자 · OTP 필수 · 쿠키 Secure · OTP 비밀값 암호화 키
+	AdminUser            string
+	AdminInitialPassword string
+	AuthOTPRequired      bool
+	AuthCookieSecure     bool
+	AuthSecretKey        string
 
 	// NormalEventRate: 정상 판정 이벤트를 WebSocket으로 보내는 초당 상한 (위반은 항상 전송)
 	NormalEventRate int
@@ -74,9 +81,19 @@ func Load() (Config, error) {
 		SandboxToken:       env("SANDBOX_TOKEN", ""),
 		ActorName:          env("ACTOR_NAME", "보안 담당자"),
 		AllowedOrigins:     list(env("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),
+		// 로그인(10/20). 비밀번호 · 키 형식 검사는 쓰는 쪽(auth.SeedAdmin · main 의 validateAuthSecret)이 한다
+		AdminUser:            env("ADMIN_USER", "admin"),
+		AdminInitialPassword: env("ADMIN_INITIAL_PASSWORD", ""),
+		AuthSecretKey:        env("AUTH_SECRET_KEY", ""),
 	}
 	var err error
 	if c.EnforceKill, err = boolEnv("ENFORCE_KILL", false); err != nil {
+		return c, err
+	}
+	if c.AuthOTPRequired, err = boolEnv("AUTH_OTP_REQUIRED", true); err != nil { // 기본 필수 — 끄는 것은 개발 · e2e 만
+		return c, err
+	}
+	if c.AuthCookieSecure, err = boolEnv("AUTH_COOKIE_SECURE", false); err != nil {
 		return c, err
 	}
 	if c.ResolveDNS, err = boolEnv("RESOLVE_DNS", true); err != nil {

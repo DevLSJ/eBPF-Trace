@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/api"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/auth"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/config"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/dockerapi"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/enforcer"
@@ -62,6 +63,7 @@ func run() error {
 	var reviewStore store.ReviewStore = mem
 	var buffer store.Buffer = mem
 	var collected store.CollectedStore = mem
+	var authStore store.AuthStore = store.NewMemoryAuth() // 계정 · 세션 · 라이선스 · 인증 감사 (메모리면 재시작 때 사라진다)
 	checks := map[string]api.Pinger{}
 	if cfg.DatabaseURL != "" {
 		pg, err := store.NewPostgres(ctx, cfg.DatabaseURL)
@@ -70,6 +72,10 @@ func run() error {
 		}
 		defer pg.Close()
 		policies, audit, reviewStore, collected, checks["postgres"] = pg, pg, pg, pg, pg
+		if err := pg.MigrateAuth(ctx); err != nil {
+			return fmt.Errorf("postgres auth migrate: %w", err)
+		}
+		authStore = pg
 	}
 	if cfg.RedisURL != "" {
 		rd, err := store.NewRedis(ctx, cfg.RedisURL)
@@ -79,6 +85,22 @@ func run() error {
 		defer rd.Close()
 		buffer, checks["redis"] = rd, rd
 	}
+
+	// 로그인(10/20). 가젯(운영)은 OTP 비밀값 암호화 키 없이 시작하지 않는다 — 가젯 · 수집을 띄우기 전에 확인
+	if err := validateAuthSecret(cfg.EventSource, cfg.AuthSecretKey); err != nil {
+		return err
+	}
+	authSvc := auth.New(auth.Options{
+		Store: authStore, OTPRequired: cfg.AuthOTPRequired, SecretKey: cfg.AuthSecretKey, CookieSecure: cfg.AuthCookieSecure,
+		TrustProxy: true, // compose 에서 backend 포트는 바깥에 없다 — nginx 가 넘기는 X-Real-IP 로 IP 실패 횟수를 센다
+	})
+	// 계정이 하나도 없을 때만 ADMIN_USER / ADMIN_INITIAL_PASSWORD 로 관리자 1명 (비밀번호가 비었거나 5자 미만이면 시작 오류)
+	if created, err := authSvc.SeedAdmin(ctx, cfg.AdminUser, cfg.AdminInitialPassword); err != nil {
+		return fmt.Errorf("initial admin: %w", err)
+	} else if created {
+		slog.Info("initial admin created; password change required on first login", "user", cfg.AdminUser)
+	}
+	go purgeSessions(ctx, authSvc, 10*time.Minute)
 
 	rs, err := initialPolicies(ctx, policies, cfg.PolicyFile)
 	if err != nil {
@@ -190,13 +212,15 @@ func run() error {
 		Scans:                scans,
 		OSV:                  osv.New(),
 		AllowedOrigins:       cfg.AllowedOrigins,
+		Auth:                 authSvc,
 		Info: api.Info{Source: cfg.EventSource, Gadgets: cfg.Gadgets, EnforceKill: cfg.EnforceKill,
 			GadgetVersion: ingestion.GadgetVersion, WatchContainers: cfg.WatchContainers, IgnoreContainers: cfg.IgnoreContainers},
 	}))
 
 	srv := &http.Server{
-		Addr:              ":" + cfg.Port,
-		Handler:           mux,
+		Addr: ":" + cfg.Port,
+		// /health · 로그인 단계 · sg-install 보고(SANDBOX_TOKEN)를 뺀 전부(/ws/events 포함)를 로그인 뒤로
+		Handler:           api.Secure(mux, api.SecureOptions{Auth: authSvc, AdminToken: cfg.AdminToken, AllowedOrigins: cfg.AllowedOrigins}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
@@ -213,7 +237,10 @@ func run() error {
 		slog.Warn("ENFORCE_KILL=true without WATCH_CONTAINERS: every container on this host can be killed by policy")
 	}
 	if cfg.AdminToken == "" && cfg.EventSource != "mock" {
-		slog.Warn("ADMIN_TOKEN not set; policy changes and verdicts are disabled")
+		slog.Warn("ADMIN_TOKEN not set; CLI/automation Bearer access is disabled (dashboard login still works)")
+	}
+	if !cfg.AuthOTPRequired && cfg.EventSource != "mock" {
+		slog.Warn("AUTH_OTP_REQUIRED=false on the gadget source; login works without OTP (development only)")
 	}
 	if cfg.SandboxToken == "" && cfg.EventSource != "mock" {
 		slog.Warn("SANDBOX_TOKEN not set; sg-install session reports and blocklist checks are disabled")
@@ -242,6 +269,22 @@ func initialPolicies(ctx context.Context, ps store.PolicyStore, file string) ([]
 	}
 	slog.Info("policies seeded", "file", file, "count", len(seed))
 	return seed, nil
+}
+
+// purgeSessions: 유휴 · 절대 만료가 지난 세션을 주기적으로 지운다 (만료 판정 자체는 요청마다 Service.Session 이 한다)
+func purgeSessions(ctx context.Context, svc *auth.Service, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if _, err := svc.Purge(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Warn("session purge", "err", err)
+			}
+		}
+	}
 }
 
 // flushCollected: 통계의 1분 단위 수집량을 저장소로 옮긴다(같은 분은 저장소가 더한다)

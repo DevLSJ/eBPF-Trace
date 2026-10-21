@@ -40,3 +40,25 @@ func TestContainerDiscovery(t *testing.T) {
 		}
 	}
 }
+
+// 로그인(10/20): OTP 는 기본 필수, 쿠키 Secure 는 기본 끔, 초기 관리자 이름 기본 admin.
+// AUTH_SECRET_KEY 길이 검사는 여기서 하지 않는다(main 의 validateAuthSecret) — 이 파일의 다른 테스트가 기본 gadget 으로 돈다
+func TestAuthSettings(t *testing.T) {
+	c, err := Load()
+	if err != nil || !c.AuthOTPRequired || c.AuthCookieSecure || c.AdminUser != "admin" || c.AdminInitialPassword != "" || c.AuthSecretKey != "" {
+		t.Fatalf("defaults: %+v %v", c, err)
+	}
+	t.Setenv("AUTH_OTP_REQUIRED", "false")
+	t.Setenv("AUTH_COOKIE_SECURE", "true")
+	t.Setenv("ADMIN_USER", "root-admin")
+	t.Setenv("ADMIN_INITIAL_PASSWORD", "dev-pass-123")
+	t.Setenv("AUTH_SECRET_KEY", "k")
+	c, err = Load()
+	if err != nil || c.AuthOTPRequired || !c.AuthCookieSecure || c.AdminUser != "root-admin" || c.AdminInitialPassword != "dev-pass-123" || c.AuthSecretKey != "k" {
+		t.Fatalf("set: %+v %v", c, err)
+	}
+	t.Setenv("AUTH_OTP_REQUIRED", "maybe")
+	if _, err := Load(); err == nil {
+		t.Fatal("AUTH_OTP_REQUIRED=maybe must be rejected")
+	}
+}

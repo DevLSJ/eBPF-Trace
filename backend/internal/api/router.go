@@ -17,6 +17,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/auth"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/osv"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/review"
@@ -56,6 +57,9 @@ type Deps struct {
 	Summary *summary.Service
 	// Scans: 공급망 검사(10/16). nil 이면 라우트 없음
 	Scans *scan.Service
+	// Auth: 로그인(10/20). 있으면 /api/auth · /api/users · /api/license 를 열고, 화면 쓰기는 역할(admin)로 확인한다.
+	// 세션 확인 자체는 바깥에서 Secure(auth.Middleware)가 한다(/ws/events 포함). nil 이면 예전처럼 ADMIN_TOKEN 만
+	Auth *auth.Service
 }
 
 // Info: 대시보드가 표시하는 런타임 설정
@@ -73,7 +77,8 @@ type Info struct {
 const maxBody = 64 << 10 // nginx client_max_body_size 64k와 맞춤
 
 func Router(d Deps) http.Handler {
-	d.Info.AuthRequired = !(d.AllowAnonymousWrites && d.AdminToken == "")
+	// 로그인이 켜져 있으면 늘 true (mock 이어도 쓰기는 관리자 계정만)
+	d.Info.AuthRequired = d.Auth != nil || !(d.AllowAnonymousWrites && d.AdminToken == "")
 	if d.Info.WatchContainers == nil {
 		d.Info.WatchContainers = []string{}
 	}
@@ -104,6 +109,9 @@ func Router(d Deps) http.Handler {
 	if d.Scans != nil {
 		h.routeScans(mux)
 	}
+	if d.Auth != nil {
+		RegisterAuth(mux, AuthDeps{Auth: d.Auth})
+	}
 	return cors(d.AllowedOrigins, mux)
 }
 
@@ -115,8 +123,9 @@ func cors(allowed []string, next http.Handler) http.Handler {
 			hd := w.Header()
 			hd.Set("Access-Control-Allow-Origin", origin)
 			hd.Add("Vary", "Origin")
+			hd.Set("Access-Control-Allow-Credentials", "true") // 다른 출처(Vite dev)에서 쿠키 세션 — fetch credentials: 'include'
 			if r.Method == http.MethodOptions {
-				hd.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE")
+				hd.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE") // PATCH: /api/users/{id}
 				hd.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 				hd.Set("Access-Control-Max-Age", "600")
 				w.WriteHeader(http.StatusNoContent)
@@ -129,8 +138,12 @@ func cors(allowed []string, next http.Handler) http.Handler {
 
 type handlers struct{ Deps }
 
-// auth: 화면의 쓰기 — ADMIN_TOKEN 만 받는다.
+// auth: 화면의 쓰기. 로그인이 켜져 있으면(Deps.Auth) Secure 가 넣은 요청자가 관리자여야 한다
+// (쿠키 세션 admin 또는 Bearer ADMIN_TOKEN = CLIActor). 꺼져 있으면 예전처럼 ADMIN_TOKEN 만.
 func (h *handlers) auth(next http.HandlerFunc) http.HandlerFunc {
+	if h.Deps.Auth != nil {
+		return auth.RequireAdmin(next)
+	}
 	return h.bearer(h.AdminToken, "ADMIN_TOKEN이 설정되지 않아 쓰기가 비활성화됨", "관리자 토큰이 필요함", next)
 }
 
