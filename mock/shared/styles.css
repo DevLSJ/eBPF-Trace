@@ -698,3 +698,15 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border: 1px soli
 .lic-note { margin-top: 12px; }
 .lic-note.tone-danger { color: #991b1b; border-color: #fecaca; background: var(--danger-soft); }
 .lic-note.tone-warn { color: #92400e; border-color: #fde68a; background: var(--warn-soft); }
+/* 10/21 React 맞춤 — 다시 시도 중(버튼 잠금 · 아이콘 회전) · 데이터가 있을 때 다시 부르기 실패 띠(React LoadError compact) · 이벤트 불러오기 실패 배너(StreamBanners) */
+.btn.retrying { opacity: .5; cursor: default; }
+.btn .retry-icon { display: inline-block; }
+.btn.retrying .retry-icon { animation: spin .8s linear infinite; }
+.load-note { display: flex; align-items: flex-start; gap: 8px; margin: 8px 16px; padding: 8px 12px; border-radius: 6px; font-size: 13px; border: 1px solid; flex-shrink: 0; }
+.load-note.danger { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.load-note.off { background: var(--bg-soft); color: var(--text-2); border-color: var(--border); }
+.banner-load { display: flex; align-items: center; gap: 8px; }
+.banner-load .grow { flex: 1; min-width: 0; }
+.banner-load .btn { background: #fff; border-color: #fca5a5; color: #991b1b; }
+/* 인증 감사 「더 보기」(React AuthAuditRows) */
+.more-row { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px; border-top: 1px solid var(--border); }

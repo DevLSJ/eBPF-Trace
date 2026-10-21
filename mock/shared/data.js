@@ -295,12 +295,13 @@
   defaultRules.splice(5, 0, { id: 'runtime-direct-ip', description: '도메인 조회 없이 공인 IP로 바로 나가는 연결 (C2 · 데이터 유출에 흔함). 런타임은 경고만', kind: 'connect', action: 'alert', directIp: 'alert',
     allowCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '::1'] });
   // 공급망 검사 결과의 패키지 목록(Scan.packages — OSV-Scanner 가 읽은 잠금 · 의존성 파일 항목, 잠금 파일마다 한 행) [W4 · 10/20 G]
-  //   manager 가 비면 차단 목록이 다루지 않는 생태계. 화면은 같은 (manager, name) 을 한 줄로 묶고 출처 파일을 나열한다
+  //   manager 가 비면 차단 목록이 다루지 않는 생태계. 화면은 같은 (manager, name, version) 을 한 줄로 묶고 출처 파일을 나열한다 [10/21 React 맞춤]
+  //   repo:requests 의 urllib3 는 1.26.5(두 파일) + 1.23.0(한 파일) — 같은 이름 · 다른 버전은 두 줄
   const P = (name, version, direct, vulns, source, manager = 'pip', ecosystem = 'PyPI') => ({ manager, name, version, ecosystem, source, direct, vulns });
   scanFixtures.packages = {
     'requirements.txt': [P('django', '3.2.0', true, 66, 'requirements.txt'), P('urllib3', '1.23.0', false, 24, 'requirements.txt'), P('requests', '2.19.0', true, 10, 'requirements.txt'),
       P('idna', '2.7.0', false, 4, 'requirements.txt'), P('flask', '2.3.3', true, 2, 'requirements.txt'), P('certifi', '2018.4.16', false, 0, 'requirements.txt'), P('chardet', '3.0.4', false, 0, 'requirements.txt')],
-    'repo:requests': [P('urllib3', '1.26.5', false, 3, 'requirements-dev.txt'), P('urllib3', '1.26.5', false, 3, 'docs/requirements.txt'), P('idna', '2.10', false, 1, 'requirements-dev.txt'), P('idna', '2.10', false, 1, 'docs/requirements.txt'),
+    'repo:requests': [P('urllib3', '1.26.5', false, 3, 'requirements-dev.txt'), P('urllib3', '1.26.5', false, 3, 'docs/requirements.txt'), P('urllib3', '1.23.0', false, 5, 'tests/requirements.txt'),P('idna', '2.10', false, 1, 'requirements-dev.txt'), P('idna', '2.10', false, 1, 'docs/requirements.txt'),
       P('charset-normalizer', '3.3.2', false, 0, 'requirements-dev.txt'), P('charset-normalizer', '3.3.2', false, 0, 'docs/requirements.txt'), P('pytest', '7.4.0', true, 0, 'requirements-dev.txt'), P('certifi', '2023.7.22', false, 0, 'requirements-dev.txt'),
       P('sphinx', '7.2.6', true, 0, 'docs/requirements.txt'), P('actions/checkout', 'v4', true, 0, '.github/workflows/run-tests.yml', '', 'GitHub Actions')],
   };

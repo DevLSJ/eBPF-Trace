@@ -206,8 +206,8 @@
         if (error && !quiet) return; // 오류 뒤에는 「다시 시도」 · 자동 재시도만 다시 부른다
         if (quiet) { error = null; sig = ''; }
         if (rows && next === sig) return; sig = next; rows = r; cases = new Map(cs.map((c) => [c.id, c])); draw();
-      }).catch((e) => { if (error && !quiet) return; rows = []; error = e; draw(); }).finally(() => { inflight--; }); };
-      const retry = () => { error = null; rows = null; sig = ''; table.hidden = true; replace(emptySlot, U.skeleton(6)); load(); };
+      }).catch((e) => { if (rows !== null && !error) return; if (error && !quiet) return; rows = []; error = e; draw(); }).finally(() => { inflight--; }); }; // 데이터가 있으면 다시 부르기 실패는 목록 유지 · 표시 없음 [10/21 React 맞춤]
+      const retry = () => load(true); // 「다시 시도」 = 조용한 다시 부르기(오류 칸 유지 · 버튼만 돌림) [10/21]
       const matches = (s, st) => (st === 'all' ? true : st === 'pending' ? isPending(s) || s.status === 'running' : s.status === st);
       function chips(el, defs, key) {
         const all = rows || [];
@@ -256,7 +256,7 @@
         replace(applied, U.filterChips([f.status !== 'pending' ? { key: 'status', label: `보기: ${STATUS_KO[f.status]}`, clear: () => clearQuery(['status']) } : null,
           f.manager ? { key: 'manager', label: `매니저: ${f.manager}`, clear: () => clearQuery(['manager']) } : null], () => clearQuery(['status', 'manager'])));
         replace(emptySlot,
-          error ? U.errorState(error.unsupported ? Object.assign(new Error('백엔드 미지원 — 설치 세션 API(GET /api/installs)가 아직 백엔드에 없습니다. 데모 제어에서 내장 시뮬레이션으로 보세요.'), { unsupported: true }) : error, retry, { quiet: () => load(true) })
+          error ? U.errorState(error, retry, { what: '설치 세션' })
           : !rows.length ? U.emptyState({ icon: '▣', title: '아직 설치 검사가 없습니다', hint: '패키지를 PC 에 바로 깔지 말고 감시 컨테이너에서 설치해 보세요.', actions: [h('code', { class: 'cmd' }, CMD_EXAMPLE), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => copyCommand(CMD_EXAMPLE) }, '⧉ 명령 복사')] })
           : !list.length ? (f.status === 'pending' ? U.emptyState({ icon: '✓', title: '판정할 설치 없음', actions: h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => setF('status', 'all') }, `전체 세션 ${rows.length}건 보기`) })
             : U.emptyState({ icon: '⌕', title: '조건에 맞는 세션 없음', actions: h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => clearQuery(['status', 'manager']) }, '필터 모두 해제') })) : null);
@@ -304,7 +304,8 @@
     mount(page, query) {
       let selId = query.get('id') || '', rows = null, error = null, input = 'package', file = null, detail = null, focusLoc = '';
       let vf = SCAN_VERDICT[query.get('verdict')] ? query.get('verdict') : ''; // 결과 필터 [10/20 D]
-      let picked = new Set(); // 패키지 골라 차단 [10/20 G] — 고른 패키지 키(manager:name)
+      let picked = new Set(); // 패키지 골라 차단 [10/20 G] — 고른 행 키(매니저:이름@버전) [10/21 React 맞춤]
+      let blk = null; // 차단 목록(GET /api/blocklist) — 「차단됨」 판단. live 도 같은 경로로
       const formErr = h('p', { class: 'form-error', 'data-form-error': '', hidden: true });
       const fields = h('div', { class: 'scan-fields' });
       const seg = h('div', { class: 'seg', role: 'group', 'aria-label': '입력' });
@@ -325,7 +326,7 @@
         let body;
         if (input === 'package') body = { kind: 'package', manager: mgr.value, name: name.value, version: version.value };
         else if (input === 'repo') body = { kind: 'repo', url: url.value };
-        else { if (!file) { showErr('파일을 고르세요'); return; } if (file.size > MAX_UPLOAD) { showErr(`「${file.name}」 — 파일은 50MB 까지 올릴 수 있습니다`); return; } body = { kind: 'file', fileName: file.name, size: file.size }; }
+        else { if (!file) { showErr('파일을 고르세요'); return; } if (file.size > MAX_UPLOAD) { showErr(`「${file.name}」 — 파일은 50MB 까지 올릴 수 있습니다`); return; } body = { kind: 'file', fileName: file.name, size: file.size, file }; } // file: live 는 multipart 로 보낸다
         U.api.startScan(body).then((r) => { selId = ''; U.setQuery({ id: '' }); load(); U.toast(`검사를 시작했습니다 — ${r.id}`, { tone: 'info', key: 'scan', replace: true }); })
           .catch((e) => showErr(e.message.replace(/^\d+ · /, '')));
       };
@@ -355,17 +356,17 @@
           rows = r;
           const next = sigOf([r.map((x) => [x.id, x.status]), selId]);
           if (next === sig && (!selId || detail)) return; sig = next;
-          if (selId) U.api.scan(selId).then((d) => { detail = d; draw(); }).catch(() => { detail = null; draw(); }); else { detail = null; draw(); }
-        }).catch((e) => { if (error && !quiet) return; error = e; rows = []; draw(); }).finally(() => { inflight--; });
+          if (selId) Promise.all([U.api.scan(selId), U.api.blocklist().catch(() => null)]).then(([d, bl]) => { detail = d; blk = bl; draw(); }).catch(() => { detail = null; draw(); }); else { detail = null; draw(); }
+        }).catch((e) => { if (rows !== null && !error) return; if (error && !quiet) return; error = e; rows = []; draw(); }).finally(() => { inflight--; }); // 데이터가 있으면 목록 유지 · 표시 없음 [10/21]
       }
-      const retry = () => { error = null; rows = null; sig = ''; table.hidden = true; replace(emptySlot, U.skeleton(5)); load(); };
+      const retry = () => load(true);
       function draw() {
         if (rows === null) return;
         const list = rows.filter((x) => !vf || x.verdict === vf);
         replace(vChips, [['', '전체'], ...Object.entries(SCAN_VERDICT).map(([k, [ko]]) => [k, ko])].map(([k, ko]) => h('button', { type: 'button', class: `chip-btn ${vf === k ? 'on' : ''}`, 'data-verdict': k, 'aria-pressed': String(vf === k), onclick: () => setVf(k) }, ko)));
         replace(applied, U.filterChips([vf ? { key: 'verdict', label: `결과: ${SCAN_VERDICT[vf][0]}`, clear: () => clearQuery(['verdict']) } : null], () => clearQuery(['verdict'])));
         table.hidden = !list.length;
-        replace(emptySlot, error ? U.errorState(error, retry, { quiet: () => load(true) })
+        replace(emptySlot, error ? U.errorState(error, retry, { what: '공급망 검사' })
           : !rows.length ? U.emptyState({ icon: '⌕', title: '아직 검사가 없습니다', hint: U.can() ? '위에서 패키지 이름 · 저장소 주소 · 파일로 시작하세요. 예: pip reqeusts (requests 의 오타 — 타이포스쿼팅 데모)' : '관리자가 검사를 시작하면 여기에 쌓입니다.' })
           : !list.length ? U.emptyState({ icon: '○', title: '조건에 맞는 검사 없음', actions: h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => clearQuery(['verdict']) }, '필터 해제') }) : null);
         replace(tbody, list.map((x) => { const [vk, tone] = SCAN_VERDICT[x.verdict] || ['검사 중', 'info'];
@@ -394,43 +395,46 @@
         if (focusLine) setTimeout(() => { const el = box.querySelector(`[data-line="${focusLine}"]`); if (el) el.scrollIntoView({ block: 'center' }); }, 0);
         return [paths.length > 1 ? h('div', { class: 'chips' }, paths.map((p) => h('button', { type: 'button', class: `chip-btn ${p === cur ? 'on' : ''}`, onclick: () => { focusLoc = `${p}:0`; draw(); } }, p))) : h('div', { class: 'small mono muted' }, cur), box];
       }
-      // 패키지 골라 차단 [10/20 G] — 저장소 · 파일 검사 결과의 패키지(잠금 파일마다 한 행)를 (매니저, 이름)으로 묶어 한 줄, 출처 파일을 나열.
-      // 고르면 「선택한 N개 차단 목록에 올리기」 → 확인 대화상자 → POST /api/scans/{id}/block {packages:[{manager, name, version}]} → 정책 제안
+      // 패키지 골라 차단 [10/20 G · 10/21 React 맞춤 — features/scans/ScanPackages.tsx] — 잠금 파일마다 한 행인 패키지를 (매니저, 이름, 버전)으로 묶어 한 줄, 출처 파일을 나열.
+      //   키 = 매니저:이름@버전(생태계 미지원은 생태계:이름@버전). 정렬 취약 수 → 이름 → 버전. 「차단됨」은 매니저:이름 소문자(blockKey — 차단은 버전과 무관)
+      // 고르면 「선택한 N개 차단 목록에 올리기」 → 확인 대화상자 → POST /api/scans/{id}/block {packages:[{manager, name, version}]}(그 행의 버전) → 정책 제안
       function packagesView(d) {
         const groups = new Map();
         for (const p of d.packages || []) {
-          const k = p.manager ? `${p.manager}:${p.name}` : `${p.ecosystem}:${p.name}`;
-          const g = groups.get(k) || { key: k, manager: p.manager, name: p.name, ecosystem: p.ecosystem, versions: new Set(), sources: [], direct: false, vulns: 0 };
-          g.versions.add(p.version); if (!g.sources.includes(p.source)) g.sources.push(p.source); g.direct = g.direct || p.direct; g.vulns = Math.max(g.vulns, p.vulns || 0);
+          const k = `${p.manager ? `${p.manager}:${p.name}` : `${p.ecosystem || '?'}:${p.name}`}@${p.version}`;
+          const g = groups.get(k) || { key: k, blockKey: `${p.manager}:${String(p.name).toLowerCase()}`, manager: p.manager, name: p.name, version: p.version, ecosystem: p.ecosystem || '', sources: [], direct: false, vulns: 0 };
+          if (p.source && !g.sources.includes(p.source)) g.sources.push(p.source); g.direct = g.direct || p.direct; g.vulns = Math.max(g.vulns, p.vulns || 0);
           groups.set(k, g);
         }
-        const list = [...groups.values()].sort((a, b) => b.vulns - a.vulns || a.name.localeCompare(b.name));
+        const list = [...groups.values()].sort((a, b) => b.vulns - a.vulns || a.name.localeCompare(b.name) || String(a.version).localeCompare(String(b.version)));
         if (!list.length) return h('section', { class: 'sheet-section', 'data-part': 'packages' }, h('h3', null, '패키지 0'), h('p', { class: 'small muted' }, '잠금 · 의존성 파일을 찾지 못했습니다.'));
-        const blocked = new Set((state.blocklist.packages || []).map((x) => x.value));
-        const canPick = (g) => U.can() && g.manager && !blocked.has(g.key);
+        const blocked = new Set(((blk || state.blocklist).packages || []).map((x) => String(x.value).toLowerCase()));
+        const canPick = (g) => U.can() && !!g.manager && !blocked.has(g.blockKey);
+        const sel = () => list.filter((g) => picked.has(g.key) && canPick(g)); // 선택 수는 고를 수 있는 것만
         const footSlot = h('div', { class: 'pkg-foot' });
-        const drawFoot = () => replace(footSlot, !U.can() ? null : picked.size
-          ? h('button', { type: 'button', class: 'btn btn-danger btn-xs', 'data-action': 'block-selected', onclick: blockPicked }, `⛔ 선택한 ${picked.size}개 차단 목록에 올리기`)
+        const drawFoot = () => replace(footSlot, !U.can() ? null : sel().length
+          ? h('button', { type: 'button', class: 'btn btn-danger btn-xs', 'data-action': 'block-selected', onclick: blockPicked }, `⛔ 선택한 ${sel().length}개 차단 목록에 올리기`)
           : h('span', { class: 'small muted' }, '차단할 패키지를 고르세요 — 취약점이 많은 것부터 위에 있습니다'));
         function blockPicked() {
-          const sel = list.filter((g) => picked.has(g.key));
-          const effects = [`차단 제안 초안 — 패키지 ${sel.length}개: ${sel.map((g) => g.key).join(' · ')} (정책에서 미리보기 후 적용)`,
-            `적용하면 다음 sg-install 부터 이 패키지는 설치 전 거부(컨테이너를 띄우지 않음)`, `공급망 검사 건을 「악성」으로 판정한 기록이 남습니다 — 처리자 ${U.actor()}`];
-          U.confirmDialog({ title: '고른 패키지 차단 목록에 올리기', target: `${d.target.label} · ${d.id}`, effects, okLabel: `${sel.length}개 올리기`, undo: '정책에서 제안을 「버림」하면 차단 없이 끝납니다. 적용한 뒤에는 차단 목록에서 「해제」' })
-            .then((r) => r && U.api.scanBlock(d.id, { packages: sel.map((g) => ({ manager: g.manager, name: g.name, version: [...g.versions][0] })) }, r.reason)
+          const chosen = sel();
+          // 같은 패키지(다른 버전)는 하나로 — 차단 목록 값은 매니저:이름이라 버전과 무관
+          const effects = [`차단 제안 초안 — 패키지 ${chosen.length}개: ${[...new Set(chosen.map((g) => `${g.manager}:${g.name}`))].join(' · ')} (정책에서 미리보기 후 적용)`,
+            '적용하면 다음 sg-install 부터 이 패키지는 설치 전 거부(컨테이너를 띄우지 않음) — 차단은 버전과 무관', `공급망 검사 건을 「악성」으로 판정한 기록이 남습니다 — 처리자 ${U.actor()}`];
+          U.confirmDialog({ title: '고른 패키지 차단 목록에 올리기', target: `${d.target.label} · ${d.id}`, effects, okLabel: `${chosen.length}개 올리기`, undo: '정책에서 제안을 「버림」하면 차단 없이 끝납니다. 적용한 뒤에는 차단 목록에서 「해제」' })
+            .then((r) => r && U.api.scanBlock(d.id, { packages: chosen.map((g) => ({ manager: g.manager, name: g.name, version: g.version })) }, r.reason)
               .then((x) => { picked = new Set(); U.navigate('/policies', { proposal: x.proposalId }); }))
             .catch((e) => U.toast(`차단 제안 실패: ${e.message}`, { tone: 'danger' }));
         }
         const allBox = U.can() ? h('input', { type: 'checkbox', 'aria-label': '모두 고르기', onchange: (e) => { for (const g of list) if (canPick(g)) { if (e.target.checked) picked.add(g.key); else picked.delete(g.key); } draw(); } }) : null;
         if (allBox) allBox.checked = list.filter(canPick).length > 0 && list.filter(canPick).every((g) => picked.has(g.key));
         const sec = h('section', { class: 'sheet-section', 'data-part': 'packages' },
-          h('h3', null, `패키지 ${list.length}`, h('span', { class: 'small muted' }, ' — 잠금 · 의존성 파일에서 읽음, 같은 패키지는 한 줄')),
+          h('h3', null, `패키지 ${list.length}`, h('span', { class: 'small muted' }, ' — 잠금 · 의존성 파일에서 읽음, 같은 패키지 · 버전은 한 줄')),
           h('div', { class: 'preview-table' }, h('table', { class: 'table compact' }, h('thead', null, h('tr', null, [allBox ? h('th', null, allBox) : null, h('th', null, '패키지'), h('th', null, '버전'), h('th', null, '취약'), h('th', null, '의존'), h('th', null, '출처 파일')])),
             h('tbody', null, list.map((g) => h('tr', { 'data-pkg': g.key, 'data-sources': g.sources.length, class: picked.has(g.key) ? 'selected' : '' },
               U.can() ? h('td', null, canPick(g) ? h('input', { type: 'checkbox', 'data-pick': '', 'aria-label': `${g.key} 고르기`, checked: picked.has(g.key), onchange: (e) => { if (e.target.checked) picked.add(g.key); else picked.delete(g.key); draw(); } })
-                : h('span', { class: 'small muted', title: blocked.has(g.key) ? '이미 차단 목록에 있음' : '차단 목록이 다루지 않는 생태계' }, blocked.has(g.key) ? '차단됨' : '—')) : null,
-              h('td', { class: 'mono small' }, g.manager ? g.key : h('span', { title: '차단 목록이 다루지 않는 생태계' }, `${g.ecosystem} ${g.name}`)),
-              h('td', { class: 'mono small' }, [...g.versions].join(', ')),
+                : h('span', { class: 'small muted', title: g.manager ? '이미 차단 목록에 있음' : '차단 목록이 다루지 않는 생태계' }, g.manager ? '차단됨' : '—')) : null,
+              h('td', { class: 'mono small' }, g.manager ? `${g.manager}:${g.name}` : h('span', { title: '차단 목록이 다루지 않는 생태계' }, `${g.ecosystem} ${g.name}`)),
+              h('td', { class: 'mono small' }, g.version),
               h('td', { class: `num ${g.vulns ? 'tone-warn' : 'muted'}` }, g.vulns),
               h('td', { class: 'small' }, g.direct ? '직접' : '간접'),
               h('td', { class: 'small mono' }, h('ul', { class: 'src-list' }, g.sources.map((s) => h('li', null, s))))))))),
@@ -535,7 +539,7 @@
         count.textContent = `${fmt.num(rows.length)}건`;
         // 상태 칸은 바뀔 때만 다시 그린다 — 250ms 마다 새로 그리면 오류 칸의 자동 재시도 시계가 계속 처음부터 잰다 [10/20 결정 4]
         if (state.eventsError !== shownErr || state.eventsReady !== shownReady) { shownErr = state.eventsError; shownReady = state.eventsReady;
-          replace(stateSlot, state.eventsError ? U.errorState(state.eventsError, () => U.loadEvents(), { quiet: () => U.loadEvents(true) }) : !state.eventsReady ? U.skeleton(8) : null); }
+          replace(stateSlot, state.eventsError ? U.errorState(state.eventsError, () => U.loadEvents(true), { what: '최근 이벤트' }) : !state.eventsReady ? U.skeleton(8) : null); }
         feedEl.hidden = !state.eventsReady;
         feedEl.set(state.eventsReady ? rows : []);
         const cs = sigOf(f);
@@ -1108,16 +1112,19 @@
       const table = h('table', { class: 'table', 'data-table': 'audit' }, h('thead', null, h('tr', null, ['#', '시각', '컨테이너', '종류', '상세', '규칙', '탐지 결과', '판정'].map((t) => h('th', null, t)))), tbody);
       const stateSlot = h('div', { class: 'list-slot' }, U.skeleton(8));
       const applied = h('div');
-      const wrap = h('div', { class: 'grid-scroll' }, stateSlot, table, more);
+      const noteSlot = h('div'); // 데이터가 있는데 다시 부르기만 실패 — 작은 오류 띠 [10/21 React 맞춤]
+      const wrap = h('div', { class: 'grid-scroll' }, noteSlot, stateSlot, table, more);
       table.hidden = true;
-      const hist = h('div', { class: 'grid-scroll', hidden: true });
+      const histNote = h('div'), histBody = h('div');
+      const hist = h('div', { class: 'grid-scroll', hidden: true }, histNote, histBody);
+      let histLoaded = false; // 변경 이력을 한 번이라도 받았는지 — 받았으면 다시 부르기 실패는 띠, 못 받았으면 오류 칸 + 자동 재시도
       const sheetSlot = h('div', { class: 'sheet-slot' });
       const toIso = (v) => (v ? new Date(v).toISOString() : '');
       function fetchPage(before) {
         const my = ++seq; loading = true; refresh.classList.add('spin');
         Promise.all([U.api.audit({ kind: f.kind, action: f.action, rule: f.rule, container: f.container, since: toIso(f.since), until: toIso(f.until), limit: PAGE, before }), U.api.cases({}).catch((e) => e)])
           .then(([pageRows, cs]) => { if (my !== seq) return; casesErr = cs instanceof Error ? cs : null; cases = new Map((casesErr ? [] : cs).map((c) => [c.id, c])); rows = before ? rows.concat(pageRows) : pageRows; hasMore = pageRows.length === PAGE; lastErr = null; loaded = true; loading = false; draw(); })
-          .catch((e) => { if (my !== seq) return; lastErr = e; loaded = true; loading = false; draw(); })
+          .catch((e) => { if (my !== seq) return; lastErr = e; loading = false; draw(); }) // loaded 는 받은 적이 있을 때만 true — 있으면 목록 유지 + 띠
           .finally(() => { loading = false; refresh.classList.remove('spin'); });
       }
       const FILTER_KEYS = ['kind', 'action', 'rule', 'container', 'since', 'until'];
@@ -1189,7 +1196,7 @@
             h('section', { class: 'sheet-section' }, h('h3', null, `프로세스 ${ev.processes.length}`, h('span', { class: 'small muted' }, ' — docker top')),
               ev.processes.length ? h('table', { class: 'table compact', 'data-part': 'evidence-procs' }, h('thead', null, h('tr', null, ['PID', '사용자', '명령'].map((t) => h('th', null, t)))), h('tbody', null, ev.processes.map((p) => h('tr', null, h('td', { class: 'num' }, p.pid), h('td', null, p.user), h('td', { class: 'mono small' }, p.cmd)))))
                 : h('p', { class: 'small muted', 'data-part': 'evidence-procs' }, ev.partial ? '모으지 못함 — 위 안내 참고' : '없음')));
-        }).catch((e) => replace(box, U.errorState(e, () => replace(box, evidenceView(a)))));
+        }).catch((e) => replace(box, U.errorState(e, () => replace(box, evidenceView(a)), { what: '증거' }))); // 증거는 자동 재시도 유지 [10/21 결정 ⑥]
         return box;
       }
       function auditSheet(a) {
@@ -1221,8 +1228,10 @@
       function draw() {
         if (view !== 'violations') return;
         const filtered = FILTER_KEYS.some((k) => f[k]);
-        table.hidden = !loaded || !!lastErr || rows.length === 0; more.hidden = !hasMore || !!lastErr;
-        replace(stateSlot, !loaded ? U.skeleton(8) : lastErr ? U.errorState(lastErr, () => { lastErr = null; loaded = false; draw(); fetchPage(); }, { quiet: () => fetchPage() }) // 자동 재시도는 스켈레톤 없이 [10/20 결정 4]
+        const failing = !!lastErr && !loaded; // React AuditPage: 받은 적이 없을 때만 오류 칸(+ 다시 시도 · 30초 자동 재시도), 받은 적이 있으면 목록 위 작은 띠
+        table.hidden = !loaded || rows.length === 0; more.hidden = !hasMore || !!lastErr;
+        replace(noteSlot, lastErr && loaded ? U.loadErrorNote(lastErr, '감사 로그') : null);
+        replace(stateSlot, failing ? U.errorState(lastErr, () => fetchPage(), { what: '감사 로그' }) : !loaded ? U.skeleton(8)
           : rows.length ? null : filtered ? U.emptyState({ icon: '⌕', title: '조건에 맞는 기록 없음', actions: h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => clearQuery(FILTER_KEYS) }, '필터 모두 해제') })
             : U.emptyState({ icon: '◷', title: '아직 감사 기록이 없습니다', hint: '정책에 걸린 행동(위반)만 여기에 쌓입니다.' }));
         replace(tbody, rows.map((a) => U.rowKeys(h('tr', { class: `clickable ${a.id === selId ? 'selected' : ''}`, 'data-audit': a.id, onclick: () => select(a.id) },
@@ -1239,7 +1248,9 @@
       }
       // 판정 · 변경 이력 — 판정(건) · 제안 적용 · 제안 버림 · 정책 편집 · 차단 해제를 시간순 하나로
       function loadHistory() {
+        if (!histLoaded && !histBody.querySelector('[data-part="error"]')) replace(histBody, U.skeleton(6));
         Promise.all([U.api.cases({}), U.api.changes({ limit: 500 }), U.api.proposals({ state: 'discarded' }), U.api.installs().catch(() => [])]).then(([cs, chs, discarded, ins]) => {
+          histLoaded = true; replace(histNote);
           const target = (c) => (c ? caseTarget(c, ins) : '—');
           const byId = new Map(cs.map((c) => [c.id, c]));
           const items = [
@@ -1247,7 +1258,7 @@
             ...chs.map((x) => ({ at: x.at, by: x.by, what: CHANGE_KIND[x.kind] || x.kind, tone: x.kind, caseId: x.caseId, target: target(byId.get(x.caseId)), detail: x.summary + (x.proposalId ? ` · 제안 ${x.proposalId}` : ''), reason: x.reason })),
             ...discarded.map((p) => { const c = byId.get(p.caseId); return { at: (c && c.closedAt) || p.createdAt, by: p.createdBy, what: '제안 버림', tone: 'discarded', caseId: p.caseId, target: target(c), detail: `제안 ${p.id} — 변경 없이 종결`, reason: p.reason }; }),
           ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-          replace(hist, items.length ? h('table', { class: 'table', 'data-table': 'history' }, h('thead', null, h('tr', null, ['시각', '처리자', '한 일', '대상', '내용', '건'].map((t) => h('th', null, t)))),
+          replace(histBody, items.length ? h('table', { class: 'table', 'data-table': 'history' }, h('thead', null, h('tr', null, ['시각', '처리자', '한 일', '대상', '내용', '건'].map((t) => h('th', null, t)))),
             h('tbody', null, items.map((x) => { const c = byId.get(x.caseId); return h('tr', { 'data-kind': x.tone, 'data-case': x.caseId || '', 'data-source': c ? c.source : '' },
               h('td', { class: 'num mono nowrap' }, fmt.dateTime(x.at)), h('td', { class: 'nowrap' }, x.by),
               h('td', { class: 'nowrap' }, h('span', { class: `hist-what hist-${x.tone}` }, x.what)),
@@ -1255,7 +1266,8 @@
               h('td', { class: 'small trunc', title: x.detail + (x.reason ? ` · 사유 「${x.reason}」` : '') }, x.detail, x.reason ? ` · 사유 「${x.reason}」` : ''),
               h('td', { class: 'mono small nowrap' }, c ? h('a', { href: U.caseHref(c, true), class: 'link' }, x.caseId) : x.caseId || '—')); })))
             : empty('판정 · 변경 이력 없음'));
-        }).catch((e) => replace(hist, empty(e.unsupported ? e.message : `조회 실패: ${e.message}`)));
+        }).catch((e) => { if (view !== 'history') return; // 받은 적이 있으면 목록 유지 + 띠, 없으면 오류 칸 + 다시 시도 · 30초 자동 재시도 [10/21 React 맞춤]
+          if (histLoaded) replace(histNote, U.loadErrorNote(e, '변경 이력')); else replace(histBody, U.errorState(e, () => loadHistory(), { what: '변경 이력' })); });
       }
       syncView();
       fetchPage();

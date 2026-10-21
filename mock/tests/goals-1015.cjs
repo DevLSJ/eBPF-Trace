@@ -10,7 +10,7 @@
    9 감사 로그: 판정 결과 열(판정 대기 · 악성 · 오탐 · 건 없음), 판정 · 정책 변경 이력 보기, 기간 조회는 여기만
    10 용어: 엔진 결과 = 「탐지 결과」, 사람 결론 = 「판정」
    11 설치 검사: 기본 필터 「판정 대기」, 상세에 공격 체인 + 정적 분석 비교(OSV · 버전 무관 · 출처 osv.dev · 실패 시 「조회 실패」)
-   12 모의 API = 계약 이름 · 모양(cases · decide · proposals · preview · apply · discard · blocklist · changes · installs/refused). 실제 백엔드 모드는 「백엔드 미지원」
+   12 모의 API = 계약 이름 · 모양(cases · decide · proposals · preview · apply · discard · blocklist · changes · installs/refused). 실제 백엔드 모드는 같은 경로를 부른다(10/21 React 맞춤 — 전: 「백엔드 미지원」)
    13 데모 대본: 5분 이야기 7단계를 처음부터 끝까지(시드 고정)
    14 무결성: 새 화면 상태(제안 · 차단 목록 · 변경 이력) × 1440 · 1280 넘침 0 · 콘솔 오류 0
    OSV 는 page.route 로 응답을 고정한다(reqeusts 0건 · requests 16건 — 2026-10-15 실측값). REAL_OSV=1 이면 실조회 1건을 더 돈다.
@@ -550,14 +550,15 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
     await pg.close();
   });
   const backendUp = await fetch(`${API}/health`).then((r) => r.ok).catch(() => false);
-  if (backendUp) await T('12 실제 백엔드: 판정 대기 · 제안된 변경은 「백엔드 미지원」', async () => {
+  if (backendUp) await T('12 실제 백엔드: 판정 대기 · 제안된 변경이 실제 API 로 뜬다(10/21 — 「백엔드 미지원」 아님)', async () => {
     const pg = await newPage();
+    await go(pg, '/', '?source=sim'); await require('./live-login.cjs').liveLogin(pg, API); // 10/21: live 는 쿠키 세션 로그인 뒤
     await go(pg, '/', `?source=live&api=${encodeURIComponent(API)}`);
     await pg.waitForTimeout(800);
-    ok((await pg.textContent('[data-section="pending"]')).includes('백엔드 미지원'), '대시보드 안내 없음');
+    ok(!(await pg.textContent('[data-section="pending"]')).includes('백엔드 미지원'), '대시보드에 미지원 안내');
     await go(pg, '/policies', `?source=live&api=${encodeURIComponent(API)}`);
     await pg.waitForTimeout(800);
-    ok((await pg.textContent('[data-section="proposals"]')).includes('백엔드 미지원'), '정책 제안 안내 없음');
+    ok(!(await pg.textContent('[data-section="proposals"]')).includes('백엔드 미지원'), '정책 제안에 미지원 안내');
     await pg.close();
   });
   else console.log('SKIP  12 실제 백엔드 — 백엔드가 떠 있지 않음');

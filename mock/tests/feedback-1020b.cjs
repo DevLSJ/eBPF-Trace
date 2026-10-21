@@ -480,8 +480,8 @@ const W = { timeout: 3000 };
     ok(new Set(rows.map((r) => r[0])).size === rows.length, `같은 패키지가 두 줄 ${JSON.stringify(rows)}`);
     ok(rows.some((r) => r[1] >= 2), `출처 2개 이상인 줄 없음 ${JSON.stringify(rows)}`);
     ok(await pg.locator('.sheet [data-action="block-selected"]').count() === 0, '고르기 전에 차단 버튼');
-    await pg.check('.sheet tr[data-pkg="pip:urllib3"] input[data-pick]');
-    await pg.check('.sheet tr[data-pkg="pip:idna"] input[data-pick]');
+    await pg.check('.sheet tr[data-pkg="pip:urllib3@1.26.5"] input[data-pick]'); // 10/21: 행 키 = 매니저:이름@버전(React ScanPackages)
+    await pg.check('.sheet tr[data-pkg="pip:idna@2.10"] input[data-pick]');
     ok((await pg.textContent('.sheet [data-action="block-selected"]')).includes('선택한 2개'), '버튼 글');
     await shot(pg, 'scan-packages');
     await pg.click('.sheet [data-action="block-selected"]');

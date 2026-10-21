@@ -82,7 +82,7 @@ tools/     sg-install
 - **결정 기록**: 10/15 1차 · 10/16 · 10/20 도우미(`guide-1020.cjs`) · 10/20 2차(로그인 · 대화상자 · 알림 센터 · 목록 · 셸 · 새 기본 규칙 · 증거, `feedback-1020b.cjs`) · 10/20 결정 반영(토큰 칸 삭제 · 설정 화면 · 라이선스 칩 · 30초 재시도 · 비밀번호 5자, `feedback-1020c.cjs`) — 상세는 `mock/README.md` 반영 기록
 - API 계약: Claude Docs 「API 계약」 탭
 - Playwright: `frontend/node_modules/playwright`(목업 회귀는 `PLAYWRIGHT=` 로 빌려 쓴다)
-- 회귀: 목업 9묶음(feedback-1015 · goals-1015 · decisions-1016 · policy-1016 · overview-1016 · scan-1016 · guide-1020 · feedback-1020b · feedback-1020c) + React `frontend/e2e`. 판정 N/N + 콘솔 오류 0
+- 회귀: 목업 10묶음(feedback-1015 · goals-1015 · decisions-1016 · policy-1016 · overview-1016 · scan-1016 · guide-1020 · feedback-1020b · feedback-1020c · align-1021) + React `frontend/e2e`. 판정 N/N + 콘솔 오류 0. live 검사는 `API=` 백엔드가 떠 있을 때만(로그인은 `mock/tests/live-login.cjs`)
 - 스크린샷은 `mock/screenshots/`(gitignore)
 
 ## 도메인 규칙

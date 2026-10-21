@@ -101,7 +101,7 @@ const W = { timeout: 3000 };
     const n = await pg.locator('#page [data-table="auth-audit"] tbody tr').count();
     ok(n >= 6, `인증 감사 행 ${n}`);
     const t = await pg.textContent('#page [data-table="auth-audit"]');
-    ok(t.includes('로그인 실패') && t.includes('로그인'), '인증 감사 내용');
+    ok(t.includes('로그인') && t.includes('실패'), '인증 감사 내용'); // 10/21: 서버 이름 — 로그인 실패 = action login + 결과 「실패」 칸
     await shot(pg, 'settings-auth-audit');
     await pg.close();
   });

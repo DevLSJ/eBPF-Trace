@@ -11,7 +11,7 @@
    10 이벤트: 기본 위반만(정상은 토글), 행 상세는 오른쪽 시트(?id=), 한글 라벨
    11 감사 로그: 페이지는 고정 · 표만 스크롤, 사유 열 없음, 컨테이너 칸 1줄, 설치 검사 위반은 패키지 이름
    12 정책: 첫 정책 자동 선택(?id=), 적용 범위 칩, 관리자 토큰은 화면 머리
-   13 실제 백엔드 모드의 설치 검사는 「백엔드 미지원」 안내
+   13 실제 백엔드 모드의 설치 검사는 실제 API(GET /api/installs)로 뜬다 — 10/21 React 맞춤(전: 「백엔드 미지원」 안내). API=http://127.0.0.1:8011 처럼 백엔드가 있을 때만
    14 무결성: 전 화면 × 1440 · 1280에서 페이지 넘침 0 · 콘솔 오류 0, 토폴로지 공격 체인 유지
    10/15 목표(2차, tests/goals-1015.cjs)로 바뀐 기대: 3 대시보드 구성 · 5 확인함 → 판정 · 4/7 설치 검사 기본 필터 판정 대기 · 10 자동 공격 꺼짐.
    설치 시트가 OSV(api.osv.dev)를 부르므로 page.route 로 응답을 고정한다(네트워크에 기대지 않음)
@@ -272,11 +272,13 @@ const TITLES = { '/': '대시보드', '/installs': '설치 검사', '/events': '
 
   // ---------------- 13. 실제 백엔드 모드 ----------------
   const backendUp = await fetch(`${API}/health`).then((r) => r.ok).catch(() => false);
-  if (backendUp) await T('13 실제 백엔드: 설치 검사는 백엔드 미지원 안내', async () => {
+  if (backendUp) await T('13 실제 백엔드: 설치 검사가 실제 API 로 뜬다(10/21 — 「백엔드 미지원」 아님)', async () => {
     const p = await newPage();
-    await go(p, '/installs', `?source=live&api=${encodeURIComponent(API)}`);
+    await go(p, '/', '?source=sim'); await require('./live-login.cjs').liveLogin(p, API); // 10/21: live 는 쿠키 세션 로그인 뒤
+    await go(p, '/installs?status=all', `?source=live&api=${encodeURIComponent(API)}`);
     await p.waitForTimeout(800);
-    ok((await p.textContent('#page')).includes('백엔드 미지원'), '안내 없음');
+    ok(!(await p.textContent('#page')).includes('백엔드 미지원'), '미지원 안내가 남음');
+    ok(await p.locator('#page [data-table="installs"]:not([hidden]) tbody tr, #page [data-part="empty"]').count() >= 1, '목록도 빈 상태도 없음');
     await p.close();
   });
   else console.log('SKIP  13 — 백엔드가 떠 있지 않음');

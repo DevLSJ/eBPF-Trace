@@ -1,15 +1,16 @@
 // SupplyGuard 목업 — 「설정」 화면 [10/20 결정 2] (#/settings, 사이드바 「설정 · 기록」 묶음 끝)
-// 탭: 서버 설정(보기만 — GET /api/info) · 계정(관리자) · 라이선스(GET /api/license) · 인증 감사(관리자, 모의 데이터 — GET /api/auth/audit 계약 안)
+// 탭: 서버 설정(보기만 — GET /api/info) · 계정(관리자) · 라이선스(GET /api/license) · 인증 감사(관리자 — GET /api/auth/audit?action&failed&before&limit, 서버 이름 기준 [10/21])
 // 정책 화면에 있던 서버 설정 보기 · 계정 탭을 여기로 옮겼다. 조회자는 계정 · 인증 감사 탭을 그리지 않는다(주소로 와도 서버 설정)
-// URL: ?tab=server(기본, 주소에서 생략) | accounts | license | auth-audit · 인증 감사 필터 ?event= · ?failed=1
+// URL: ?tab=server(기본, 주소에서 생략) | accounts | license | auth-audit. 인증 감사 필터는 주소에 남기지 않는다(화면 상태만, 보안상 — 10/21 결정)
+// 오류: 라이선스 · 계정 · 인증 감사는 다시 시도 · 자동 재시도 없이 일반 오류 안내만(React SettingsPage LoadError) [10/21 결정]
 (function () {
   'use strict';
   const U = window.UI;
   const { h, replace, state, fmt } = U;
   const TABS = [['server', '서버 설정', false], ['accounts', '계정', true], ['license', '라이선스', false], ['auth-audit', '인증 감사', true]];
-  // 인증 감사 이벤트 이름(계약 안) — 백엔드 auth 미들웨어가 남길 종류
-  const EVENT_KO = { login_ok: '로그인 성공', login_fail: '로그인 실패', locked: '잠김(5분)', otp_fail: 'OTP 실패', recovery_used: '복구 코드 사용', password_changed: '비밀번호 변경', logout: '로그아웃',
-    user_created: '계정 추가', role_changed: '역할 변경', user_disabled: '계정 비활성', user_enabled: '계정 활성화', password_reset: '비밀번호 초기화', otp_reset: 'OTP 초기화', license_registered: '라이선스 등록' };
+  // 인증 감사 action(서버 auth/service.go 가 남기는 13개, 10/21 확정) — 이름표는 React SettingsPage ACTION_KO 와 같다. 성공 · 실패는 ok 로 따로
+  const ACTION_KO = { login: '로그인', login_lock: '로그인 잠금', logout: '로그아웃', password_change: '비밀번호 변경', license_register: '라이선스 등록', license_renew: '라이선스 갱신',
+    otp_enroll: 'OTP 등록', otp_verify: 'OTP 확인', otp_recovery: '복구 코드 사용', user_create: '계정 추가', user_update: '계정 변경', user_reset_password: '비밀번호 초기화', user_reset_otp: 'OTP 초기화' };
 
   // ── 라이선스 탭 ── (날짜는 연도까지 — 등록 · 만료가 같은 달 · 날이면 헷갈린다)
   const ymd = (iso) => new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -27,41 +28,63 @@
         h('dt', null, '등록'), h('dd', { class: 'num' }, `${ymd(l.issuedAt)} · ${l.registeredBy}`),
         h('dt', null, '만료'), h('dd', { class: 'num' }, ymd(l.expiresAt), h('span', { class: 'small muted' }, tone === 'danger' ? ' · 만료됨' : ` · ${days}일 남음`))),
       h('p', { class: `note-box lic-note tone-${tone}` }, note));
-    }).catch((e) => replace(body, e.status === 404 ? U.emptyState({ icon: '🔑', title: '등록된 라이선스가 없습니다', hint: '관리자가 로그인하면 라이선스 등록 단계가 나옵니다.' }) : U.errorState(e, load)));
+    }).catch((e) => replace(body, e.status === 404 ? U.emptyState({ icon: '🔑', title: '등록된 라이선스가 없습니다', hint: '관리자가 로그인하면 라이선스 등록 단계가 나옵니다.' }) : U.loadErrorNote(e, '라이선스')));
     load();
     return box;
   }
 
-  // ── 인증 감사 탭(관리자) — 로그인 · 실패 · 잠김 · 계정 변경. 모의 데이터(IP 는 문서용 주소) ──
-  function authAuditView(query) {
-    const f = { event: EVENT_KO[query.get('event')] ? query.get('event') : '', failed: query.get('failed') === '1' };
+  // ── 인증 감사 탭(관리자) — 로그인 · 실패 · 잠김 · 계정 변경. 시뮬은 모의 데이터(IP 는 문서용 주소). 필터는 서버 쿼리(action · failed=1) ──
+  const PAGE = Math.max(1, Number(new URLSearchParams(location.search).get('auditPage')) || 200); // 한 번에 읽는 수(React 와 같은 200) — ?auditPage=N 은 회귀용
+  function authAuditView() {
+    const f = { action: '', failed: false }; // 화면 상태만 — 주소를 읽지도 쓰지도 않는다 [10/21 결정]
     const count = h('span', { class: 'num muted' });
     const tbody = h('tbody');
-    const table = h('table', { class: 'table', 'data-table': 'auth-audit', hidden: true }, h('thead', null, h('tr', null, ['시각', '아이디', '한 일', '결과', 'IP', '처리자', '내용'].map((t) => h('th', null, t)))), tbody);
+    const table = h('table', { class: 'table', 'data-table': 'auth-audit', hidden: true }, h('thead', null, h('tr', null, ['시각', '계정', '동작', '대상', 'IP', '결과', '내용'].map((t) => h('th', null, t)))), tbody);
+
     const slot = h('div', { class: 'list-slot' }, U.skeleton(6));
     const applied = h('div');
-    const setF = (k, v) => { f[k] = v; U.setQuery({ [k]: v === true ? '1' : v || '' }); load(); };
+    const setF = (k, v) => { f[k] = v; load(); };
     const filters = h('div', { class: 'filters' },
-      U.select([['', '한 일 전체'], ...Object.entries(EVENT_KO)], f.event, (v) => setF('event', v), { 'aria-label': '한 일' }),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.failed, onchange: (e) => setF('failed', e.target.checked) }), ' 실패만'),
-      h('span', { class: 'small muted push-right' }, '최근 200건 · IP 는 모의 값(문서용 주소)'));
-    const panel = U.panel({ title: ['인증 감사 ', count], class: 'grow', body: h('div', { class: 'col' }, filters, applied, h('div', { class: 'grid-scroll' }, slot, table)) });
-    let loaded = false;
+      U.select([['', '한 일 전체'], ...Object.entries(ACTION_KO)], f.action, (v) => setF('action', v), { 'aria-label': '한 일' }),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.failed, onchange: (e) => setF('failed', e.target.checked) }), ' 실패만'));
+    // 「더 보기」(React 와 같음): 받은 수가 PAGE 이상이면 보이고, 마지막 행 id 를 before 로 다음을 붙인다. 필터가 바뀌면 처음부터
+    const moreSlot = h('div');
+    const panel = U.panel({ title: ['인증 감사 ', count], class: 'grow', body: h('div', { class: 'col' }, filters, applied, h('div', { class: 'grid-scroll' }, slot, table, moreSlot)) });
+    let loaded = false, all = [], gen = 0;
+    const row = (x) => h('tr', { 'data-auth-action': x.action, 'data-ok': String(x.ok), 'data-audit-id': x.id },
+      h('td', { class: 'num mono nowrap' }, fmt.dateTime(x.at)), h('td', { class: 'mono' }, x.actor || '—'),
+      h('td', { class: 'nowrap' }, ACTION_KO[x.action] || x.action),
+      h('td', { class: 'mono small' }, x.target || '—'),
+      h('td', { class: 'mono small nowrap' }, x.ip || '—'),
+      h('td', null, h('span', { class: `badge ${x.ok ? 'badge-level-normal' : 'badge-alert'}` }, x.ok ? '성공' : '실패')),
+      h('td', { class: 'small muted trunc', title: x.detail || '' }, x.detail || ''));
+    function drawMore(hasMore, err) {
+      replace(moreSlot, hasMore || err ? h('div', { class: 'more-row' },
+        err ? h('span', { class: 'small tone-danger', role: 'alert' }, `더 불러오지 못했습니다 — ${err.message}`) : null,
+        hasMore ? h('button', { type: 'button', class: 'btn btn-outline btn-xs', 'data-action': 'more', onclick: more }, '더 보기') : null) : null);
+    }
+    function more(e) {
+      const btn = e.currentTarget, my = gen; btn.disabled = true; btn.textContent = '불러오는 중…';
+      U.auth.api.authAudit({ limit: PAGE, action: f.action, failed: f.failed ? '1' : '', before: all[all.length - 1].id }).then((next) => {
+        if (my !== gen) return;
+        all = all.concat(next); count.textContent = `${fmt.num(all.length)}건`;
+        tbody.append(...next.map(row)); drawMore(next.length >= PAGE);
+      }).catch((err) => { if (my === gen) drawMore(true, err); });
+    }
     function load(quiet) {
       if (!quiet && !loaded) replace(slot, U.skeleton(6));
-      return U.auth.api.authAudit({ limit: 200, event: f.event, failed: f.failed ? '1' : '' }).then((rows) => {
-        loaded = true; count.textContent = `${fmt.num(rows.length)}건`;
+      const my = ++gen; replace(moreSlot, null);
+      return U.auth.api.authAudit({ limit: PAGE, action: f.action, failed: f.failed ? '1' : '' }).then((rows) => {
+        if (my !== gen) return;
+        loaded = true; all = rows; count.textContent = `${fmt.num(rows.length)}건`;
         table.hidden = !rows.length;
-        replace(applied, U.filterChips([f.event ? { key: 'event', label: `한 일: ${EVENT_KO[f.event]}`, clear: () => { filters.querySelector('select').value = ''; setF('event', ''); } } : null,
+        replace(applied, U.filterChips([f.action ? { key: 'action', label: `한 일: ${ACTION_KO[f.action]}`, clear: () => { filters.querySelector('select').value = ''; setF('action', ''); } } : null,
           f.failed ? { key: 'failed', label: '실패만', clear: () => { filters.querySelector('input[type="checkbox"]').checked = false; setF('failed', false); } } : null],
-        () => { filters.querySelector('select').value = ''; filters.querySelector('input[type="checkbox"]').checked = false; f.event = ''; f.failed = false; U.setQuery({ event: '', failed: '' }); load(); }));
-        replace(slot, rows.length ? null : U.emptyState({ icon: '◷', title: f.event || f.failed ? '조건에 맞는 기록 없음' : '아직 인증 기록이 없습니다' }));
-        replace(tbody, rows.map((x) => h('tr', { 'data-auth-event': x.event, 'data-ok': String(x.ok) },
-          h('td', { class: 'num mono nowrap' }, fmt.dateTime(x.at)), h('td', { class: 'mono' }, x.username || '—'),
-          h('td', { class: 'nowrap' }, EVENT_KO[x.event] || x.event),
-          h('td', null, h('span', { class: `badge ${x.ok ? 'badge-level-normal' : 'badge-alert'}` }, x.ok ? '성공' : '실패')),
-          h('td', { class: 'mono small nowrap' }, x.ip || '—'), h('td', { class: 'small' }, x.by || '—'), h('td', { class: 'small muted trunc', title: x.detail || '' }, x.detail || ''))));
-      }).catch((e) => { table.hidden = true; replace(slot, U.errorState(e, () => { loaded = false; load(); }, { quiet: () => load(true) })); });
+        () => { filters.querySelector('select').value = ''; filters.querySelector('input[type="checkbox"]').checked = false; f.action = ''; f.failed = false; load(); }));
+        replace(slot, rows.length ? null : U.emptyState({ icon: '◷', title: f.action || f.failed ? '조건에 맞는 기록 없음' : '아직 인증 기록이 없습니다' }));
+        replace(tbody, rows.map(row));
+        drawMore(rows.length >= PAGE);
+      }).catch((e) => { table.hidden = true; replace(slot, U.loadErrorNote(e, '인증 감사')); }); // 다시 시도 · 자동 재시도 없음 [10/21 결정]
     }
     load();
     return panel;
@@ -80,11 +103,11 @@
         server: () => h('div', { class: 'settings-scroll' }, U.policyEasy.serverSettings()),
         accounts: () => h('section', { class: 'panel grow acct-panel' }, U.auth.accountsView()),
         license: () => h('div', { class: 'settings-scroll' }, licenseView()),
-        'auth-audit': () => authAuditView(query),
+        'auth-audit': () => authAuditView(),
       };
       function draw() {
         replace(bar, tabs.map(([k, ko]) => h('button', { type: 'button', role: 'tab', class: `seg-btn ${tab === k ? 'on' : ''}`, 'data-settings-tab': k, 'aria-selected': String(tab === k),
-          onclick: () => { if (tab === k) return; tab = k; U.setQuery({ tab: k === 'server' ? '' : k, event: '', failed: '' }); draw(); } }, ko)));
+          onclick: () => { if (tab === k) return; tab = k; U.setQuery({ tab: k === 'server' ? '' : k }); draw(); } }, ko)));
         body.dataset.settingsView = tab;
         replace(body, VIEWS[tab]());
       }

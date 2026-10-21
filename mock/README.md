@@ -34,7 +34,7 @@
 | 옵션 | 뜻 |
 | --- | --- |
 | `?fresh=1` | 빈 서버 — 설치 세션 · 감사 기록 · 건 · 차단 목록 없이 시작(빈 상태 시연) |
-| `?source=live&api=<주소>` | 실제 백엔드에 붙는다. 설치 검사 · 판정 · 제안 · 차단 목록 API 는 백엔드에 아직 없어 「백엔드 미지원」 안내 |
+| `?source=live&api=<주소>` | 실제 백엔드에 붙는다(쿠키 로그인). 모든 화면이 실제 API 를 부르고, 백엔드에 없는 경로만 「백엔드 미지원」 [10/21] |
 | `#/<화면>?id=<항목>` | 상세 시트가 열린 상태(설치 검사 · 이벤트 · 감사 로그 · 정책). 필터도 URL 에 남는다 |
 | `#/installs?status=all` | 설치 검사 전체 보기(기본은 판정 대기 + 진행 중) |
 | `#/policies?proposal=<id>` · `?id=__blocklist__` | 정책 › 제안 미리보기 · 차단 목록 |
@@ -43,11 +43,11 @@
 | `?dns=off` · `?notify=off` | 시뮬 서버 상태 모의 값(`state.server`) — 「도메인 판단 꺼짐」 배너 / 후속 조치의 「웹훅 미설정」 [10/20] |
 | `?as=admin` · `?as=viewer` | 로그인 건너뜀(빠른 확인). 없으면 로그인 화면부터 [10/20 2차] |
 | `?auth=fresh` | 첫 로그인부터 — 비밀번호 변경 → 라이선스 → OTP 등록 [10/20 2차] |
-| `?notify=fail` · `?discovery=fanotify` | 웹훅 실패 3회(알림 센터 · 서버 설정) / 발견 방식 fanotify(기본 docker-events) [10/20 2차] |
-| `?latency=<ms>` · `?fail=audit,installs,scans,events` | 모의 서버 지연(첫 로드 스켈레톤) / 그 조회가 한 번 실패(오류 + 「다시 시도」) [10/20 2차]. `?fail=audit:2` 처럼 `:N` 이면 N 번 실패(인증 감사는 `authAudit`) [10/20 결정 4] |
+| `?notify=fail` · `?discovery=fanotify` | 웹훅 실패 3회(알림 센터 · 서버 설정) / 발견 방식 fanotify(시뮬 기본 docker-events, 실제 백엔드 기본은 auto) [10/20 2차] |
+| `?latency=<ms>` · `?fail=audit,installs,scans,events,changes` | 모의 서버 지연(첫 로드 스켈레톤) / 그 조회가 한 번 실패(오류 + 「다시 시도」) [10/20 2차]. `?fail=audit:2` 처럼 `:N` 이면 N 번 실패(인증 감사는 `authAudit`) [10/20 결정 4] |
 | `?retry=<ms>` | 목록 오류의 자동 재시도 주기(기본 30초 — 확인용으로 줄인다) [10/20 결정 4] |
 | `?license=soon` · `?license=expired` | 라이선스 20일 남음(칩 노랑) / 이틀 전 만료(칩 빨강) [10/20 결정 3] |
-| `#/settings?tab=` (server · accounts · license · auth-audit) | 설정 화면 탭(기본 서버 설정). 인증 감사 필터 `&event=` · `&failed=1`. 옛 주소 `#/policies?tab=accounts` · `#/policies?settings=1` 은 여기로 보낸다 [10/20 결정 2] |
+| `#/settings?tab=` (server · accounts · license · auth-audit) | 설정 화면 탭(기본 서버 설정). 인증 감사 필터는 주소에 남기지 않는다 [10/21]. 옛 주소 `#/policies?tab=accounts` · `#/policies?settings=1` 은 여기로 보낸다 [10/20 결정 2] |
 | `#/audit?…&tab=evidence` | 감사 상세(격리된 행)의 증거 탭 [10/20 2차] |
 
 ### 데모 계정 (시뮬레이션 전용 가짜 값 — 실제 비밀번호 아님)
@@ -73,7 +73,7 @@
 | 소스 | 피드·통계 | 정책 | 감사 로그 | 데모 제어 |
 | --- | --- | --- | --- | --- |
 | **내장 시뮬레이션** (기본) | 백엔드 mock 소스와 같은 컨테이너 3개(`web-api`·`worker`·`pkg-reqeusts`)가 100ms 마다 정상 이벤트를 낸다. 공격 시나리오 1→2→3 은 **지금 실행**으로만(자동 주기 기본 끔 — 데모는 「판정 대기 0」에서 시작). `shared/data.js` 의 `evaluate()` 가 기본 정책 7개 + 시스템 규칙 `blocklist-hosts` 를 백엔드 엔진과 같은 순서로 평가 | 메모리(모의 서버가 건 · 제안 · 차단 목록 · 변경 이력도 들고 있음) | 시드 고정 약 90건(24h 런타임 경고 + 어제 격리된 설치 2건) + 실시간 위반이 쌓인다 | 전부 동작. **지금 실행**은 격리 중이던 컨테이너를 먼저 재기동(차단 이미지면 기동 즉시 격리)하고 일시정지도 해제한 뒤 바로 흘린다 |
-| **실제 백엔드** | `GET /api/events/recent`·`/api/stats` 로 채우고 `/ws/events` 로 실시간 수신 (1s→10s 백오프 재연결) | `GET/POST/PUT/DELETE /api/policies` (Bearer 토큰) | `GET /api/audit` (id 커서) | 격리 모드·공격 실행은 백엔드 설정을 따르므로 안내만 뜬다 |
+| **실제 백엔드** | `GET /api/events/recent`·`/api/stats` 로 채우고 `/ws/events` 로 실시간 수신 (1s→10s 백오프 재연결) | `GET/POST/PUT/DELETE /api/policies` (쿠키 세션) | `GET /api/audit` (id 커서) | 격리 모드·공격 실행은 백엔드 설정을 따르므로 안내만 뜬다 |
 
 실제 모드는 다른 출처에서 REST 를 부르므로 백엔드 `ALLOWED_ORIGINS` 에 이 페이지의 출처(`http://127.0.0.1:8766`, 파일로 열었으면 `null`)가 있어야 한다.
 `make backend` 가 그렇게 띄운다. 연결이 안 되면 상단에 붉은 배너로 이유가 나온다.
@@ -100,7 +100,7 @@
 - **판정 → 제안 초안**: 악성 = 패키지(설치) 또는 이미지(런타임) 차단 + 위반 통신의 도메인 차단. 오탐 = 걸린 규칙마다 가장 좁은 예외(파일 `allowPaths` · 도메인 있는 통신 `allowHosts` · 도메인 없는 통신 `allowCidrs` IP/32, 실행 규칙은 자동 예외 없음). 이미 판정된 건은 409
 - **미리보기**: 제안을 적용한 정책 사본으로 감사 로그를 다시 평가해 탐지 결과가 바뀌는 행만. **적용**: 차단 목록 · 규칙 반영 → 변경 이력 → 제안 applied → 건 closed. **버림**: 변경 없이 건 closed
 - **차단이 먹는 곳**: 패키지 = 데모 제어 설치가 `blocklist/check` 후 「설치 전 거부」 · 이미지 = 재기동 즉시 격리(`blocked-image`, 새 건 없음) · 도메인 = 시스템 규칙 `blocklist-hosts`
-- 처리자는 데모 계정 「보안 담당자」 하나. 목업 sim 은 mock 소스라 판정 · 적용에 토큰이 필요 없다(계약: `EVENT_SOURCE=mock` 이면 토큰 없이)
+- 처리자는 로그인 계정의 표시 이름(`UI.actor()`). 조회자의 쓰기는 403
 
 ### 토폴로지 설계 (2일차 재설계 — React 에도 이식)
 
@@ -124,7 +124,7 @@
 | `shared/shell-plus.js` | 셸 2차 [10/20] — 알림 센터(상단 종, 서버 상태 알림은 `#/settings`) · 사이드바 통합 검색(`/`, 설정 항목 포함) · 사이드바 접기(56px, 1100px 이하 자동 · 펼침은 그 화면 동안만, `[`) |
 | `shared/data.js` | 컨테이너·공격 시나리오·기본 정책 + 시스템 규칙 `blocklist-hosts` · 규칙 평가 · 시드 고정 감사 로그 · 설치 세션 시드 10건(데모 대본용 — 오늘은 통과 · 실패 · 미확인뿐, 어제 격리 2건은 악성 판정 · 적용됨) · 데모 설치 3종(정상 · 악성 · 경고) · 세션 집계(`statusOf` · `addToSession`) · 패키지 이름 정규화(`pkgName` · `pkgKey` · `ECOSYSTEM`) (`window.MOCK`) |
 | `shared/app.js` | 셸 · 해시 라우터 · 공통 컴포넌트(배지·패널·가상 스크롤 피드·막대 차트·토폴로지 SVG·토스트·확정 버튼·스위치) · **판정 흐름 공통 부품**(`attackChain` 공격 체인 · `decisionBar` 판정 버튼 · `previewView` 미리보기 표 · `decisionBadge`) · 시뮬레이션(소스+파이프라인+통계, 감사 로그 저장 · 런타임 건) · **모의 서버 `srv`**(건 · 판정 · 제안 · 미리보기 · 적용 · 버림 · 차단 목록 · 변경 이력 · 설치 전 거부) · 실제 백엔드 클라이언트(REST+WS) · 화면용 데이터 API(`UI.api` — 계약 이름 그대로, OSV 직접 조회 포함) · 안내 · 데모 제어 (`window.UI`) |
-| `shared/screens.js` | 화면 6개 (`UI.screens['/']` … `['/audit']`), 탭 하나 = 질문 하나. 설치 검사 · 판정 흐름은 React 에 아직 없다 |
+| `shared/screens.js` | 화면 7개 (`UI.screens['/']` … `['/audit']`), 탭 하나 = 질문 하나. React 에 모두 있다 |
 | `shared/chat.js` · `shared/guide.js` | 우측 하단 「도우미」 — `guide.js` 가 버튼 하나(🛡) · 패널 · 탭 2개(대응 가이드 · AI 도우미)와 대응 가이드(건별 5단계 · 구축 순서)를 맡고, `chat.js` 는 AI 도우미 탭 본문(`UI.chat.el`)만 만든다 [10/20] |
 | `tests/feedback-MMDD.cjs` · `tests/goals-MMDD.cjs` | 피드백 · 목표 묶음별 회귀(Playwright 직접 호출). 판정은 N/N 완전 일치 + 콘솔 오류 0. OSV 는 `page.route` 로 응답 고정 |
 | `shared/styles.css` | Tailwind slate/indigo 토큰을 CSS 변수로 옮긴 스타일. 페이지 고정·본문만 스크롤 |
@@ -176,7 +176,7 @@
 - **삭제** — 정책의 차단 목록 단독 화면(→ 아래 칸), 판정 토스트 「미리보기 →」(→ React 와 같은 「제안 보기 →」)
 - 검증: `node tests/decisions-1016.cjs` 11/11(테스트를 코드 변경 뒤에 써서 수정 전 실패는 못 보였다) · `goals-1015` 46/46 · `feedback-1015` 31/31(실제 백엔드 시나리오 1개씩 제외 — 백엔드가 떠 있지 않음. 기대값을 고친 곳은 `// 10/16` 주석) · 바뀐 화면 × 1440 · 1280 넘침 0 · 콘솔 오류 0 · 스크린샷 `screenshots/1016/`
 
-정책 개편 시안(2026-10-16, 확인 대기 — 처음 쓰는 사람도 정책을 세부적으로):
+정책 개편(2026-10-16, 확정 · React 반영 — 처음 쓰는 사람도 정책을 세부적으로):
 - **쉬운 설정(기본)** — ① 무엇을(파일 열기 · 프로그램 실행 · 외부 통신) ② 어떤 값(칩 입력, 바로 형식 검사 — 통신은 포트 · 대역 · 도메인을 알아서 나눔, 자주 쓰는 값 추천) ③ 걸리면(알림만 · 즉시 격리 · 시험 운영) ④ 어디에(모든 컨테이너 · 설치 검사에서만 · 지정한 컨테이너) ⑤ 이름 + 아래 한 줄 요약 문장. 「고급 · 폼」 · 「고급 · YAML」은 같은 값을 고치는 탭(`shared/policy-easy.js`)
 - **새 정책은 템플릿에서** — 비밀 파일 보호 · 내려받기 도구 · 받은 스크립트 바로 실행 · 리버스 셸 포트 · 허용한 곳만 통신 · 설치 중엔 패키지 저장소만 · 빈 정책
 - **이 행동으로 정책 만들기** — 감사 · 이벤트 시트의 「이 행동 막기」(값이 채워진 새 정책) · 「이 행동 허용」(걸린 정책에 가장 좁은 예외 칩을 더해 열기, 새로 더한 칩 강조)
@@ -204,14 +204,14 @@ eBPF 수집 종합(2026-10-16, 확정 · React · 백엔드 이식 완료 — �
 - **API 계약(안)** — `POST /api/scans {kind: package|repo|file, …}`(파일은 multipart) → `{id}` · `GET /api/scans` · `GET /api/scans/{id}`(findings[{rule, category, message, file, line, match}] · vulns[{package, version, direct, count, maxSeverity, ids}] · files{경로: 코드}) · `POST /api/scans/{id}/block` → `{proposalId}`. 건 `source` 에 `scan` 추가
 - 검증: `node tests/scan-1016.cjs` 9/9(수정 전 0/9) · 기존 회귀 5개 통과(사이드바 순서 기대값 `// 10/16`) · 콘솔 오류 0 · 스크린샷 `screenshots/1016-scan/`
 
-AI 도우미 시안(2026-10-16, 확인 대기 — 전 화면 우측 하단, `shared/chat.js`):
+AI 도우미(2026-10-16, 확정 · React 반영 — 전 화면 우측 하단, `shared/chat.js`):
 - 💬 버튼 → 대화 창(380×540). 추천 질문 4개, 지금 보는 화면 정보를 함께 넘긴다. 답은 조각으로 흘려보내고, 답 아래 「관련 화면」 링크
 - 읽기 전용(판정 · 정책 변경 안 함), 대화는 이 탭(sessionStorage)에만, 「지우기」
 - 실제 앱: `POST /api/chat` → 로컬 Ollama qwen2.5:3b, 읽기 전용 조회 도구 한 번 + 서버가 붙이는 링크 · 판정 상태(실측: 3B 모델이 판정 상태를 지어냄). 첫 질문 ~100초(모델 불러오기), 이후 ~20초
 - 확인: 동작 확인만(질문 2개 → 답 · 링크, 콘솔 오류 0)
 - 10/20: 떠 있는 💬 창은 없애고 아래 「도우미」 패널의 「AI 도우미」 탭으로 옮겼다(동작 그대로)
 
-도우미 시안(2026-10-20, 확인 대기 — 우측 하단 버튼 하나 🛡 → 패널 탭 2개, `shared/guide.js` + `shared/chat.js`):
+도우미(2026-10-20, 확정 · React 반영 — 우측 하단 버튼 하나 🛡 → 패널 탭 2개, `shared/guide.js` + `shared/chat.js`):
 - **「대응 가이드」 탭** — 건(격리 · 경고)마다 5단계 체크리스트와 진행률 N/5: 1 탐지(걸린 규칙 · 첫 위반 시각, 자동) → 2 격리 확인(격리됨 / dry-run 이면 「격리 대상 — 컨테이너 살아 있음」 / 경고, 자동) → 3 공격 체인 보기(설치 시트 · 토폴로지 · 검사 결과 링크를 누르면 완료) → 4 판정(건의 decision 이 바뀌면 완료, 판정하러 가기 · 제안 적용 링크) → 5 후속 조치(규칙별 문구 + 체크박스, 공통 「웹훅 알림 발송됨 / 미설정 / 미확인」). 3 · 5 의 상태는 이 브라우저(`localStorage supplyguard.guide.<caseId>`)
 - **규칙별 후속 조치 문구** — `sensitive-files` · `sandbox-secrets` → 키 · 토큰 교체 + 같은 볼륨 컨테이너 확인 / `reverse-shell-ports` · `runtime-direct-ip` · `sandbox-egress` · `egress-allowlist` → 목적지 차단 목록 + 같은 이미지 컨테이너 확인 / `no-shell-download` · `pipe-to-shell` → 설치 스크립트 출처 · 버전 고정 · 차단 / `blocked-image` · `blocklist-hosts` 별도 문구, 그 밖은 공통 한 줄. 같은 묶음 규칙은 한 줄로 합친다
 - **자동 열림** — 새 건이 열리면 **대시보드에서만** 가이드 탭으로 자동 열린다. 다른 화면에서는 배지 + 왼쪽 아래 토스트 「가이드 열기」(실측: 떠 있는 패널이 상세 시트의 판정 칸 · 정책 편집기 「저장 후 적용」을 가려 기존 회귀 4개가 깨졌다). 화면을 옮기거나 가이드 안의 링크를 누르면 패널은 닫힌다(배지는 남음)
@@ -224,19 +224,19 @@ AI 도우미 시안(2026-10-16, 확인 대기 — 전 화면 우측 하단, `sha
 - 보류: 건이 종결(제안 적용 · 버림)되면 가이드를 끝난 것으로 볼지(지금은 종결 건도 5단계를 보이되 배지에서는 뺀다) / 구축 순서를 「건이 하나도 없을 때」만 보일지 / 자동 열림 범위(대시보드만 vs 토스트만) — 질문 목록 참고
 - 검증: `node tests/guide-1020.cjs` 12/12(수정 전 0/11) · 기존 회귀 6개 `feedback-1015` 31/31 · `goals-1015` 46/46 · `decisions-1016` 11/11 · `policy-1016` 7/7 · `overview-1016` 8/8 · `scan-1016` 9/9 · 콘솔 오류 0 · 스크린샷 `screenshots/guide-1020-{case,setup,dns-off}.png`
 
-2026-10-20 2차 시안(확인 대기 — W10, 참고 제품 remastered2 패턴을 이 목업 방식으로 다시 만듦):
+2026-10-20 2차 시안(확정 · React 반영 — W10, 참고 제품 remastered2 패턴을 이 목업 방식으로 다시 만듦):
 - **A 로그인 · 역할 · 계정** — 아이디 · 비밀번호 → (첫 로그인) 비밀번호 변경(10자 이상 · 아이디와 다름 · 확인 일치 — **10/20 결정 변경: 5자**) → (라이선스 없음 + 관리자) 라이선스 4칸(붙여넣으면 나눠 들어감, 숫자 16자리 = 1년 평가판) → OTP 등록(QR · 수동 키 → 6자리 확인 → 복구 코드 10개 1회 표시 · 「저장했습니다」 체크 뒤 「시작하기」) 또는 OTP 입력(「복구 코드로 로그인」 전환). 실패 문구는 아이디가 있든 없든 같고, 5번 틀리면 5분 잠금. 조회자는 라이선스가 없으면 로그인 단계에서 403 문구. 상단에 라이선스 칩(「평가판 · N일 남음」, 14일 이하 노랑 — **10/20 결정: 30일 이하 노랑 · 만료 빨강**) · 계정 메뉴(내 정보 · 비밀번호 변경 · 로그아웃). **조회자는 쓰기 버튼을 그리지 않는다**(판정 · 적용 · 버림 · 해제 · 새 정책 · YAML · 검사 시작 · 차단 목록에 올리기 · 테스트 발송 · 관리자 토큰 칸 · 계정 탭). 조회자 정책 보기는 요약 + YAML 읽기 전용. 정책 화면 「계정」 탭(관리자): 목록 · 추가(임시 비밀번호 1회 표시) · 역할 변경 · 비활성 · 비밀번호 초기화 · OTP 초기화, 마지막 관리자 · 자기 자신에는 강등 · 비활성 버튼을 그리지 않고 안내. 처리자 이름은 로그인한 계정(`UI.actor()`, 관리자 표시 이름 「보안 담당자」 유지)
 - **B 확인 대화상자** — 「악성 확정」 · 「오탐」 · 제안 「적용」 · 「버림」 · 차단 목록 「해제」 · 정책 「삭제」 · 「전체 교체」가 두 번 누르기 대신 대화상자: 대상 · 함께 일어나는 일(모의 서버가 계산 — 예: 차단 목록 +2 (패키지 1 · 도메인 1), 같은 이미지 컨테이너 N개 다음 시작 때 격리, 과거 위반 N건 탐지 결과 바뀜) · 사유(선택, 판정은 건 메모 · 적용 · 해제는 변경 이력 `reason`) · 되돌리기 안내. 포커스 트랩 · Esc 취소 · 사유를 쓴 뒤 닫으면 「버리고 닫기 / 계속 쓰기」. 설치 시트의 메모 칸은 대화상자의 사유로 옮겼다
-- **C 알림 센터** — 상단 종: 판정 대기 · 적용하지 않은 제안 · 실시간 연결 끊김 · 도메인 판단 꺼짐 · 격리 꺼짐(dry-run) · 알림 발송 실패 · 새 위반을 데이터로 계산. 읽음은 「알림 → 그때의 서명」(localStorage `supplyguard.notices.read`, 건이 늘면 다시 안 읽음) · 모두 읽음 · 누르면 그 화면(서버 상태 알림은 `#/policies?settings=1`)
-- **D 목록 정리**(이벤트 · 감사 로그 · 설치 검사 · 공급망 검사) — 첫 로드 스켈레톤 · 오류 + 「다시 시도」(오류 동안은 자동으로 다시 부르지 않음) · 아이콘 빈 상태 · 적용된 필터 칩 + 모두 해제(필터는 주소에 남음 — 감사 로그도 kind · action · rule · since · until) · 공급망 검사 결과 필터 · 감사 로그 CSV 내보내기(기간 필수, 지금 필터 그대로, BOM) · 모든 행 Tab + Enter/Space · 실시간 연결이 끊기면 상단 붉은 배너, 다시 붙으면 「끊긴 동안 N건을 채웠습니다」(10초 뒤 닫힘). 끊김 · 복구 토스트는 배너로 바꿨다
+- **C 알림 센터** — 상단 종: 판정 대기 · 적용하지 않은 제안 · 실시간 연결 끊김 · 도메인 판단 꺼짐 · 격리 꺼짐(dry-run) · 알림 발송 실패 · 새 위반을 데이터로 계산. 읽음은 「알림 → 그때의 서명」(localStorage `supplyguard.notices.read`, 건이 늘면 다시 안 읽음) · 모두 읽음 · 누르면 그 화면(서버 상태 알림은 `#/settings`)
+- **D 목록 정리**(이벤트 · 감사 로그 · 설치 검사 · 공급망 검사) — 첫 로드 스켈레톤 · 오류 + 「다시 시도」(30초마다 자동 재시도 — 10/20 결정 4) · 아이콘 빈 상태 · 적용된 필터 칩 + 모두 해제(필터는 주소에 남음 — 감사 로그도 kind · action · rule · since · until) · 공급망 검사 결과 필터 · 감사 로그 CSV 내보내기(기간 필수, 지금 필터 그대로, BOM) · 모든 행 Tab + Enter/Space · 실시간 연결이 끊기면 상단 붉은 배너, 다시 붙으면 「끊긴 동안 N건을 채웠습니다」(10초 뒤 닫힘). 끊김 · 복구 토스트는 배너로 바꿨다
 - **E 셸** — 사이드바 통합 검색(패키지 · 컨테이너 · 규칙 id · 도메인 · 검사, `/` 포커스, ↑↓ Enter Esc) · 사이드바 접기 56px(넓은 화면은 이 브라우저에 기억, 1100px 이하는 자동 접힘 · 누르면 그 화면 동안만 펼침) · `?` 도움말에 단축키 표(기존 「사용 흐름」 그대로)
 - **F 새 기본 규칙** — 정책 화면 맨 위 띠 「기본 정책에 새 규칙 1개 · 바뀐 규칙 1개가 있습니다」 → 펼치면 규칙별 「미리보기 후 추가」(바로 「저장 전 확인」) · 「이번엔 숨기기」(localStorage, 기본 규칙 내용이 바뀌면 다시 보임). 바뀐 규칙은 지금 규칙을 덮어쓰지 않고 **기본에만 있는 값만 더한 사본**으로 저장 전 확인. 모의 값: missing = `runtime-direct-ip`, differs = `sandbox-egress`(`directIp: kill`). 정책 편집기 · YAML · 모의 엔진이 `directIp`(allow · alert · kill)를 다룬다(백엔드 engine.go 와 같은 순서)
-- **G 패키지 골라 차단** — 저장소 · 파일 검사 결과에 「패키지 N」 표(취약 수 · 직접/간접 · 출처 파일), 같은 (매니저, 이름)은 한 줄 + 출처 나열, 차단 목록이 다루지 않는 생태계(GitHub Actions 등) · 이미 차단된 것은 체크 없음. 고르면 「선택한 N개 차단 목록에 올리기」 → 확인 대화상자 → `POST /api/scans/{id}/block {packages:[{manager, name, version}]}` → 정책 제안. 패키지 검사는 지금처럼 한 번에
+- **G 패키지 골라 차단** — 저장소 · 파일 검사 결과에 「패키지 N」 표(취약 수 · 직접/간접 · 출처 파일), 같은 (매니저, 이름, 버전)은 한 줄 + 출처 나열(10/21), 차단 목록이 다루지 않는 생태계(GitHub Actions 등) · 이미 차단된 것은 체크 없음. 고르면 「선택한 N개 차단 목록에 올리기」 → 확인 대화상자 → `POST /api/scans/{id}/block {packages:[{manager, name, version}]}` → 정책 제안. 패키지 검사는 지금처럼 한 번에
 - **H 서버 설정 보기** — 알림(채널별 호스트 · 보냄 · 실패 · 마지막 오류 · 「테스트 발송」 → 1.5초 뒤 `/api/info` 다시 읽기) · 컨테이너 발견 방식(fanotify | docker-events + 「시작 직후 약 0.1초」 안내, `CONTAINER_DISCOVERY`) · 도메인 판단(ok | off). 환경 변수 이름은 백엔드 config 와 같게(`NOTIFY_WEBHOOK_URL` · `NOTIFY_SLACK_URL`)
 - **I 직접 IP · 증거** — 이벤트 · 감사 상세의 connect 에 「도메인 조회」 줄(`dnsTraced`): trace_dns 로 확인 / **도메인 조회 없는 IP 직접 연결** / 내부 주소 / 판단 불가(trace_dns 꺼짐) / 기록 없음. 감사 상세(격리된 행)에 「상세 · 증거」 탭 — `GET /api/evidence?container=` 의 그 컨테이너 ID 것: 로그 · 파일 변경(A/C/D) · 프로세스, `partial` 이면 「일부만 모음」 + 빠진 이유(모의: 설치 감시 컨테이너는 docker top 이 빠짐)
 - **J 공급망 검사 건 표기**(코디네이터 추가) — 건 출처 · 링크를 `app.js` 한 곳(`UI.CASE_SOURCE` · `UI.caseHref`)에 두고 대시보드 판정 대기 · 정책 제안 근거 · 감사 판정 · 변경 이력(출처 칩 + 건 링크 + 사유) · 대응 가이드 · AI 도우미 링크가 같이 쓴다. 공급망 검사 건은 「공급망 검사」 · `#/scans?id=<scanId>`(예전: 「런타임」 · 토폴로지)
 - **삭제** — 두 번 눌러 확정하는 버튼(`confirmButton`) · 설치 시트 메모 칸(→ 대화상자 사유) · 끊김/복구 토스트(→ 배너) · 종의 「새 위반 → 이벤트」 바로가기(→ 알림 센터의 「새 위반」 항목)
-- **계약 메모(안)** — 백엔드에 아직 없는 것: `POST /api/proposals/{id}/apply|discard {reason?}` · `DELETE /api/blocklist/{list}/{value}` 의 사유 · `POST /api/scans/{id}/block` 의 사유 → 변경 이력 `Change.reason`. 판정 전 영향(「함께 일어나는 일」)은 목업만 계산(실제 앱은 판정 뒤 제안 미리보기)
+- **계약 메모** — 사유(`reason`)와 판정 미리보기(`POST /api/cases/{id}/preview`)는 백엔드에 있다(10/21 확인)
 - 보류 · 질문: 관리자 토큰 칸(로그인과 겹침) 유지 여부 · 계정 탭 위치(정책 탭 vs 「설정」 화면) · 사유를 백엔드에 저장할지 · 증거를 런타임 시트(토폴로지)에도 둘지 — 보고서 질문 목록
 - 검증: `node tests/feedback-1020b.cjs` 28/28(수정 전 0/27, J 는 추가 뒤 따로 0/1) · 기존 7개 `decisions-1016` 11/11 · `feedback-1015` 31/31 · `goals-1015` 46/46 · `guide-1020` 12/12 · `overview-1016` 8/8 · `policy-1016` 7/7 · `scan-1016` 9/9 · 콘솔 오류 0. 기존 회귀는 진입 주소에 `?as=admin` · 판정 · 적용 · 버림 뒤 대화상자 「확인」 한 줄만 더함(`// 10/20`). 스크린샷 `screenshots/w10-*.png`
 
@@ -247,18 +247,25 @@ AI 도우미 시안(2026-10-16, 확인 대기 — 전 화면 우측 하단, `sha
 - **4 목록 오류** — 「다시 시도」 + 「30초마다 자동으로 다시 시도합니다」: 오류 칸이 보이는 동안 30초 뒤 조용히(스켈레톤 없이) 한 번 다시 부르고, 또 실패하면 다음 30초. 이벤트 · 감사 로그 · 설치 검사 · 공급망 검사 · 인증 감사. 설치 검사 · 공급망 검사는 부르는 중에 스트림 갱신이 또 부르지 않게 했다(겹친 호출이 실패 · 성공을 뒤섞었다 — 실측)
 - **5 좁은 화면 사이드바** — 1100px 이하에서 펼친 사이드바는 화면을 옮기면 다시 접힌다(전에는 다른 화면에서도 펼쳐진 채였다 — 실측). 넓은 화면의 접기 상태만 localStorage
 - **6 증거** — 감사 상세 「증거」 탭(유지) + 설치 시트(격리 세션, 결과 칸) · 토폴로지 판정 카드(격리된 컨테이너)에 「증거 보기」 → `#/audit?container=…&id=…&tab=evidence`. 격리 감사 행이 없으면(dry-run 등) 링크를 그리지 않는다
-- **7 판정 미리보기 API** — 판정 대화상자의 「함께 일어나는 일」을 화면 계산(`impactDecide`)에서 모의 서버 `POST /api/cases/{id}/preview {decision}` → `{changes, effects:[{kind, text}]}` 로 옮겼다(실제 백엔드에 없으면 안내 한 줄). 적용 · 버림 · 해제는 본문 `{reason}` → 변경 이력 `reason`(이름 확인 · 유지)
+- **7 판정 미리보기 API** — 판정 대화상자의 「함께 일어나는 일」을 화면 계산(`impactDecide`)에서 모의 서버 `POST /api/cases/{id}/preview {decision}` → `{changes, effects:[{kind, text}]}` 로 옮겼다. 적용 · 버림 · 해제는 본문 `{reason}` → 변경 이력 `reason`(이름 확인 · 유지)
 - **8 확인 대화상자 · 기본 규칙(유지 확인)** — 정책 삭제 · 전체 교체는 확인 대화상자, 「미리보기 후 추가」는 지금 규칙을 덮어쓰지 않고 빈 값만 채운다
 - **9 비밀번호 5자**(코디네이터 추가) — 최소 길이 10자 → 5자. 로그인 단계 · 비밀번호 변경 대화상자 · 계정 추가/초기화 안내 · 모의 서버 검증이 같은 규칙 · 문구
-- 보류 · 질문: 라이선스 갱신(만료 전 새 키 등록 — 지금은 만료 뒤 로그인 단계에서만) 계약 · 인증 감사 실제 백엔드(이벤트 이름 · 보관 기간) · 버림 사유를 Change 로 남길지 · 백엔드 apply/discard 가 모르는 필드를 거부(`DisallowUnknownFields`)해 `reason` 을 넣으려면 모델 · API 수정이 필요
+- 보류 · 질문: 라이선스 갱신(만료 전 새 키 등록 — 지금은 만료 뒤 로그인 단계에서만) 계약 · 인증 감사 실제 백엔드(이벤트 이름 · 보관 기간) · 버림 사유를 Change 로 남길지
 - 검증: `node tests/feedback-1020c.cjs` 17/17(수정 전 2/17 — 7b 사유 · Z 넘침은 이미 통과) · 기존 8개 `decisions-1016` 11/11 · `feedback-1015` 31/31 · `feedback-1020b` 28/28 · `goals-1015` 46/46 · `guide-1020` 12/12 · `overview-1016` 8/8 · `policy-1016` 7/7 · `scan-1016` 9/9 · 콘솔 오류 0. 기존 회귀는 기대값만 고침(`// 10/20`: 사이드바 순서 · 토큰 칸 0 · 토큰 입력 줄 삭제 · 서버 설정 · 계정 탭은 `#/settings` · 비밀번호 5자). 스크린샷 `screenshots/w17-*.png`
+
+2026-10-21 React 맞춤(확정 — W-A, React 가 기준):
+- **live** — 설치 · 건 · 제안 · 차단 목록 · 변경 이력 · 공급망 검사도 실제 API(쿠키 세션). 라우트가 없을 때만 「백엔드 미지원」
+- **재시도** — 오류 칸 「{무엇}을(를) 불러오지 못했습니다」 · 다시 시도는 칸 유지 + 버튼 회전 · 받은 뒤 실패는 설치 · 공급망은 표시 없음, 감사 로그 · 변경 이력은 작은 띠 · 설정 탭은 일반 안내만 · 이벤트 첫 로드 실패는 셸 붉은 배너
+- **패키지** — 행 키 `매니저:이름@버전`, 「차단됨」은 버전과 무관
+- **인증 감사** — 서버 이름(action · actor · target · ok), 필터는 주소에 남기지 않음
+- 검증: `align-1021` 17/17(수정 전 0/13, live 4개는 백엔드 있을 때) · 기존 9묶음 N/N · 콘솔 오류 0. 고친 기존 검사는 `// 10/21` 주석
 
 설치 세션 · 인증 API 계약 메모(10/20):
 - 설치 세션(CLI, `SANDBOX_TOKEN` — 인증 미들웨어의 Bypass): `POST /api/installs` · `PUT /api/installs/{id}/finish` · `POST /api/installs/refused` · `GET /api/blocklist/check`. 화면 쪽 `GET /api/installs*` 는 로그인 세션(조회자도 읽기). 끝 보고가 없으면 컨테이너 종료 10분 뒤 「결과 미확인」(변경 없음)
 - 인증: `shared/auth.js` 머리 주석 — 단계 `need_password → need_license → need_otp_enroll | need_otp → active`, 오류 `{error, state?}`. 조회자의 쓰기는 403 「조회자는 읽기만 할 수 있습니다」(미리보기 두 개 `POST /api/proposals/{id}/preview` · `POST /api/policies/preview` 는 조회자도 허용). 계정: `GET/POST /api/users`(임시 비밀번호는 생성 응답에서 한 번) · `PATCH /api/users/{id} {role?, disabled?, displayName?}`(마지막 관리자 409, 자기 비활성 400) · `POST …/reset-password → {tempPassword}` · `POST …/reset-otp → 204`. 라이선스 `GET /api/license`(없으면 404)
 - 서버 정보: `GET /api/info` 에 `notify{enabled, channels[{name, host, sent, failed, dropped, lastError, lastAt, queued}], sent, failed, dropped, suppressed, lastError}` · `discovery` · `discoveryNote` · `dnsResolve(ok|off)`. `POST /api/notify/test` → 202(채널 없으면 409). `GET /api/policies/defaults` → `{missing[], differs[{id, default, current}]}`. `GET /api/evidence?container=` → Evidence[]
-- 10/20 결정 반영: 판정 미리보기 `POST /api/cases/{id}/preview {decision}` → `{changes, effects:[{kind: proposal|image|case|note, text}]}`(상태 안 바뀜, 열린 건만 — 판정된 건 409 · decision 틀리면 400, 조회자 허용). 사유는 `POST /api/proposals/{id}/apply {reason?}` · `…/discard {reason?}` · `DELETE /api/blocklist/{list}/{value} {reason?}` → 변경 이력 `Change.reason`(버림은 목업에서 제안의 `reason` 으로 이력에 보인다). 인증 감사 `GET /api/auth/audit?limit&before&event&failed=1` → `[{id, at, username, event, ok, ip, by?, detail?}]`(관리자만)
+- 10/20 결정 반영: 판정 미리보기 `POST /api/cases/{id}/preview {decision}` → `{changes, effects:[{kind: proposal|image|case|note, text}]}`(상태 안 바뀜, 열린 건만 — 판정된 건 409 · decision 틀리면 400, 조회자 허용). 사유는 `POST /api/proposals/{id}/apply {reason?}` · `…/discard {reason?}` · `DELETE /api/blocklist/{list}/{value} {reason?}` → 변경 이력 `Change.reason`(버림은 목업에서 제안의 `reason` 으로 이력에 보인다). 인증 감사 `GET /api/auth/audit?limit&before=<id>&action&failed=1` → `[{id, at, actor, action, target, ip, ok, detail}]`(관리자만, action 13개 — 10/21 서버 기준)
 - AI 도우미: 목업은 live 모드에서도 `/api/chat` 을 부르지 않는다(모의 답만). 대화 기록은 `{role, text}` 모양 — 실제 계약 `history:[{role, text}]` 와 같다
 
-회귀 실행: `make mock`(:8766) → `cd mock && PLAYWRIGHT=<playwright 패키지 경로> node tests/feedback-1015.cjs` (`VERBOSE=1` · `ONLY=정규식` · `BASE=주소`). 13번(실제 백엔드)은 `make backend` 가 떠 있을 때만 돈다.
-목표 회귀: `node tests/goals-1015.cjs` · 3차 `node tests/decisions-1016.cjs` · 정책 `node tests/policy-1016.cjs` · 종합 `node tests/overview-1016.cjs` · 공급망 `node tests/scan-1016.cjs` · 도우미 `node tests/guide-1020.cjs` · 2차 시안 `node tests/feedback-1020b.cjs` · 10/20 결정 `node tests/feedback-1020c.cjs` (같은 옵션 + `SHOTS=1` 데모 대본 스크린샷 · `REAL_OSV=1` OSV 실조회 1건). 12번 실제 백엔드 시나리오는 `make backend` 가 떠 있을 때만 돈다.
+회귀 실행: `make mock`(:8766) → `cd mock && PLAYWRIGHT=<playwright 패키지 경로> node tests/feedback-1015.cjs` (`VERBOSE=1` · `ONLY=정규식` · `BASE=주소`). 13번(실제 백엔드)은 `API=<백엔드 주소>` 의 백엔드가 떠 있을 때만 돈다(로그인은 `tests/live-login.cjs`).
+목표 회귀: `node tests/goals-1015.cjs` · 3차 `node tests/decisions-1016.cjs` · 정책 `node tests/policy-1016.cjs` · 종합 `node tests/overview-1016.cjs` · 공급망 `node tests/scan-1016.cjs` · 도우미 `node tests/guide-1020.cjs` · 2차 시안 `node tests/feedback-1020b.cjs` · 10/20 결정 `node tests/feedback-1020c.cjs` · 10/21 React 맞춤 `node tests/align-1021.cjs` (같은 옵션 + `SHOTS=1` 데모 대본 스크린샷 · `REAL_OSV=1` OSV 실조회 1건). 12번 실제 백엔드 시나리오는 `make backend` 가 떠 있을 때만 돈다.

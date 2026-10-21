@@ -7,7 +7,9 @@
 //   GET  /api/license → License | 404                                 GET/POST /api/users · PATCH /api/users/{id} · POST …/reset-password → {tempPassword} · POST …/reset-otp → 204
 //   오류: {error, state?} — 로그인 실패 문구는 아이디가 있든 없든 같다. 조회자는 라이선스가 없으면 403 「관리자가 먼저 라이선스를 등록해야 합니다」
 //   비밀번호: 5자 이상 · 아이디와 다르게 [10/20 결정 변경 — 10자 → 5자]
-//   인증 감사(안) [10/20 결정 2]: GET /api/auth/audit?limit&before&event&failed=1 → [{id, at, username, event, ok, ip, by?, detail?}] (관리자만) — 로그인 성공/실패 · 잠김 · OTP 실패 · 복구 코드 · 비밀번호 변경 · 계정 변경 · 라이선스 등록 · 로그아웃
+//   인증 감사 [10/21 서버 기준 — model.AuthAudit]: GET /api/auth/audit?limit&before=<id>&action&failed=1 → [{id, at, actor, action, target, ip, ok, detail}] (관리자만, 최신순 · 다음 쪽은 마지막 행 id 를 before 로)
+//     action 13개: login · login_lock · logout · password_change · license_register · license_renew · otp_enroll · otp_verify · otp_recovery · user_create · user_update · user_reset_password · user_reset_otp
+//     성공 · 실패는 ok(로그인 실패 = action login + ok false). system 은 action 이 아니라 actor(초기 관리자 생성). 잘못된 action · before 는 400
 // 시뮬레이션: 아래 모의 서버가 같은 단계 · 문구를 흉내 낸다. 목업 전용 단순화(README) — OTP 는 「000000 만 틀림」, 복구 코드는 XXXX-XXXX 형식이면 한 번 통과
 // 실제 백엔드: fetch credentials: 'include'(쿠키). 목업과 백엔드를 같은 호스트 이름(127.0.0.1)으로 열어야 쿠키가 붙는다
 (function () {
@@ -46,11 +48,15 @@
   };
   // 인증 감사 기록 — IP 는 문서용 주소(TEST-NET, 실데이터 아님). 이 브라우저에서 한 일은 192.0.2.15
   const HERE = '192.0.2.15';
-  const audit = (event, username, ok, o) => { sim.log.unshift(Object.assign({ id: `auth-${String(++sim.logSeq).padStart(4, '0')}`, at: new Date().toISOString(), username, event, ok, ip: HERE }, o || {})); };
-  [[-6 * DAY, 'login_ok', 'admin', true, '192.0.2.10'], [-5 * DAY, 'user_created', 'viewer', true, '192.0.2.10', { by: 'admin', detail: '조회자' }], [-5 * DAY + 600e3, 'login_ok', 'viewer', true, '198.51.100.23'],
-    [-3 * DAY, 'login_fail', 'root', false, '203.0.113.77', { detail: '아이디 또는 비밀번호 틀림' }], [-3 * DAY + 20e3, 'login_fail', 'root', false, '203.0.113.77', { detail: '아이디 또는 비밀번호 틀림' }], [-3 * DAY + 40e3, 'login_fail', 'admin', false, '203.0.113.77', { detail: '아이디 또는 비밀번호 틀림' }],
-    [-2 * DAY, 'otp_fail', 'viewer', false, '198.51.100.23'], [-2 * DAY + 30e3, 'login_ok', 'viewer', true, '198.51.100.23'], [-DAY, 'recovery_used', 'admin', true, '192.0.2.10', { detail: '복구 코드 1개 사용' }], [-DAY + 60e3, 'login_ok', 'admin', true, '192.0.2.10']]
-    .forEach(([dt, event, username, ok, ip, o]) => { sim.log.unshift(Object.assign({ id: `auth-${String(++sim.logSeq).padStart(4, '0')}`, at: new Date(t0 + dt).toISOString(), username, event, ok, ip }, o || {})); });
+  const AUTH_ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_register', 'license_renew', 'otp_enroll', 'otp_verify', 'otp_recovery', 'user_create', 'user_update', 'user_reset_password', 'user_reset_otp'];
+  // 서버(auth/service.go)가 남기는 것과 같은 모양 — actor(한 계정) · action · target(대상 계정 · 키) · ok · detail
+  const audit = (action, actor, target, ok, detail, o) => { sim.log.unshift(Object.assign({ id: ++sim.logSeq, at: new Date().toISOString(), actor, action, target: target || '', ip: HERE, ok, detail: detail || '' }, o || {})); };
+  // 시드: [시각, action, actor, target, ok, ip, detail] — 오래된 것부터(id 오름차순)
+  [[-30 * DAY, 'user_create', 'system', 'admin', true, '', '초기 관리자'], [-6 * DAY, 'login', 'admin', '', true, '192.0.2.10', '다음 단계: active'], [-5 * DAY, 'user_create', 'admin', 'viewer', true, '192.0.2.10', '역할 viewer'],
+    [-5 * DAY + 600e3, 'login', 'viewer', '', true, '198.51.100.23', '다음 단계: active'],
+    [-3 * DAY, 'login', 'root', '', false, '203.0.113.77', '아이디 또는 비밀번호 틀림'], [-3 * DAY + 20e3, 'login', 'root', '', false, '203.0.113.77', '아이디 또는 비밀번호 틀림'], [-3 * DAY + 40e3, 'login', 'admin', '', false, '203.0.113.77', '아이디 또는 비밀번호 틀림'],
+    [-2 * DAY, 'otp_verify', 'viewer', 'viewer', false, '198.51.100.23', ''], [-2 * DAY + 30e3, 'login', 'viewer', '', true, '198.51.100.23', '다음 단계: active'], [-DAY, 'otp_recovery', 'admin', 'admin', true, '192.0.2.10', '복구 코드 사용'], [-DAY + 60e3, 'login', 'admin', '', true, '192.0.2.10', '다음 단계: active']]
+    .forEach(([dt, action, actor, target, ok, ip, detail]) => { sim.log.unshift({ id: ++sim.logSeq, at: new Date(t0 + dt).toISOString(), actor, action, target, ip, ok, detail }); });
   const licensed = () => !!sim.license && Date.now() < Date.parse(sim.license.expiresAt);
   const RANK = { '': 0, need_password: 1, need_license: 2, need_otp_enroll: 3, need_otp: 3 };
   function next(u, from) {
@@ -75,10 +81,10 @@
     login({ username, password }) {
       const u = sim.users.find((x) => x.username === String(username || '').trim()), now = Date.now();
       const name = String(username || '').trim();
-      if (!u || u.disabled || now < u.lockedUntil) { audit('login_fail', name, false, { detail: u && now < u.lockedUntil ? '잠긴 동안 시도' : '아이디 또는 비밀번호 틀림' }); throw err(401, MSG.badCreds); } // 잠긴 동안은 맞는 비밀번호도 같은 문구로 거절
-      if (u.pw !== password) { u.failed++; audit('login_fail', name, false, { detail: '아이디 또는 비밀번호 틀림' }); if (u.failed >= 5) { u.failed = 0; u.lockedUntil = now + 5 * 60000; audit('locked', name, false, { detail: '5번 연속 실패 — 5분 잠금' }); } throw err(401, MSG.badCreds); }
-      if (!licensed() && u.role !== 'admin') { audit('login_fail', name, false, { detail: '라이선스 없음(조회자)' }); throw err(403, MSG.viewerNoLic); }
-      u.failed = 0; u.lastLoginAt = new Date(now).toISOString(); audit('login_ok', name, true);
+      if (!u || u.disabled || now < u.lockedUntil) { audit('login', name, '', false, u && now < u.lockedUntil ? '잠긴 동안 시도' : '아이디 또는 비밀번호 틀림'); throw err(401, MSG.badCreds); } // 잠긴 동안은 맞는 비밀번호도 같은 문구로 거절
+      if (u.pw !== password) { u.failed++; audit('login', name, '', false, '아이디 또는 비밀번호 틀림'); if (u.failed >= 5) { u.failed = 0; u.lockedUntil = now + 5 * 60000; audit('login_lock', name, name, false, '5회 연속 실패 — 5분 잠금'); } throw err(401, MSG.badCreds); }
+      if (!licensed() && u.role !== 'admin') { audit('login', name, '', false, '라이선스 없음(조회자)'); throw err(403, MSG.viewerNoLic); }
+      u.failed = 0; u.lastLoginAt = new Date(now).toISOString(); audit('login', name, '', true, '');
       sim.session = { userId: u.id, state: next(u, ''), otpPending: '', otpFailures: 0 }; persist();
       return { state: sim.session.state, user: brief(u) };
     },
@@ -88,7 +94,7 @@
       if (u.pw !== current) throw err(400, MSG.badCurrent, s.state);
       const bad = validatePassword(u.username, pw || ''); if (bad) throw err(400, bad, s.state);
       if (pw === current) throw err(400, MSG.samePW, s.state);
-      u.pw = pw; u.mustChangePassword = false; audit('password_changed', u.username, true);
+      u.pw = pw; u.mustChangePassword = false; audit('password_change', u.username, u.username, true, '');
       if (s.state !== 'active') s.state = next(u, 'need_password');
       persist(); return { state: s.state };
     },
@@ -98,7 +104,7 @@
       const d = String(key || '').replace(/[-\s]/g, ''); if (!/^\d{16}$/.test(d)) throw err(400, MSG.badKey, s.state);
       const now = Date.now();
       sim.license = { keyMasked: `****-****-****-${d.slice(12)}`, kind: 'trial', issuedAt: new Date(now).toISOString(), expiresAt: new Date(now + 365 * DAY).toISOString(), registeredBy: u.username };
-      audit('license_registered', u.username, true, { detail: sim.license.keyMasked });
+      audit('license_register', u.username, sim.license.keyMasked, true, `${sim.license.kind} ~${sim.license.expiresAt.slice(0, 10)}`);
       s.state = next(u, 'need_license'); persist();
       return { state: s.state, license: licView(sim.license) };
     },
@@ -107,7 +113,7 @@
       const { s, u } = need('need_otp_enroll');
       if (!s.otpPending) throw err(409, MSG.enrollFirst, s.state);
       if (!/^\d{6}$/.test(String(code || '')) || code === '000000') throw err(400, MSG.badOTP, s.state);
-      u.otpEnabled = true; s.otpPending = ''; s.state = 'active'; persist();
+      u.otpEnabled = true; s.otpPending = ''; s.state = 'active'; persist(); audit('otp_enroll', u.username, u.username, true, '');
       return { state: 'active', recoveryCodes: Array.from({ length: 10 }, () => `${rand(CODE_ABC, 4)}-${rand(CODE_ABC, 4)}`) };
     },
     otp({ code, recovery }) {
@@ -115,16 +121,18 @@
       if (recovery !== undefined) {
         const r = String(recovery).trim().toUpperCase();
         const who2 = (sim.users.find((x) => x.id === s.userId) || {}).username || '';
-        if (!/^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/.test(r) || sim.used.has(r)) { audit('otp_fail', who2, false, { detail: '복구 코드 틀림 · 재사용' }); throw err(400, MSG.badRecovery, s.state); }
-        sim.used.add(r); audit('recovery_used', who2, true);
+        if (!/^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/.test(r) || sim.used.has(r)) { audit('otp_recovery', who2, who2, false, ''); throw err(400, MSG.badRecovery, s.state); }
+        sim.used.add(r); audit('otp_recovery', who2, who2, true, '복구 코드 사용');
       } else if (!/^\d{6}$/.test(String(code || '')) || code === '000000') {
-        s.otpFailures++; audit('otp_fail', (sim.users.find((x) => x.id === s.userId) || {}).username || '', false);
+        const who3 = (sim.users.find((x) => x.id === s.userId) || {}).username || '';
+        s.otpFailures++; audit('otp_verify', who3, who3, false, '');
         if (s.otpFailures >= 5) { sim.session = null; persist(); throw err(401, MSG.otpRestart); }
         throw err(400, MSG.badOTP, s.state);
       }
+      if (recovery === undefined) { const who4 = (sim.users.find((x) => x.id === s.userId) || {}).username || ''; audit('otp_verify', who4, who4, true, ''); }
       s.state = 'active'; persist(); return { state: 'active' };
     },
-    logout() { const u = sim.session && sim.users.find((x) => x.id === sim.session.userId); if (u) audit('logout', u.username, true); sim.session = null; persist(); return null; },
+    logout() { const u = sim.session && sim.users.find((x) => x.id === sim.session.userId); if (u) audit('logout', u.username, u.username, true, ''); sim.session = null; persist(); return null; },
     getLicense() { active(); if (!sim.license) throw err(404, '등록된 라이선스가 없습니다'); return licView(sim.license); },
     users() { admin(); return sim.users.map(view); },
     createUser({ username, displayName, role }) {
@@ -135,7 +143,7 @@
       if (sim.users.some((x) => x.username === name)) throw err(409, MSG.dupUser);
       const temp = rand(TEMP_ABC, 16);
       const u = mkUser(`u-${String(++sim.seq).padStart(4, '0')}`, name, String(displayName || '').trim() || name, role, { pw: temp, mustChangePassword: true, otpEnabled: false, createdAt: new Date().toISOString(), lastLoginAt: null });
-      sim.users.push(u); audit('user_created', name, true, { by: me().u.username, detail: ROLE_KO[role] });
+      sim.users.push(u); audit('user_create', me().u.username, name, true, `역할 ${role}`);
       return { user: view(u), tempPassword: temp };
     },
     patchUser(id, patch) {
@@ -143,19 +151,21 @@
       const u = sim.users.find((x) => x.id === id); if (!u) throw err(404, '계정이 없습니다');
       if (patch.disabled === true && u.id === by.id) throw err(400, MSG.selfDisable);
       if (lastAdmin(u) && ((patch.role && patch.role !== 'admin') || patch.disabled === true)) throw err(409, MSG.lastAdmin);
-      if (patch.role && patch.role !== u.role) audit('role_changed', u.username, true, { by: by.username, detail: `${ROLE_KO[u.role]} → ${ROLE_KO[patch.role]}` });
-      if (patch.disabled !== undefined && !!patch.disabled !== u.disabled) audit(patch.disabled ? 'user_disabled' : 'user_enabled', u.username, true, { by: by.username });
+      // 서버처럼 user_update 한 줄 — 역할 · 비활성 변화를 detail 에(「역할 viewer→admin, 비활성 false→false」)
+      if ((patch.role && patch.role !== u.role) || (patch.disabled !== undefined && !!patch.disabled !== u.disabled)) { const role = patch.role || u.role, dis = patch.disabled !== undefined ? !!patch.disabled : u.disabled; audit('user_update', by.username, u.username, true, `역할 ${u.role}→${role}, 비활성 ${u.disabled}→${dis}`); }
       if (patch.role) u.role = patch.role; if (patch.disabled !== undefined) u.disabled = !!patch.disabled; if (patch.displayName) u.displayName = patch.displayName;
       return view(u);
     },
-    resetPassword(id) { const { u: by } = admin(); const u = sim.users.find((x) => x.id === id); if (!u) throw err(404, '계정이 없습니다'); const temp = rand(TEMP_ABC, 16); u.pw = temp; u.mustChangePassword = true; u.failed = 0; u.lockedUntil = 0; audit('password_reset', u.username, true, { by: by.username }); return { tempPassword: temp }; },
-    resetOtp(id) { const { u: by } = admin(); const u = sim.users.find((x) => x.id === id); if (!u) throw err(404, '계정이 없습니다'); u.otpEnabled = false; audit('otp_reset', u.username, true, { by: by.username }); return null; },
-    // 인증 감사 [10/20 결정 2] — 관리자만. 최신순 · before(id 커서) · event · failed. ?fail=authAudit[:N] 이면 N 번 실패
+    resetPassword(id) { const { u: by } = admin(); const u = sim.users.find((x) => x.id === id); if (!u) throw err(404, '계정이 없습니다'); const temp = rand(TEMP_ABC, 16); u.pw = temp; u.mustChangePassword = true; u.failed = 0; u.lockedUntil = 0; audit('user_reset_password', by.username, u.username, true, ''); return { tempPassword: temp }; },
+    resetOtp(id) { const { u: by } = admin(); const u = sim.users.find((x) => x.id === id); if (!u) throw err(404, '계정이 없습니다'); u.otpEnabled = false; audit('user_reset_otp', by.username, u.username, true, ''); return null; },
+    // 인증 감사 [10/21 서버 기준] — 관리자만. 최신순 · before(양의 정수 id, 그보다 작은 것) · action(13개) · failed(1 | true). 잘못된 값은 400. ?fail=authAudit[:N] 이면 N 번 실패
     authAudit(q) {
       admin(); const o = q || {};
       if (U.simFail('authAudit')) throw err(503, '모의 오류 — 서버가 응답하지 않습니다');
-      let rows = sim.log.filter((x) => (!o.event || x.event === o.event) && (!o.failed || !x.ok));
-      if (o.before) { const i = rows.findIndex((x) => x.id === o.before); rows = i >= 0 ? rows.slice(i + 1) : rows; }
+      if (o.action && !AUTH_ACTIONS.includes(o.action)) throw err(400, `action 은 ${AUTH_ACTIONS.join(' | ')}`);
+      if (o.failed && !['1', 'true'].includes(String(o.failed))) throw err(400, 'failed 는 1 | true');
+      const before = o.before ? Number(o.before) : 0; if (o.before && !(Number.isInteger(before) && before > 0)) throw err(400, 'before 는 양의 정수 id');
+      let rows = sim.log.filter((x) => (!o.action || x.action === o.action) && (!o.failed || !x.ok) && (!before || x.id < before));
       return rows.slice(0, Math.min(o.limit || 100, 500)).map((x) => Object.assign({}, x));
     },
   };
@@ -366,7 +376,7 @@
                 act('비밀번호 초기화', 'reset-pw', () => resetPw(u)), u.otpEnabled ? act('OTP 초기화', 'reset-otp', () => resetOtp(u)) : null));
           }))),
         h('p', { class: 'small muted pad-sm', 'data-part': 'last-admin' }, `관리자는 지금 ${admins}명입니다. ${MSG.lastAdmin} — 다른 계정을 먼저 관리자로 올리세요.`));
-      }).catch((e) => replace(body, U.errorState(e, load)));
+      }).catch((e) => replace(body, U.loadErrorNote(e, '계정'))); // 다시 시도 · 자동 재시도 없이 일반 오류 안내 [10/21 — React SettingsPage]
     }
     const confirmThen = (opts, run) => U.confirmDialog(Object.assign({ reason: false }, opts)).then((ok) => ok && run().then(load).catch(showErr));
     const roleChange = (u, role) => confirmThen({ title: role === 'admin' ? '관리자로 올리기' : '조회자로 내리기', target: `${u.username} (${u.displayName})`, tone: 'primary', okLabel: '바꾸기',
@@ -394,5 +404,5 @@
     return root2;
   }
 
-  U.auth = { gate, logout, headerEl, accountsView, api, ROLE_KO, MSG, licenseText, licenseTone, licenseChip, daysLeft, PW_MIN, sim: state.source === 'sim' ? sim : null };
+  U.auth = { gate, logout, headerEl, accountsView, api, ROLE_KO, MSG, AUTH_ACTIONS, licenseText, licenseTone, licenseChip, daysLeft, PW_MIN, sim: state.source === 'sim' ? sim : null };
 })();

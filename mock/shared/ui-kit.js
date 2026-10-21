@@ -80,19 +80,33 @@
     return h('div', { class: 'skeleton', 'data-part': 'skeleton', 'aria-busy': 'true', 'aria-label': '불러오는 중' },
       Array.from({ length: rows || 6 }, (_, i) => h('div', { class: 'sk-row' }, h('i', { style: `width:${18 + (i % 3) * 6}%` }), h('i', { style: `width:${30 + ((i * 7) % 4) * 8}%` }), h('i', { style: 'width:12%' }))));
   }
-  // 오류 + 「다시 시도」 [10/20 D] · 자동 재시도 [10/20 결정 4]: 이 오류 칸이 화면에 남아 있으면 RETRY_MS(기본 30초) 뒤 조용히 한 번 다시 부른다(opts.quiet — 스켈레톤 없이).
-  //   다시 실패하면 화면이 새 오류 칸을 그리므로 그 칸이 다음 주기를 잰다(= 30초마다 한 번). 「백엔드 미지원」은 다시 부르지 않는다
+  // 오류 + 「다시 시도」 [10/20 D] · 자동 재시도 [10/20 결정 4] — React ListError(components/list/ListStates.tsx)와 같은 모양 [10/21 React 맞춤]
+  //   opts.what: 무엇을 못 불렀는지(제목 「{what}을(를) 불러오지 못했습니다」). 「다시 시도」를 누르면 오류 칸은 그대로 두고 버튼만 잠그고 돌린다(스켈레톤 없음) —
+  //   onRetry 는 조용한 다시 부르기여야 한다(성공하면 목록, 실패하면 화면이 새 오류 칸을 그린다). 이 칸이 화면에 남아 있으면 RETRY_MS(기본 30초)마다 onRetry 를 한 번 부른다.
+  //   백엔드 미지원(라우트 없음)은 제목 「백엔드 미지원」 · 회색 아이콘 · 버튼 없음 · 자동 재시도 없음(다시 불러도 같다)
   function errorState(err, onRetry, opts) {
     const o = opts || {};
-    const msg = err && err.unsupported ? err.message : `불러오지 못했습니다 — ${(err && err.message) || err}`;
-    const auto = !!onRetry && !(err && err.unsupported) && o.auto !== false;
+    const what = o.what || '목록';
+    const unsupported = !!(err && err.unsupported);
+    const retry = unsupported ? null : o.quiet || onRetry;
+    const auto = !!retry && o.auto !== false;
     const sec = Math.round(U.RETRY_MS / 1000);
-    const el = h('div', { class: 'list-state', 'data-part': 'error', role: 'alert' },
-      h('span', { class: 'empty-icon tone-danger', 'aria-hidden': true }, '⚠'), h('b', null, '목록을 불러오지 못했습니다'), h('span', { class: 'small muted' }, msg),
-      onRetry && !(err && err.unsupported) ? h('button', { type: 'button', class: 'btn btn-outline btn-xs', 'data-action': 'retry', onclick: onRetry }, '⟳ 다시 시도') : null,
-      auto ? h('span', { class: 'small muted', 'data-part': 'auto-retry' }, `${sec}초마다 자동으로 다시 시도합니다`) : null);
-    if (auto) setTimeout(() => { if (el.isConnected) (o.quiet || onRetry)(); }, U.RETRY_MS);
+    const btn = retry ? h('button', { type: 'button', class: 'btn btn-outline btn-xs', 'data-action': 'retry' }, h('span', { class: 'retry-icon', 'aria-hidden': true }, '⟳'), ' 다시 시도') : null;
+    if (btn) btn.addEventListener('click', () => { if (btn.disabled) return; btn.disabled = true; btn.classList.add('retrying'); btn.setAttribute('aria-busy', 'true'); retry(); });
+    const el = h('div', { class: 'list-state', 'data-part': 'error', role: 'alert', 'data-unsupported': unsupported ? 'true' : null },
+      h('span', { class: `empty-icon ${unsupported ? '' : 'tone-danger'}`, 'aria-hidden': true }, unsupported ? '⊘' : '⚠'),
+      h('b', null, unsupported ? '백엔드 미지원' : `${what}을(를) 불러오지 못했습니다`),
+      h('span', { class: 'small muted' }, unsupported ? String(err.message || '').replace(/^백엔드 미지원 — /, '') : (err && err.message) || String(err)),
+      btn, auto ? h('span', { class: 'small muted', 'data-part': 'auto-retry' }, `${sec}초마다 한 번씩 저절로 다시 불러 봅니다`) : null);
+    if (auto) setTimeout(() => { if (el.isConnected) retry(); }, U.RETRY_MS);
     return el;
+  }
+  // 데이터가 있는데 다시 부르기만 실패 — 목록은 그대로 두고 위에 작은 오류 띠(React LoadError compact). 감사 로그 · 변경 이력 [10/21 React 맞춤]
+  function loadErrorNote(err, what) {
+    const unsupported = !!(err && err.unsupported);
+    return h('div', { class: `load-note ${unsupported ? 'off' : 'danger'}`, role: 'note', 'data-part': 'load-error', 'data-unsupported': unsupported ? 'true' : null },
+      h('span', { 'aria-hidden': true }, unsupported ? '⊘' : '⚠'),
+      h('span', null, unsupported ? [h('b', null, '백엔드 미지원'), ` — ${what} API가 아직 백엔드에 없습니다.`] : `${what} 불러오기 실패: ${(err && err.message) || err}`));
   }
   function emptyState({ icon, title, hint, actions }) {
     return h('div', { class: 'empty list-state', 'data-part': 'empty' },
@@ -153,5 +167,5 @@
     return h('div', { class: 'qr', 'data-part': 'qr' }, U.s('svg', { viewBox: `0 0 ${N * px} ${N * px}`, width: size || 168, height: size || 168, role: 'img', 'aria-label': 'OTP 등록 QR (목업 그림 — 스캔 불가, 아래 키를 직접 입력)' }, U.s('rect', { width: N * px, height: N * px, fill: '#fff' }), U.s('g', { fill: '#0f172a' }, cells)));
   }
 
-  Object.assign(U, { can, modal, confirmDialog, skeleton, errorState, emptyState, filterChips, rowKeys, downloadCSV, keyBoxes, fakeQR });
+  Object.assign(U, { can, modal, confirmDialog, skeleton, errorState, loadErrorNote, emptyState, filterChips, rowKeys, downloadCSV, keyBoxes, fakeQR });
 })();
