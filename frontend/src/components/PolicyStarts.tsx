@@ -23,12 +23,12 @@ function Starts({ event, ruleId }: { event: Event; ruleId?: string }) {
     <Section title="이 행동으로 정책 만들기">
       <div className="flex flex-wrap gap-2">
         {blk && (
-          <Link to={blk} className={btn} data-action="block-this">
+          <Link {...blk} className={btn} data-action="block-this">
             이 행동 막기 →
           </Link>
         )}
         {alw && (
-          <Link to={alw} className={btn} data-action="allow-this">
+          <Link {...alw} className={btn} data-action="allow-this">
             이 행동 허용({ruleId} 에 예외) →
           </Link>
         )}

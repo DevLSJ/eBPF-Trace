@@ -12,6 +12,7 @@ import { SearchBox } from './shell/SearchBox';
 import { StreamBanners } from './shell/StreamBanners';
 import { useSidebar } from './shell/useSidebar';
 import { WsStatus } from './WsStatus';
+import { FRESH } from '../lib/nav';
 import { dialogOpen, typingTarget } from '../lib/shell';
 
 interface NavItem {
@@ -117,6 +118,7 @@ export function AppShell() {
                 <NavLink
                   key={to}
                   to={to}
+                  state={FRESH}
                   end={end}
                   title={collapsed ? label : undefined}
                   className={({ isActive }) =>

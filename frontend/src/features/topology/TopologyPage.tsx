@@ -1,7 +1,7 @@
 import { Background, Controls, MarkerType, ReactFlow, type Edge, type Node, type NodeMouseHandler } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Box, Cpu, FileSearch, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { startTransition, useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AttackChain } from '../../components/AttackChain';
 import { DecisionBadge } from '../../components/Badges';
@@ -11,8 +11,10 @@ import { Empty, Panel } from '../../components/Panel';
 import { LevelBadge } from '../../components/VerdictBadge';
 import { useCases } from '../../hooks/cases-context';
 import { useStream } from '../../hooks/stream-context';
-import { evidenceHref } from '../../lib/evidence';
+import { useFilters } from '../../hooks/useFilters';
+import { evidenceDest } from '../../lib/evidence';
 import { fmtNum, fmtTime } from '../../lib/format';
+import { dest } from '../../lib/nav';
 import { attackChains, severity, type Chain, type NodeType, type TopoEdge, type TopoNode } from '../../lib/topology';
 import { LEVEL_LABEL, type Case, type Level } from '../../lib/types';
 
@@ -149,9 +151,12 @@ const TYPE_LABEL: Record<NodeType, string> = { container: '컨테이너', proces
 export function TopologyPage() {
   const { topology } = useStream();
   const { cases } = useCases();
+  // 컨테이너 필터는 화면 상태로만. 노드는 컨테이너 노드(c:)만 링크로 주소에, 파일 · 도메인 · IP · 프로세스 노드는 화면 상태로만(10/21)
   const [params, setParams] = useSearchParams();
-  const container = params.get('container') ?? '';
-  const selectedId = params.get('node');
+  const [filters, setFilters] = useFilters('/topology');
+  const { container } = filters;
+  const urlNode = params.get('node');
+  const selectedId = (urlNode?.startsWith('c:') ? urlNode : null) || filters.node || null;
   const [windowMin, setWindowMin] = useState(5);
   const [tick, setTick] = useState(0);
 
@@ -172,20 +177,23 @@ export function TopologyPage() {
   const selected = effectiveId ? (snap.nodes.find((n) => n.id === effectiveId) ?? null) : null;
   const risky = snap.nodes.filter((n) => n.level !== 'normal').length;
 
-  const setParam = useCallback(
-    (k: string, v: string | null) =>
+  const setNode = useCallback(
+    (id: string | null) => {
+      const link = !!id && id.startsWith('c:');
+      startTransition(() => setFilters({ node: link ? '' : (id ?? '') })); // 주소 변경과 한 번에 그린다
       setParams(
         (cur) => {
           const next = new URLSearchParams(cur);
-          if (v) next.set(k, v);
-          else next.delete(k);
+          if (link) next.set('node', id);
+          else next.delete('node');
           return next;
         },
         { replace: true },
-      ),
-    [setParams],
+      );
+    },
+    [setParams, setFilters],
   );
-  const toggle = useCallback((id: string) => setParam('node', id === selectedId ? null : id), [setParam, selectedId]);
+  const toggle = useCallback((id: string) => setNode(id === selectedId ? null : id), [setNode, selectedId]);
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => toggle(node.id), [toggle]);
 
   // 런타임 건: 컨테이너 이름 → 아직 닫히지 않은 건(없으면 가장 최근 건)
@@ -207,18 +215,10 @@ export function TopologyPage() {
           <select
             className="h-8 rounded-md border border-slate-300 bg-white px-2 text-sm"
             value={container}
-            onChange={(e) =>
-              setParams(
-                (cur) => {
-                  const next = new URLSearchParams(cur);
-                  if (e.target.value) next.set('container', e.target.value);
-                  else next.delete('container');
-                  next.delete('node');
-                  return next;
-                },
-                { replace: true },
-              )
-            }
+            onChange={(e) => {
+              setFilters({ container: e.target.value });
+              setNode(null);
+            }}
           >
             <option value="">모든 런타임 컨테이너</option>
             {snap.containers.map((c) => (
@@ -260,7 +260,7 @@ export function TopologyPage() {
                 nodes={graph.nodes}
                 edges={graph.edges}
                 onNodeClick={onNodeClick}
-                onPaneClick={() => setParam('node', null)}
+                onPaneClick={() => setNode(null)}
                 fitView
                 fitViewOptions={{ padding: 0.12, maxZoom: 1.1 }}
                 minZoom={0.2}
@@ -277,7 +277,7 @@ export function TopologyPage() {
 
       <aside className="flex min-h-0 w-[340px] shrink-0 flex-col gap-4">
         {selected && (
-          <NodeDetail n={selected} onClose={() => setParam('node', null)}>
+          <NodeDetail n={selected} onClose={() => setNode(null)}>
             {selectedCase && (selected.type === 'container' || selectedCase.state !== 'closed') && (
               <div className="mb-3 rounded-md border border-amber-200 bg-amber-50/40 p-3" data-testid="topology-decision">
                 <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-700">
@@ -285,7 +285,7 @@ export function TopologyPage() {
                 </div>
                 <DecisionBox caseId={selectedCase.id} />
                 {selectedCase.level === 'killed' && (
-                  <Link to={evidenceHref(selectedCase.container)} className="mt-2 inline-flex items-center gap-1.5 text-xs text-indigo-700 hover:underline">
+                  <Link {...evidenceDest(selectedCase.container)} className="mt-2 inline-flex items-center gap-1.5 text-xs text-indigo-700 hover:underline">
                     <FileSearch className="size-3.5" aria-hidden /> 증거 보기
                   </Link>
                 )}
@@ -366,7 +366,7 @@ function NodeDetail({ n, onClose, children }: { n: TopoNode; onClose: () => void
       )}
       {n.reason && <p className="mt-2 text-xs text-slate-500">{n.reason}</p>}
       <Link
-        to={`/events?container=${encodeURIComponent(n.container)}${n.level === 'normal' ? '&normal=1' : ''}`}
+        {...dest('/events', { container: n.container, normal: n.level === 'normal' ? '1' : '' })}
         className="mt-3 inline-block rounded-md px-2 py-1 text-xs text-indigo-600 hover:bg-indigo-50"
       >
         이벤트에서 보기 →

@@ -67,11 +67,12 @@ test.describe('eBPF 수집 종합', () => {
     expect(num(await r.locator('[data-blocklist-total]').textContent())).toBe(s.blocklist.packages + s.blocklist.images + s.blocklist.hosts);
   });
 
-  test('기간 1시간 → URL ?range=1h · 60칸, 7일 → 28칸', async ({ page, backend }) => {
+  test('기간 1시간 → 60칸(주소에 남기지 않음, 10/21), 7일 → 28칸', async ({ page, backend }) => {
     void backend;
     await page.goto('/');
     await page.locator(`${OV} [data-range="1h"]`).click();
-    await expect(page).toHaveURL(/range=1h/);
+    await expect(page.locator(`${OV} [data-range="1h"]`)).toHaveAttribute('aria-pressed', 'true');
+    expect(new URL(page.url()).search).toBe('');
     await expect(page.locator(`${OV} [data-chart="collected"] [data-bucket]`)).toHaveCount(60);
     await page.locator(`${OV} [data-range="7d"]`).click();
     await expect(page.locator(`${OV} [data-chart="collected"] [data-bucket]`)).toHaveCount(28);

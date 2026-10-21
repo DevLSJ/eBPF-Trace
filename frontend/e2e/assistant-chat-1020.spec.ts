@@ -139,6 +139,7 @@ test.describe('도우미 · AI 도우미 탭 (10/20 W13)', () => {
     await expect(last(page).locator('[data-part="chat-status"]')).toContainText('판정 대기 7건');
     await push(page, 'links', [{ label: '설치 검사', href: '/installs?status=pending' }]);
     await expect(last(page).locator('[data-part="chat-links"] a')).toHaveText(['설치 검사 →']);
+    await expect(last(page).locator('[data-part="chat-links"] a')).toHaveAttribute('href', '/installs'); // 필터는 state 로(10/21)
     await expect(chat(page).getByRole('button', { name: '멈추기' })).toBeVisible();
     await push(page, 'done', {});
     await page.evaluate(() => (window as unknown as { __sse: Sse }).__sse.close());

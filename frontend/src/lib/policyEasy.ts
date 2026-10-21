@@ -1,3 +1,4 @@
+import { dest, type Dest } from './nav';
 import type { DirectIp, Event, Kind, Rule } from './types';
 
 // 정책 「쉬운 설정」 로직(목업 mock/shared/policy-easy.js 확정, 2026-10-16) — 화면은 components/PolicyEasy.tsx
@@ -201,14 +202,15 @@ export function fromTemplate(key: string, existing: string[]): Rule {
 }
 
 // ── 이벤트 · 감사 행에서 시작 ── 막기 = 그 행동을 막는 새 정책, 허용 = 걸린 정책에 가장 좁은 예외(오탐 제안과 같은 규칙)
-export function blockLink(e: Event): string | null {
+// 미리 채우기(intent · kind · value)는 state 로 넘긴다(10/21) — 주소에는 정책 id 만
+export function blockLink(e: Event): Dest | null {
   const value = e.kind === 'open' ? e.path : e.kind === 'exec' ? e.comm : e.dstHost || e.dstIp;
-  return value ? `/policies?id=__new__&intent=block&kind=${e.kind}&value=${encodeURIComponent(value)}` : null;
+  return value ? dest('/policies?id=__new__', { intent: 'block', kind: e.kind, value }) : null;
 }
-export function allowLink(rule: Rule | undefined, e: Event): string | null {
+export function allowLink(rule: Rule | undefined, e: Event): Dest | null {
   if (!rule || rule.kind === 'exec' || rule.id === 'blocklist-hosts') return null;
   const value = e.kind === 'open' ? e.path : e.dstHost && rule.allowHosts?.length ? e.dstHost : e.dstIp ? `${e.dstIp}/32` : undefined;
-  return value ? `/policies?id=${encodeURIComponent(rule.id)}&intent=allow&value=${encodeURIComponent(value)}` : null;
+  return value ? dest(`/policies?id=${encodeURIComponent(rule.id)}`, { intent: 'allow', value }) : null;
 }
 export function ruleFromBlock(kind: Kind, value: string, existing: string[]): Rule {
   const base = { open: 'block-file', exec: 'block-program', connect: 'block-destination' }[kind];

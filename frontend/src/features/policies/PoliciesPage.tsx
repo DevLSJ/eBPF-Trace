@@ -1,5 +1,5 @@
 import { FileCode, Lock, Plus } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { startTransition, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DecisionBadge, ScopeChip } from '../../components/Badges';
 import { KindBadge } from '../../components/KindBadge';
@@ -9,6 +9,7 @@ import { PolicyEditor } from '../../components/PolicyEditor';
 import { useCases } from '../../hooks/cases-context';
 import { useStream } from '../../hooks/stream-context';
 import { useAuth } from '../../hooks/auth-context';
+import { useFilters } from '../../hooks/useFilters';
 import { useLoad } from '../../hooks/useLoad';
 import { api, errorText } from '../../lib/api';
 import { fmtTime } from '../../lib/format';
@@ -31,8 +32,10 @@ export function PoliciesPage() {
   const { isAdmin } = useAuth();
   const selected = params.get('id') ?? '';
   const proposalId = params.get('proposal') ?? '';
-  // 새 기본 규칙 「미리보기 후 추가」(10/20 F) — ?default=<id> 면 그 규칙(바뀐 규칙은 빠진 값만 더한 사본)으로 바로 저장 전 확인
-  const defaultId = params.get('default') ?? '';
+  // 미리 채우기(tpl · intent · kind · value · default)는 화면 상태로만 — 주소에는 id · proposal 만(10/21)
+  const [prefill, setPrefill] = useFilters('/policies');
+  // 새 기본 규칙 「미리보기 후 추가」(10/20 F) — default=<id> 면 그 규칙(바뀐 규칙은 빠진 값만 더한 사본)으로 바로 저장 전 확인
+  const defaultId = prefill.default;
 
   const rules = useLoad(api.listRules);
   const loadDrafts = useCallback(() => api.proposals(), []);
@@ -46,7 +49,15 @@ export function PoliciesPage() {
   // 조회자는 쓰기 버튼을 그리지 않는다(W16) — 서버 설정 보기는 「설정」 화면으로 옮겼다
   const canWrite = isAdmin;
 
-  const select = useCallback((p: Record<string, string>) => setParams(p, { replace: true }), [setParams]);
+  const select = useCallback(
+    (p: Record<string, string>) => {
+      const { tpl = '', intent = '', kind = '', value = '', default: def = '', ...link } = p;
+      // 주소 변경(라우터는 transition 으로 그린다)과 한 번에 그린다 — 따로 그리면 「아무것도 안 고름」 순간에 첫 정책 자동 선택이 끼어든다
+      startTransition(() => setPrefill({ tpl, intent, kind, value, default: def }));
+      setParams(link, { replace: true });
+    },
+    [setParams, setPrefill],
+  );
 
   // 아무것도 고르지 않았으면: 제안이 있으면 첫 제안, 없으면 첫 정책 (URL 에 남긴다)
   const firstDraft = drafts[0]?.id;
@@ -71,11 +82,9 @@ export function PoliciesPage() {
   const proposal = proposals.data?.find((p) => p.id === proposalId);
   const existingIds = (rules.data ?? []).map((r) => r.id);
 
-  // 새 정책의 시작점(10/16): ?tpl=<템플릿> 또는 이벤트 · 감사 행의 ?intent=block&kind&value. 기존 정책에 ?intent=allow&value = 예외 추가
-  const tpl = params.get('tpl') ?? '';
-  const intent = params.get('intent') ?? '';
-  const intentKind = params.get('kind') as Kind | null;
-  const intentValue = params.get('value') ?? '';
+  // 새 정책의 시작점(10/16): tpl=<템플릿> 또는 이벤트 · 감사 행의 intent=block · kind · value. 기존 정책에 intent=allow · value = 예외 추가
+  const { tpl, intent, value: intentValue } = prefill;
+  const intentKind = (prefill.kind || null) as Kind | null;
   // PolicyEditor 는 rule 을 처음 그릴 때만 읽는다(key 가 바뀌면 새로) — 매 렌더 새로 만들어도 편집 중인 값은 그대로
   const pendingDefault = defaultId
     ? (() => {

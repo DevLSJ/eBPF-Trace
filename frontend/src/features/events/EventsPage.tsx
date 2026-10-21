@@ -12,6 +12,8 @@ import { Section, Sheet } from '../../components/Sheet';
 import { VerdictBadge } from '../../components/VerdictBadge';
 import { KindBadge } from '../../components/KindBadge';
 import { useStream } from '../../hooks/stream-context';
+import { useFilters } from '../../hooks/useFilters';
+import { dest, topologyDest } from '../../lib/nav';
 import type { StreamVerdict } from '../../hooks/useEventStream';
 import { api } from '../../lib/api';
 import { fmtDateTime, fmtNum } from '../../lib/format';
@@ -36,24 +38,22 @@ export function EventsPage() {
   const { verdicts, paused, pause, resume, recentLoading, recentError, retryLoad } = useStream();
   const failing = verdicts.length === 0 && recentError != null;
   useAutoRetry(failing, recentError, retryLoad);
+  // 필터는 화면 상태로만, 열린 이벤트(id)만 주소에(10/21)
   const [params, setParams] = useSearchParams();
-  const kind = params.get('kind') ?? '';
-  const level = (params.get('level') as LevelFilter) || '';
-  const withNormal = params.get('normal') === '1';
-  const container = params.get('container') ?? '';
+  const [filters, setFilters] = useFilters('/events');
+  const { kind, container } = filters;
+  const level = (filters.level as LevelFilter) || '';
+  const withNormal = filters.normal === '1';
   const id = params.get('id');
 
-  const set = (k: string, v: string) => {
+  const set = (k: 'id' | 'kind' | 'level' | 'normal' | 'container', v: string) => {
+    if (k !== 'id') return setFilters({ [k]: v });
     const next = new URLSearchParams(params);
     if (v) next.set(k, v);
     else next.delete(k);
-    setParams(next, { replace: k !== 'id' });
+    setParams(next);
   };
-  const clearFilters = () => {
-    const next = new URLSearchParams(params);
-    for (const k of ['kind', 'level', 'container', 'normal']) next.delete(k);
-    setParams(next, { replace: true });
-  };
+  const clearFilters = () => setFilters({ kind: '', level: '', container: '', normal: '' });
   const filtered = !!(kind || level || container || withNormal);
 
   const rows = useMemo(() => {
@@ -215,12 +215,12 @@ function EventDetail({ v }: { v: StreamVerdict }) {
         </dl>
         <div className="mt-3">
           {install ? (
-            <Link to="/installs?status=all" className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 px-2.5 py-1 text-xs text-indigo-700 hover:bg-indigo-50">
+            <Link {...dest('/installs', { status: 'all' })} className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 px-2.5 py-1 text-xs text-indigo-700 hover:bg-indigo-50">
               설치 검사에서 보기 →
             </Link>
           ) : (
             <Link
-              to={`/topology?container=${encodeURIComponent(name)}&node=${encodeURIComponent(`c:${name}`)}`}
+              {...topologyDest(name)}
               className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 px-2.5 py-1 text-xs text-indigo-700 hover:bg-indigo-50"
             >
               <Network className="size-3.5" aria-hidden /> 토폴로지에서 보기

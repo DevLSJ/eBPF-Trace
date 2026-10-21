@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { LoadError } from '../../components/Panel';
 import { useStream } from '../../hooks/stream-context';
+import { useFilters } from '../../hooks/useFilters';
 import { useInterval, useLoad } from '../../hooks/useLoad';
 import { api } from '../../lib/api';
 import { fmtNum, fmtTime } from '../../lib/format';
+import { dest, type Dest } from '../../lib/nav';
 import type { Level, Summary, SummaryRange, SummaryTop } from '../../lib/types';
 
 // eBPF 수집 종합(10/16, 목업 확정) — 「지금까지 무엇을 수집 · 탐지했나?」 저장된 기록(GET /api/summary) 기반이라 재시작해도 그대로.
@@ -16,8 +18,9 @@ const RANGES: [SummaryRange, string][] = [
 
 export function Overview() {
   const { stats, subscribe } = useStream();
-  const [params, setParams] = useSearchParams();
-  const range = (RANGES.some(([r]) => r === params.get('range')) ? params.get('range') : '24h') as SummaryRange;
+  // 기간은 화면 상태로만(10/21, 주소에 남기지 않음)
+  const [filters, setFilters] = useFilters('/');
+  const range = (RANGES.some(([r]) => r === filters.range) ? filters.range : '24h') as SummaryRange;
   const load = useCallback(() => api.summary(range), [range]);
   const sum = useLoad(load);
   const { reload } = sum;
@@ -35,16 +38,7 @@ export function Overview() {
   );
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
-  const pick = (r: SummaryRange) =>
-    setParams(
-      (p) => {
-        const n = new URLSearchParams(p);
-        if (r === '24h') n.delete('range');
-        else n.set('range', r);
-        return n;
-      },
-      { replace: true },
-    );
+  const pick = (r: SummaryRange) => setFilters({ range: r });
   const s = sum.data;
 
   return (
@@ -79,11 +73,11 @@ export function Overview() {
       ) : (
         <div className="grid min-h-0 gap-3 overflow-y-auto px-4 py-3" data-part="overview-body">
           <div className="grid grid-cols-5 gap-2">
-            <Kpi k="collected" label="수집한 이벤트" value={s.collected.total} sub={`실행 ${fmtNum(s.collected.byKind.exec)} · 파일 ${fmtNum(s.collected.byKind.open)} · 통신 ${fmtNum(s.collected.byKind.connect)}`} to="/events?normal=1" />
-            <Kpi k="violations" label="위반" value={s.violations.total} sub={`격리 ${fmtNum(s.violations.killed + s.violations.held)} · 경고 ${fmtNum(s.violations.alert)}`} to="/audit" danger />
-            <Kpi k="isolated" label="격리한 컨테이너" value={s.isolatedContainers} sub="설치 검사 포함" to="/audit?action=kill" danger />
-            <Kpi k="installs" label="설치 검사" value={s.installs.total} sub={`통과 ${s.installs.passed} · 격리 ${s.installs.isolated} · 거부 ${s.installs.refused}`} to="/installs?status=all" />
-            <Kpi k="decided" label="판정 완료" value={s.decisions.malicious + s.decisions.falsePositive} sub={`악성 ${s.decisions.malicious} · 오탐 ${s.decisions.falsePositive} · 대기 ${s.decisions.pending}`} to="/audit?view=changes" />
+            <Kpi k="collected" label="수집한 이벤트" value={s.collected.total} sub={`실행 ${fmtNum(s.collected.byKind.exec)} · 파일 ${fmtNum(s.collected.byKind.open)} · 통신 ${fmtNum(s.collected.byKind.connect)}`} to={dest('/events', { normal: '1' })} />
+            <Kpi k="violations" label="위반" value={s.violations.total} sub={`격리 ${fmtNum(s.violations.killed + s.violations.held)} · 경고 ${fmtNum(s.violations.alert)}`} to={{ to: '/audit' }} danger />
+            <Kpi k="isolated" label="격리한 컨테이너" value={s.isolatedContainers} sub="설치 검사 포함" to={dest('/audit', { action: 'kill' })} danger />
+            <Kpi k="installs" label="설치 검사" value={s.installs.total} sub={`통과 ${s.installs.passed} · 격리 ${s.installs.isolated} · 거부 ${s.installs.refused}`} to={dest('/installs', { status: 'all' })} />
+            <Kpi k="decided" label="판정 완료" value={s.decisions.malicious + s.decisions.falsePositive} sub={`악성 ${s.decisions.malicious} · 오탐 ${s.decisions.falsePositive} · 대기 ${s.decisions.pending}`} to={{ to: '/audit?view=changes' }} />
           </div>
           <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3">
             <Card title="수집량 추이 — 종류별">
@@ -95,10 +89,10 @@ export function Overview() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <Card title="많이 걸린 정책">
-              <TopList testId="rules" rows={s.topRules} keyOf={(r) => r.ruleId ?? ''} href={(k) => `/policies?id=${encodeURIComponent(k)}`} />
+              <TopList testId="rules" rows={s.topRules} keyOf={(r) => r.ruleId ?? ''} href={(k) => ({ to: `/policies?id=${encodeURIComponent(k)}` })} />
             </Card>
             <Card title="위반이 많은 컨테이너 · 패키지">
-              <TopList testId="containers" rows={s.topContainers} keyOf={(r) => r.container ?? ''} href={(k) => `/audit?container=${encodeURIComponent(k)}`} />
+              <TopList testId="containers" rows={s.topContainers} keyOf={(r) => r.container ?? ''} href={(k) => dest('/audit', { container: k })} />
             </Card>
             <Card title="설치 검사 · 판정">
               <Results s={s} />
@@ -110,9 +104,9 @@ export function Overview() {
   );
 }
 
-function Kpi({ k, label, value, sub, to, danger }: { k: string; label: string; value: number; sub: string; to: string; danger?: boolean }) {
+function Kpi({ k, label, value, sub, to, danger }: { k: string; label: string; value: number; sub: string; to: Dest; danger?: boolean }) {
   return (
-    <Link to={to} className="grid min-w-0 gap-0.5 rounded-lg border border-slate-200 px-3 py-2 hover:border-indigo-400" data-kpi={k}>
+    <Link {...to} className="grid min-w-0 gap-0.5 rounded-lg border border-slate-200 px-3 py-2 hover:border-indigo-400" data-kpi={k}>
       <span className="text-xs text-slate-500">{label}</span>
       <b className={`num text-xl font-semibold ${danger && value ? 'text-red-600' : 'text-slate-900'}`} data-value="">
         {fmtNum(value)}
@@ -187,14 +181,14 @@ function Stacked({ name, s, keys }: { name: string; s: Summary; keys: [Key, stri
 }
 
 const barColor: Record<Level, string> = { normal: 'bg-slate-300', alert: 'bg-amber-500', held: 'bg-red-500', killed: 'bg-red-600' };
-function TopList({ testId, rows, keyOf, href }: { testId: string; rows: SummaryTop[]; keyOf: (r: SummaryTop) => string; href: (k: string) => string }) {
+function TopList({ testId, rows, keyOf, href }: { testId: string; rows: SummaryTop[]; keyOf: (r: SummaryTop) => string; href: (k: string) => Dest }) {
   const top = rows.slice(0, 5);
   if (!top.length) return <p className="text-xs text-slate-400">이 기간에 위반 없음</p>;
   return (
     <ol className="grid gap-1" data-top={testId}>
       {top.map((r) => (
         <li key={keyOf(r)} data-row={keyOf(r)} data-count={r.count} className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_2.5rem] items-center gap-2 text-xs">
-          <Link to={href(keyOf(r))} className="truncate font-mono text-slate-700 hover:text-indigo-600" title={keyOf(r)}>
+          <Link {...href(keyOf(r))} className="truncate font-mono text-slate-700 hover:text-indigo-600" title={keyOf(r)}>
             {keyOf(r)}
           </Link>
           <span className="h-1.5 overflow-hidden rounded bg-slate-100">

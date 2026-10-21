@@ -20,6 +20,7 @@ import {
   stepsOf,
   type GuidePref,
 } from '../lib/guide';
+import { dest, type Dest } from '../lib/nav';
 import { isInstallContainer } from '../lib/topology';
 import { caseLabel, LEVEL_LABEL, type Case } from '../lib/types';
 import { DecisionBadge } from './Badges';
@@ -156,11 +157,11 @@ function CaseView({ c, list, onSelect, onChange }: { c: Case; list: Case[]; onSe
         </Step>
         <Step i={3} done={done[2]} title="공격 체인 보기">
           <div className="flex flex-wrap gap-x-2.5 gap-y-1">
-            <Link to={href} className={linkCls} data-part="chain-link" onClick={() => mark({ chain: true })}>
+            <Link {...href} className={linkCls} data-part="chain-link" onClick={() => mark({ chain: true })}>
               {c.source === 'install' ? '설치 검사 시트에서 공격 체인 →' : c.source === 'scan' ? '검사 결과 보기 →' : '토폴로지에서 공격 체인 →'}
             </Link>
             {c.source === 'runtime' && (
-              <Link to={`/events?container=${encodeURIComponent(c.container)}`} className={linkCls} onClick={() => mark({ chain: true })}>
+              <Link {...dest('/events', { container: c.container })} className={linkCls} onClick={() => mark({ chain: true })}>
                 이벤트 →
               </Link>
             )}
@@ -170,7 +171,7 @@ function CaseView({ c, list, onSelect, onChange }: { c: Case; list: Case[]; onSe
           {c.decision === 'pending' ? (
             <div className="flex flex-wrap items-center gap-2">
               <DecisionBadge decision="pending" />
-              <Link to={href} className={linkCls}>
+              <Link {...href} className={linkCls}>
                 악성 확정 / 오탐 판정하러 가기 →
               </Link>
             </div>
@@ -259,10 +260,10 @@ function SetupView({ onChange }: { onChange: () => void }) {
       </div>
     );
 
-  const steps: { id: string; title: string; desc: string; to: string; label: string; done: boolean | null }[] = [
-    { id: 'install', title: '설치 검사 돌려 보기', desc: '터미널에서 감시 컨테이너로 패키지를 설치해 봅니다. 결과는 「설치 검사」에 쌓입니다.', to: '/installs?status=all', label: '설치 검사 →', done: hasInstall === undefined ? false : hasInstall },
-    { id: 'policies', title: '정책 확인', desc: '기본 정책이 무엇을 막는지 한 번 봅니다(정책 화면을 열면 완료).', to: '/policies', label: '정책 →', done: pref.visitedPolicies },
-    { id: 'runtime', title: '런타임 감시 컨테이너 확인', desc: '토폴로지에 감시 중인 컨테이너가 보이면 런타임 감시가 돌고 있는 것입니다.', to: '/topology', label: '토폴로지 →', done: runtime },
+  const steps: { id: string; title: string; desc: string; to: Dest; label: string; done: boolean | null }[] = [
+    { id: 'install', title: '설치 검사 돌려 보기', desc: '터미널에서 감시 컨테이너로 패키지를 설치해 봅니다. 결과는 「설치 검사」에 쌓입니다.', to: dest('/installs', { status: 'all' }), label: '설치 검사 →', done: hasInstall === undefined ? false : hasInstall },
+    { id: 'policies', title: '정책 확인', desc: '기본 정책이 무엇을 막는지 한 번 봅니다(정책 화면을 열면 완료).', to: { to: '/policies' }, label: '정책 →', done: pref.visitedPolicies },
+    { id: 'runtime', title: '런타임 감시 컨테이너 확인', desc: '토폴로지에 감시 중인 컨테이너가 보이면 런타임 감시가 돌고 있는 것입니다.', to: { to: '/topology' }, label: '토폴로지 →', done: runtime },
   ];
   const n = steps.filter((s) => s.done === true).length;
   return (
@@ -315,7 +316,7 @@ function SetupView({ onChange }: { onChange: () => void }) {
                     <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">{INSTALL_CMD}</code>
                   </>
                 )}
-                <Link to={s.to} className={linkCls}>
+                <Link {...s.to} className={linkCls}>
                   {s.label}
                 </Link>
               </div>

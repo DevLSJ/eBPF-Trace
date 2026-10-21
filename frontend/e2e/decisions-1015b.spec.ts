@@ -89,8 +89,9 @@ test.describe('계약 추가 (10/15)', () => {
 
   test('경고 이벤트는 열린 런타임 건에 묶인다(감사 로그 판정 열)', async ({ page, backend }) => {
     void backend;
-    await page.goto('/audit?container=pkg-reqeusts&rule=egress-allowlist');
+    await page.goto('/audit?container=pkg-reqeusts&rule=egress-allowlist'); // AI 도우미 답 링크 모양 — 적용 뒤 주소에서 지운다(10/21)
     await expect(page.locator('tr[data-audit]')).toHaveCount(1);
+    await expect(page).toHaveURL(/\/audit$/);
     await expect(page.locator('tr[data-audit] [data-col="decision"] [data-decision="pending"]')).toBeVisible();
   });
 

@@ -1,13 +1,15 @@
 import { X } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { NavState } from '../lib/nav';
 
 export type ToastTone = 'info' | 'ok' | 'warn' | 'danger';
 export interface ToastOptions {
   // 같은 key 는 한 토스트로 묶고 ×N 을 올린다(같은 대상의 연속 격리 등)
   key?: string;
   tone?: ToastTone;
-  action?: { label: string; to?: string; run?: () => void };
+  // state: 이동할 화면의 초기 필터(주소에 남기지 않는다, 10/21)
+  action?: { label: string; to?: string; state?: NavState; run?: () => void };
 }
 interface ToastItem extends ToastOptions {
   id: number;
@@ -102,7 +104,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 type="button"
                 className="shrink-0 rounded px-1.5 text-xs font-semibold underline-offset-2 hover:underline"
                 onClick={() => {
-                  if (t.action?.to) navigate(t.action.to);
+                  if (t.action?.to) navigate(t.action.to, { state: t.action.state });
                   t.action?.run?.();
                   close(t.id);
                 }}

@@ -10,10 +10,10 @@ test.describe('이벤트 — 지금 무엇이 걸리고 있나?', () => {
     const rows = page.locator('li[data-key]');
     await expect(rows).toHaveCount(7); // 런타임 5 + 설치 검사 2, 정상 4 는 숨김
     await expect(page.locator('li[data-level="normal"]')).toHaveCount(0);
-    // URL 이 상태라 체크 상태는 주소가 바뀐 뒤 반영된다(check() 대신 click 후 확인)
+    // 필터는 화면 상태로만(10/21) — 주소에 normal 이 남지 않는다
     await page.getByLabel('정상 포함').click();
-    await expect(page).toHaveURL(/normal=1/);
     await expect(page.getByLabel('정상 포함')).toBeChecked();
+    expect(new URL(page.url()).search).toBe('');
     await expect(rows).toHaveCount(11);
     await page.getByLabel('정상 포함').click();
     await expect(page.getByLabel('정상 포함')).not.toBeChecked();
@@ -37,7 +37,10 @@ test.describe('이벤트 — 지금 무엇이 걸리고 있나?', () => {
 
   test('③ 행 상세 시트에 「토폴로지에서 보기」', async ({ page, backend }) => {
     void backend;
+    // 바깥 링크 · 예전 북마크의 ?container= 는 한 번 적용하고 주소에서 지운다(10/21)
     await page.goto('/events?container=pkg-reqeusts');
+    await expect(page.getByPlaceholder('이름 검색')).toHaveValue('pkg-reqeusts');
+    await expect(page).toHaveURL(/\/events$/);
     const row = page.locator('li[data-key]').first();
     await row.focus();
     await page.keyboard.press('Enter');
@@ -46,7 +49,8 @@ test.describe('이벤트 — 지금 무엇이 걸리고 있나?', () => {
     await expect(page).toHaveURL(/id=\d+/);
     await expect(sheet).toContainText('탐지 결과');
     await sheet.getByRole('link', { name: '토폴로지에서 보기' }).click();
-    await expect(page).toHaveURL(/\/topology\?container=pkg-reqeusts&node=c%3Apkg-reqeusts/);
+    await expect(page).toHaveURL(/\/topology\?node=c%3Apkg-reqeusts$/);
+    await expect(page.getByRole('combobox', { name: /^컨테이너/ })).toHaveValue('pkg-reqeusts');
     await expect(page.getByTestId('node-detail')).toContainText('pkg-reqeusts');
   });
 

@@ -13,10 +13,12 @@ import { PolicyStarts } from '../../components/PolicyStarts';
 import { Section, Sheet } from '../../components/Sheet';
 import { VerdictBadge } from '../../components/VerdictBadge';
 import { useCases } from '../../hooks/cases-context';
+import { useFilters } from '../../hooks/useFilters';
 import { useLoad } from '../../hooks/useLoad';
 import { api, errorText, type AuditParams } from '../../lib/api';
 import { fmtDateTime, shortId } from '../../lib/format';
 import { scanHref, SOURCE_LABEL } from '../../lib/guide';
+import { installDest, topologyDest } from '../../lib/nav';
 import { isInstallContainer } from '../../lib/topology';
 import { caseLabel, CHANGE_KIND_LABEL, DECISION_LABEL, detailOf, KINDS, LEVEL_LABEL, levelOf, type AuditEntry, type Case } from '../../lib/types';
 import { EvidenceView } from './EvidenceView';
@@ -24,7 +26,8 @@ import { EvidenceView } from './EvidenceView';
 const PAGE = 100;
 const ctl = 'h-8 rounded-md border border-slate-300 bg-white px-2 text-sm focus:border-indigo-500 focus:outline-none';
 const FILTERS = ['kind', 'action', 'rule', 'container', 'since', 'until'] as const;
-type Filters = Record<(typeof FILTERS)[number], string>;
+type FilterKey = (typeof FILTERS)[number];
+type Filters = Record<FilterKey, string>;
 
 // datetime-local(로컬 시각) → RFC3339
 const toIso = (v: string) => (v ? new Date(v).toISOString() : '');
@@ -49,22 +52,23 @@ export function AuditPage() {
   const view = params.get('view') === 'changes' ? 'changes' : 'violations';
   const id = params.get('id');
   const tab = params.get('tab') === 'evidence' ? 'evidence' : 'detail';
-  const filtersKey = FILTERS.map((k) => params.get(k) ?? '').join('\u0000');
-  const filters = useMemo(() => Object.fromEntries(FILTERS.map((k, i) => [k, filtersKey.split('\u0000')[i]])) as Filters, [filtersKey]);
+  // 필터는 화면 상태로만, 링크용(view · id · tab)만 주소에(10/21)
+  const [filters, setFilters] = useFilters('/audit');
   const debounced = useDebounced(filters, 300);
   const { cases } = useCases();
   const caseOf = useMemo(() => new Map((cases ?? []).map((c) => [c.id, c])), [cases]);
 
-  const set = (k: string, v: string, replace = k !== 'id') => {
+  const setFilter = (k: FilterKey, v: string) => setFilters({ [k]: v });
+  const set = (k: 'id' | 'tab', v: string, replace = k !== 'id') => {
     const next = new URLSearchParams(params);
     if (v) next.set(k, v);
     else next.delete(k);
     if (k === 'id' && !replace) next.delete('tab'); // 다른 행을 열면 상세 탭부터
     setParams(next, { replace });
   };
-  const clearKeys = (keys: readonly string[]) => {
+  const clearKeys = (keys: readonly FilterKey[]) => {
+    if (keys.length) setFilters(Object.fromEntries(keys.map((k) => [k, ''])));
     const next = new URLSearchParams(params);
-    for (const k of keys) next.delete(k);
     next.delete('id');
     next.delete('tab');
     setParams(next, { replace: true });
@@ -121,7 +125,7 @@ export function AuditPage() {
               <>
                 <label className="flex items-center gap-1.5 text-slate-500">
                   종류
-                  <select className={ctl} value={filters.kind} onChange={(e) => set('kind', e.target.value)}>
+                  <select className={ctl} value={filters.kind} onChange={(e) => setFilter('kind', e.target.value)}>
                     <option value="">전체</option>
                     {KINDS.map((k) => (
                       <option key={k}>{k}</option>
@@ -130,7 +134,7 @@ export function AuditPage() {
                 </label>
                 <label className="flex items-center gap-1.5 text-slate-500">
                   대응
-                  <select className={ctl} value={filters.action} onChange={(e) => set('action', e.target.value)}>
+                  <select className={ctl} value={filters.action} onChange={(e) => setFilter('action', e.target.value)}>
                     <option value="">전체</option>
                     <option value="alert">경고 (alert)</option>
                     <option value="kill">격리 (kill)</option>
@@ -138,19 +142,19 @@ export function AuditPage() {
                 </label>
                 <label className="flex items-center gap-1.5 text-slate-500">
                   규칙
-                  <input className={`${ctl} w-32`} placeholder="규칙 id" value={filters.rule} onChange={(e) => set('rule', e.target.value)} />
+                  <input className={`${ctl} w-32`} placeholder="규칙 id" value={filters.rule} onChange={(e) => setFilter('rule', e.target.value)} />
                 </label>
                 <label className="flex items-center gap-1.5 text-slate-500">
                   컨테이너
-                  <input className={`${ctl} w-32`} placeholder="이름" value={filters.container} onChange={(e) => set('container', e.target.value)} />
+                  <input className={`${ctl} w-32`} placeholder="이름" value={filters.container} onChange={(e) => setFilter('container', e.target.value)} />
                 </label>
               </>
             )}
             <label className="flex items-center gap-1.5 text-slate-500">
               기간
-              <input type="datetime-local" className={ctl} value={filters.since} onChange={(e) => set('since', e.target.value)} aria-label="기간 시작" />
+              <input type="datetime-local" className={ctl} value={filters.since} onChange={(e) => setFilter('since', e.target.value)} aria-label="기간 시작" />
               ~
-              <input type="datetime-local" className={ctl} value={filters.until} onChange={(e) => set('until', e.target.value)} aria-label="기간 끝" />
+              <input type="datetime-local" className={ctl} value={filters.until} onChange={(e) => setFilter('until', e.target.value)} aria-label="기간 끝" />
             </label>
             {view === 'violations' && <ExportCsv filters={filters} caseOf={caseOf} />}
           </div>
@@ -193,7 +197,7 @@ function Violations({
   caseOf: Map<string, Case>;
   selectedId: string | null;
   filtered: boolean;
-  // 「증거 보기」 링크(?container=…&tab=evidence)로 들어오면 격리된 첫 행(없으면 첫 행)을 연다
+  // 「증거 보기」 링크(?tab=evidence + state 의 컨테이너 필터)로 들어오면 격리된 첫 행(없으면 첫 행)을 연다
   autoOpen: boolean;
   onClear: () => void;
   onOpen: (id: number, auto?: boolean) => void;
@@ -446,11 +450,11 @@ function AuditDetail({ a, c }: { a: AuditEntry; c: Case | undefined }) {
             {c.note && <p className="text-slate-600">메모: {c.note}</p>}
             <div className="flex gap-3">
               {a.install || (c.installId && isInstallContainer(name)) ? (
-                <Link to={`/installs?status=all&id=${encodeURIComponent(a.install?.id ?? c.installId ?? '')}`} className="text-indigo-600 hover:underline">
+                <Link {...installDest(a.install?.id ?? c.installId ?? '')} className="text-indigo-600 hover:underline">
                   설치 검사에서 보기 →
                 </Link>
               ) : (
-                <Link to={`/topology?container=${encodeURIComponent(name)}&node=${encodeURIComponent(`c:${name}`)}`} className="text-indigo-600 hover:underline">
+                <Link {...topologyDest(name)} className="text-indigo-600 hover:underline">
                   토폴로지에서 보기 →
                 </Link>
               )}

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useStream } from '../../hooks/stream-context';
 import { api } from '../../lib/api';
-import { buildIndex, dialogOpen, searchIndex, SEARCH_TYPE_KO, typingTarget, type SearchSources } from '../../lib/shell';
+import { buildIndex, dialogOpen, searchIndex, searchKey, SEARCH_TYPE_KO, typingTarget, type SearchSources } from '../../lib/shell';
 
 // E. 사이드바 통합 검색(10/20 확정) — 목업 shared/shell-plus.js searchBox.
 // 패키지 · 컨테이너 · 규칙 id · 도메인 · 검사를 화면이 이미 쓰는 목록 API(설치 검사 · 공급망 검사 · 정책 · 차단 목록)와
@@ -103,7 +103,7 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
               e.preventDefault();
               const x = items[sel];
               if (x && showResults) {
-                navigate(x.to);
+                navigate(x.to, { state: x.state });
                 reset();
               }
             } else if (e.key === 'Escape') {
@@ -133,10 +133,11 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
             <p className="px-3 py-2 text-xs text-slate-400">찾는 것이 없습니다</p>
           ) : (
             items.map((x, i) => (
-              <div key={`${x.type}|${x.label}|${x.to}`}>
+              <div key={searchKey(x)}>
                 {(i === 0 || items[i - 1].type !== x.type) && <div className="px-3 pt-2 pb-1 text-[11px] font-medium text-slate-400">{SEARCH_TYPE_KO[x.type]}</div>}
                 <Link
                   to={x.to}
+                  state={x.state}
                   role="option"
                   aria-selected={i === sel}
                   data-result=""

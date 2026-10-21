@@ -21,7 +21,8 @@ test.describe('토폴로지 — 이 컨테이너는 어디까지 손댔나?', ()
   });
 
   test('③ 격리 컨테이너를 고르면 판정 버튼 → 악성 확정은 이미지 · 도메인 차단 제안', async ({ page, backend }) => {
-    await page.goto('/topology?container=pkg-reqeusts&node=c%3Apkg-reqeusts');
+    await page.goto('/topology?container=pkg-reqeusts&node=c%3Apkg-reqeusts'); // 알림 링크 모양 — 컨테이너 필터는 적용 뒤 지우고 노드(c:)만 남는다
+    await expect(page).toHaveURL(/\/topology\?node=c%3Apkg-reqeusts$/);
     const box = page.getByTestId('topology-decision');
     await expect(box.getByRole('button', { name: '악성 확정' })).toBeVisible();
     await expect(box.getByRole('button', { name: '오탐' })).toBeVisible();

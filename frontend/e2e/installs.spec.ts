@@ -7,7 +7,8 @@ test.describe('설치 검사 — 이 패키지는 무엇을 하려 했고, 악�
     await expect(page.locator('[data-chip="pending"]')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('tr[data-install]')).toHaveCount(2); // reqeusts · tiny-git-dep
     await page.locator('[data-chip="all"]').click();
-    await expect(page).toHaveURL(/status=all/);
+    await expect(page.locator('[data-chip="all"]')).toHaveAttribute('aria-pressed', 'true');
+    expect(new URL(page.url()).search).toBe(''); // 필터는 주소에 남기지 않는다(10/21)
     await expect(page.locator('tr[data-install]')).toHaveCount(8);
     await page.locator('[data-chip="npm"]').click();
     await expect(page.locator('tr[data-install]')).toHaveCount(2);
@@ -73,19 +74,25 @@ test.describe('설치 검사 — 이 패키지는 무엇을 하려 했고, 악�
       refusedBy: { list: 'packages', value: 'pip:colourama' },
       caseId: null,
     });
-    await page.goto('/installs?status=refused');
+    await page.goto('/installs?status=refused'); // 들어온 쿼리는 초기 필터로 한 번 적용하고 주소에서 지운다
+    await expect(page.locator('[data-chip="refused"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page).toHaveURL(/\/installs$/);
     await expect(page.locator('tr[data-install="ins-0014"] [data-status="refused"]')).toHaveText('설치 전 거부');
     await page.locator('tr[data-install="ins-0014"]').click();
     await expect(page.getByTestId('refused-by')).toContainText('pip:colourama');
     await expect(page.getByTestId('refused-by')).toContainText('컨테이너를 띄우기 전에 거부');
   });
 
-  test('URL 이 상태: 새로고침해도 시트 유지, Esc 로 닫고, 키보드로 연다', async ({ page, backend }) => {
+  test('열린 세션(id)만 주소에: 새로고침해도 시트 유지 · 필터는 기본값, Esc 로 닫고, 키보드로 연다', async ({ page, backend }) => {
     void backend;
     await page.goto('/installs?status=all&manager=pip&id=ins-0012');
+    await expect(page.locator('[data-chip="pip"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page).toHaveURL(/\/installs\?id=ins-0012$/);
     await page.reload();
     await expect(page.locator('[data-sheet="install"]')).toBeVisible();
-    await expect(page.locator('[data-chip="pip"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('[data-chip="pending"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('[data-chip=""]')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('[data-chip="all"]').click();
     await page.keyboard.press('Escape');
     await expect(page.locator('[data-sheet]')).toHaveCount(0);
     await expect(page).not.toHaveURL(/id=/);

@@ -1,5 +1,6 @@
 // 대응 가이드(10/20 확정, 목업 mock/shared/guide.js 이식) — 건(격리 · 경고)마다 5단계.
 // 1 탐지 · 2 격리 확인 · 4 판정은 건 데이터로, 3 공격 체인 · 5 후속 조치는 이 브라우저(localStorage supplyguard.guide.<caseId>)에.
+import { installDest, topologyDest, type Dest } from './nav';
 import type { Case, Info } from './types';
 
 export const GUIDE_TOTAL = 5;
@@ -29,10 +30,10 @@ export function followFor(c: Case): (FollowItem & { hit: string[] })[] {
 }
 
 // 건을 보고 판정하는 곳 — 설치 = 설치 시트, 런타임 = 토폴로지(컨테이너 노드 선택 → 판정 칸), 검사 = 검사 결과
-export function caseHref(c: Case): string {
-  if (c.source === 'install' && c.installId) return `/installs?status=all&id=${encodeURIComponent(c.installId)}`;
-  if (c.source === 'scan' && c.scanId) return `/scans?id=${encodeURIComponent(c.scanId)}`;
-  return `/topology?container=${encodeURIComponent(c.container)}&node=${encodeURIComponent(`c:${c.container}`)}`;
+export function caseHref(c: Case): Dest {
+  if (c.source === 'install' && c.installId) return installDest(c.installId);
+  if (c.source === 'scan' && c.scanId) return { to: `/scans?id=${encodeURIComponent(c.scanId)}` };
+  return topologyDest(c.container);
 }
 
 // ── 이 브라우저의 저장값(저장이 막혀 있어도 화면은 그대로 동작) ──

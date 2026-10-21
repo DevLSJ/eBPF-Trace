@@ -1,4 +1,5 @@
 import { licenseText, licenseTone } from './auth';
+import { dest, installDest, type Dest } from './nav';
 import type { Blocklist, Case, Info, InstallSession, License, Proposal, Rule, Scan, Verdict } from './types';
 import { caseLabel, INSTALL_STATUS_LABEL } from './types';
 
@@ -87,11 +88,11 @@ export function computeNotices(x: NoticeInput): Notice[] {
 // ── E. 통합 검색 — 패키지 · 컨테이너 · 규칙 id · 도메인 · 검사(화면이 이미 쓰는 목록 API 로 클라이언트 검색) ──
 export type SearchType = 'package' | 'container' | 'rule' | 'domain' | 'scan';
 export const SEARCH_TYPE_KO: Record<SearchType, string> = { package: '패키지', container: '컨테이너', rule: '규칙', domain: '도메인', scan: '검사' };
-export interface SearchItem {
+// to · state(그 화면의 초기 필터 — 주소에 남기지 않는다, 10/21)
+export interface SearchItem extends Dest {
   type: SearchType;
   label: string;
   sub: string;
-  to: string;
 }
 export interface SearchSources {
   installs?: InstallSession[] | null;
@@ -102,25 +103,27 @@ export interface SearchSources {
   verdicts?: Verdict[];
 }
 const enc = encodeURIComponent;
+export const searchKey = (x: Pick<SearchItem, 'type' | 'label' | 'to' | 'state'>) => `${x.type}|${x.label}|${x.to}|${JSON.stringify(x.state?.filters ?? {})}`;
 export function buildIndex(s: SearchSources): SearchItem[] {
   const out: SearchItem[] = [];
   const seen = new Set<string>();
-  const add = (type: SearchType, label: string, sub: string, to: string) => {
-    const k = `${type}|${label}|${to}`;
+  const add = (type: SearchType, label: string, sub: string, d: Dest | string) => {
+    const x = typeof d === 'string' ? { to: d } : d;
+    const k = searchKey({ type, label, ...x });
     if (!label || seen.has(k)) return;
     seen.add(k);
-    out.push({ type, label, sub, to });
+    out.push({ type, label, sub, ...x });
   };
-  for (const i of s.installs ?? []) for (const p of i.packages) add('package', `${i.manager} ${p}`, `설치 검사 ${i.id} · ${INSTALL_STATUS_LABEL[i.status] ?? i.status}`, `/installs?status=all&id=${enc(i.id)}`);
+  for (const i of s.installs ?? []) for (const p of i.packages) add('package', `${i.manager} ${p}`, `설치 검사 ${i.id} · ${INSTALL_STATUS_LABEL[i.status] ?? i.status}`, installDest(i.id));
   for (const b of s.blocklist?.packages ?? []) add('package', b.value, '차단 목록', '/policies');
   for (const sc of s.scans ?? []) if (sc.target.name) add('package', `${sc.target.manager ?? ''} ${sc.target.name}`.trim(), `공급망 검사 ${sc.id}`, `/scans?id=${enc(sc.id)}`);
-  for (const c of s.containers ?? []) add('container', c, '런타임 · 토폴로지', `/topology?container=${enc(c)}`);
-  for (const i of s.installs ?? []) if (i.container) add('container', i.container, `설치 검사 · ${i.manager} ${i.packages.join(' ')}`, `/installs?status=all&id=${enc(i.id)}`);
+  for (const c of s.containers ?? []) add('container', c, '런타임 · 토폴로지', dest('/topology', { container: c }));
+  for (const i of s.installs ?? []) if (i.container) add('container', i.container, `설치 검사 · ${i.manager} ${i.packages.join(' ')}`, installDest(i.id));
   for (const r of s.rules ?? []) add('rule', r.id, r.description ?? '', `/policies?id=${enc(r.id)}`);
   for (const b of s.blocklist?.hosts ?? []) add('domain', b.value, '차단 목록', '/policies');
   for (const r of s.rules ?? [])
     for (const [f, ko] of [['allowHosts', '허용'], ['denyHosts', '금지']] as const) for (const d of r[f] ?? []) add('domain', d, `${r.id} · ${ko} 도메인`, `/policies?id=${enc(r.id)}`);
-  for (const v of s.verdicts ?? []) if (v.event.dstHost) add('domain', v.event.dstHost, `이벤트 · ${v.event.containerName}`, `/events?container=${enc(v.event.containerName)}`);
+  for (const v of s.verdicts ?? []) if (v.event.dstHost) add('domain', v.event.dstHost, `이벤트 · ${v.event.containerName}`, dest('/events', { container: v.event.containerName }));
   for (const sc of s.scans ?? []) add('scan', `${sc.id} · ${sc.target.label}`, sc.status === 'done' ? '공급망 검사 결과' : sc.status === 'failed' ? '검사 실패' : '검사 중', `/scans?id=${enc(sc.id)}`);
   return out;
 }

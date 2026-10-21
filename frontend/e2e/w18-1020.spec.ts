@@ -409,12 +409,16 @@ test.describe('I 증거 · 도메인 조회 없는 IP 직접 연결', () => {
     backend.evidence = list;
     await page.goto('/installs?id=ins-0012');
     await page.locator('[data-sheet="install"]').getByRole('link', { name: '증거 보기' }).click();
-    await expect(page).toHaveURL(new RegExp(`/audit\\?container=${encodeURIComponent(ctr)}.*tab=evidence`));
+    // 컨테이너 필터는 state 로 넘기고 주소에는 tab · id 만(10/21)
+    await expect(page).toHaveURL(/\/audit\?tab=evidence&id=\d+$/);
+    await expect(page.getByRole('textbox', { name: '컨테이너' })).toHaveValue(ctr);
     await expect(page.locator('[data-sheet="audit"] [data-evidence="ev-3"]')).toBeVisible();
 
     await page.goto('/topology?container=pkg-reqeusts&node=c%3Apkg-reqeusts');
+    await expect(page).toHaveURL(/\/topology\?node=c%3Apkg-reqeusts$/);
     await page.getByTestId('topology-decision').getByRole('link', { name: '증거 보기' }).click();
-    await expect(page).toHaveURL(/\/audit\?container=pkg-reqeusts.*tab=evidence/);
+    await expect(page).toHaveURL(/\/audit\?tab=evidence/);
+    await expect(page.getByRole('textbox', { name: '컨테이너' })).toHaveValue('pkg-reqeusts');
     await expect(page.locator('[data-sheet="audit"] [role="tab"][aria-selected="true"]')).toHaveText('증거');
     await expect(page.locator('[data-sheet="audit"] [data-part="evidence-empty"]')).toBeVisible();
   });
@@ -461,7 +465,7 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
   test('첫 로드 스켈레톤(설치 검사 · 감사 로그 · 공급망 검사 · 이벤트)', async ({ page, backend }) => {
     await scansApi(page, [repoScan], [], () => '');
     for (const [path, re, row] of [
-      ['/installs?status=all', /\/api\/installs\?limit=500/, 'tr[data-install]'],
+      ['/installs', /\/api\/installs\?limit=500/, 'tr[data-install]'],
       ['/audit', /\/api\/audit\?/, 'tr[data-audit]'],
       ['/scans', /\/api\/scans$/, 'tr[data-scan]'],
       ['/events', /\/api\/events\/recent/, 'li[data-key]'],
@@ -481,7 +485,7 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
     allowConsole(/500/);
     await scansApi(page, [repoScan], [], () => '');
     for (const [path, re, row] of [
-      ['/installs?status=all', /\/api\/installs\?limit=500/, 'tr[data-install]'],
+      ['/installs', /\/api\/installs\?limit=500/, 'tr[data-install]'],
       ['/audit', /\/api\/audit\?/, 'tr[data-audit]'],
       ['/scans', /\/api\/scans$/, 'tr[data-scan]'],
       ['/events', /\/api\/events\/recent/, 'li[data-key]'],
@@ -503,7 +507,7 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
     allowConsole(/500/);
     await page.clock.install();
     const sw = await failWhile(page, /\/api\/installs\?limit=500/);
-    await page.goto('/installs?status=all');
+    await page.goto('/installs');
     const err = page.locator('[data-part="error"]');
     await expect(err).toBeVisible();
     // 실패 응답은 이 파일의 route 가 먼저 받아 가짜 백엔드 기록에 없다 — 브라우저 요청으로 센다
@@ -529,7 +533,7 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
     backend.recent = [];
     backend.audit = [];
     await scansApi(page, [], [], () => '');
-    for (const path of ['/installs?status=all', '/audit', '/scans', '/events']) {
+    for (const path of ['/installs', '/audit', '/scans', '/events']) {
       await page.goto(path);
       const empty = page.locator('[data-part="empty"]');
       await expect(empty, path).toBeVisible();
@@ -537,50 +541,61 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
     }
   });
 
-  test('적용된 필터 칩 + 모두 해제(주소에 남음) — 이벤트 · 감사 로그 · 설치 검사 · 공급망 검사', async ({ page, backend }) => {
+  test('적용된 필터 칩 + 모두 해제(주소에 남지 않음, 10/21) — 이벤트 · 감사 로그 · 설치 검사 · 공급망 검사', async ({ page, backend }) => {
     void backend;
     await scansApi(page, [repoScan, pkgScan], [], () => '');
+    // 예전 북마크 · 바깥 링크의 쿼리는 초기 필터로 한 번 적용하고 주소에서 지운다
     await page.goto('/events?kind=exec&level=kill&container=pkg');
     let chips = page.locator('[data-part="filter-chips"]');
     await expect(chips.locator('[data-chip]')).toHaveCount(3);
+    await expect(page).toHaveURL(/\/events$/);
     await chips.locator('[data-chip="kind"] button').click();
-    await expect(page).not.toHaveURL(/kind=/);
-    await expect(page).toHaveURL(/level=kill/);
+    await expect(chips.locator('[data-chip]')).toHaveCount(2);
+    await expect(page.getByLabel('탐지 결과')).toHaveValue('kill');
     await chips.locator('[data-action="clear-filters"]').click();
-    await expect(page).not.toHaveURL(/level=|container=/);
     await expect(chips).toHaveCount(0);
+    await expect(page).toHaveURL(/\/events$/);
 
     await page.goto('/audit?kind=connect&rule=egress&since=2026-01-01T00:00&until=2030-01-01T00:00');
     chips = page.locator('[data-part="filter-chips"]');
     await expect(chips.locator('[data-chip]')).toHaveCount(3); // 기간은 칩 하나(목업과 같게)
     await expect(chips.locator('[data-chip="period"]')).toContainText('기간: 2026-01-01 00:00 ~ 2030-01-01 00:00');
-    await chips.locator('[data-action="clear-filters"]').click();
     await expect(page).toHaveURL(/\/audit$/);
+    await chips.locator('[data-action="clear-filters"]').click();
     await expect(page.getByLabel('기간 시작')).toHaveValue('');
+    await expect(chips).toHaveCount(0);
 
-    await page.goto('/installs?status=all&manager=npm');
+    await page.goto('/installs');
+    await page.locator('[data-chip="all"]').click();
+    await page.locator('[data-chip="npm"]').click();
     chips = page.locator('[data-part="filter-chips"]');
     await expect(chips.locator('[data-chip]')).toHaveCount(2);
     await chips.locator('[data-chip="manager"] button').click();
-    await expect(page).toHaveURL(/status=all/);
-    await expect(page).not.toHaveURL(/manager=/);
+    await expect(chips.locator('[data-chip]')).toHaveCount(1);
+    await expect(page.locator('[data-chip="all"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page).toHaveURL(/\/installs$/);
 
-    await page.goto('/scans?verdict=malicious');
+    await page.goto('/scans');
+    await page.locator('[data-chip="malicious"]').click();
     await expect(page.locator('tr[data-scan]')).toHaveCount(1);
+    await expect(page).toHaveURL(/\/scans$/);
     chips = page.locator('[data-part="filter-chips"]');
     await expect(chips.locator('[data-chip="verdict"]')).toContainText('악성 의심');
     await chips.locator('[data-action="clear-filters"]').click();
     await expect(page.locator('tr[data-scan]')).toHaveCount(2);
   });
 
-  test('감사 로그 CSV 내보내기 — 기간 필수, 지금 필터 그대로, BOM', async ({ page, backend }) => {
-    await page.goto('/audit?kind=exec');
+  test('감사 로그 CSV 내보내기 — 기간 필수, 지금 필터(화면 상태) 그대로, BOM', async ({ page, backend }) => {
+    await page.goto('/audit');
+    await page.getByLabel('종류').selectOption('exec');
     await page.locator('[data-action="export-csv"]').click();
     await expect(page.locator('[data-part="export-error"]')).toContainText('기간');
     const since = new Date(Date.now() - 3600_000);
     const until = new Date(Date.now() + 3600_000);
     const local = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-    await page.goto(`/audit?kind=exec&since=${local(since)}&until=${local(until)}`);
+    await page.getByLabel('기간 시작').fill(local(since));
+    await page.getByLabel('기간 끝').fill(local(until));
+    expect(new URL(page.url()).search).toBe('');
     const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-action="export-csv"]').click()]);
     expect(dl.suggestedFilename()).toMatch(/^supplyguard-audit-\d{8}-\d{8}\.csv$/);
     const text = readFileSync((await dl.path())!, 'utf8');
@@ -599,7 +614,8 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
     await page.locator('tr[data-scan="scan-0002"]').focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('[data-sheet="scan"]')).toBeVisible();
-    await page.goto('/installs?status=all');
+    await page.goto('/installs');
+    await page.locator('[data-chip="all"]').click();
     await page.locator('tr[data-install="ins-0010"]').focus();
     await page.keyboard.press(' ');
     await expect(page.locator('[data-sheet="install"]')).toBeVisible();

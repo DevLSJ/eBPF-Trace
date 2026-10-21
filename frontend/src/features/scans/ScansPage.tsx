@@ -1,6 +1,8 @@
 import { OctagonX, Play, ScanSearch, SearchX } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useFilters } from '../../hooks/useFilters';
+import { dest } from '../../lib/nav';
 import { FilterChips } from '../../components/FilterChips';
 import { rowKeys, useAutoRetry } from '../../components/list/hooks';
 import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
@@ -64,8 +66,9 @@ export function ScansPage() {
   const { isAdmin } = useAuth();
   const [params, setParams] = useSearchParams();
   const selId = params.get('id') ?? '';
-  // 결과 필터(10/20 D) — 주소에 남는다(?verdict=)
-  const vf = (params.get('verdict') ?? '') as VerdictFilter;
+  // 결과 필터(10/20 D) — 화면 상태로만(10/21, 주소에 남기지 않음)
+  const [filters, setFilters] = useFilters('/scans');
+  const vf = filters.verdict as VerdictFilter;
   const list = useLoad(api.scans);
   const running = list.data?.some((s) => s.status === 'running');
   // 첫 로드가 실패한 동안은 갱신을 멈추고 30초마다 조용히 한 번 다시 부른다
@@ -78,6 +81,7 @@ export function ScansPage() {
   useAutoRetry(failing, list.error, reload);
   const canWrite = isAdmin; // 조회자는 검사 시작 · 차단 버튼을 그리지 않는다(W16)
   const setQ = (k: 'id' | 'verdict', v: string) => {
+    if (k === 'verdict') return setFilters({ verdict: v });
     const next = new URLSearchParams(params);
     if (v) next.set(k, v);
     else next.delete(k);
@@ -292,7 +296,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
           )}
           {s.status === 'done' && t.kind === 'package' && (
             <div className="flex flex-wrap gap-2">
-              <button type="button" aria-label="설치 검사로 실제 설치해 보기" onClick={() => { void navigator.clipboard?.writeText(cmd).catch(() => {}); toast(`명령을 복사했습니다 — ${cmd} (감시 컨테이너에서 실제 설치 · eBPF 관찰)`, { key: 'copy', tone: 'ok', action: { label: '설치 검사', to: '/installs?status=all' } }); }}
+              <button type="button" aria-label="설치 검사로 실제 설치해 보기" onClick={() => { void navigator.clipboard?.writeText(cmd).catch(() => {}); toast(`명령을 복사했습니다 — ${cmd} (감시 컨테이너에서 실제 설치 · eBPF 관찰)`, { key: 'copy', tone: 'ok', action: { label: '설치 검사', ...dest('/installs', { status: 'all' }) } }); }}
                 className="flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-white"><Play className="size-3.5" aria-hidden /> 설치 검사로 실제 설치해 보기</button>
               {canWrite && <button type="button" aria-label="차단 목록에 올리기" onClick={() => setAskBlock(true)}
                 className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs disabled:opacity-40 ${s.verdict === 'malicious' ? 'bg-red-600 text-white hover:bg-red-700' : 'border border-slate-300 hover:bg-white'}`}><OctagonX className="size-3.5" aria-hidden /> 차단 목록에 올리기</button>}

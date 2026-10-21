@@ -12,7 +12,7 @@ import { useCases } from '../../hooks/cases-context';
 import { useInterval, useLoad } from '../../hooks/useLoad';
 import { api } from '../../lib/api';
 import { fmtDateTime, fmtNum } from '../../lib/format';
-import { evidenceHref } from '../../lib/evidence';
+import { evidenceDest } from '../../lib/evidence';
 import { duration, ECOSYSTEM, installCommand, packageName, sessionLabel, violationTotal } from '../../lib/pkg';
 import type { InstallSession } from '../../lib/types';
 
@@ -53,7 +53,7 @@ export function InstallSheet({ id, onClose, onChanged }: { id: string; onClose: 
             <Section title="결과">
               <Summary s={s} />
               {s.status === 'isolated' && (
-                <Link to={evidenceHref(s.container)} className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-indigo-200 px-2.5 py-1 text-xs text-indigo-700 hover:bg-indigo-50">
+                <Link {...evidenceDest(s.container)} className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-indigo-200 px-2.5 py-1 text-xs text-indigo-700 hover:bg-indigo-50">
                   <FileSearch className="size-3.5" aria-hidden /> 증거 보기
                 </Link>
               )}

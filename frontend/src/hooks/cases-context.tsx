@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, isUnsupported } from '../lib/api';
+import { dest } from '../lib/nav';
 import { isInstallContainer } from '../lib/topology';
 import { levelOf, type Case } from '../lib/types';
 import { useStream } from './stream-context';
@@ -60,7 +61,7 @@ export function CasesProvider({ children }: { children: ReactNode }) {
           toast(`${install ? '설치 검사 격리' : `${name} 격리됨`} — ${m.data.reason ?? m.data.ruleId ?? ''}`, {
             key: `kill:${name}`,
             tone: 'danger',
-            action: install ? { label: '설치 검사', to: '/installs' } : { label: '이벤트 보기', to: `/events?container=${encodeURIComponent(name)}` },
+            action: install ? { label: '설치 검사', to: '/installs' } : { label: '이벤트 보기', ...dest('/events', { container: name }) },
           });
         }
       }),

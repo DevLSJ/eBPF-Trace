@@ -8,6 +8,7 @@ import { Panel } from '../../components/Panel';
 import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
 import { rowKeys, useAutoRetry } from '../../components/list/hooks';
 import { useCases } from '../../hooks/cases-context';
+import { useFilters } from '../../hooks/useFilters';
 import { useCopyCommand } from '../../hooks/useCopyCommand';
 import { useInterval, useLoad, useNow } from '../../hooks/useLoad';
 import { api } from '../../lib/api';
@@ -21,9 +22,11 @@ type StatusFilter = 'pending' | 'all' | (typeof INSTALL_STATUSES)[number];
 
 // 설치 검사 — 질문 하나: 「이 패키지는 무엇을 하려 했고, 악성인가?」
 export function InstallsPage() {
+  // 필터(결과 · 매니저)는 화면 상태로만, 열린 세션(id)만 주소에(10/21)
   const [params, setParams] = useSearchParams();
-  const status = (params.get('status') as StatusFilter) || 'pending';
-  const manager = params.get('manager') ?? '';
+  const [filters, setFilters] = useFilters('/installs');
+  const status = (filters.status as StatusFilter) || 'pending';
+  const manager = filters.manager;
   const id = params.get('id');
   const { cases } = useCases();
   const copy = useCopyCommand();
@@ -40,18 +43,14 @@ export function InstallsPage() {
   useInterval(poll, 5000);
   useAutoRetry(failing, list.error, reload);
 
-  const set = (k: string, v: string | null) => {
+  const set = (k: 'id' | 'status' | 'manager', v: string | null) => {
+    if (k !== 'id') return setFilters({ [k]: v ?? '' });
     const next = new URLSearchParams(params);
     if (v) next.set(k, v);
     else next.delete(k);
-    setParams(next, { replace: k !== 'id' });
+    setParams(next);
   };
-  const clearFilters = () => {
-    const next = new URLSearchParams(params);
-    next.delete('status');
-    next.delete('manager');
-    setParams(next, { replace: true });
-  };
+  const clearFilters = () => setFilters({ status: '', manager: '' });
 
   const caseOf = useMemo(() => new Map((cases ?? []).map((c) => [c.id, c])), [cases]);
   const sessions = useMemo(() => list.data ?? [], [list.data]);

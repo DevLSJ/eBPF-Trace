@@ -19,11 +19,14 @@ test.describe('대시보드 — 지금 처리할 일이 있나?', () => {
     void backend;
     await page.goto('/');
     await page.locator('[data-case="case-0004"]').click();
-    await expect(page).toHaveURL(/\/installs\?status=pending&id=ins-0012/);
+    // 필터(결과 「판정 대기」)는 state 로 넘기고 주소에는 id 만(10/21)
+    await expect(page).toHaveURL(/\/installs\?id=ins-0012$/);
     await expect(page.locator('[data-sheet="install"]')).toBeVisible();
+    await expect(page.locator('[data-chip="pending"]')).toHaveAttribute('aria-pressed', 'true');
     await page.goto('/');
     await page.locator('[data-case="case-0005"]').click();
-    await expect(page).toHaveURL(/\/topology\?container=pkg-reqeusts&node=c%3Apkg-reqeusts/);
+    await expect(page).toHaveURL(/\/topology\?node=c%3Apkg-reqeusts$/);
+    await expect(page.getByRole('combobox', { name: /^컨테이너/ })).toHaveValue('pkg-reqeusts');
   });
 
   test('② 0건이면 「처리할 일 없음」', async ({ page, backend }) => {

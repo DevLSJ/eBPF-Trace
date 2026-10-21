@@ -6,6 +6,7 @@ import { LevelBadge } from '../../components/VerdictBadge';
 import { useCases } from '../../hooks/cases-context';
 import { fmtNum, fmtTime } from '../../lib/format';
 import { scanHref, SOURCE_LABEL } from '../../lib/guide';
+import { installDest, topologyDest } from '../../lib/nav';
 import { caseLabel, type Case } from '../../lib/types';
 
 // 대시보드 — 「지금 처리할 일이 있나?」(판정 대기) + 「지금까지 무엇을 수집 · 탐지했나?」(eBPF 수집 종합, 10/16)
@@ -61,14 +62,12 @@ export function DashboardPage() {
 }
 
 function PendingRow({ c }: { c: Case }) {
-  const to =
-    c.source === 'install' && c.installId
-      ? `/installs?status=pending&id=${encodeURIComponent(c.installId)}`
-      : (scanHref(c) ?? `/topology?container=${encodeURIComponent(c.container)}&node=${encodeURIComponent(`c:${c.container}`)}`);
+  const sh = scanHref(c);
+  const to = c.source === 'install' && c.installId ? installDest(c.installId, 'pending') : sh ? { to: sh } : topologyDest(c.container);
   const chip = c.source === 'install' ? 'bg-indigo-50 text-indigo-700' : c.source === 'scan' ? 'bg-amber-50 text-amber-800' : 'bg-teal-50 text-teal-700';
   return (
     <li className="border-b border-slate-100">
-      <Link to={to} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto_3.5rem_4.5rem_1rem] items-center gap-3 px-4 py-3 text-sm hover:bg-slate-50" data-case={c.id} data-source={c.source}>
+      <Link {...to} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto_3.5rem_4.5rem_1rem] items-center gap-3 px-4 py-3 text-sm hover:bg-slate-50" data-case={c.id} data-source={c.source}>
         <span className={`rounded px-1.5 py-0.5 text-center text-[11px] font-medium whitespace-nowrap ${chip}`}>{SOURCE_LABEL[c.source] ?? c.source}</span>
         <span className="min-w-0">
           <span className="block truncate font-mono font-medium text-slate-800">{caseLabel(c)}</span>

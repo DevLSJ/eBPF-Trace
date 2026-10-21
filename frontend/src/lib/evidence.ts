@@ -1,7 +1,9 @@
+import { dest } from './nav';
 import type { Event } from './types';
 
 // 「증거 보기」(10/20 I) — 감사 로그를 그 컨테이너로 거르고, 격리된 첫 행의 상세를 「증거」 탭으로 연다
-export const evidenceHref = (container: string) => `/audit?container=${encodeURIComponent(container)}&tab=evidence`;
+// 컨테이너는 필터라 state 로(10/21), tab 만 주소에
+export const evidenceDest = (container: string) => dest('/audit?tab=evidence', { container });
 
 // 도메인 조회 줄(10/20 I, 목업 screens.js dnsRow)
 export type DnsKind = 'traced' | 'direct' | 'private' | 'off' | 'unknown';

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { api, ApiError, errorText } from '../lib/api';
+import { splitHref } from '../lib/nav';
 import type { ChatLink } from '../lib/types';
 
 // 「AI 도우미」 탭 본문 (10/20 W13, 목업 mock/shared/chat.js). POST /api/chat → 로컬 모델(Ollama qwen2.5:3b)의 답을 SSE 로 받아 흘려 보인다.
@@ -255,7 +256,7 @@ function Message({ m, elapsed }: { m: Msg; elapsed: number }) {
         <div data-part="chat-links" className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className="text-[11px] text-slate-400">관련 화면</span>
           {m.links.map((l, i) => (
-            <Link key={i} to={l.href} className="text-xs text-indigo-600 hover:underline">
+            <Link key={i} {...splitHref(l.href)} className="text-xs text-indigo-600 hover:underline">
               {l.label} →
             </Link>
           ))}

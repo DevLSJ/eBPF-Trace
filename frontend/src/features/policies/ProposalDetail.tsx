@@ -9,6 +9,7 @@ import { useToast } from '../../hooks/toast-context';
 import { api, errorText } from '../../lib/api';
 import { fmtDateTime, fmtNum } from '../../lib/format';
 import { scanHref, SOURCE_LABEL } from '../../lib/guide';
+import { installDest } from '../../lib/nav';
 import { applyEffects, changeText, LIST_LABEL } from '../../lib/proposal';
 import { caseLabel, LEVEL_LABEL, type Level, type Preview, type Proposal } from '../../lib/types';
 
@@ -110,7 +111,7 @@ export function ProposalDetail({
                   {c.decidedBy ?? p.createdBy} 판정 {c.decidedAt ? fmtDateTime(c.decidedAt) : fmtDateTime(p.createdAt)}
                   {c.note && <> · 메모 「{c.note}」</>}{' '}
                   {c.source === 'install' && c.installId && (
-                    <Link to={`/installs?status=all&id=${encodeURIComponent(c.installId)}`} className="text-indigo-600 hover:underline">
+                    <Link {...installDest(c.installId)} className="text-indigo-600 hover:underline">
                       세션 보기
                     </Link>
                   )}
