@@ -51,8 +51,16 @@ type AuthStore interface {
 	SaveLicense(ctx context.Context, l model.License) error
 
 	AddAuthAudit(ctx context.Context, e model.AuthAudit) error
-	// ListAuthAudit: 최신순
-	ListAuthAudit(ctx context.Context, limit int) ([]model.AuthAudit, error)
+	// ListAuthAudit: 최신순(id 내림차순), q 의 조건을 모두 만족하는 것만
+	ListAuthAudit(ctx context.Context, q AuthAuditQuery) ([]model.AuthAudit, error)
+}
+
+// AuthAuditQuery: 인증 감사 조회 조건. 0 · 빈 값은 그 조건을 쓰지 않는다
+type AuthAuditQuery struct {
+	Limit      int    // 0 이하면 기본, 상한 MaxAuthAuditLimit
+	BeforeID   int64  // 커서: 이 id 보다 작은 것 (화면의 「더 보기」가 마지막 행 id 를 넘긴다)
+	Action     string // 이 action 하나만
+	FailedOnly bool   // ok=false 인 것만
 }
 
 var (

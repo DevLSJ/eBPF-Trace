@@ -17,3 +17,16 @@ func TestPostgresAuthContract(t *testing.T) {
 	}
 	authStoreContract(t, p)
 }
+
+// 감사 필터 — 메모리와 같은 결과 · 순서 (DB 없으면 건너뛴다)
+func TestPostgresAuthAuditFilter(t *testing.T) {
+	p := testPG(t)
+	ctx := t.Context()
+	if err := p.MigrateAuth(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.pool.Exec(ctx, `TRUNCATE auth_audit`); err != nil {
+		t.Fatal(err)
+	}
+	authAuditFilterContract(t, p)
+}

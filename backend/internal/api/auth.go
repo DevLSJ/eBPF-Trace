@@ -3,10 +3,12 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/auth"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/store"
 )
 
 // SandboxPatterns: SANDBOX_TOKEN 으로 sandboxAuth 가 직접 확인하는 sg-install 경로 — auth.Middleware 의 Bypass 로 넘긴다
@@ -228,9 +230,33 @@ func (a *authHandlers) renewLicense(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a.licView(&l))
 }
 
+// audit: GET /api/auth/audit?action=&failed=1&before=<id>&limit= — 최신순. 응답 모양은 그대로(기록 배열).
+// 「더 보기」는 화면이 마지막 행 id 를 before 로 보낸다. 잘못된 action · failed · before 는 400, limit 은 예전처럼 관대하게
 func (a *authHandlers) audit(w http.ResponseWriter, r *http.Request) {
-	n, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	ev, err := a.s.AuthAudit(r.Context(), n)
+	q := r.URL.Query()
+	aq := store.AuthAuditQuery{Action: q.Get("action")}
+	aq.Limit, _ = strconv.Atoi(q.Get("limit"))
+	if aq.Action != "" && !auth.ValidAuditAction(aq.Action) {
+		writeErr(w, http.StatusBadRequest, "action: "+strings.Join(auth.AuditActions, " | "))
+		return
+	}
+	switch q.Get("failed") {
+	case "", "0", "false":
+	case "1", "true":
+		aq.FailedOnly = true
+	default:
+		writeErr(w, http.StatusBadRequest, "failed: 1 | true")
+		return
+	}
+	if s := q.Get("before"); s != "" {
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || n <= 0 {
+			writeErr(w, http.StatusBadRequest, "before: 양의 정수(기록 id)")
+			return
+		}
+		aq.BeforeID = n
+	}
+	ev, err := a.s.AuthAudit(r.Context(), aq)
 	if err != nil {
 		serverErr(w, "auth audit", err)
 		return

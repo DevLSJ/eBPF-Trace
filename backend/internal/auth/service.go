@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -164,6 +165,18 @@ func clip(s string) string {
 	}
 	return s
 }
+
+// AuditActions: 이 서비스가 감사에 남기는 action 값 전부 (GET /api/auth/audit?action= 허용 목록).
+// audit_actions_test.go 가 아래 s.audit · s.otpFail 호출의 문자열과 같은지 확인한다
+var AuditActions = []string{
+	"login", "login_lock", "logout", "password_change",
+	"license_register", "license_renew",
+	"otp_enroll", "otp_verify", "otp_recovery",
+	"user_create", "user_update", "user_reset_password", "user_reset_otp",
+}
+
+// ValidAuditAction: AuditActions 안의 값인지 (대소문자 구분)
+func ValidAuditAction(a string) bool { return slices.Contains(AuditActions, a) }
 
 func (s *Service) audit(ctx context.Context, actor, action, target, ip string, ok bool, detail string) {
 	e := model.AuthAudit{At: s.now(), Actor: clip(actor), Action: action, Target: clip(target), IP: ip, OK: ok, Detail: detail}
@@ -753,8 +766,8 @@ func (s *Service) Purge(ctx context.Context) (int64, error) {
 	return s.o.Store.PurgeSessions(ctx, now.Add(-s.o.IdleTimeout), now.Add(-s.o.MaxAge))
 }
 
-func (s *Service) AuthAudit(ctx context.Context, limit int) ([]model.AuthAudit, error) {
-	return s.o.Store.ListAuthAudit(ctx, limit)
+func (s *Service) AuthAudit(ctx context.Context, q store.AuthAuditQuery) ([]model.AuthAudit, error) {
+	return s.o.Store.ListAuthAudit(ctx, q)
 }
 
 // ---------- 계정 관리(관리자) ----------

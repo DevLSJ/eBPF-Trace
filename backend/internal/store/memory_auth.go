@@ -296,13 +296,24 @@ func (m *MemoryAuth) AddAuthAudit(_ context.Context, e model.AuthAudit) error {
 	return nil
 }
 
-func (m *MemoryAuth) ListAuthAudit(_ context.Context, limit int) ([]model.AuthAudit, error) {
-	limit = authAuditLimit(limit)
+func (m *MemoryAuth) ListAuthAudit(_ context.Context, q AuthAuditQuery) ([]model.AuthAudit, error) {
+	limit := authAuditLimit(q.Limit)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := []model.AuthAudit{}
+	// m.audit 은 id 오름차순으로 쌓인다 → 뒤에서부터 읽으면 최신순
 	for i := len(m.audit) - 1; i >= 0 && len(out) < limit; i-- {
-		out = append(out, m.audit[i])
+		e := m.audit[i]
+		if q.BeforeID > 0 && e.ID >= q.BeforeID {
+			continue
+		}
+		if q.Action != "" && e.Action != q.Action {
+			continue
+		}
+		if q.FailedOnly && e.OK {
+			continue
+		}
+		out = append(out, e)
 	}
 	return out, nil
 }

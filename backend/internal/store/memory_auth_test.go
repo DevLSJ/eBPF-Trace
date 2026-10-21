@@ -2,6 +2,8 @@ package store
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -149,10 +151,79 @@ func authStoreContract(t *testing.T, st AuthStore) {
 	for i, a := range []string{"login", "logout", "login"} {
 		_ = st.AddAuthAudit(ctx, model.AuthAudit{At: at.Add(time.Duration(i) * time.Second), Actor: "admin", Action: a, OK: i != 1})
 	}
-	ev, err := st.ListAuthAudit(ctx, 2)
+	ev, err := st.ListAuthAudit(ctx, AuthAuditQuery{Limit: 2})
 	if err != nil || len(ev) != 2 || ev[0].Action != "login" || ev[1].Action != "logout" || ev[1].OK || ev[0].ID <= ev[1].ID {
 		t.Fatalf("audit: %+v %v", ev, err)
 	}
 }
 
 func TestMemoryAuthContract(t *testing.T) { authStoreContract(t, NewMemoryAuth()) }
+
+// authAuditFilterContract: 감사 필터(action · failed · before 커서 · limit) — 빈 감사 테이블에서 시작한다.
+// e1~e6 을 차례로 넣고, 조건마다 걸러진 기록과 최신순(id 내림차순)을 detail 표식으로 확인한다.
+func authAuditFilterContract(t *testing.T, st AuthStore) {
+	ctx := t.Context()
+	at := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
+	rows := []struct {
+		action string
+		ok     bool
+	}{
+		{"login", true}, {"login", false}, {"logout", true}, {"login", false}, {"otp_verify", false}, {"login", true},
+	}
+	for i, r := range rows {
+		if err := st.AddAuthAudit(ctx, model.AuthAudit{At: at.Add(time.Duration(i) * time.Second), Actor: "admin", Action: r.action, OK: r.ok, Detail: fmt.Sprintf("e%d", i+1)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	all, err := st.ListAuthAudit(ctx, AuthAuditQuery{})
+	if err != nil || len(all) != 6 {
+		t.Fatalf("all: %+v %v", all, err)
+	}
+	id := map[string]int64{} // 표식 → id
+	for _, e := range all {
+		id[e.Detail] = e.ID
+	}
+	marks := func(q AuthAuditQuery) string {
+		t.Helper()
+		ev, err := st.ListAuthAudit(ctx, q)
+		if err != nil {
+			t.Fatalf("%+v: %v", q, err)
+		}
+		if ev == nil {
+			t.Fatalf("%+v: nil (빈 결과도 [] 여야 JSON 이 null 이 아님)", q)
+		}
+		out := make([]string, 0, len(ev))
+		for i, e := range ev {
+			if i > 0 && e.ID >= ev[i-1].ID {
+				t.Fatalf("%+v: 최신순 아님 %+v", q, ev)
+			}
+			out = append(out, e.Detail)
+		}
+		return strings.Join(out, ",")
+	}
+	cases := []struct {
+		name string
+		q    AuthAuditQuery
+		want string
+	}{
+		{"조건 없음", AuthAuditQuery{}, "e6,e5,e4,e3,e2,e1"},
+		{"action", AuthAuditQuery{Action: "login"}, "e6,e4,e2,e1"},
+		{"failed", AuthAuditQuery{FailedOnly: true}, "e5,e4,e2"},
+		{"action+failed", AuthAuditQuery{Action: "login", FailedOnly: true}, "e4,e2"},
+		{"before", AuthAuditQuery{BeforeID: id["e4"]}, "e3,e2,e1"},
+		{"before+action", AuthAuditQuery{BeforeID: id["e6"], Action: "login"}, "e4,e2,e1"},
+		{"before+failed", AuthAuditQuery{BeforeID: id["e5"], FailedOnly: true}, "e4,e2"},
+		{"셋 다", AuthAuditQuery{BeforeID: id["e4"], Action: "login", FailedOnly: true}, "e2"},
+		{"limit 1쪽", AuthAuditQuery{Action: "login", Limit: 2}, "e6,e4"},
+		{"limit 2쪽(마지막 행 id 를 before 로)", AuthAuditQuery{Action: "login", Limit: 2, BeforeID: id["e4"]}, "e2,e1"},
+		{"끝 다음 쪽", AuthAuditQuery{BeforeID: id["e1"]}, ""},
+		{"맞는 action 없음", AuthAuditQuery{Action: "user_create"}, ""},
+	}
+	for _, c := range cases {
+		if got := marks(c.q); got != c.want {
+			t.Errorf("%s: got %q want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestMemoryAuthAuditFilter(t *testing.T) { authAuditFilterContract(t, NewMemoryAuth()) }

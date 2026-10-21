@@ -123,7 +123,7 @@ func TestLockoutAfterFiveFailures(t *testing.T) {
 	if _, err := login(t, s, "admin", adminPW, "10.0.0.9"); err != nil {
 		t.Fatalf("5분 뒤: %v", err)
 	}
-	ev, _ := s.AuthAudit(t.Context(), 50)
+	ev, _ := s.AuthAudit(t.Context(), store.AuthAuditQuery{Limit: 50})
 	if !hasAction(ev, "login_lock", false) {
 		t.Fatalf("잠금 감사 기록: %+v", ev)
 	}
@@ -278,7 +278,7 @@ func TestRecoveryCodeOneTime(t *testing.T) {
 	if err := s.OTPVerify(ctx, r2.Token, "", codes[4], "10.0.0.1"); err != nil {
 		t.Fatalf("다른 코드: %v", err)
 	}
-	ev, _ := s.AuthAudit(ctx, 100)
+	ev, _ := s.AuthAudit(ctx, store.AuthAuditQuery{Limit: 100})
 	if !hasAction(ev, "otp_recovery", true) || !hasAction(ev, "otp_recovery", false) {
 		t.Fatal("복구 코드 감사")
 	}
@@ -389,7 +389,7 @@ func TestLastAdminProtection(t *testing.T) {
 	if _, err := s.UpdateUser(ctx, CLIActor, second.ID, UserPatch{Disabled: &yes}, ""); status(err) != http.StatusConflict {
 		t.Fatalf("이제 admin2 가 마지막: %v", err)
 	}
-	ev, _ := s.AuthAudit(ctx, 100)
+	ev, _ := s.AuthAudit(ctx, store.AuthAuditQuery{Limit: 100})
 	if !hasAction(ev, "user_update", true) || !hasAction(ev, "user_create", true) {
 		t.Fatal("계정 변경 감사")
 	}

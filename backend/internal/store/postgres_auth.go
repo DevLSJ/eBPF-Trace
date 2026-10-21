@@ -287,8 +287,13 @@ func (p *Postgres) AddAuthAudit(ctx context.Context, e model.AuthAudit) error {
 	return err
 }
 
-func (p *Postgres) ListAuthAudit(ctx context.Context, limit int) ([]model.AuthAudit, error) {
-	rows, err := p.pool.Query(ctx, `SELECT id, at, actor, action, target, ip, ok, detail FROM auth_audit ORDER BY id DESC LIMIT $1`, authAuditLimit(limit))
+// ListAuthAudit: SQL 문은 고정이고 조건 값은 모두 바인딩한다. before 0 · action 빈 값 · failed false 는 그 조건을 참으로 만들어 거르지 않는다
+func (p *Postgres) ListAuthAudit(ctx context.Context, q AuthAuditQuery) ([]model.AuthAudit, error) {
+	rows, err := p.pool.Query(ctx, `SELECT id, at, actor, action, target, ip, ok, detail FROM auth_audit
+		WHERE ($1::bigint = 0 OR id < $1::bigint)
+		  AND ($2::text = '' OR action = $2::text)
+		  AND (NOT $3::boolean OR NOT ok)
+		ORDER BY id DESC LIMIT $4`, max(q.BeforeID, 0), q.Action, q.FailedOnly, authAuditLimit(q.Limit))
 	if err != nil {
 		return nil, err
 	}

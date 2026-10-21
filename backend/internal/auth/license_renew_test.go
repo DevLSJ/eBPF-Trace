@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/store"
 )
 
 const renewKey = "9876-5432-1098-7654"
@@ -57,7 +58,7 @@ func TestRenewLicense(t *testing.T) {
 	}
 
 	// 감사: license_renew 성공 · 실패, 어디에도 키 원문(숫자 16자리 · 하이픈 형태)이 없다
-	ev, _ := s.AuthAudit(ctx, 100)
+	ev, _ := s.AuthAudit(ctx, store.AuthAuditQuery{Limit: 100})
 	if !hasAction(ev, "license_renew", true) || !hasAction(ev, "license_renew", false) {
 		t.Fatalf("감사: %+v", ev)
 	}
