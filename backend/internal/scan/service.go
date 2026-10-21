@@ -30,9 +30,11 @@ type Store interface {
 	ListScans(ctx context.Context) ([]model.Scan, error)
 }
 
-// Blocker: 「차단 목록에 올리기」 — 공급망 검사 건을 열고 악성으로 판정해 패키지 차단 제안을 만든다(review)
+// Blocker: 「차단 목록에 올리기」 — 공급망 검사 건을 열고 악성으로 판정해 패키지 차단 제안을 만든다(review).
+// pkgs 가 비면 패키지 검사의 대상 하나, 있으면(저장소 · 파일 검사) 결과에서 고른 패키지들(W4).
+// reason: 확인 대화상자의 사유(선택, W18) — 판정 메모에 붙인다. 길이 검사는 review 가 한다
 type Blocker interface {
-	FromScan(ctx context.Context, s model.Scan) (model.Case, model.Proposal, error)
+	FromScan(ctx context.Context, s model.Scan, pkgs []model.ScanPackage, reason string) (model.Case, model.Proposal, error)
 }
 
 type Options struct {
@@ -43,6 +45,8 @@ type Options struct {
 	OSVImage      string
 	Store         Store
 	Blocker       Blocker
+	// GitHub: 저장소 tarball 을 받는 codeload 주소. 비면 https://codeload.github.com (테스트는 가짜 서버)
+	GitHub string
 }
 
 const keep = 30 * 24 * time.Hour
@@ -103,7 +107,6 @@ type Input struct {
 var (
 	namePat = regexp.MustCompile(`^(@[\w.-]+/)?[\w.-]{1,214}$`)
 	verPat  = regexp.MustCompile(`^[\w.+!-]{0,64}$`)
-	repoPat = regexp.MustCompile(`^https://github\.com/([\w.-]+)/([\w.-]+?)(\.git)?/?$`)
 	depPat  = regexp.MustCompile(`(?i)(^requirements.*\.txt$|^package-lock\.json$|^yarn\.lock$|^pnpm-lock\.yaml$|^poetry\.lock$|^pipfile\.lock$)`)
 	filePat = regexp.MustCompile(`(?i)\.(tar\.gz|tgz|whl|zip|py|js|mjs|cjs)$`)
 )
@@ -123,11 +126,11 @@ func (s *Service) Start(ctx context.Context, in Input) (string, error) {
 		sep := map[string]string{"pip": "==", "npm": "@"}[in.Manager]
 		t.Manager, t.Name, t.Version, t.Label = in.Manager, name, v, in.Manager+" "+name+ver(v, sep)
 	case "repo":
-		m := repoPat.FindStringSubmatch(strings.TrimSpace(in.URL))
-		if m == nil {
-			return "", bad("https://github.com/<소유자>/<저장소> 형식으로 써 주세요")
+		ref, err := ParseGitHubURL(in.URL)
+		if err != nil {
+			return "", err
 		}
-		t.URL, t.Name, t.Label = "https://github.com/"+m[1]+"/"+m[2], m[2], "github.com/"+m[1]+"/"+m[2]
+		t.URL, t.Name, t.Ref, t.Subpath, t.Label = ref.URL(), ref.Repo, ref.Ref, ref.Subpath, ref.Label()
 	case "file":
 		fn := filepath.Base(strings.TrimSpace(in.FileName))
 		if in.File == nil || fn == "" || fn == "." {
@@ -168,7 +171,7 @@ func (s *Service) Start(ctx context.Context, in Input) (string, error) {
 			t.Size = fi.Size()
 		}
 	}
-	sc := &model.Scan{ID: id, Target: t, Status: "running", StartedAt: time.Now().UTC(), Findings: []model.ScanFinding{}, Vulns: []model.ScanVuln{}, Files: map[string]string{}}
+	sc := &model.Scan{ID: id, Target: t, Status: "running", StartedAt: time.Now().UTC(), Findings: []model.ScanFinding{}, Vulns: []model.ScanVuln{}, Packages: []model.ScanPackage{}, Files: map[string]string{}}
 	s.mu.Lock()
 	s.scans = slices.Insert(s.scans, 0, sc)
 	s.mu.Unlock()
@@ -211,8 +214,15 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 			s.mu.Unlock()
 		}
 	case "repo":
-		m := repoPat.FindStringSubmatch(t.URL)
-		if err := fetchRepo(ctx, m[1], m[2], src); err != nil {
+		ref, err := ParseGitHubURL(t.URL)
+		if err != nil {
+			return err
+		}
+		base := s.o.GitHub
+		if base == "" {
+			base = defaultCodeload
+		}
+		if err := fetchRepo(ctx, base, ref, src); err != nil {
 			return err
 		}
 	}
@@ -239,6 +249,7 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 		}
 	}
 	var vulns []model.ScanVuln
+	var pkgs []model.ScanPackage
 	if depsOnly || t.Kind != "package" {
 		args := []string{"scan", "source", "-r", "/work/" + rel, "--format", "json"}
 		var direct map[string]bool
@@ -253,7 +264,7 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 			return fmt.Errorf("OSV-Scanner: %w", err)
 		}
 		if code == 0 || code == 1 { // 1 = 취약점 있음, 128 = 검사할 의존성 파일 없음
-			if vulns, err = parseOSV(out, direct); err != nil {
+			if vulns, pkgs, err = parseOSV(out, "/work/"+rel, direct); err != nil {
 				return err
 			}
 		}
@@ -275,6 +286,10 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sc.Findings, sc.Risk, sc.Vulns, sc.Files = nonNil(findings), risk, nonNilV(vulns), files
+	sc.Packages = pkgs
+	if sc.Packages == nil {
+		sc.Packages = []model.ScanPackage{}
+	}
 	sc.Threats, sc.Capabilities, sc.VulnCount, sc.VulnMax = 0, 0, 0, nil
 	for _, f := range findings {
 		if f.Category == "threat" {
@@ -370,7 +385,7 @@ func (s *Service) List() []model.Scan {
 			continue
 		}
 		c := *x
-		c.Findings, c.Vulns, c.Files = nil, nil, nil
+		c.Findings, c.Vulns, c.Packages, c.Files = nil, nil, nil, nil
 		out = append(out, c)
 	}
 	return out
@@ -387,16 +402,47 @@ func (s *Service) Get(id string) (model.Scan, bool) {
 	return model.Scan{}, false
 }
 
-// Block: 패키지 이름으로 검사한 것만. 이미 올렸으면 그 제안을 돌려준다
+// Block: 패키지 이름으로 검사한 것 — 선택 없이 그 패키지(기존 경로)
 func (s *Service) Block(ctx context.Context, id string) (string, error) {
+	return s.BlockPackages(ctx, id, nil, "")
+}
+
+const maxBlockPackages = 50
+
+// BlockPackages: 「차단 목록에 올리기」(W4) — 패키지 검사는 그 패키지(선택 없음), 저장소 · 파일 검사는 결과의 패키지 목록(OSV 가 읽은 의존성) 중 고른 것만.
+// 매니저를 비우면 결과에서 찾고(이름이 두 매니저에 있으면 지정 필요), 버전을 비우면 결과의 버전. 차단 키는 매니저:이름(버전 무관).
+// 이미 같은 선택으로 올렸으면 그 제안을 돌려준다(review). reason(W18)은 판정 메모로 그대로 넘긴다
+func (s *Service) BlockPackages(ctx context.Context, id string, sel []model.ScanPackage, reason string) (string, error) {
 	sc, ok := s.Get(id)
 	if !ok {
 		return "", &Error{404, "검사 없음"}
 	}
-	if sc.Target.Kind != "package" || sc.Status != "done" {
-		return "", bad("패키지 이름으로 검사를 마친 것만 차단 목록에 올릴 수 있습니다")
+	if sc.Status != "done" {
+		return "", bad("검사를 마친 것만 차단 목록에 올릴 수 있습니다")
 	}
-	c, p, err := s.o.Blocker.FromScan(ctx, sc)
+	var chosen []model.ScanPackage
+	if sc.Target.Kind == "package" {
+		if len(sel) > 0 {
+			return "", bad("패키지 이름으로 검사한 것은 그 패키지를 올립니다 — packages 없이 보내세요")
+		}
+	} else {
+		switch {
+		case len(sel) == 0:
+			return "", bad("차단할 패키지를 고르세요(packages)")
+		case len(sel) > maxBlockPackages:
+			return "", bad("한 번에 %d개까지 올릴 수 있습니다", maxBlockPackages)
+		case len(sc.Packages) == 0:
+			return "", bad("이 검사 결과에는 패키지 목록이 없습니다 — 잠금 · 의존성 파일(requirements.txt · package-lock.json · Cargo.lock)이 있어야 합니다")
+		}
+		for _, p := range sel {
+			r, err := resolvePackage(sc.Packages, p)
+			if err != nil {
+				return "", err
+			}
+			chosen = append(chosen, r)
+		}
+	}
+	c, p, err := s.o.Blocker.FromScan(ctx, sc, chosen, reason)
 	if err != nil {
 		return "", err
 	}
@@ -411,4 +457,47 @@ func (s *Service) Block(ctx context.Context, id string) (string, error) {
 		s.save(&x)
 	}
 	return p.ID, nil
+}
+
+// resolvePackage: 고른 패키지를 결과 목록에서 찾아 매니저 · 버전 · 출처를 채운다(이름은 대소문자 무시)
+func resolvePackage(list []model.ScanPackage, p model.ScanPackage) (model.ScanPackage, error) {
+	name := strings.TrimSpace(p.Name)
+	if name == "" {
+		return model.ScanPackage{}, bad("패키지 이름이 비어 있습니다")
+	}
+	if p.Manager != "" && !model.ValidManager(p.Manager) {
+		return model.ScanPackage{}, bad("manager 는 pip | npm | cargo")
+	}
+	if !verPat.MatchString(p.Version) {
+		return model.ScanPackage{}, bad("%s 의 버전 표기를 확인하세요", name)
+	}
+	byManager := map[string]model.ScanPackage{}
+	var managers []string
+	unsupported := false
+	for _, x := range list {
+		if !strings.EqualFold(x.Name, name) || (p.Manager != "" && x.Manager != p.Manager) {
+			continue
+		}
+		if x.Manager == "" {
+			unsupported = true
+			continue
+		}
+		if _, dup := byManager[x.Manager]; !dup {
+			byManager[x.Manager] = x
+			managers = append(managers, x.Manager)
+		}
+	}
+	switch {
+	case len(managers) == 0 && unsupported:
+		return model.ScanPackage{}, bad("%s 은(는) pip · npm · cargo 패키지가 아니라 차단 목록에 올릴 수 없습니다", name)
+	case len(managers) == 0:
+		return model.ScanPackage{}, bad("검사 결과에 없는 패키지: %s", name)
+	case len(managers) > 1:
+		return model.ScanPackage{}, bad("%s 은(는) 여러 매니저(%s)에 있습니다 — manager 를 지정하세요", name, strings.Join(managers, " · "))
+	}
+	r := byManager[managers[0]]
+	if p.Version != "" {
+		r.Version = p.Version
+	}
+	return r, nil
 }

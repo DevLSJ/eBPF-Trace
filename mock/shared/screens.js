@@ -10,11 +10,13 @@
   const durText = (s) => { if (s.refusedBy) return '—'; const end = s.finishedAt || s.containerExitedAt; if (!end) return '—'; const sec = Math.max(0, Math.round((Date.parse(end) - Date.parse(s.startedAt)) / 1000)); return sec < 60 ? `${sec}초` : `${Math.floor(sec / 60)}분 ${sec % 60}초`; };
   const DAY = 86400e3;
   // 건 → 사람이 읽는 대상 이름: label(설치 = 입력 그대로 「pip ./reqeusts」, 런타임 = 컨테이너). 정규화 키(pip:reqeusts)는 차단 목록 · 제안 변경 내용에만 [10/15 3차]
-  const caseTarget = (c, installs) => { if (c.label) return c.label; if (c.source !== 'install') return c.container; const s = (installs || []).find((x) => x.id === c.installId); return s ? `${s.manager} ${pkgLabel(s)}` : c.package; };
-  const caseHref = (c) => (c.source === 'install' ? `#/installs?id=${c.installId}` : `#/topology?container=${encodeURIComponent(c.container)}`);
-  const sourceChip = (src) => h('span', { class: `src-chip src-${src}` }, src === 'install' ? '설치 검사' : '런타임');
+  const caseTarget = (c, installs) => { if (c.label) return c.label; if (c.source === 'scan') return c.package; if (c.source !== 'install') return c.container; const s = (installs || []).find((x) => x.id === c.installId); return s ? `${s.manager} ${pkgLabel(s)}` : c.package; };
+  const caseHref = (c) => U.caseHref(c); // 출처별 링크 · 표기는 app.js 한 곳(U.caseHref · U.CASE_SOURCE) [10/20 J]
+  const sourceChip = (src) => h('span', { class: `src-chip src-${src}` }, U.CASE_SOURCE[src] || src);
   // 데이터가 바뀔 때만 다시 그린다 — 열린 시트의 스크롤 · 포커스를 지킨다
   const sigOf = (x) => JSON.stringify(x);
+  // 목록 공통 [10/20 D]: 필터 칩의 ✕ · 「모두 해제」는 주소(필터)를 바꾼 뒤 화면을 다시 그린다 — 입력 칸까지 주소와 같아진다
+  const clearQuery = (keys) => { U.setQuery(Object.fromEntries(keys.map((k) => [k, '']))); U.remount(); };
   // 이 행동에서 정책 시작 [10/16]: 막는 새 정책 · 걸린 정책에 예외
   function policyStarts(v) {
     const blk = U.policyEasy.blockLink(v.event), alw = v.ruleId ? U.policyEasy.allowLink(v.ruleId, v.event) : null;
@@ -177,27 +179,35 @@
     mount(page, query) {
       const f = { status: query.get('status') || 'pending', manager: query.get('manager') || '' };
       if (!STATUS_CHIPS.some(([v]) => v === f.status)) f.status = 'pending';
-      let selId = query.get('id') || '', rows = null, cases = new Map(), error = null;
+      let selId = query.get('id') || '', rows = null, cases = new Map(), error = null; // rows === null: 첫 로드 중(스켈레톤)
       U.headerActions(h('button', { type: 'button', class: 'btn btn-ghost btn-xs', title: '감시 컨테이너에서 설치하는 CLI 명령', onclick: () => copyCommand(CMD_EXAMPLE) }, '⧉ 명령 복사'));
       const statusChips = h('div', { class: 'chips', 'data-filter': 'status', role: 'group', 'aria-label': '결과' });
       const mgrChips = h('div', { class: 'chips', 'data-filter': 'manager', role: 'group', 'aria-label': '매니저' });
       const tbody = h('tbody');
       const table = h('table', { class: 'table', 'data-table': 'installs' }, h('thead', null, h('tr', null, ['시작', '매니저', '패키지', '결과', '판정', '위반', '걸린 시간'].map((t) => h('th', null, t)))), tbody);
-      const emptySlot = h('div', { class: 'empty-slot' });
+      const emptySlot = h('div', { class: 'empty-slot' }, U.skeleton(6));
+      table.hidden = true;
       const count = h('span', { class: 'num muted' });
       const sheetSlot = h('div', { class: 'sheet-slot' });
+      const applied = h('div');
       page.append(h('div', { class: 'split' },
-        panel({ title: ['설치 세션 ', count], class: 'grow', body: h('div', { class: 'col' }, h('div', { class: 'filters' }, h('div', { class: 'chip-group' }, '보기', statusChips), h('div', { class: 'chip-group' }, '매니저', mgrChips)), h('div', { class: 'grid-scroll' }, table, emptySlot)) }),
+        panel({ title: ['설치 세션 ', count], class: 'grow', body: h('div', { class: 'col' }, h('div', { class: 'filters' }, h('div', { class: 'chip-group' }, '보기', statusChips), h('div', { class: 'chip-group' }, '매니저', mgrChips)), applied, h('div', { class: 'grid-scroll' }, table, emptySlot)) }),
         sheetSlot));
+      const STATUS_KO = Object.fromEntries(STATUS_CHIPS);
       const setF = (k, v) => { f[k] = v; U.setQuery({ [k]: k === 'status' && v === 'pending' ? '' : v }); draw(); };
       const select = (id) => { selId = id; U.setQuery({ id }); draw(); };
       const caseOf = (s) => (s.caseId ? cases.get(s.caseId) : null);
       const isPending = (s) => { const c = caseOf(s); return !!c && c.state === 'open'; };
       let sig = '';
-      const load = () => Promise.all([U.api.installs(), U.api.cases({ source: 'install' })]).then(([r, cs]) => {
+      // quiet: 자동 재시도(30초마다, 스켈레톤 없이) [10/20 결정 4] — 오류 뒤에도 이 호출만은 통과시킨다
+      let inflight = 0; // 부르는 중이면 스트림 갱신(update)이 또 부르지 않는다 — 겹친 호출이 서로의 결과를 덮지 않게
+      const load = (quiet) => { inflight++; return Promise.all([U.api.installs(), U.api.cases({ source: 'install' })]).then(([r, cs]) => {
         const next = sigOf([r.map((s) => [s.id, s.status, s.caseId, s.violations.length, s.activity.kinds]), cs.map((c) => [c.id, c.state, c.decision])]);
-        if (rows && !error && next === sig) return; sig = next; rows = r; cases = new Map(cs.map((c) => [c.id, c])); error = null; draw();
-      }).catch((e) => { if (error) return; rows = []; error = e; draw(); });
+        if (error && !quiet) return; // 오류 뒤에는 「다시 시도」 · 자동 재시도만 다시 부른다
+        if (quiet) { error = null; sig = ''; }
+        if (rows && next === sig) return; sig = next; rows = r; cases = new Map(cs.map((c) => [c.id, c])); draw();
+      }).catch((e) => { if (error && !quiet) return; rows = []; error = e; draw(); }).finally(() => { inflight--; }); };
+      const retry = () => { error = null; rows = null; sig = ''; table.hidden = true; replace(emptySlot, U.skeleton(6)); load(); };
       const matches = (s, st) => (st === 'all' ? true : st === 'pending' ? isPending(s) || s.status === 'running' : s.status === st);
       function chips(el, defs, key) {
         const all = rows || [];
@@ -220,7 +230,8 @@
             h('dt', null, '시작'), h('dd', { class: 'num' }, fmt.dateTime(s.startedAt)),
             h('dt', null, '걸린 시간'), h('dd', { class: 'num' }, durText(s), s.exitCode != null ? h('span', { class: 'muted' }, ` · 종료 코드 ${s.exitCode}`) : null),
             h('dt', null, '컨테이너'), h('dd', { class: 'mono', title: s.containerId || '' }, s.container || '— (띄우지 않음)'),
-            h('dt', null, '이미지'), h('dd', { class: 'mono' }, s.image || '—'))),
+            h('dt', null, '이미지'), h('dd', { class: 'mono' }, s.image || '—')),
+            s.status === 'isolated' && s.container ? h('div', { class: 'row-actions' }, evidenceLink(s.container, s.containerId)) : null), // 증거 보기 [10/20 결정 6]
           refused ? null : osvCompare(s),
           refused ? h('p', { class: 'note-box refused' }, '차단 목록에 있는 패키지(', h('b', { class: 'mono' }, s.refusedBy.value), ')라서 감시 컨테이너를 띄우지 않고 설치 전에 거부했습니다. ', h('a', { href: '#/policies?id=__blocklist__', class: 'link' }, '차단 목록 →')) : null,
           s.status === 'unknown' ? h('p', { class: 'note-box' }, 'CLI가 끝 보고를 보내지 않았습니다(중단 등). 컨테이너가 끝난 뒤 10분이 지나 결과 미확인으로 둡니다.') : null,
@@ -242,25 +253,44 @@
         const list = rows.filter((s) => matches(s, f.status) && (!f.manager || s.manager === f.manager));
         count.textContent = `${fmt.num(list.length)}건`;
         table.hidden = !list.length;
+        replace(applied, U.filterChips([f.status !== 'pending' ? { key: 'status', label: `보기: ${STATUS_KO[f.status]}`, clear: () => clearQuery(['status']) } : null,
+          f.manager ? { key: 'manager', label: `매니저: ${f.manager}`, clear: () => clearQuery(['manager']) } : null], () => clearQuery(['status', 'manager'])));
         replace(emptySlot,
-          error ? empty(error.unsupported ? '백엔드 미지원 — 설치 세션 API(GET /api/installs)가 아직 백엔드에 없습니다. 데모 제어에서 내장 시뮬레이션으로 보세요.' : `불러오기 실패: ${error.message}`)
-          : !rows.length ? h('div', { class: 'empty col-center' }, h('p', null, '아직 설치 검사가 없습니다. 패키지를 PC 에 바로 깔지 말고 감시 컨테이너에서 설치해 보세요.'), h('code', { class: 'cmd' }, CMD_EXAMPLE), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => copyCommand(CMD_EXAMPLE) }, '⧉ 명령 복사'))
-          : !list.length ? (f.status === 'pending' ? h('div', { class: 'empty col-center' }, h('b', null, '✓ 판정할 설치 없음'), h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => setF('status', 'all') }, `전체 세션 ${rows.length}건 보기`)) : empty('조건에 맞는 세션 없음')) : null);
-        replace(tbody, list.map((s) => { const c = caseOf(s); return h('tr', { 'data-id': s.id, class: `clickable ${isPending(s) ? 'needs-action' : ''} ${s.id === selId ? 'selected' : ''}`, onclick: () => select(s.id) },
+          error ? U.errorState(error.unsupported ? Object.assign(new Error('백엔드 미지원 — 설치 세션 API(GET /api/installs)가 아직 백엔드에 없습니다. 데모 제어에서 내장 시뮬레이션으로 보세요.'), { unsupported: true }) : error, retry, { quiet: () => load(true) })
+          : !rows.length ? U.emptyState({ icon: '▣', title: '아직 설치 검사가 없습니다', hint: '패키지를 PC 에 바로 깔지 말고 감시 컨테이너에서 설치해 보세요.', actions: [h('code', { class: 'cmd' }, CMD_EXAMPLE), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => copyCommand(CMD_EXAMPLE) }, '⧉ 명령 복사')] })
+          : !list.length ? (f.status === 'pending' ? U.emptyState({ icon: '✓', title: '판정할 설치 없음', actions: h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => setF('status', 'all') }, `전체 세션 ${rows.length}건 보기`) })
+            : U.emptyState({ icon: '⌕', title: '조건에 맞는 세션 없음', actions: h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => clearQuery(['status', 'manager']) }, '필터 모두 해제') })) : null);
+        replace(tbody, list.map((s) => { const c = caseOf(s); return U.rowKeys(h('tr', { 'data-id': s.id, class: `clickable ${isPending(s) ? 'needs-action' : ''} ${s.id === selId ? 'selected' : ''}`, onclick: () => select(s.id) },
           h('td', { class: 'num mono nowrap' }, fmt.dateTime(s.startedAt)),
           h('td', null, h('span', { class: 'mgr', 'data-manager': s.manager }, s.manager)),
           h('td', { class: 'mono trunc', title: pkgLabel(s) }, pkgLabel(s)),
           h('td', null, U.statusBadge(s.status)),
           h('td', null, c ? U.decisionBadge(c.decision) : h('span', { class: 'muted', 'data-decision': 'none' }, '—')),
           h('td', { class: `num ${s.violationCount ? 'tone-danger' : 'muted'}`, 'data-col': 'violations' }, s.violationCount), // 위반 수 = violationCount(같은 위반 묶음의 count 합)
-          h('td', { class: 'num muted nowrap' }, durText(s))); }));
+          h('td', { class: 'num muted nowrap' }, durText(s))), () => select(s.id)); }));
         const cur = rows.find((s) => s.id === selId);
         replace(sheetSlot, cur ? installSheet(cur) : null);
       }
       load();
-      return { update: load }; // sim 은 메모리 조회라 싸다 — 바뀐 게 없으면 load 가 그리지 않는다
+      return { update: () => { if (!error && !inflight) load(); } }; // 오류면 「다시 시도」 · 자동 재시도를 기다린다 [10/20 D · 결정 4] // sim 은 메모리 조회라 싸다 — 바뀐 게 없으면 load 가 그리지 않는다
     },
   };
+
+  // 「증거 보기」 링크 [10/20 결정 6] — 그 컨테이너의 가장 최근 격리 감사 행을 찾아 감사 상세의 증거 탭으로 보낸다(GET /api/audit?container&action=kill).
+  //   격리 행이 없으면(dry-run · 격리 대상만) 링크를 그리지 않는다. cache: 다시 그릴 때마다 조회하지 않게(토폴로지는 1초마다 다시 그린다)
+  const evHref = new Map();
+  function evidenceLink(container, cacheKey) {
+    const a = h('a', { class: 'btn btn-ghost btn-xs', 'data-action': 'evidence', title: '격리 직전에 모은 로그 · 파일 변경 · 프로세스 (감사 로그 › 증거 탭)', hidden: true }, '▤ 증거 보기 →');
+    const show = (href) => { if (href) { a.href = href; a.hidden = false; } else a.remove(); };
+    const key = `${container}|${cacheKey || ''}`;
+    if (evHref.has(key)) { show(evHref.get(key)); return a; }
+    U.api.audit({ container, action: 'kill', limit: 100 }).then((rows) => {
+      const r = rows.find((x) => x.event.containerName === container && levelOf(x) === 'killed');
+      const href = r ? `#/audit?container=${encodeURIComponent(container)}&id=${r.id}&tab=evidence` : '';
+      evHref.set(key, href); show(href);
+    }).catch(() => a.remove());
+    return a;
+  }
 
   // ── 공급망 검사 — 「설치하기 전에, 이 패키지 · 저장소 · 파일에 위험한 코드나 알려진 취약점이 있나?」 [10/16] ──
   // 실제 오픈소스로 정적 검사: GuardDog(악성 코드 패턴 — 파일:줄) · OSV-Scanner(의존성의 알려진 취약점). 코드를 실행하지 않는다.
@@ -272,7 +302,9 @@
   U.screens['/scans'] = {
     title: '공급망 검사',
     mount(page, query) {
-      let selId = query.get('id') || '', rows = [], error = null, input = 'package', file = null, detail = null, focusLoc = '';
+      let selId = query.get('id') || '', rows = null, error = null, input = 'package', file = null, detail = null, focusLoc = '';
+      let vf = SCAN_VERDICT[query.get('verdict')] ? query.get('verdict') : ''; // 결과 필터 [10/20 D]
+      let picked = new Set(); // 패키지 골라 차단 [10/20 G] — 고른 패키지 키(manager:name)
       const formErr = h('p', { class: 'form-error', 'data-form-error': '', hidden: true });
       const fields = h('div', { class: 'scan-fields' });
       const seg = h('div', { class: 'seg', role: 'group', 'aria-label': '입력' });
@@ -297,37 +329,53 @@
         U.api.startScan(body).then((r) => { selId = ''; U.setQuery({ id: '' }); load(); U.toast(`검사를 시작했습니다 — ${r.id}`, { tone: 'info', key: 'scan', replace: true }); })
           .catch((e) => showErr(e.message.replace(/^\d+ · /, '')));
       };
-      const form = h('section', { class: 'panel scan-form', 'data-part': 'scan-form' },
+      // 조회자는 검사를 시작하지 않는다(POST /api/scans 는 관리자) — 입력 칸 대신 안내 한 줄 [10/20 A]
+      const form = U.can() ? h('section', { class: 'panel scan-form', 'data-part': 'scan-form' },
         h('header', { class: 'panel-head' }, h('h2', null, '검사할 대상'), h('span', { class: 'small muted' }, '설치하기 전에 정적 검사 — 코드를 실행하지 않습니다')),
-        h('div', { class: 'scan-form-body' }, seg, fields, h('button', { type: 'button', class: 'btn btn-primary', 'aria-label': '검사 시작', onclick: start }, '검사 시작'), formErr));
+        h('div', { class: 'scan-form-body' }, seg, fields, h('button', { type: 'button', class: 'btn btn-primary', 'aria-label': '검사 시작', onclick: start }, '검사 시작'), formErr))
+        : h('section', { class: 'panel scan-form', 'data-part': 'scan-form-viewer' }, h('p', { class: 'small muted pad-sm' }, '검사 시작은 관리자가 합니다 — 아래 검사 기록과 결과는 볼 수 있습니다.'));
       const tbody = h('tbody');
-      const table = h('table', { class: 'table', 'data-table': 'scans' }, h('thead', null, h('tr', null, ['시작', '대상', '결과', '위험 점수', '위협', '취약점'].map((t) => h('th', null, t)))), tbody);
-      const emptySlot = h('div', { class: 'empty-slot' });
+      const table = h('table', { class: 'table', 'data-table': 'scans', hidden: true }, h('thead', null, h('tr', null, ['시작', '대상', '결과', '위험 점수', '위협', '취약점'].map((t) => h('th', null, t)))), tbody);
+      const emptySlot = h('div', { class: 'empty-slot' }, U.skeleton(5));
       const sheetSlot = h('div', { class: 'sheet-slot' });
+      const vChips = h('div', { class: 'chips', role: 'group', 'aria-label': '결과' });
+      const applied = h('div');
       page.append(h('div', { class: 'split' }, h('div', { class: 'col grow scans-left' }, form,
-        panel({ title: '검사 기록', class: 'grow', body: h('div', { class: 'grid-scroll' }, table, emptySlot) })), sheetSlot));
+        panel({ title: '검사 기록', class: 'grow', actions: vChips, body: h('div', { class: 'col' }, applied, h('div', { class: 'grid-scroll' }, table, emptySlot)) })), sheetSlot));
+      const setVf = (v) => { vf = v; U.setQuery({ verdict: v }); draw(); };
       drawForm();
-      const select = (id) => { selId = id; focusLoc = ''; U.setQuery({ id }); load(); };
+      const select = (id) => { selId = id; focusLoc = ''; picked = new Set(); U.setQuery({ id }); load(); };
       let sig = '';
-      function load() {
+      let inflight = 0;
+      function load(quiet) {
+        inflight++;
         U.api.scans().then((r) => {
-          error = null; rows = r;
+          if (error && !quiet) return; // 오류 뒤에는 「다시 시도」 · 자동 재시도(quiet)만 다시 부른다 [10/20 결정 4]
+          if (quiet) { error = null; sig = ''; }
+          rows = r;
           const next = sigOf([r.map((x) => [x.id, x.status]), selId]);
           if (next === sig && (!selId || detail)) return; sig = next;
           if (selId) U.api.scan(selId).then((d) => { detail = d; draw(); }).catch(() => { detail = null; draw(); }); else { detail = null; draw(); }
-        }).catch((e) => { error = e; rows = []; draw(); });
+        }).catch((e) => { if (error && !quiet) return; error = e; rows = []; draw(); }).finally(() => { inflight--; });
       }
+      const retry = () => { error = null; rows = null; sig = ''; table.hidden = true; replace(emptySlot, U.skeleton(5)); load(); };
       function draw() {
-        table.hidden = !rows.length;
-        replace(emptySlot, error ? empty(error.unsupported ? `백엔드 미지원 — ${error.message}` : `불러오기 실패: ${error.message}`) : !rows.length ? h('div', { class: 'empty col-center' }, h('p', null, '아직 검사가 없습니다. 위에서 패키지 이름 · 저장소 주소 · 파일로 시작하세요.'), h('p', { class: 'small muted' }, '예: pip reqeusts (requests 의 오타 — 타이포스쿼팅 데모)')) : null);
-        replace(tbody, rows.map((x) => { const [vk, tone] = SCAN_VERDICT[x.verdict] || ['검사 중', 'info'];
-          return h('tr', { 'data-scan': x.id, 'data-status': x.status, class: `clickable ${x.id === selId ? 'selected' : ''} ${x.verdict === 'malicious' ? 'needs-action' : ''}`, onclick: () => select(x.id) },
+        if (rows === null) return;
+        const list = rows.filter((x) => !vf || x.verdict === vf);
+        replace(vChips, [['', '전체'], ...Object.entries(SCAN_VERDICT).map(([k, [ko]]) => [k, ko])].map(([k, ko]) => h('button', { type: 'button', class: `chip-btn ${vf === k ? 'on' : ''}`, 'data-verdict': k, 'aria-pressed': String(vf === k), onclick: () => setVf(k) }, ko)));
+        replace(applied, U.filterChips([vf ? { key: 'verdict', label: `결과: ${SCAN_VERDICT[vf][0]}`, clear: () => clearQuery(['verdict']) } : null], () => clearQuery(['verdict'])));
+        table.hidden = !list.length;
+        replace(emptySlot, error ? U.errorState(error, retry, { quiet: () => load(true) })
+          : !rows.length ? U.emptyState({ icon: '⌕', title: '아직 검사가 없습니다', hint: U.can() ? '위에서 패키지 이름 · 저장소 주소 · 파일로 시작하세요. 예: pip reqeusts (requests 의 오타 — 타이포스쿼팅 데모)' : '관리자가 검사를 시작하면 여기에 쌓입니다.' })
+          : !list.length ? U.emptyState({ icon: '○', title: '조건에 맞는 검사 없음', actions: h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => clearQuery(['verdict']) }, '필터 해제') }) : null);
+        replace(tbody, list.map((x) => { const [vk, tone] = SCAN_VERDICT[x.verdict] || ['검사 중', 'info'];
+          return U.rowKeys(h('tr', { 'data-scan': x.id, 'data-status': x.status, class: `clickable ${x.id === selId ? 'selected' : ''} ${x.verdict === 'malicious' ? 'needs-action' : ''}`, onclick: () => select(x.id) },
             h('td', { class: 'num mono nowrap' }, fmt.dateTime(x.startedAt)),
             h('td', { class: 'mono trunc', title: x.target.label }, x.target.label),
             h('td', null, x.status === 'running' ? h('span', { class: 'badge badge-info' }, '검사 중…') : h('span', { class: `badge sv-${tone}` }, vk)),
             h('td', { class: 'num' }, x.risk ? `${x.risk.score.toFixed(1)}` : '—'),
             h('td', { class: `num ${x.threats ? 'tone-danger' : 'muted'}` }, x.status === 'done' ? x.threats : '—'),
-            h('td', { class: `num ${x.vulnCount ? 'tone-warn' : 'muted'}` }, x.status === 'done' ? (x.vulnCount ? `${x.vulnCount} (최고 ${x.vulnMax})` : 0) : '—')); }));
+            h('td', { class: `num ${x.vulnCount ? 'tone-warn' : 'muted'}` }, x.status === 'done' ? (x.vulnCount ? `${x.vulnCount} (최고 ${x.vulnMax})` : 0) : '—')), () => select(x.id)); }));
         replace(sheetSlot, selId && detail ? scanSheet(detail) : null);
       }
       function codeView(d) {
@@ -346,6 +394,50 @@
         if (focusLine) setTimeout(() => { const el = box.querySelector(`[data-line="${focusLine}"]`); if (el) el.scrollIntoView({ block: 'center' }); }, 0);
         return [paths.length > 1 ? h('div', { class: 'chips' }, paths.map((p) => h('button', { type: 'button', class: `chip-btn ${p === cur ? 'on' : ''}`, onclick: () => { focusLoc = `${p}:0`; draw(); } }, p))) : h('div', { class: 'small mono muted' }, cur), box];
       }
+      // 패키지 골라 차단 [10/20 G] — 저장소 · 파일 검사 결과의 패키지(잠금 파일마다 한 행)를 (매니저, 이름)으로 묶어 한 줄, 출처 파일을 나열.
+      // 고르면 「선택한 N개 차단 목록에 올리기」 → 확인 대화상자 → POST /api/scans/{id}/block {packages:[{manager, name, version}]} → 정책 제안
+      function packagesView(d) {
+        const groups = new Map();
+        for (const p of d.packages || []) {
+          const k = p.manager ? `${p.manager}:${p.name}` : `${p.ecosystem}:${p.name}`;
+          const g = groups.get(k) || { key: k, manager: p.manager, name: p.name, ecosystem: p.ecosystem, versions: new Set(), sources: [], direct: false, vulns: 0 };
+          g.versions.add(p.version); if (!g.sources.includes(p.source)) g.sources.push(p.source); g.direct = g.direct || p.direct; g.vulns = Math.max(g.vulns, p.vulns || 0);
+          groups.set(k, g);
+        }
+        const list = [...groups.values()].sort((a, b) => b.vulns - a.vulns || a.name.localeCompare(b.name));
+        if (!list.length) return h('section', { class: 'sheet-section', 'data-part': 'packages' }, h('h3', null, '패키지 0'), h('p', { class: 'small muted' }, '잠금 · 의존성 파일을 찾지 못했습니다.'));
+        const blocked = new Set((state.blocklist.packages || []).map((x) => x.value));
+        const canPick = (g) => U.can() && g.manager && !blocked.has(g.key);
+        const footSlot = h('div', { class: 'pkg-foot' });
+        const drawFoot = () => replace(footSlot, !U.can() ? null : picked.size
+          ? h('button', { type: 'button', class: 'btn btn-danger btn-xs', 'data-action': 'block-selected', onclick: blockPicked }, `⛔ 선택한 ${picked.size}개 차단 목록에 올리기`)
+          : h('span', { class: 'small muted' }, '차단할 패키지를 고르세요 — 취약점이 많은 것부터 위에 있습니다'));
+        function blockPicked() {
+          const sel = list.filter((g) => picked.has(g.key));
+          const effects = [`차단 제안 초안 — 패키지 ${sel.length}개: ${sel.map((g) => g.key).join(' · ')} (정책에서 미리보기 후 적용)`,
+            `적용하면 다음 sg-install 부터 이 패키지는 설치 전 거부(컨테이너를 띄우지 않음)`, `공급망 검사 건을 「악성」으로 판정한 기록이 남습니다 — 처리자 ${U.actor()}`];
+          U.confirmDialog({ title: '고른 패키지 차단 목록에 올리기', target: `${d.target.label} · ${d.id}`, effects, okLabel: `${sel.length}개 올리기`, undo: '정책에서 제안을 「버림」하면 차단 없이 끝납니다. 적용한 뒤에는 차단 목록에서 「해제」' })
+            .then((r) => r && U.api.scanBlock(d.id, { packages: sel.map((g) => ({ manager: g.manager, name: g.name, version: [...g.versions][0] })) }, r.reason)
+              .then((x) => { picked = new Set(); U.navigate('/policies', { proposal: x.proposalId }); }))
+            .catch((e) => U.toast(`차단 제안 실패: ${e.message}`, { tone: 'danger' }));
+        }
+        const allBox = U.can() ? h('input', { type: 'checkbox', 'aria-label': '모두 고르기', onchange: (e) => { for (const g of list) if (canPick(g)) { if (e.target.checked) picked.add(g.key); else picked.delete(g.key); } draw(); } }) : null;
+        if (allBox) allBox.checked = list.filter(canPick).length > 0 && list.filter(canPick).every((g) => picked.has(g.key));
+        const sec = h('section', { class: 'sheet-section', 'data-part': 'packages' },
+          h('h3', null, `패키지 ${list.length}`, h('span', { class: 'small muted' }, ' — 잠금 · 의존성 파일에서 읽음, 같은 패키지는 한 줄')),
+          h('div', { class: 'preview-table' }, h('table', { class: 'table compact' }, h('thead', null, h('tr', null, [allBox ? h('th', null, allBox) : null, h('th', null, '패키지'), h('th', null, '버전'), h('th', null, '취약'), h('th', null, '의존'), h('th', null, '출처 파일')])),
+            h('tbody', null, list.map((g) => h('tr', { 'data-pkg': g.key, 'data-sources': g.sources.length, class: picked.has(g.key) ? 'selected' : '' },
+              U.can() ? h('td', null, canPick(g) ? h('input', { type: 'checkbox', 'data-pick': '', 'aria-label': `${g.key} 고르기`, checked: picked.has(g.key), onchange: (e) => { if (e.target.checked) picked.add(g.key); else picked.delete(g.key); draw(); } })
+                : h('span', { class: 'small muted', title: blocked.has(g.key) ? '이미 차단 목록에 있음' : '차단 목록이 다루지 않는 생태계' }, blocked.has(g.key) ? '차단됨' : '—')) : null,
+              h('td', { class: 'mono small' }, g.manager ? g.key : h('span', { title: '차단 목록이 다루지 않는 생태계' }, `${g.ecosystem} ${g.name}`)),
+              h('td', { class: 'mono small' }, [...g.versions].join(', ')),
+              h('td', { class: `num ${g.vulns ? 'tone-warn' : 'muted'}` }, g.vulns),
+              h('td', { class: 'small' }, g.direct ? '직접' : '간접'),
+              h('td', { class: 'small mono' }, h('ul', { class: 'src-list' }, g.sources.map((s) => h('li', null, s))))))))),
+          footSlot);
+        drawFoot();
+        return sec;
+      }
       function scanSheet(d) {
         const [vk, tone] = SCAN_VERDICT[d.verdict] || ['검사 중', 'info'];
         const t = d.target, threats = d.findings.filter((f) => f.category === 'threat'), caps = d.findings.filter((f) => f.category === 'capability');
@@ -358,7 +450,8 @@
             h('p', { class: 'small' }, d.status !== 'done' ? '검사 중입니다…' : d.verdict === 'malicious' ? `설치 단계에서 위험한 행동을 하는 코드가 ${threats.length}곳 있습니다. 설치하지 말고 차단 목록에 올리세요.` : d.verdict === 'vulnerable' ? `의존성에 알려진 취약점이 ${d.vulns.reduce((n, v) => n + v.count, 0)}건 있습니다. 고쳐진 버전으로 올리세요.` : '정적 검사에서 위험한 코드 · 알려진 취약점을 찾지 못했습니다. 설치 검사(eBPF)로 실제 행동도 확인할 수 있습니다.'),
             h('div', { class: 'row-actions' },
               cmd ? h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'aria-label': '설치 검사로 실제 설치해 보기', onclick: () => { try { navigator.clipboard.writeText(cmd).catch(() => {}); } catch { /* 복사 차단 */ } U.toast(`명령을 복사했습니다 — ${cmd} (감시 컨테이너에서 실제 설치 · eBPF 관찰)`, { tone: 'ok', key: 'copy', replace: true, action: { label: '설치 검사', go: '#/installs?status=all' } }); } }, '▶ 설치 검사로 실제 설치해 보기') : null,
-              t.kind === 'package' ? h('button', { type: 'button', class: `btn ${d.verdict === 'malicious' ? 'btn-danger' : 'btn-ghost'} btn-xs`, 'aria-label': '차단 목록에 올리기', onclick: () => U.api.scanBlock(d.id).then((r) => U.navigate('/policies', { proposal: r.proposalId })).catch((e) => U.toast(`차단 제안 실패: ${e.message}`, { tone: 'danger' })) }, '⛔ 차단 목록에 올리기') : null)),
+              t.kind === 'package' && U.can() ? h('button', { type: 'button', class: `btn ${d.verdict === 'malicious' ? 'btn-danger' : 'btn-ghost'} btn-xs`, 'aria-label': '차단 목록에 올리기', onclick: () => U.api.scanBlock(d.id).then((r) => U.navigate('/policies', { proposal: r.proposalId })).catch((e) => U.toast(`차단 제안 실패: ${e.message}`, { tone: 'danger' })) }, '⛔ 차단 목록에 올리기') : null)),
+          t.kind !== 'package' && d.status === 'done' ? packagesView(d) : null,
           h('section', { class: 'sheet-section', 'data-part': 'findings' }, h('h3', null, `위협 ${threats.length}`, h('span', { class: 'small muted' }, ' — GuardDog, 누르면 코드에서 그 줄')),
             threats.length ? h('ul', { class: 'findings' }, threats.map(finding)) : h('p', { class: 'small muted' }, '없음'),
             caps.length ? h('details', { class: 'caps' }, h('summary', { class: 'small' }, `기능(정보) ${caps.length} — 위협은 아니지만 코드가 할 수 있는 일`), h('ul', { class: 'findings' }, caps.map(finding))) : null),
@@ -372,7 +465,7 @@
           h('p', { class: 'small muted' }, d.engines.map((e) => `${e.name} ${e.version}`).join(' · '), ' — 오픈소스 정적 분석(Apache-2.0)')] });
       }
       load();
-      return { update: load };
+      return { update: () => { if (!error && !inflight) load(); } }; // 오류면 「다시 시도」 · 자동 재시도를 기다린다 [10/20 D · 결정 4]
     },
   };
 
@@ -397,7 +490,11 @@
         h('label', { class: 'check', 'data-toggle': 'normal' }, h('input', { type: 'checkbox', checked: f.normal, onchange: (e) => setF('normal', e.target.checked) }), '정상 포함'),
         h('input', { class: 'ctl w-44', placeholder: '컨테이너 검색', 'aria-label': '컨테이너 검색', value: f.container, oninput: (e) => setF('container', e.target.value) }),
         h('a', { href: '#/audit', class: 'link small push-right', title: '지난 위반은 감사 로그에서 기간으로 찾는다' }, '지난 기록은 감사 로그 →'));
-      const body = h('div', { class: 'col' }, filters, h('div', { class: 'grow' }, feedEl));
+      // 첫 로드 · 오류 [10/20 D] — 이벤트는 스트림이라 「처음 받기 전」 스켈레톤, 처음 조회가 실패하면 오류 + 다시 시도
+      const stateSlot = h('div', { class: 'feed-state' });
+      const applied = h('div');
+      const VERDICT_KO = Object.fromEntries(VERDICT_OPTS);
+      const body = h('div', { class: 'col' }, filters, applied, stateSlot, h('div', { class: 'grow' }, feedEl));
       const main = panel({ title: [h('i', { class: 'live-dot', 'aria-hidden': true }), ' 실시간 이벤트 ', count], actions: pause, body, class: 'grow' });
       page.append(h('div', { class: 'split' }, main, detail));
       function rowsNow() {
@@ -418,12 +515,13 @@
         const v = selected; const rule = v.ruleId ? state.rules.find((r) => r.id === v.ruleId) : null;
         const json = Object.assign({}, v); delete json.key;
         const name = v.event.containerName; const lvl = levelOf(v);
+        const dns = v.event.kind === 'connect' ? dnsRow(v.event) : null;
         const isInstall = name.startsWith(U.SANDBOX);
         // 이 컨테이너의 건 — 판정은 토폴로지(런타임) · 설치 검사(설치)에서 한다. 이벤트 탭은 「지금」만 답한다
         const rc = !isInstall && (lvl === 'killed' || lvl === 'held') ? state.cases.find((c) => c.source === 'runtime' && c.container === name && c.state !== 'closed') : null;
         const ins = isInstall ? state.installs.find((x) => x.container === name) : null;
         detail.append(U.sheet({ kind: 'event', title: '이벤트 상세', onClose: () => pick(null), body: [
-          h('dl', { class: 'dl' }, h('dt', null, '탐지 결과'), h('dd', null, verdictBadge(v)), h('dt', null, '시각'), h('dd', { class: 'num' }, fmt.dateTime(v.event.timestamp)), h('dt', null, '컨테이너'), h('dd', null, name), h('dt', null, '이미지'), h('dd', { class: 'mono' }, v.event.imageName || '—'), h('dt', null, '사유'), h('dd', null, v.reason || '—'), v.enforceError ? [h('dt', null, '격리 오류'), h('dd', { class: 'tone-danger' }, v.enforceError)] : null),
+          h('dl', { class: 'dl' }, h('dt', null, '탐지 결과'), h('dd', null, verdictBadge(v)), h('dt', null, '시각'), h('dd', { class: 'num' }, fmt.dateTime(v.event.timestamp)), h('dt', null, '컨테이너'), h('dd', null, name), h('dt', null, '이미지'), h('dd', { class: 'mono' }, v.event.imageName || '—'), h('dt', null, '사유'), h('dd', null, v.reason || '—'), v.enforceError ? [h('dt', null, '격리 오류'), h('dd', { class: 'tone-danger' }, v.enforceError)] : null, dns),
           rc ? h('div', { class: 'card case-hint' }, h('div', { class: 'card-head' }, h('b', null, `건 ${rc.id}`), U.decisionBadge(rc.decision)), h('p', { class: 'small muted' }, rc.state === 'open' ? '이 컨테이너는 판정 대기입니다. 토폴로지에서 관계를 보고 판정하세요.' : '판정됨 — 정책에서 제안 적용 대기')) : null,
           ins ? h('div', { class: 'card case-hint' }, h('div', { class: 'card-head' }, h('b', null, '설치 검사 세션'), h('a', { href: `#/installs?status=all&id=${ins.id}`, class: 'link small' }, `${ins.manager} ${pkgLabel(ins)} →`)), h('p', { class: 'small muted' }, '설치 검사 컨테이너는 토폴로지에 그리지 않습니다. 판정은 설치 검사에서 합니다.')) : null,
           policyStarts(v),
@@ -431,10 +529,20 @@
           !isInstall ? h('div', { class: 'row-actions' }, h('a', { href: `#/topology?container=${encodeURIComponent(name)}`, class: 'btn btn-primary btn-xs' }, '토폴로지에서 보기 →')) : null,
           h('div', null, h('b', null, '원본 JSON'), h('pre', { class: 'json' }, JSON.stringify(json, null, 2)))] }));
       }
+      let chipSig = '', shownErr, shownReady;
       function update() {
         const rows = rowsNow();
         count.textContent = `${fmt.num(rows.length)}건`;
-        feedEl.set(rows);
+        // 상태 칸은 바뀔 때만 다시 그린다 — 250ms 마다 새로 그리면 오류 칸의 자동 재시도 시계가 계속 처음부터 잰다 [10/20 결정 4]
+        if (state.eventsError !== shownErr || state.eventsReady !== shownReady) { shownErr = state.eventsError; shownReady = state.eventsReady;
+          replace(stateSlot, state.eventsError ? U.errorState(state.eventsError, () => U.loadEvents(), { quiet: () => U.loadEvents(true) }) : !state.eventsReady ? U.skeleton(8) : null); }
+        feedEl.hidden = !state.eventsReady;
+        feedEl.set(state.eventsReady ? rows : []);
+        const cs = sigOf(f);
+        if (cs !== chipSig) { chipSig = cs; replace(applied, U.filterChips([f.kind ? { key: 'kind', label: `종류: ${f.kind}`, clear: () => clearQuery(['kind']) } : null,
+          f.verdict !== 'violation' ? { key: 'verdict', label: `탐지 결과: ${VERDICT_KO[f.verdict]}`, clear: () => clearQuery(['verdict']) } : null,
+          f.normal ? { key: 'normal', label: '정상 포함', clear: () => clearQuery(['normal']) } : null,
+          f.container ? { key: 'container', label: `컨테이너: ${f.container}`, clear: () => clearQuery(['container']) } : null], () => clearQuery(['kind', 'verdict', 'normal', 'container']))); }
         pause.sync();
       }
       update();
@@ -442,6 +550,13 @@
       return { update };
     },
   };
+
+  // 도메인 조회 [10/20 I] — connect 의 dnsTraced: true 인데 도메인이 없고 공인 IP 면 「도메인 조회 없는 IP 직접 연결」, false 면 판단 불가(trace_dns 꺼짐)
+  function dnsRow(e) {
+    const kind = e.dnsTraced === undefined ? 'unknown' : !e.dnsTraced ? 'off' : e.dstHost ? 'traced' : M.isPublic(e.dstIp || '') ? 'direct' : 'private';
+    const text = { traced: [`trace_dns 로 확인 — ${e.dstHost}`, ''], direct: ['도메인 조회 없는 IP 직접 연결', 'tone-danger'], private: ['내부 주소 — 도메인 조회 없음(직접 연결로 보지 않음)', 'muted'], off: ['판단 불가 — trace_dns 가 꺼져 있었음(도메인 규칙 통과)', 'tone-warn'], unknown: ['기록 없음(옛 기록)', 'muted'] }[kind];
+    return [h('dt', null, '도메인 조회'), h('dd', { 'data-dns': kind, class: text[1] }, kind === 'direct' ? h('span', { class: 'badge badge-kill' }, text[0]) : text[0], kind === 'direct' ? h('span', { class: 'small muted' }, ' — C2 · 유출에 흔함. 규칙의 directIp 로 막을 수 있습니다') : null)];
+  }
 
   // ── 토폴로지 — 「이 컨테이너는 어디까지 손댔나?」 [10/15 목표] ──
   // 런타임 컨테이너만(sg-install-* 는 저장소에서 뺀다). 왼쪽 그래프 + 오른쪽 공격 체인(설치 검사 시트와 같은 부품 U.attackChain).
@@ -501,7 +616,8 @@
           h('p', { class: 'small muted' }, `이미지 ${c.image} · 열림 ${fmt.time(c.openedAt)} · 위반 ${c.violations}건`),
           h('ul', { class: 'rule-chips' }, c.ruleIds.map((id) => h('li', null, h('a', { href: `#/policies?id=${encodeURIComponent(id)}`, class: 'chip mono' }, id)))),
           U.decisionBar(c, { question: '이 컨테이너(이미지)는 악성인가?', onDone: renderSide }),
-          h('div', { class: 'row-actions' }, h('a', { href: `#/events?container=${encodeURIComponent(c.container)}&verdict=violation`, class: 'btn btn-ghost btn-xs' }, '이벤트에서 보기 →')));
+          h('div', { class: 'row-actions' }, h('a', { href: `#/events?container=${encodeURIComponent(c.container)}&verdict=violation`, class: 'btn btn-ghost btn-xs' }, '이벤트에서 보기 →'),
+            c.level === 'killed' ? evidenceLink(c.container, `${c.id}:${c.violations}`) : null)); // 증거 보기 [10/20 결정 6]
       }
       function renderSide() {
         const list = chains();
@@ -550,7 +666,7 @@
   const yq = (v) => (typeof v === 'number' || typeof v === 'boolean' ? String(v) : /^[A-Za-z0-9_./*?\[\]:-]+$/.test(v) && !/^[-?:]/.test(v) && !/:$/.test(v) ? v : JSON.stringify(v));
   function ruleToYaml(r, indent) {
     const pad = ' '.repeat(indent || 0); const lines = [];
-    for (const k of ['id', 'description', 'kind', 'action', 'dryRun', 'disabled']) if (r[k] !== undefined && r[k] !== '' && r[k] !== false) lines.push(`${pad}${k}: ${yq(r[k])}`);
+    for (const k of ['id', 'description', 'kind', 'action', 'directIp', 'dryRun', 'disabled']) if (r[k] !== undefined && r[k] !== '' && r[k] !== false) lines.push(`${pad}${k}: ${yq(r[k])}`);
     for (const k of LIST_FIELDS) if (r[k] && r[k].length) { lines.push(`${pad}${k}:`); for (const x of r[k]) lines.push(`${pad}  - ${yq(x)}`); }
     return lines.join('\n');
   }
@@ -592,9 +708,11 @@
     if (!KINDS.includes(r.kind)) throw new Error('kind 는 exec | open | connect');
     if (!['alert', 'kill'].includes(r.action)) throw new Error('action 은 alert | kill');
     for (const f of PORT_FIELDS) if (r[f] && r[f].some((p) => !Number.isInteger(p) || p < 1 || p > 65535)) throw new Error(`${f}: 1~65535 정수만`);
+    if (r.directIp !== undefined && !['allow', 'alert', 'kill'].includes(r.directIp)) throw new Error('directIp 는 allow | alert | kill (또는 비움)');
+    if (r.directIp && r.kind !== 'connect') throw new Error('directIp 는 connect 규칙에서만 씁니다');
     return r;
   }
-  const canWrite = () => !state.info.authRequired || state.token !== '';
+  const canWrite = () => U.can(); // 쓰기는 로그인 역할만 — 관리자 토큰 칸은 없앴다 [10/20 결정 1]
   const errText = (e) => (e && e.message) || String(e);
 
   const CHANGE_OP = { block: '차단', except: '예외' };
@@ -607,6 +725,9 @@
   U.screens['/policies'] = {
     title: '정책',
     mount(page, query) {
+      // 서버 설정 · 계정은 「설정」 화면으로 옮겼다 [10/20 결정 2] — 옛 주소(알림 · 북마크)는 그리로 보낸다
+      if (query.get('tab') === 'accounts') { location.replace('#/settings?tab=accounts'); return {}; }
+      if (query.get('settings')) { location.replace('#/settings'); return {}; }
       let selected = query.get('id') || '', proposalId = query.get('proposal') || '';
       let focusBlocklist = selected === '__blocklist__'; if (focusBlocklist) selected = '';
       // 이벤트 · 감사 행에서 온 시작점(한 번만 쓴다): intent=block&kind&value → 새 정책 / intent=allow&value → 걸린 정책에 예외 [10/16]
@@ -622,31 +743,73 @@
       const list = h('ul', { class: 'rule-list' });
       const editor = h('div', { class: 'grow' });
       const editorTitle = h('span');
-      // 관리자 토큰은 화면 머리에 [10/15 확정]
-      const token = h('label', { class: 'row-inline small muted', title: '정책을 바꿀 때 필요 (목업은 아무 값)' }, '🔑', h('input', { type: 'password', autocomplete: 'off', class: 'ctl', 'aria-label': '관리자 토큰', placeholder: '관리자 토큰', value: state.token, oninput: (e) => { state.token = e.target.value; const keep = editor.firstChild && editor.firstChild.refreshAuth; if (keep) keep(); else renderEditor(); } })); // 편집 중(저장 전 확인 포함)이면 버튼 상태만
-      // 서버 설정(자동 격리 · 감시 범위 · 제외) — 보기만 [10/16 확정]
-      const ssSlot = h('div', { class: 'ss-slot' });
-      let ssOpen = false;
-      const toggleSS = (on) => { ssOpen = on; replace(ssSlot, on ? U.policyEasy.serverSettings(() => toggleSS(false)) : null); };
-      const ssBtn = () => h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'data-server-settings': '', 'aria-expanded': String(ssOpen), onclick: () => toggleSS(!ssOpen) }, `⚙ 서버 설정 · 자동 격리 ${state.info.enforceKill ? '켜짐' : '꺼짐'}`);
-      const syncToken = () => U.headerActions(ssBtn(), state.info.authRequired ? token : null);
-      syncToken();
-      const select = (id) => { if (id === '__blocklist__') { showBlocklist(); return; } tplRule = null; intent = null; selected = id || (state.rules[0] || {}).id || ''; proposalId = ''; U.setQuery({ id: selected, proposal: '' }); renderNav(); renderEditor(); };
+      // 화면 머리의 관리자 토큰 칸 · 서버 설정 버튼은 없앴다 [10/20 결정 1 · 2] — 쓰기는 로그인 역할, 서버 설정은 「설정」 화면
+      const select = (id) => { if (id === '__blocklist__') { showBlocklist(); return; } tplRule = null; intent = null; pendingDefault = null; selected = id || (state.rules[0] || {}).id || ''; proposalId = ''; U.setQuery({ id: selected, proposal: '' }); renderNav(); renderEditor(); };
       const selectProposal = (id) => { proposalId = id; selected = ''; U.setQuery({ proposal: id, id: '' }); renderNav(); renderEditor(); };
       const draftCount = h('span', { class: 'num muted' });
       const rulesTitle = h('span');
       const blPanel = h('section', { class: 'panel', 'data-section': 'blocklist' }, h('header', { class: 'panel-head' }, h('h2', null, '차단 목록 ', blCount)), blBody);
-      page.append(ssSlot);
-      page.append(h('div', { class: 'pol' },
+      // 새 기본 규칙 안내 띠 [10/20 F] — GET /api/policies/defaults 의 missing · differs. 「이번엔 숨기기」는 이 브라우저(기본 규칙 내용이 바뀌면 다시 보인다)
+      const defaultsSlot = h('div', { class: 'defaults-slot' });
+      const HIDE_KEY = 'supplyguard.defaults.hidden';
+      const hidden = () => { try { return JSON.parse(localStorage.getItem(HIDE_KEY) || '{}'); } catch { return {}; } };
+      const hideSig = (r) => JSON.stringify(r);
+      let defaults = null, defaultsOpen = false;
+      // 바뀐 규칙: 지금 규칙을 덮어쓰지 않고, 기본에만 있는 값(목록 항목 · 비어 있는 옵션)만 더한 사본
+      function mergeDefault(cur, def) {
+        const r = JSON.parse(JSON.stringify(cur));
+        for (const [k, v] of Object.entries(def)) {
+          if (Array.isArray(v)) { const have = new Set(r[k] || []); const add = v.filter((x) => !have.has(x)); if (add.length) r[k] = [...(r[k] || []), ...add]; }
+          else if (r[k] === undefined || r[k] === '') r[k] = v;
+        }
+        return r;
+      }
+      function diffText(cur, def) {
+        const out = [];
+        for (const k of new Set([...Object.keys(cur), ...Object.keys(def)])) {
+          if (['description', 'disabled', 'dryRun'].includes(k)) continue;
+          const a = cur[k], b = def[k];
+          if (JSON.stringify(a) === JSON.stringify(b)) continue;
+          if (Array.isArray(b)) { const add = b.filter((x) => !(a || []).includes(x)); if (add.length) out.push(`${k} +${add.join(', ')}`); }
+          else if (a === undefined) out.push(`${k}: (없음) → ${b}`);
+          else if (b !== undefined) out.push(`${k}: ${a} (지금 값 유지, 기본은 ${b})`);
+        }
+        return out.length ? out.join(' · ') : '지금 규칙에만 있는 값이 있습니다(그대로 둡니다)';
+      }
+      function drawDefaults() {
+        const hid = hidden();
+        const items = defaults ? [...defaults.missing.map((r) => ({ kind: 'missing', id: r.id, rule: r })), ...defaults.differs.map((d) => ({ kind: 'differs', id: d.id, rule: d.default, current: d.current }))].filter((x) => hid[x.id] !== hideSig(x.rule)) : [];
+        const nM = items.filter((x) => x.kind === 'missing').length, nD = items.length - nM;
+        if (!items.length) { replace(defaultsSlot); defaultsSlot.hidden = true; return; }
+        defaultsSlot.hidden = false;
+        const preview = (x) => { tplRule = null; intent = null; proposalId = ''; selected = x.kind === 'missing' ? '__default__' : x.id; pendingDefault = x; U.setQuery({ id: x.kind === 'missing' ? '' : x.id, proposal: '' }); renderNav(); renderEditor(); };
+        replace(defaultsSlot, h('section', { class: 'defaults-banner', 'data-part': 'defaults-banner' },
+          h('div', { class: 'row-inline' }, h('span', { class: 'defaults-icon', 'aria-hidden': true }, '★'),
+            h('b', null, `기본 정책에 ${[nM ? `새 규칙 ${nM}개` : null, nD ? `바뀐 규칙 ${nD}개` : null].filter(Boolean).join(' · ')}가 있습니다`),
+            h('span', { class: 'small muted' }, '— 업데이트로 생긴 규칙은 저절로 들어가지 않습니다. 사용자가 바꾼 규칙은 덮어쓰지 않습니다.'),
+            h('button', { type: 'button', class: 'btn btn-ghost btn-xs push-right', 'data-action': 'defaults-toggle', 'aria-expanded': String(defaultsOpen), onclick: () => { defaultsOpen = !defaultsOpen; drawDefaults(); } }, defaultsOpen ? '접기 ▴' : '펼치기 ▾')),
+          defaultsOpen ? h('ul', { class: 'defaults-list' }, items.map((x) => h('li', { 'data-default': x.id },
+            h('span', { class: `badge ${x.kind === 'missing' ? 'badge-info' : 'badge-alert'}` }, x.kind === 'missing' ? '새 규칙' : '바뀐 규칙'),
+            h('span', { class: 'defaults-what' }, h('span', { class: 'trunc-cell' }, x.rule.description || x.id), h('small', { class: 'mono muted trunc-cell' }, x.kind === 'missing' ? x.id : `${x.id} — ${diffText(x.current, x.rule)}`)),
+            U.can() ? h('button', { type: 'button', class: 'btn btn-outline btn-xs', 'data-action': 'default-preview', onclick: () => preview(x) }, '미리보기 후 추가') : null,
+            h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'data-action': 'default-hide', title: '이 브라우저에서 이번 기본 규칙은 숨깁니다', onclick: () => { const m = hidden(); m[x.id] = hideSig(x.rule); try { localStorage.setItem(HIDE_KEY, JSON.stringify(m)); } catch { /* 저장 차단 */ } drawDefaults(); } }, '이번엔 숨기기'))),
+          h('li', { class: 'small muted' }, '목록에 없던 규칙은 그대로, 바뀐 규칙은 지금 규칙에 없는 값만 더해 「저장 전 확인」(최근 감사 로그 재평가)을 거쳐 저장합니다.')) : null));
+      }
+      const loadDefaults = () => U.api.policyDefaults().then((d) => { defaults = d; drawDefaults(); }).catch(() => { defaults = null; drawDefaults(); });
+      let pendingDefault = null;
+      page.append(defaultsSlot);
+      const polEl = h('div', { class: 'pol' },
         h('div', { class: 'policy-nav pol-left' },
           h('section', { class: 'panel pol-props', 'data-section': 'proposals' }, h('header', { class: 'panel-head' }, h('h2', null, '제안된 변경 ', draftCount)), h('div', { class: 'scroll' }, propList)),
           h('section', { class: 'panel grow', 'data-section': 'rules' },
-            h('header', { class: 'panel-head' }, h('h2', null, rulesTitle), h('div', { class: 'panel-actions' }, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', title: '전체 정책을 YAML 로 보기·일괄 적용', onclick: () => select('__yaml__') }, '{} YAML'), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => select('__new__') }, '+ 새 정책'))),
+            h('header', { class: 'panel-head' }, h('h2', null, rulesTitle), U.can() ? h('div', { class: 'panel-actions' }, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', title: '전체 정책을 YAML 로 보기·일괄 적용', onclick: () => select('__yaml__') }, '{} YAML'), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => select('__new__') }, '+ 새 정책')) : null),
             h('div', { class: 'grow scroll' }, list))),
         h('div', { class: 'pol-right' },
           panel({ title: editorTitle, class: 'grow', body: editor }),
           h('div', { class: 'pol-bottom' }, blPanel,
-            h('section', { class: 'panel', 'data-section': 'changes' }, h('header', { class: 'panel-head' }, h('h2', null, '변경 이력 ', chCount), h('a', { href: '#/audit?view=history', class: 'link small' }, '감사 로그 →')), chBody)))));
+            h('section', { class: 'panel', 'data-section': 'changes' }, h('header', { class: 'panel-head' }, h('h2', null, '변경 이력 ', chCount), h('a', { href: '#/audit?view=history', class: 'link small' }, '감사 로그 →')), chBody))));
+      page.append(polEl);
+      loadDefaults();
       // ?id=__blocklist__ · 「차단 목록에서 관리」: 아래 차단 목록 칸으로 이동해 잠깐 강조한다
       function showBlocklist() { blPanel.classList.remove('flash'); void blPanel.offsetWidth; blPanel.classList.add('flash'); blPanel.scrollIntoView({ block: 'nearest' }); }
       // 적용 범위 칩: 시스템 규칙은 「차단 목록에서 관리」, containers 가 sg-install-* 뿐이면 「설치 검사 전용」, 그 밖에 지정이 있으면 「일부 컨테이너」
@@ -674,8 +837,17 @@
         editor.replaceChildren();
         if (proposalId) { const p = allProps.find((x) => x.id === proposalId); editorTitle.textContent = p ? `제안 · ${p.decision === 'malicious' ? '악성' : '오탐'} ${caseLabel(cases.find((x) => x.id === p.caseId)) || p.caseId}` : '제안'; editor.append(p ? proposalView(p) : empty(propErr ? propErr.message : '제안을 찾을 수 없음')); return; }
         const cur = state.rules.find((r) => r.id === selected);
-        if (selected === '__yaml__') { editorTitle.textContent = '전체 정책 YAML'; editor.append(bulkYaml()); return; }
         if (cur && isSystem(cur.id)) { editorTitle.textContent = `시스템 규칙 · ${cur.id}`; editor.append(systemRuleView(cur)); return; }
+        // 조회자: 편집기 대신 읽기 전용(요약 · YAML) — 저장 · 삭제 버튼이 없다 [10/20 A]
+        if (!U.can()) { editorTitle.textContent = cur ? `정책 · ${cur.id}` : '정책'; editor.append(cur ? readOnlyRule(cur) : empty('왼쪽에서 정책을 고르세요')); return; }
+        if (selected === '__yaml__') { editorTitle.textContent = '전체 정책 YAML'; editor.append(bulkYaml()); return; }
+        // 새 기본 규칙 「미리보기 후 추가」 [10/20 F] — 바로 「저장 전 확인」으로 연다
+        if (pendingDefault && (selected === '__default__' || selected === pendingDefault.id)) {
+          const x = pendingDefault;
+          if (x.kind === 'missing') { editorTitle.textContent = `새 기본 규칙 · ${x.id}`; editor.append(ruleEditor(x.rule, true, { autoCheck: true })); return; }
+          const c0 = state.rules.find((r) => r.id === x.id);
+          if (c0) { editorTitle.textContent = `바뀐 기본 규칙 · ${x.id} — 빠진 값만 더함`; editor.append(ruleEditor(mergeDefault(c0, x.rule), false, { autoCheck: true })); return; }
+        }
         if (selected === '__new__') {
           const it = intent; intent = null;
           if (it && it.type === 'block' && KINDS.includes(it.kind) && it.value) tplRule = U.policyEasy.ruleFromBlock(it.kind, it.value);
@@ -696,28 +868,46 @@
           h('div', { class: 'tpl-grid' }, U.policyEasy.TEMPLATES.map((t) => h('button', { type: 'button', class: `tpl ${t.key === 'blank' ? 'tpl-blank' : ''}`, 'data-template': t.key === 'reverse-shell' ? 'reverse-shell' : t.key, onclick: () => { tplRule = U.policyEasy.fromTemplate(t.key); renderEditor(); } },
             h('span', { class: 'tpl-kind' }, U.policyEasy.KIND_TEXT[t.rule.kind][0]), h('b', null, t.title), h('small', { class: 'muted' }, t.desc)))));
       }
+      // 조회자용 정책 보기 [10/20 A]
+      function readOnlyRule(r) {
+        const d = { id: r.id, description: r.description || '', kind: r.kind, action: r.action, dryRun: !!r.dryRun, disabled: !!r.disabled, lists: {} };
+        for (const f of LIST_FIELDS) d.lists[f] = (r[f] || []).join('\n');
+        return h('div', { class: 'grow scroll pad', 'data-readonly-rule': r.id }, h('div', { class: 'sheet-body flat' },
+          h('p', { class: 'summary-bar' }, U.policyEasy.summarize(d)),
+          h('p', { class: 'small muted' }, '조회자는 정책을 볼 수만 있습니다. 바꾸려면 관리자에게 요청하세요.'),
+          h('pre', { class: 'json' }, ruleToYaml(r, 0))));
+      }
       // 제안 상세 — 근거(판정) → 변경 내용 · 안내(notes) → 미리보기(열면 자동, U.previewView) → 적용 / 버림 [3차 React 모습]
       function proposalView(p) {
         const c = cases.find((x) => x.id === p.caseId);
         const prevSlot = h('div');
-        const runPreview = () => { replace(prevSlot, U.previewView(p, null)); U.api.preview(p.id).then((r) => replace(prevSlot, U.previewView(p, r, (id) => state.audit.find((a) => a.id === id)))).catch((e) => replace(prevSlot, U.previewView(p, { error: e.message }))); };
+        let lastPv = null;
+        const runPreview = () => { replace(prevSlot, U.previewView(p, null)); U.api.preview(p.id).then((r) => { lastPv = r; replace(prevSlot, U.previewView(p, r, (id) => state.audit.find((a) => a.id === id))); }).catch((e) => replace(prevSlot, U.previewView(p, { error: e.message }))); };
         runPreview();
         const msg = h('span', { class: 'grow small' });
         const act = (fn, done) => fn(p.id).then((r) => { done(r); return load(); }).catch((e) => { msg.className = 'grow small tone-danger'; msg.textContent = e.message; });
+        // 적용 · 버림 = 확인 대화상자(대상 · 함께 일어나는 일 · 사유 · 되돌리기) [10/20 B — 두 번 누르기 대체]. 조회자는 미리보기만
+        const target = `${caseLabel(c) || p.caseId} · 제안 ${p.id}`;
+        const doApply = () => U.confirmDialog({ title: '제안 적용', target, tone: 'primary', okLabel: '적용',
+          effects: (lastPv ? Promise.resolve(lastPv) : U.api.preview(p.id).catch(() => null)).then((pv) => U.api.impactApply(p, pv)),
+          undo: p.decision === 'malicious' ? '정책 › 차단 목록에서 「해제」하면 다음 설치 · 기동부터 풀립니다' : '정책 편집에서 더한 예외 값을 지우고 저장하면 됩니다' })
+          .then((r) => r && act((id) => U.api.apply(id, { reason: r.reason }), (x) => U.toast(`제안 적용 — ${caseLabel(c)} 건 종결 · ${x.change.summary}`, { tone: 'ok', key: 'proposal', replace: true, action: { label: '변경 이력', go: '#/audit?view=history' } })));
+        const doDiscard = () => U.confirmDialog({ title: '제안 버림', target, okLabel: '버림',
+          effects: [`정책 · 차단 목록은 바뀌지 않습니다`, `건 ${p.caseId} 은 판정(${p.decision === 'malicious' ? '악성' : '오탐'})만 남기고 종결`, '판정 · 변경 이력에 「제안 버림」으로 남습니다'],
+          undo: '버린 제안은 되살리지 않습니다 — 같은 대상이 다시 걸리면 새 건으로 판정합니다' })
+          .then((r) => r && act((id) => U.api.discard(id, { reason: r.reason }), () => U.toast(`제안 ${p.id} 버림 — ${caseLabel(c)} 건 변경 없이 종결`, { tone: 'warn', key: 'proposal', replace: true })));
         const foot = p.state === 'draft'
           ? [h('button', { type: 'button', class: 'btn btn-outline', 'aria-label': '미리보기', title: '지금 정책 · 감사 로그로 다시 계산', onclick: runPreview }, '👁 미리보기'), msg,
-            U.confirmButton({ label: '버림', confirmLabel: '변경 없이 건 종결 — 확정', class: 'btn btn-danger-ghost', onConfirm: () => act(U.api.discard, () => U.toast(`제안 ${p.id} 버림 — ${caseLabel(c)} 건 변경 없이 종결`, { tone: 'warn', key: 'proposal', replace: true })) }),
-            h('button', { type: 'button', class: 'btn btn-primary', 'aria-label': '적용', onclick: () => act(U.api.apply, (r) => U.toast(`제안 적용 — ${caseLabel(c)} 건 종결 · ${r.change.summary}`, { tone: 'ok', key: 'proposal', replace: true, action: { label: '변경 이력', go: '#/audit?view=history' } })) }, '적용')]
+            U.can() ? h('button', { type: 'button', class: 'btn btn-danger-ghost', 'aria-label': '버림', onclick: doDiscard }, '버림') : null,
+            U.can() ? h('button', { type: 'button', class: 'btn btn-primary', 'aria-label': '적용', onclick: doApply }, '적용') : h('span', { class: 'small muted' }, '적용 · 버림은 관리자가 합니다')]
           : [h('span', { class: 'grow small', 'data-applied': p.state }, p.state === 'applied'
             ? [h('b', { class: 'tone-ok' }, '적용됨'), ` — ${p.appliedBy} · ${fmt.dateTime(p.appliedAt)} · 건 ${p.caseId} 종결 · `, h('a', { href: '#/audit?view=history', class: 'link' }, '감사 로그 › 변경 이력 →')]
             : [h('b', null, '버림'), ` — 건 ${p.caseId} 변경 없이 종결`])];
-        // 버림 버튼의 aria-label 은 두 번 누르는 동안에도 같다
-        for (const b of foot) if (b && b.tagName === 'BUTTON' && b.textContent === '버림') b.setAttribute('aria-label', '버림');
-        const caseHref = c ? (c.source === 'install' ? `#/installs?status=all&id=${c.installId}` : c.source === 'scan' ? `#/scans?id=${c.scanId}` : `#/topology?container=${encodeURIComponent(c.container)}`) : null;
+        const caseHref = c ? U.caseHref(c, true) : null;
         return h('div', { class: 'col', 'data-view': 'proposal', 'data-proposal-id': p.id },
           h('div', { class: 'grow scroll pad' }, h('div', { class: 'sheet-body flat' },
             h('section', { class: 'sheet-section', 'data-part': 'basis' }, h('h3', null, '근거'),
-              h('p', { class: 'small' }, c ? [`${{ install: '설치 검사', scan: '공급망 검사', runtime: '런타임' }[c.source] || c.source} `, h('span', { class: 'mono' }, caseLabel(c)), ` · 위반 ${fmt.num(c.violations)}건 (${c.ruleIds.join(', ')}) · ${c.decidedBy || p.createdBy} 판정 ${fmt.dateTime(c.decidedAt || p.createdAt)}`, c.note ? ` · 메모 「${c.note}」` : '', ' · 건 ', h('a', { href: caseHref, class: 'link mono' }, p.caseId)]
+              h('p', { class: 'small' }, c ? [`${U.CASE_SOURCE[c.source] || c.source} `, h('span', { class: 'mono' }, caseLabel(c)), ` · 위반 ${fmt.num(c.violations)}건 (${c.ruleIds.join(', ')}) · ${c.decidedBy || p.createdBy} 판정 ${fmt.dateTime(c.decidedAt || p.createdAt)}`, c.note ? ` · 메모 「${c.note}」` : '', ' · 건 ', h('a', { href: caseHref, class: 'link mono' }, p.caseId)]
                 : `건 ${p.caseId} · ${p.createdBy} · ${fmt.dateTime(p.createdAt)}`)),
             h('section', { class: 'sheet-section' }, h('h3', null, `변경 내용 ${p.changes.length}`),
               p.changes.length ? h('ul', { class: 'change-list', 'data-changes': '' }, p.changes.map((ch) => h('li', { 'data-change': changeKey(ch) },
@@ -738,7 +928,10 @@
           : [!total ? h('p', { class: 'pad-sm small muted' }, '비어 있음 — 「악성 확정」 제안을 적용하면 여기에 들어갑니다') : null,
             BL_LISTS.map(([l, label]) => h('div', { 'data-list': l }, blocklist[l].map((x) => h('div', { class: 'bl-row', 'data-value': x.value, title: `${x.caseId || '—'} · ${x.by} · ${fmt.dateTime(x.at)}` },
               h('span', { class: 'small muted' }, label), h('span', { class: 'mono small trunc-cell' }, x.value),
-              U.confirmButton({ label: '해제', confirmLabel: '해제 확정', class: 'btn btn-danger-ghost btn-xs', onConfirm: () => U.api.unblock(l, x.value).then(() => { U.toast(`${label} ${x.value} 차단 해제`, { tone: 'warn', key: 'unblock', replace: true }); return load(); }).catch((e) => U.toast(`해제 실패: ${e.message}`, { tone: 'danger' })) })))))]);
+              U.can() ? h('button', { type: 'button', class: 'btn btn-danger-ghost btn-xs', onclick: () => U.confirmDialog({ title: '차단 해제', target: `${label} ${x.value}`, okLabel: '해제', effects: U.api.impactUnblock(l, x.value),
+                undo: '다시 막으려면 설치 검사 · 토폴로지에서 악성 판정하거나 공급망 검사에서 차단 목록에 올리세요' })
+                .then((r) => r && U.api.unblock(l, x.value, { reason: r.reason }).then(() => { U.toast(`${label} ${x.value} 차단 해제`, { tone: 'warn', key: 'unblock', replace: true }); return load(); }))
+                .catch((e) => U.toast(`해제 실패: ${e.message}`, { tone: 'danger' })) }, '해제') : null))))]);
         chCount.textContent = String(changes.length);
         replace(chBody, !changes.length ? h('p', { class: 'pad-sm small muted' }, '아직 없음')
           : h('ul', { class: 'ch-list' }, changes.slice(0, 50).map((x) => h('li', { 'data-change-id': x.id },
@@ -756,13 +949,18 @@
         const ta = h('textarea', { class: 'ctl mono yaml grow', spellcheck: 'false', 'aria-label': '전체 정책 YAML', disabled: true }, '불러오는 중…');
         U.api.exportYaml().then((text) => { ta.value = text === null ? rulesToYaml(state.rules.filter((r) => !isSystem(r.id))) : text; ta.disabled = false; apply.disabled = !canWrite(); }).catch((e) => { msg.className = 'grow small tone-danger'; msg.textContent = errText(e); });
         const msg = h('span', { class: 'grow small' }, state.source === 'sim' ? `시스템 규칙 ${M.SYSTEM_RULE} 는 YAML 에 없고 교체해도 그대로 남습니다` : '');
-        const apply = U.confirmButton({ label: '전체 교체 후 적용 ▶', confirmLabel: '기존 정책을 모두 교체 — 확정', class: 'btn btn-primary', disabled: true, onConfirm: () => {
+        const apply = h('button', { type: 'button', class: 'btn btn-primary', disabled: true });
+        apply.textContent = '전체 교체 후 적용 ▶';
+        apply.addEventListener('click', () => U.confirmDialog({ title: '전체 정책 교체', target: 'YAML 의 정책 전체', okLabel: '교체 후 적용', reason: false,
+          effects: [`지금 정책 ${state.rules.filter((r) => !isSystem(r.id)).length}개를 YAML 의 내용으로 모두 바꿉니다(시스템 규칙 ${M.SYSTEM_RULE} 은 그대로)`, 'YAML 에 없는 정책은 지워집니다', '엔진에 바로 적용 · 변경 이력에 남습니다'],
+          undo: '바꾸기 전 YAML 을 복사해 두면 같은 화면에서 다시 교체할 수 있습니다' }).then((ok) => ok && runReplace()));
+        const runReplace = () => {
           const done = (rs) => { renderNav(); msg.className = 'grow small tone-ok'; msg.textContent = `${rs.length}개 정책을 엔진에 적용함`; U.toast(`정책 ${rs.length}개 전체 교체 후 적용`, { tone: 'ok' }); };
           const fail = (e) => { msg.className = 'grow small tone-danger'; msg.textContent = errText(e); };
           if (state.source === 'live') { U.api.applyYaml(ta.value).then(done).catch(fail); return; }
           try { const doc = parseYaml(ta.value); if (!doc || !Array.isArray(doc.rules)) throw new Error('400 · 최상위 rules: 목록이 필요함'); const rs = doc.rules.map((r) => validateRule(r)); const ids = new Set(); for (const r of rs) { if (ids.has(r.id)) throw new Error(`400 · 중복 id: ${r.id}`); ids.add(r.id); } done(U.api.replaceRules(rs)); }
           catch (e) { fail(e); }
-        } });
+        };
         return h('div', { class: 'col' }, h('div', { class: 'grow pad' }, ta), h('div', { class: 'foot' }, msg, apply));
       }
       // 정책 편집 — 「쉬운 설정」(기본, U.policyEasy) · 「고급 · 폼」 · 「고급 · YAML」이 같은 draft 를 고친다.
@@ -774,9 +972,10 @@
         const root = h('div', { class: 'col', 'data-view': 'rule-editor' });
         const sumEl = h('div', { class: 'summary-bar', 'data-summary': '' });
         const ctx = { isNew, fresh: o.fresh ? new Set([`${o.freshField}:${o.fresh}`]) : null, onChange: () => { saved = false; error = ''; sumEl.textContent = U.policyEasy.summarize(draft); }, rerender: () => { saved = false; error = ''; render(); } };
-        function toDraft(r) { const d = { id: r.id, description: r.description || '', kind: r.kind, action: r.action, dryRun: !!r.dryRun, disabled: !!r.disabled, lists: {} }; for (const f of LIST_FIELDS) d.lists[f] = (r[f] || []).join('\n'); return d; }
+        function toDraft(r) { const d = { id: r.id, description: r.description || '', kind: r.kind, action: r.action, directIp: r.directIp || '', dryRun: !!r.dryRun, disabled: !!r.disabled, lists: {} }; for (const f of LIST_FIELDS) d.lists[f] = (r[f] || []).join('\n'); return d; }
         function toRule(d) {
           const r = { id: d.id.trim(), kind: d.kind, action: d.action };
+          if (d.directIp && d.kind === 'connect') r.directIp = d.directIp; // 직접 IP 연결 처리 [10/20 F · I]
           if (d.description.trim()) r.description = d.description.trim(); if (d.dryRun) r.dryRun = true; if (d.disabled) r.disabled = true;
           for (const f of ['containers', ...FIELDS_BY_KIND[d.kind].map((x) => x[0])]) {
             const items = d.lists[f].split(/[\n,]/).map((x) => x.trim()).filter(Boolean); if (!items.length) continue;
@@ -799,6 +998,7 @@
                 field('설명', null, h('input', { class: 'ctl', value: draft.description, oninput: (e) => { draft.description = e.target.value; saved = false; } })),
                 h('div', { class: 'two' }, field('kind', null, U.select(KINDS.map((k) => [k, k]), draft.kind, (v) => upd({ kind: v }), { class: 'ctl' })), field('action', null, U.select([['alert', 'alert — 알림'], ['kill', 'kill — 컨테이너 강제 종료']], draft.action, (v) => upd({ action: v }), { class: 'ctl' }))),
                 FIELDS_BY_KIND[draft.kind].map(([f, label, hint]) => field(label, hint, h('textarea', { class: 'ctl mono list', 'data-field': f, placeholder: '한 줄에 하나', value: draft.lists[f], oninput: (e) => { draft.lists[f] = e.target.value; saved = false; } }, draft.lists[f]))),
+                draft.kind === 'connect' ? field('도메인 조회 없는 IP 직접 연결', 'directIp — trace_dns 가 켜져 있을 때만 판단, 비우면 옛 동작', U.select([['', '(비움)'], ['allow', 'allow — 통과'], ['alert', 'alert — 알림'], ['kill', 'kill — 격리']], draft.directIp || '', (v) => { draft.directIp = v; saved = false; }, { class: 'ctl', 'data-field': 'directIp' })) : null,
                 field('적용 컨테이너', '이름 또는 이미지 glob, 비우면 전체 (예: pkg-*)', h('textarea', { class: 'ctl mono list short', 'data-field': 'containers', placeholder: '전체', value: draft.lists.containers, oninput: (e) => { draft.lists.containers = e.target.value; saved = false; } }, draft.lists.containers)),
                 h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: draft.disabled, onchange: (e) => { draft.disabled = e.target.checked; saved = false; } }), ' 비활성화 (평가하지 않음)'));
           const seg = h('div', { class: 'seg', role: 'group', 'aria-label': '편집 방식' }, MODES.map(([m, label]) => h('button', { type: 'button', class: `seg-btn dark ${mode === m ? 'on' : ''}`, 'data-mode': m, 'aria-pressed': String(mode === m), onclick: () => switchMode(m) }, label)));
@@ -810,7 +1010,10 @@
             h('div', { class: 'foot' },
               mode === 'form' ? h('label', { class: 'row-inline', title: 'kill 정책을 알림만 보내도록 강제 (오탐 시 컨테이너 보호)' }, U.switchEl(draft.dryRun, (on) => upd({ dryRun: on })), ' dry-run') : null,
               error ? h('span', { class: 'grow small tone-danger', title: error }, error) : saved ? h('span', { class: 'grow small tone-ok' }, '저장 후 엔진에 적용됨') : h('span', { class: 'grow' }),
-              !isNew ? U.confirmButton({ label: '🗑 삭제', confirmLabel: '눌러서 삭제 확정', class: 'btn btn-danger-ghost', disabled: !canWrite(), onConfirm: () => { U.api.deleteRule(rule.id).then(() => U.api.listRules()).then(() => { U.toast(`정책 ${rule.id} 삭제됨`, { tone: 'warn' }); select(''); }).catch((e) => { error = errText(e); render(); }); } }) : null,
+              !isNew ? h('button', { type: 'button', class: 'btn btn-danger-ghost', disabled: !canWrite(), onclick: () => U.confirmDialog({ title: '정책 삭제', target: rule.id, okLabel: '삭제', reason: false,
+                effects: [`엔진에서 ${rule.id} 를 빼 바로 적용합니다 — 이 정책에 걸리던 행동은 더 이상 알림 · 격리되지 않습니다`, '과거 감사 기록은 그대로 남습니다', '변경 이력에 「정책 편집」으로 남습니다'],
+                undo: '「고급 · YAML」에서 지금 내용을 복사해 두면 새 정책으로 다시 만들 수 있습니다' })
+                .then((ok) => ok && U.api.deleteRule(rule.id).then(() => U.api.listRules()).then(() => { U.toast(`정책 ${rule.id} 삭제됨`, { tone: 'warn' }); select(''); loadDefaults(); }).catch((e) => { error = errText(e); render(); })) }, '🗑 삭제') : null,
               h('button', { type: 'button', class: 'btn btn-primary', 'aria-label': '저장 전 확인', onclick: openCheck }, '저장 전 확인 →')));
         }
         function switchMode(next) {
@@ -849,15 +1052,14 @@
                     h('tbody', null, pv.changed.slice(0, 20).map((x) => { const a = state.audit.find((y) => y.id === x.auditId); return h('tr', null, h('td', { class: 'num muted' }, x.auditId), h('td', { class: 'num nowrap' }, a ? fmt.dateTime(a.event.timestamp) : '—'), h('td', { class: 'trunc-cell' }, x.container), h('td', { class: 'nowrap' }, `${LV[x.before]} → `, h('b', null, LV[x.after]))); })))) : null],
             h('div', { class: 'row-actions' },
               h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => { check = null; render(); } }, '← 고치기'),
-              !canWrite() ? h('span', { class: 'small tone-warn' }, '관리자 토큰을 화면 머리에 입력하세요') : null,
               h('button', { type: 'button', class: 'btn btn-primary', 'aria-label': '저장 후 적용', disabled: !canWrite(), onclick: () => save(r) }, '저장 후 적용 ▶')))));
         }
         function save(r) {
-          U.api.saveRule(r).then((savedRule) => U.api.listRules().then(() => savedRule || r)).then((sr) => { draft = toDraft(sr); saved = true; check = null; ctx.fresh = null; renderNav(); U.toast(`정책 ${sr.id} 저장 — 엔진에 바로 적용`, { tone: 'ok' }); if (isNew) select(sr.id); else render(); })
+          U.api.saveRule(r).then((savedRule) => U.api.listRules().then(() => savedRule || r)).then((sr) => { draft = toDraft(sr); saved = true; check = null; ctx.fresh = null; pendingDefault = null; renderNav(); loadDefaults(); U.toast(`정책 ${sr.id} 저장 — 엔진에 바로 적용`, { tone: 'ok' }); if (isNew) select(sr.id); else render(); })
             .catch((e) => { error = errText(e); check = null; render(); });
         }
-        root.refreshAuth = render;
         render();
+        if (o.autoCheck) openCheck(); // 새 기본 규칙: 바로 저장 전 확인 [10/20 F]
         return root;
       }
       // 처음 열면: 적용할 제안이 있으면 맨 위 제안, 없으면 첫 정책 [10/15 확정 · 10/15 목표] — 빈 편집 영역을 보이지 않는다
@@ -881,9 +1083,7 @@
         });
       }
       renderNav(); load();
-      let auth = state.info.authRequired;
       return { update() {
-        if (auth !== state.info.authRequired) { auth = state.info.authRequired; syncToken(); } // 실제 모드에서 /api/info 가 늦게 와도 반영
         // 다른 화면 · 토스트에서 판정 · 적용이 일어나면 목록만 새로 그린다(편집 중인 폼은 건드리지 않는다)
         if (state.source === 'sim') { const next = sigOf([state.proposals.map((p) => [p.id, p.state]), state.blocklist, state.rules.length]); if (next !== sig) { sig = next; Promise.all([U.api.proposals({}), U.api.blocklist(), U.api.cases({}), U.api.changes({ limit: 50 })]).then(([ps, bl, cs, ch]) => { allProps = ps; drafts = ps.filter((p) => p.state === 'draft'); blocklist = bl; cases = cs; changes = ch; renderNav(); }); } }
       } };
@@ -898,51 +1098,108 @@
     title: '감사 로그',
     mount(page, query) {
       const PAGE = 100;
-      const f = { kind: '', action: '', rule: '', container: query.get('container') || '', since: '', until: '' };
+      // 필터는 주소에 남는다(?kind · action · rule · container · since · until) [10/20 D — 적용된 필터 칩 · 모두 해제]
+      const f = { kind: query.get('kind') || '', action: query.get('action') || '', rule: query.get('rule') || '', container: query.get('container') || '', since: query.get('since') || '', until: query.get('until') || '' };
       let view = query.get('view') === 'history' ? 'history' : 'violations';
       let rows = [], hasMore = false, loading = false, timer, seq = 0, selId = Number(query.get('id')) || null, cases = new Map(), casesErr = null;
+      let loaded = false, lastErr = null, sheetTab = query.get('tab') === 'evidence' ? 'evidence' : 'detail';
       const tbody = h('tbody');
       const more = h('div', { class: 'more', hidden: true }, h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => fetchPage(rows.length ? rows[rows.length - 1].id : undefined) }, '더 보기'));
       const table = h('table', { class: 'table', 'data-table': 'audit' }, h('thead', null, h('tr', null, ['#', '시각', '컨테이너', '종류', '상세', '규칙', '탐지 결과', '판정'].map((t) => h('th', null, t)))), tbody);
-      const emptyEl = empty('조건에 맞는 기록 없음');
-      const errEl = h('p', { class: 'pad tone-danger small', hidden: true });
-      const wrap = h('div', { class: 'grid-scroll' }, errEl, table, emptyEl, more);
+      const stateSlot = h('div', { class: 'list-slot' }, U.skeleton(8));
+      const applied = h('div');
+      const wrap = h('div', { class: 'grid-scroll' }, stateSlot, table, more);
+      table.hidden = true;
       const hist = h('div', { class: 'grid-scroll', hidden: true });
       const sheetSlot = h('div', { class: 'sheet-slot' });
       const toIso = (v) => (v ? new Date(v).toISOString() : '');
       function fetchPage(before) {
         const my = ++seq; loading = true; refresh.classList.add('spin');
         Promise.all([U.api.audit({ kind: f.kind, action: f.action, rule: f.rule, container: f.container, since: toIso(f.since), until: toIso(f.until), limit: PAGE, before }), U.api.cases({}).catch((e) => e)])
-          .then(([pageRows, cs]) => { if (my !== seq) return; casesErr = cs instanceof Error ? cs : null; cases = new Map((casesErr ? [] : cs).map((c) => [c.id, c])); rows = before ? rows.concat(pageRows) : pageRows; hasMore = pageRows.length === PAGE; errEl.hidden = true; draw(); })
-          .catch((e) => { if (my !== seq) return; errEl.hidden = false; errEl.textContent = `조회 실패: ${e.message}`; })
+          .then(([pageRows, cs]) => { if (my !== seq) return; casesErr = cs instanceof Error ? cs : null; cases = new Map((casesErr ? [] : cs).map((c) => [c.id, c])); rows = before ? rows.concat(pageRows) : pageRows; hasMore = pageRows.length === PAGE; lastErr = null; loaded = true; loading = false; draw(); })
+          .catch((e) => { if (my !== seq) return; lastErr = e; loaded = true; loading = false; draw(); })
           .finally(() => { loading = false; refresh.classList.remove('spin'); });
       }
-      const setF = (k) => (v) => { f[k] = v; if (k === 'container') U.setQuery({ container: v }); clearTimeout(timer); timer = setTimeout(() => fetchPage(), 300); }; // 필터 변경 300ms 뒤 첫 페이지부터
+      const FILTER_KEYS = ['kind', 'action', 'rule', 'container', 'since', 'until'];
+      const setF = (k) => (v) => { f[k] = v; U.setQuery({ [k]: v }); exportErr.hidden = true; clearTimeout(timer); timer = setTimeout(() => fetchPage(), 300); drawChips(); }; // 필터 변경 300ms 뒤 첫 페이지부터
+      // CSV 내보내기 [10/20 D] — 기간(시작 · 끝)이 있어야 한다. 지금 필터 그대로, 최대 10,000행(실제 백엔드는 1,000행씩 나눠 받는다)
+      const exportErr = h('span', { class: 'small tone-danger', 'data-part': 'export-error', role: 'alert', hidden: true });
+      function exportCsv() {
+        if (!f.since || !f.until) { exportErr.hidden = false; exportErr.textContent = '기간(시작 · 끝)을 먼저 고르세요 — 내보내기는 기간 안의 기록만 담습니다'; return; }
+        exportErr.hidden = true;
+        const q = { kind: f.kind, action: f.action, rule: f.rule, container: f.container, since: toIso(f.since), until: toIso(f.until) };
+        const all = [];
+        const page2 = (before) => U.api.audit(Object.assign({}, q, { limit: 1000, before })).then((rs) => { all.push(...rs); return rs.length === 1000 && all.length < 10000 ? page2(rs[rs.length - 1].id) : all; });
+        Promise.all([page2(undefined), U.api.cases({}).catch(() => [])]).then(([rs, cs]) => {
+          const byId = new Map(cs.map((c) => [c.id, c]));
+          const day = (v) => v.slice(0, 10).replace(/-/g, '');
+          U.downloadCSV(`supplyguard-audit-${day(f.since)}-${day(f.until)}.csv`, [['id', '시각', '컨테이너', '이미지', '종류', '상세', '규칙', '탐지 결과', '판정', '사유'],
+            ...rs.map((a) => { const c = a.caseId ? byId.get(a.caseId) : null; return [a.id, a.event.timestamp, a.install ? a.install.label : a.event.containerName, a.event.imageName, a.event.kind, detailOf(a.event), a.ruleId, U.LEVEL_LABEL[levelOf(a)], U.DECISION_LABEL[c ? c.decision : 'none'], a.reason]; })]);
+          U.toast(`감사 로그 ${fmt.num(rs.length)}행을 CSV 로 내려받았습니다`, { tone: 'ok', key: 'csv', replace: true });
+        }).catch((e) => { exportErr.hidden = false; exportErr.textContent = `내보내기 실패 — ${e.message}`; });
+      }
       const refresh = h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => (view === 'history' ? loadHistory() : fetchPage()) }, '⟳ 새로고침');
-      const select = (id) => { selId = id; U.setQuery({ id: id || '' }); draw(); };
+      const select = (id) => { selId = id; sheetTab = 'detail'; U.setQuery({ id: id || '', tab: '' }); draw(); };
       const seg = h('div', { class: 'seg', role: 'group', 'aria-label': '보기' });
       const filters = h('div', { class: 'filters' },
-        U.select([['', '종류 전체'], ...KINDS.map((k) => [k, k])], '', setF('kind'), { 'aria-label': '종류' }),
-        U.select([['', '대응 전체'], ['alert', '경고'], ['kill', '격리']], '', setF('action'), { 'aria-label': '대응' }),
-        h('input', { class: 'ctl w-40', placeholder: '규칙 id', 'aria-label': '규칙 id', oninput: (e) => setF('rule')(e.target.value) }),
+        U.select([['', '종류 전체'], ...KINDS.map((k) => [k, k])], f.kind, setF('kind'), { 'aria-label': '종류' }),
+        U.select([['', '대응 전체'], ['alert', '경고'], ['kill', '격리']], f.action, setF('action'), { 'aria-label': '대응' }),
+        h('input', { class: 'ctl w-40', placeholder: '규칙 id', 'aria-label': '규칙 id', value: f.rule, oninput: (e) => setF('rule')(e.target.value) }),
         h('input', { class: 'ctl w-40', placeholder: '컨테이너', 'aria-label': '컨테이너', value: f.container, oninput: (e) => setF('container')(e.target.value) }),
-        h('label', null, '기간 ', h('input', { type: 'datetime-local', class: 'ctl', 'aria-label': '시작', onchange: (e) => setF('since')(e.target.value) }), ' ~ ', h('input', { type: 'datetime-local', class: 'ctl', 'aria-label': '끝', onchange: (e) => setF('until')(e.target.value) })));
+        h('label', null, '기간 ', h('input', { type: 'datetime-local', class: 'ctl', 'aria-label': '시작', value: f.since, onchange: (e) => setF('since')(e.target.value) }), ' ~ ', h('input', { type: 'datetime-local', class: 'ctl', 'aria-label': '끝', value: f.until, onchange: (e) => setF('until')(e.target.value) })),
+        h('span', { class: 'push-right row-inline' }, exportErr, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'data-action': 'export-csv', title: '지금 필터 · 기간의 위반 기록을 CSV 로' }, '⤓ CSV 내보내기')));
+      filters.querySelector('[data-action="export-csv"]').addEventListener('click', exportCsv);
+      const ACTION_KO = { alert: '경고', kill: '격리' };
+      const fdt = (v) => v.replace('T', ' ');
+      function drawChips() {
+        replace(applied, U.filterChips([f.kind ? { key: 'kind', label: `종류: ${f.kind}`, clear: () => clearQuery(['kind']) } : null,
+          f.action ? { key: 'action', label: `대응: ${ACTION_KO[f.action] || f.action}`, clear: () => clearQuery(['action']) } : null,
+          f.rule ? { key: 'rule', label: `규칙: ${f.rule}`, clear: () => clearQuery(['rule']) } : null,
+          f.container ? { key: 'container', label: `컨테이너: ${f.container}`, clear: () => clearQuery(['container']) } : null,
+          f.since || f.until ? { key: 'period', label: `기간: ${f.since ? fdt(f.since) : '처음'} ~ ${f.until ? fdt(f.until) : '지금'}`, clear: () => clearQuery(['since', 'until']) } : null], () => clearQuery(FILTER_KEYS)));
+      }
       const title = h('span');
-      page.append(h('div', { class: 'split' }, panel({ title, class: 'grow', actions: [seg, refresh], body: h('div', { class: 'col' }, filters, wrap, hist) }), sheetSlot));
+      page.append(h('div', { class: 'split' }, panel({ title, class: 'grow', actions: [seg, refresh], body: h('div', { class: 'col' }, filters, applied, wrap, hist) }), sheetSlot));
+      drawChips();
       function setView(v) { view = v; U.setQuery({ view: v === 'history' ? 'history' : '', id: '' }); selId = null; syncView(); }
       function syncView() {
         title.textContent = view === 'history' ? '판정 · 변경 이력' : '위반 기록';
         replace(seg, [['violations', '위반 기록'], ['history', '판정 · 변경 이력']].map(([v, label]) => h('button', { type: 'button', class: `seg-btn ${view === v ? 'on' : ''}`, 'data-view-btn': v, 'aria-pressed': String(view === v), onclick: () => setView(v) }, label)));
-        filters.hidden = view === 'history'; wrap.hidden = view === 'history'; hist.hidden = view !== 'history';
+        filters.hidden = view === 'history'; applied.hidden = view === 'history'; wrap.hidden = view === 'history'; hist.hidden = view !== 'history';
         if (view === 'history') { replace(sheetSlot); loadHistory(); } else draw();
       }
       // 설치 검사 컨테이너의 위반은 컨테이너 이름 대신 패키지 이름으로 보인다
       const who = (a) => (a.install ? h('span', { 'data-pkg': '', class: 'strong', title: a.event.containerName }, h('span', { class: 'mgr' }, a.install.label.split(' ')[0]), ' ', a.install.label.split(' ').slice(1).join(' '))
         : h('span', { class: 'strong', title: `${a.event.imageName} · ${fmt.shortId(a.event.containerId)}` }, a.event.containerName));
       const decisionCell = (a) => { if (casesErr) return h('span', { class: 'muted' }, '—'); const c = a.caseId ? cases.get(a.caseId) : null; return U.decisionBadge(c ? c.decision : null); };
+      // 증거 탭 [10/20 I] — 격리된 행만. GET /api/evidence?container= (최근 것부터) 에서 이 컨테이너 ID 의 것을, 없으면 가장 최근 것
+      function evidenceView(a) {
+        const box = h('div', { class: 'col-gap', 'data-part': 'evidence' }, h('p', { class: 'small muted' }, '불러오는 중…'));
+        U.api.evidence(a.event.containerName).then((list) => {
+          const ev = list.find((x) => x.containerId === a.event.containerId) || list[0];
+          if (!ev) { replace(box, U.emptyState({ icon: '▤', title: '모은 증거가 없습니다', hint: '격리 직전에 모은 기록이 없습니다 — 옛 버전에서 격리했거나 dry-run 이었습니다.' })); return; }
+          replace(box,
+            h('div', { class: 'row-inline' }, h('span', { class: 'small muted num' }, `${fmt.dateTime(ev.collectedAt)} · ${ev.durationMs}ms 동안 모음 · ${ev.image}`),
+              ev.partial ? h('span', { class: 'badge badge-alert', 'data-part': 'evidence-partial', title: ev.error }, '일부만 모음') : h('span', { class: 'badge badge-level-normal' }, '모두 모음')),
+            ev.partial && ev.error ? h('p', { class: 'small tone-warn' }, ev.error) : null,
+            h('section', { class: 'sheet-section' }, h('h3', null, '로그 ', h('span', { class: 'small muted' }, '— 마지막 200줄')), h('pre', { class: 'json ev-logs', 'data-part': 'evidence-logs' }, ev.logs || '(비어 있음)')),
+            h('section', { class: 'sheet-section' }, h('h3', null, `파일 변경 ${ev.changes.length}`, h('span', { class: 'small muted' }, ' — docker diff (A 추가 · C 변경 · D 삭제)')),
+              ev.changes.length ? h('table', { class: 'table compact', 'data-part': 'evidence-changes' }, h('thead', null, h('tr', null, h('th', null, '종류'), h('th', null, '경로'))), h('tbody', null, ev.changes.map((x) => h('tr', null, h('td', { class: `mono ev-${x.kind}` }, x.kind), h('td', { class: 'mono small' }, x.path)))))
+                : h('p', { class: 'small muted', 'data-part': 'evidence-changes' }, '없음')),
+            h('section', { class: 'sheet-section' }, h('h3', null, `프로세스 ${ev.processes.length}`, h('span', { class: 'small muted' }, ' — docker top')),
+              ev.processes.length ? h('table', { class: 'table compact', 'data-part': 'evidence-procs' }, h('thead', null, h('tr', null, ['PID', '사용자', '명령'].map((t) => h('th', null, t)))), h('tbody', null, ev.processes.map((p) => h('tr', null, h('td', { class: 'num' }, p.pid), h('td', null, p.user), h('td', { class: 'mono small' }, p.cmd)))))
+                : h('p', { class: 'small muted', 'data-part': 'evidence-procs' }, ev.partial ? '모으지 못함 — 위 안내 참고' : '없음')));
+        }).catch((e) => replace(box, U.errorState(e, () => replace(box, evidenceView(a)))));
+        return box;
+      }
       function auditSheet(a) {
         const c = a.caseId ? cases.get(a.caseId) : null;
-        return U.sheet({ kind: 'audit', title: `감사 기록 #${a.id}`, onClose: () => select(null), body: [
+        const killed = levelOf(a) === 'killed';
+        const tab = killed ? sheetTab : 'detail';
+        const setTab = (t) => { sheetTab = t; U.setQuery({ tab: t === 'evidence' ? 'evidence' : '' }); draw(); };
+        const tabs = killed ? h('div', { class: 'seg sheet-tabs', role: 'tablist', 'aria-label': '보기' }, [['detail', '상세'], ['evidence', '증거']].map(([k, ko]) => h('button', { type: 'button', role: 'tab', class: `seg-btn ${tab === k ? 'on' : ''}`, 'data-tab': k, 'aria-selected': String(tab === k), onclick: () => setTab(k) }, ko))) : null;
+        if (tab === 'evidence') return U.sheet({ kind: 'audit', title: `감사 기록 #${a.id}`, onClose: () => select(null), body: [tabs, evidenceView(a)] });
+        return U.sheet({ kind: 'audit', title: `감사 기록 #${a.id}`, onClose: () => select(null), body: [tabs,
           h('dl', { class: 'dl' },
             h('dt', null, '탐지 결과'), h('dd', null, verdictBadge(a)),
             h('dt', null, '판정'), h('dd', null, decisionCell(a), c && c.decidedAt ? h('span', { class: 'small muted num' }, `  ${c.decidedBy} · ${fmt.dateTime(c.decidedAt)}`) : null, c ? h('span', { class: 'small muted' }, `  (건 ${c.id})`) : null),
@@ -952,7 +1209,8 @@
             h('dt', null, '컨테이너'), h('dd', { class: 'mono' }, a.event.containerName),
             h('dt', null, '컨테이너 ID'), h('dd', { class: 'mono' }, fmt.shortId(a.event.containerId)),
             h('dt', null, '이미지'), h('dd', { class: 'mono' }, a.event.imageName),
-            h('dt', null, '상세'), h('dd', { class: 'mono' }, detailOf(a.event))),
+            h('dt', null, '상세'), h('dd', { class: 'mono' }, detailOf(a.event)),
+            a.event.kind === 'connect' ? dnsRow(a.event) : null),
           !c && levelOf(a) === 'alert' && !a.install ? h('p', { class: 'small muted' }, '런타임 경고는 판정할 건을 열지 않습니다(격리 · 격리 대상만).') : null,
           h('div', { class: 'row-actions' },
             a.install ? h('a', { href: `#/installs?status=all&id=${a.install.id}`, class: 'btn btn-ghost btn-xs' }, '설치 검사에서 보기 →') : null,
@@ -962,8 +1220,12 @@
       }
       function draw() {
         if (view !== 'violations') return;
-        emptyEl.hidden = rows.length > 0 || loading; table.hidden = rows.length === 0; more.hidden = !hasMore;
-        replace(tbody, rows.map((a) => h('tr', { class: `clickable ${a.id === selId ? 'selected' : ''}`, onclick: () => select(a.id) },
+        const filtered = FILTER_KEYS.some((k) => f[k]);
+        table.hidden = !loaded || !!lastErr || rows.length === 0; more.hidden = !hasMore || !!lastErr;
+        replace(stateSlot, !loaded ? U.skeleton(8) : lastErr ? U.errorState(lastErr, () => { lastErr = null; loaded = false; draw(); fetchPage(); }, { quiet: () => fetchPage() }) // 자동 재시도는 스켈레톤 없이 [10/20 결정 4]
+          : rows.length ? null : filtered ? U.emptyState({ icon: '⌕', title: '조건에 맞는 기록 없음', actions: h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => clearQuery(FILTER_KEYS) }, '필터 모두 해제') })
+            : U.emptyState({ icon: '◷', title: '아직 감사 기록이 없습니다', hint: '정책에 걸린 행동(위반)만 여기에 쌓입니다.' }));
+        replace(tbody, rows.map((a) => U.rowKeys(h('tr', { class: `clickable ${a.id === selId ? 'selected' : ''}`, 'data-audit': a.id, onclick: () => select(a.id) },
           h('td', { class: 'num muted right' }, a.id),
           h('td', { class: 'num mono nowrap' }, fmt.dateTime(a.event.timestamp)),
           h('td', { class: 'c-container nowrap' }, who(a)),
@@ -971,25 +1233,27 @@
           h('td', { class: 'mono small trunc', title: detailOf(a.event) }, detailOf(a.event)),
           h('td', { class: 'mono small nowrap' }, a.ruleId),
           h('td', null, verdictBadge(a)),
-          h('td', null, decisionCell(a)))));
+          h('td', null, decisionCell(a))), () => select(a.id))));
         const cur = rows.find((a) => a.id === selId);
         replace(sheetSlot, cur ? auditSheet(cur) : null);
       }
       // 판정 · 변경 이력 — 판정(건) · 제안 적용 · 제안 버림 · 정책 편집 · 차단 해제를 시간순 하나로
       function loadHistory() {
         Promise.all([U.api.cases({}), U.api.changes({ limit: 500 }), U.api.proposals({ state: 'discarded' }), U.api.installs().catch(() => [])]).then(([cs, chs, discarded, ins]) => {
-          const target = (c) => { if (!c) return '—'; if (c.source !== 'install') return c.container; const s = ins.find((x) => x.id === c.installId); return s ? `${s.manager} ${pkgLabel(s)}` : c.package; };
+          const target = (c) => (c ? caseTarget(c, ins) : '—');
           const byId = new Map(cs.map((c) => [c.id, c]));
           const items = [
-            ...cs.filter((c) => c.decidedAt).map((c) => ({ at: c.decidedAt, by: c.decidedBy, what: c.decision === 'malicious' ? '판정: 악성 확정' : '판정: 오탐', tone: c.decision, caseId: c.id, target: target(c), detail: c.proposalId ? `제안 ${c.proposalId} 초안` : '' })),
-            ...chs.map((x) => ({ at: x.at, by: x.by, what: CHANGE_KIND[x.kind] || x.kind, tone: x.kind, caseId: x.caseId, target: target(byId.get(x.caseId)), detail: x.summary + (x.proposalId ? ` · 제안 ${x.proposalId}` : '') })),
-            ...discarded.map((p) => { const c = byId.get(p.caseId); return { at: (c && c.closedAt) || p.createdAt, by: p.createdBy, what: '제안 버림', tone: 'discarded', caseId: p.caseId, target: target(c), detail: `제안 ${p.id} — 변경 없이 종결` }; }),
+            ...cs.filter((c) => c.decidedAt && c.decision !== 'pending').map((c) => ({ at: c.decidedAt, by: c.decidedBy, what: c.decision === 'malicious' ? '판정: 악성 확정' : '판정: 오탐', tone: c.decision, caseId: c.id, target: target(c), detail: (c.proposalId ? `제안 ${c.proposalId} 초안` : '') + (c.note ? ` · 사유 「${c.note}」` : '') })),
+            ...chs.map((x) => ({ at: x.at, by: x.by, what: CHANGE_KIND[x.kind] || x.kind, tone: x.kind, caseId: x.caseId, target: target(byId.get(x.caseId)), detail: x.summary + (x.proposalId ? ` · 제안 ${x.proposalId}` : ''), reason: x.reason })),
+            ...discarded.map((p) => { const c = byId.get(p.caseId); return { at: (c && c.closedAt) || p.createdAt, by: p.createdBy, what: '제안 버림', tone: 'discarded', caseId: p.caseId, target: target(c), detail: `제안 ${p.id} — 변경 없이 종결`, reason: p.reason }; }),
           ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
           replace(hist, items.length ? h('table', { class: 'table', 'data-table': 'history' }, h('thead', null, h('tr', null, ['시각', '처리자', '한 일', '대상', '내용', '건'].map((t) => h('th', null, t)))),
-            h('tbody', null, items.map((x) => h('tr', { 'data-kind': x.tone },
+            h('tbody', null, items.map((x) => { const c = byId.get(x.caseId); return h('tr', { 'data-kind': x.tone, 'data-case': x.caseId || '', 'data-source': c ? c.source : '' },
               h('td', { class: 'num mono nowrap' }, fmt.dateTime(x.at)), h('td', { class: 'nowrap' }, x.by),
-              h('td', { class: 'nowrap' }, h('span', { class: `hist-what hist-${x.tone}` }, x.what)), h('td', { class: 'mono small trunc', title: x.target }, x.target),
-              h('td', { class: 'small trunc', title: x.detail }, x.detail), h('td', { class: 'mono small nowrap' }, x.caseId || '—')))))
+              h('td', { class: 'nowrap' }, h('span', { class: `hist-what hist-${x.tone}` }, x.what)),
+              h('td', { class: 'small trunc', title: x.target }, c ? sourceChip(c.source) : null, ' ', h('span', { class: 'mono' }, x.target)),
+              h('td', { class: 'small trunc', title: x.detail + (x.reason ? ` · 사유 「${x.reason}」` : '') }, x.detail, x.reason ? ` · 사유 「${x.reason}」` : ''),
+              h('td', { class: 'mono small nowrap' }, c ? h('a', { href: U.caseHref(c, true), class: 'link' }, x.caseId) : x.caseId || '—')); })))
             : empty('판정 · 변경 이력 없음'));
         }).catch((e) => replace(hist, empty(e.unsupported ? e.message : `조회 실패: ${e.message}`)));
       }

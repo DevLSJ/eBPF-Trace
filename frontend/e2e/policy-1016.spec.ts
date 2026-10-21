@@ -1,6 +1,5 @@
 import type { Page } from '@playwright/test';
 import { expect, SHOTS, test } from './fixtures';
-import { TOKEN } from './mock-backend';
 
 // 10/16 정책 설정 개편(목업 mock/tests/policy-1016.cjs 확정 → 이식): 처음 쓰는 사람도 정책을 세부적으로
 const ED = '[data-view="rule-editor"]';
@@ -50,8 +49,7 @@ test.describe('정책 쉬운 설정', () => {
     await expect(page.locator(`${ED} textarea[data-field="denyPorts"]`)).toHaveValue(/4444/);
   });
 
-  test('저장 전 확인: 요약 + 미리보기 → 토큰 → 저장 후 적용 → 정책 · 변경 이력', async ({ page, backend }) => {
-    backend.info.authRequired = true;
+  test('저장 전 확인: 요약 + 미리보기 → 저장 후 적용 → 정책 · 변경 이력', async ({ page, backend }) => {
     await page.goto('/policies?id=sensitive-files');
     await page.locator(`${ED} [data-step="action"] input[value="alert"]`).check();
     await page.locator(ED).getByRole('button', { name: '저장 전 확인' }).click();
@@ -59,14 +57,12 @@ test.describe('정책 쉬운 설정', () => {
     await expect(chk.locator('[data-preview-count]')).toBeVisible();
     await expect(chk).toContainText('격리에서 알림으로 바뀜');
     expect(backend.writes().filter((r) => r.path === '/policies')).toHaveLength(0);
-    await expect(chk.getByRole('button', { name: '저장 후 적용' })).toBeDisabled();
     await page.screenshot({ path: `${SHOTS}/1440-11-policy-save-check.png` });
-    await page.getByTestId('page-actions').getByLabel('관리자 토큰').fill(TOKEN);
     await chk.getByRole('button', { name: '저장 후 적용' }).click();
     await expect(page.getByText('저장 후 엔진에 적용됨')).toBeVisible();
     const w = backend.writes().find((r) => r.path === '/policies' && r.method === 'POST')!;
     expect(JSON.parse(w.body!).action).toBe('alert');
-    expect(w.auth).toBe(`Bearer ${TOKEN}`);
+    expect(w.auth).toBeNull(); // W16: 쿠키 세션
     await expect(page.getByTestId('changes').locator('[data-change]').first()).toContainText('정책 편집');
   });
 
@@ -74,7 +70,8 @@ test.describe('정책 쉬운 설정', () => {
     await page.goto('/policies');
     await page.getByRole('button', { name: '새 정책' }).click();
     const tpl = page.locator('[data-view="templates"] [data-template]');
-    expect(await tpl.count()).toBeGreaterThanOrEqual(6);
+    // 10/20: count() 는 기다리지 않아 부하 때 그려지기 전 0 개로 잡혔다(전체 실행 간헐 실패 3회) — 6번째가 보일 때까지 기다린다
+    await expect(tpl.nth(5)).toBeVisible();
     await page.locator('[data-view="templates"] [data-template="reverse-shell"]').click();
     await expect(page.locator(`${ED} [data-step="what"] input[value="connect"]`)).toBeChecked();
     expect(await chips(page, 'block')).toContain('port:4444');
@@ -99,19 +96,5 @@ test.describe('정책 쉬운 설정', () => {
     await expect(page.locator(`${ED} [data-chips="allow"] [data-chip][data-new]`)).toHaveCount(1);
     expect(await chips(page, 'allow')).toContain('path:/etc/shadow');
   });
-
-  test('서버 설정: 자동 격리 · 감시 범위 · 제외를 보기만, 바꾸는 방법 안내', async ({ page, backend }) => {
-    backend.info.watchContainers = ['sg-install-*'];
-    backend.info.ignoreContainers = ['supplyguard-*'];
-    await page.goto('/policies');
-    await page.locator('[data-server-settings]').click();
-    const ss = page.locator('[data-part="server-settings"]');
-    await expect(ss).toContainText('자동 격리');
-    await expect(ss).toContainText('켜짐');
-    await expect(ss).toContainText('sg-install-*');
-    await expect(ss).toContainText('supplyguard-*');
-    await expect(ss).toContainText('WATCH_CONTAINERS');
-    await expect(ss).toContainText('다시 시작');
-    await expect(ss.locator('input, select')).toHaveCount(0);
-  });
+  // 서버 설정 보기는 W16 에서 「설정」 화면으로 옮겼다 — settings-1020.spec
 });

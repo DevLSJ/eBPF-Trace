@@ -2,7 +2,11 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -25,6 +29,8 @@ func (h *handlers) routeReview(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/cases", h.listCases)
 	mux.HandleFunc("GET /api/cases/{id}", h.getCase)
 	mux.HandleFunc("POST /api/cases/{id}/decide", h.auth(h.decideCase))
+	// 판정 미리보기(W15): 쓰기 없음 — 조회자도 쓴다(ViewerWritePatterns)
+	mux.HandleFunc("POST /api/cases/{id}/preview", h.previewDecision)
 
 	mux.HandleFunc("GET /api/proposals", h.listProposals)
 	mux.HandleFunc("GET /api/proposals/{id}", h.getProposal)
@@ -44,6 +50,22 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
+		writeErr(w, http.StatusBadRequest, "JSON 형식 오류: "+err.Error())
+		return false
+	}
+	return true
+}
+
+// reasonBody: 적용 · 버림 · 차단 해제의 선택 본문 {reason} (W15). 본문이 없으면 사유 없음
+type reasonBody struct {
+	Reason string `json:"reason"`
+}
+
+// decodeOptionalJSON: decodeJSON 과 같되 빈 본문을 허용한다 (예전 호출 · CLI 는 본문 없이 부른다)
+func decodeOptionalJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil && !errors.Is(err, io.EOF) {
 		writeErr(w, http.StatusBadRequest, "JSON 형식 오류: "+err.Error())
 		return false
 	}
@@ -93,7 +115,45 @@ func (h *handlers) finishInstall(w http.ResponseWriter, r *http.Request) {
 		reviewErr(w, "finish install", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, s)
+	writeJSON(w, http.StatusOK, finishResult(s))
+}
+
+// finishResponse: 설치 세션 + sg-install 결과 출력용 요약(W14). CLI 는 SANDBOX_TOKEN 으로 이 응답만 읽는다
+// (감사 로그 · 화면 API 는 로그인 뒤). 판정 = status, 위반 수 = violationCount, 건 = caseId
+type finishResponse struct {
+	model.InstallSession
+	// TopRules: 위반 수가 많은 규칙 순(같으면 규칙 id 순), 최대 5개. 위반이 없으면 []
+	TopRules []ruleCount `json:"topRules"`
+	// Link: 대시보드 「설치 검사」 경로 (알림과 같은 꼴, PUBLIC_URL 없이 경로만)
+	Link string `json:"link"`
+}
+
+type ruleCount struct {
+	RuleID string `json:"ruleId"`
+	Count  int    `json:"count"`
+}
+
+const maxTopRules = 5
+
+func finishResult(s model.InstallSession) finishResponse {
+	byRule := map[string]int{}
+	for _, v := range s.Violations {
+		byRule[v.RuleID] += v.Count
+	}
+	top := make([]ruleCount, 0, len(byRule))
+	for id, n := range byRule {
+		top = append(top, ruleCount{RuleID: id, Count: n})
+	}
+	slices.SortFunc(top, func(a, b ruleCount) int {
+		if a.Count != b.Count {
+			return b.Count - a.Count
+		}
+		return strings.Compare(a.RuleID, b.RuleID)
+	})
+	if len(top) > maxTopRules {
+		top = top[:maxTopRules]
+	}
+	return finishResponse{InstallSession: s, TopRules: top, Link: "/installs?id=" + url.QueryEscape(s.ID)}
 }
 
 func (h *handlers) refusedInstall(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +253,22 @@ func (h *handlers) decideCase(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"case": c, "proposal": p})
 }
 
+// previewDecision: 판정하면 생길 제안의 변경 · 영향 요약 — 저장 없음. 판정 · 종결 건은 409
+func (h *handlers) previewDecision(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Decision model.Decision `json:"decision"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	pv, err := h.Review.PreviewDecision(r.Context(), r.PathValue("id"), in.Decision)
+	if err != nil {
+		reviewErr(w, "decision preview", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, pv)
+}
+
 func (h *handlers) listProposals(w http.ResponseWriter, r *http.Request) {
 	st := model.ProposalState(r.URL.Query().Get("state"))
 	switch st {
@@ -248,7 +324,11 @@ func (h *handlers) previewPolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) applyProposal(w http.ResponseWriter, r *http.Request) {
-	p, c, err := h.Review.Apply(r.Context(), r.PathValue("id"))
+	var in reasonBody
+	if !decodeOptionalJSON(w, r, &in) {
+		return
+	}
+	p, c, err := h.Review.Apply(r.Context(), r.PathValue("id"), in.Reason)
 	if err != nil {
 		reviewErr(w, "apply", err)
 		return
@@ -257,7 +337,11 @@ func (h *handlers) applyProposal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) discardProposal(w http.ResponseWriter, r *http.Request) {
-	p, c, err := h.Review.Discard(r.Context(), r.PathValue("id"))
+	var in reasonBody
+	if !decodeOptionalJSON(w, r, &in) {
+		return
+	}
+	p, c, err := h.Review.Discard(r.Context(), r.PathValue("id"), in.Reason)
 	if err != nil {
 		reviewErr(w, "discard", err)
 		return
@@ -270,7 +354,11 @@ func (h *handlers) getBlocklist(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *handlers) removeBlock(w http.ResponseWriter, r *http.Request) {
-	if err := h.Review.RemoveBlock(r.Context(), r.PathValue("list"), r.PathValue("value")); err != nil {
+	var in reasonBody
+	if !decodeOptionalJSON(w, r, &in) {
+		return
+	}
+	if err := h.Review.RemoveBlock(r.Context(), r.PathValue("list"), r.PathValue("value"), in.Reason); err != nil {
 		reviewErr(w, "remove block", err)
 		return
 	}

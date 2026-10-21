@@ -54,7 +54,8 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
     });
     return pg;
   };
-  const go = async (pg, hash, search = '') => { await pg.goto(`${BASE}${search}#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); };
+  const go = async (pg, hash, search = '') => { await pg.goto(`${BASE}${search ? search + '&' : '?'}as=admin#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin)
+  const confirmOk = (pg) => pg.click('dialog[data-part="confirm"] [data-confirm="ok"]'); // 10/20: 판정 · 적용 · 버림은 확인 대화상자(B)
   const shot = async (pg, name) => { if (!process.env.SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true }); await pg.waitForTimeout(250); await pg.screenshot({ path: path.join(SHOT_DIR, `${name}.png`) }); };
   const pendingCount = (pg) => pg.$eval('[data-pending-count]', (el) => Number(el.textContent.replace(/[^\d]/g, '')));
   // 데모 제어 설치 실행 → 끝 보고까지 기다리고 새 세션을 돌려준다
@@ -139,6 +140,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
     const s = await runInstall(pg, 'malicious');
     await go(pg, `/installs?id=${s.id}`);
     await pg.click('.sheet [data-part="decision"] button[aria-label="악성 확정"]');
+    await confirmOk(pg); // 10/20
     await pg.waitForTimeout(300);
     const c = await caseOf(pg, s.caseId);
     ok(c.state === 'decided' && c.decision === 'malicious' && c.decidedBy === '보안 담당자' && c.decidedAt && c.proposalId, `건 ${JSON.stringify(c)}`);
@@ -184,6 +186,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
     const { proposal } = await decideApi(pg, s.caseId, 'malicious');
     await go(pg, `/policies?proposal=${proposal.id}`);
     await pg.click('[data-view="proposal"] button[aria-label="적용"]');
+    await confirmOk(pg); // 10/20
     await pg.waitForTimeout(400);
     const c = await caseOf(pg, s.caseId);
     ok(c.state === 'closed' && c.closedAt, `건 상태 ${c.state}`);
@@ -204,7 +207,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
     const before = await pg.evaluate(async () => [(await UI.api.changes({})).length, JSON.stringify(UI.state.rules)]);
     await go(pg, `/policies?proposal=${proposal.id}`);
     await pg.click('[data-view="proposal"] button[aria-label="버림"]');
-    await pg.click('[data-view="proposal"] button[aria-label="버림"]'); // 두 번 눌러 확정
+    await confirmOk(pg); // 10/20: 두 번 누르기 → 확인 대화상자
     await pg.waitForTimeout(300);
     const c = await caseOf(pg, s.caseId);
     const p = (await pg.evaluate(async () => UI.api.proposals({}))).find((x) => x.id === proposal.id);
@@ -597,6 +600,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
     });
     await step('2:15 악성 확정 → 미리보기(패키지 + 도메인 차단) → 적용', async () => {
       await pg.click('.sheet [data-part="decision"] button[aria-label="악성 확정"]');
+      await confirmOk(pg); // 10/20
       await pg.waitForTimeout(300);
       await pg.click('.toast-action:has-text("제안 보기")'); // 10/16: React 와 같은 문구
       await pg.waitForSelector('[data-view="proposal"] [data-part="preview"] [data-preview-count]');
@@ -604,6 +608,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
       ok(changes.includes('block:packages:pip:reqeusts') && changes.includes('block:hosts:cdn.reqeusts-update.test'), `변경 ${JSON.stringify(changes)}`);
       await shot(pg, '05-policy-proposal-malicious');
       await pg.click('[data-view="proposal"] button[aria-label="적용"]');
+      await confirmOk(pg); // 10/20
       await pg.waitForTimeout(400);
       ok((await caseOf(pg, mal.caseId)).state === 'closed', '건이 종결되지 않음');
       await shot(pg, '06-policy-applied');
@@ -630,6 +635,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
       ok(warn.status === 'warned' && warn.packages[0] === 'tiny-git-dep', `세션 ${warn.status}`);
       await go(pg, `/installs?id=${warn.id}`);
       await pg.click('.sheet [data-part="decision"] button[aria-label="오탐"]');
+      await confirmOk(pg); // 10/20
       await pg.waitForTimeout(300);
       await pg.click('.toast-action:has-text("제안 보기")'); // 10/16: React 와 같은 문구
       await pg.waitForSelector('[data-view="proposal"] [data-preview-count]');
@@ -638,6 +644,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
       ok(await pg.locator('[data-view="proposal"] [data-part="preview"] tbody tr').count() === 2, '바뀌는 목록 2행 아님');
       await shot(pg, '08-policy-proposal-false-positive');
       await pg.click('[data-view="proposal"] button[aria-label="적용"]');
+      await confirmOk(pg); // 10/20
       await pg.waitForTimeout(400);
       const again = await runInstall(pg, 'warn');
       ok(again.status === 'passed', `재시도 ${again.status}`);

@@ -18,7 +18,7 @@ func TestBlockedImageDoesNotOpenCase(t *testing.T) {
 	ev := model.Event{Kind: model.KindOpen, ContainerID: sandboxCID, ContainerName: "pkg-reqeusts", ImageName: "demo/reqeusts:1.0.2", Path: "/etc/shadow"}
 	v := e.observe(t, ev)
 	_, p, _ := e.svc.Decide(ctx, *v.CaseID, model.DecisionMalicious, "")
-	if _, _, err := e.svc.Apply(ctx, p.ID); err != nil {
+	if _, _, err := e.svc.Apply(ctx, p.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	before := len(e.svc.ListCases(CaseQuery{}))

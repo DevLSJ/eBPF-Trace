@@ -255,8 +255,9 @@ func TestDiscardHTTP(t *testing.T) {
 		t.Fatalf("discard: %+v", got)
 	}
 	want(t, do(t, "POST", s.srv.URL+"/api/proposals/prop-0001/apply", "", ""), http.StatusConflict, "apply discarded")
-	if n := len(decode[[]model.Change](t, do(t, "GET", s.srv.URL+"/api/changes", "", ""))); n != 0 {
-		t.Fatalf("discard records no change, got %d", n)
+	// W15: 버림도 사유를 남기려고 변경 이력에 쓴다(proposal_discarded, 정책 · 차단 목록은 그대로) — 예전에는 기록 없음
+	if chs := decode[[]model.Change](t, do(t, "GET", s.srv.URL+"/api/changes", "", "")); len(chs) != 1 || chs[0].Kind != model.ChangeProposalDiscarded {
+		t.Fatalf("discard records one proposal_discarded change, got %+v", chs)
 	}
 }
 

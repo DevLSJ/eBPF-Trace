@@ -206,7 +206,11 @@ func withSystemRule(policies []rules.Rule, hosts []string) []rules.Rule {
 //  1. 새 차단 목록 · 바뀐 정책 · 변경 이력 · 적용된 제안 · 닫힌 건을 사본으로 만든다(검증 실패면 아무것도 안 바뀜)
 //  2. 저장소에 커밋 하나로 쓴다(Postgres 는 트랜잭션 하나) — 실패하면 캐시 · 엔진은 그대로
 //  3. 성공한 뒤에만 캐시를 바꾸고 엔진을 리로드한다(Replace 는 실패하지 않음)
-func (s *Service) Apply(ctx context.Context, id string) (model.Proposal, model.Case, error) {
+func (s *Service) Apply(ctx context.Context, id, reason string) (model.Proposal, model.Case, error) {
+	reason, err := cleanReason(reason)
+	if err != nil {
+		return model.Proposal{}, model.Case{}, err
+	}
 	unlock := s.lockWrite()
 	defer unlock()
 	cur, ok := s.proposals[id]
@@ -224,7 +228,7 @@ func (s *Service) Apply(ctx context.Context, id string) (model.Proposal, model.C
 	if err != nil {
 		return model.Proposal{}, model.Case{}, err
 	}
-	now := s.o.Now()
+	now, by := s.o.Now(), s.actor(ctx)
 
 	// 1. 사본 만들기
 	nextBlock := slices.Clone(s.blocklist)
@@ -240,7 +244,7 @@ func (s *Service) Apply(ctx context.Context, id string) (model.Proposal, model.C
 			if slices.ContainsFunc(nextBlock, func(b model.BlockEntry) bool { return b.List == ch.List && b.Value == ch.Value }) {
 				continue // 이미 차단됨 — 처음 차단한 기록을 그대로 둔다
 			}
-			e := model.BlockEntry{List: ch.List, Value: ch.Value, CaseID: ptr(cur.CaseID), At: now, By: s.o.Actor}
+			e := model.BlockEntry{List: ch.List, Value: ch.Value, CaseID: ptr(cur.CaseID), At: now, By: by}
 			nextBlock = append(nextBlock, e)
 			adds = append(adds, e)
 		case "except":
@@ -264,11 +268,11 @@ func (s *Service) Apply(ctx context.Context, id string) (model.Proposal, model.C
 		}
 	}
 	p := cur.Clone()
-	p.State, p.AppliedAt, p.AppliedBy = model.ProposalApplied, &now, ptr(s.o.Actor)
+	p.State, p.AppliedAt, p.AppliedBy = model.ProposalApplied, &now, ptr(by)
 	c := caseRec.Clone()
 	c.Case.State, c.Case.ClosedAt = model.CaseClosed, &now
-	chg := model.Change{ID: s.nextID("chg"), At: now, By: s.o.Actor, Kind: model.ChangeProposalApplied,
-		CaseID: ptr(cur.CaseID), ProposalID: ptr(cur.ID), Summary: summarize(cur.Changes)}
+	chg := model.Change{ID: s.nextID("chg"), At: now, By: by, Kind: model.ChangeProposalApplied,
+		CaseID: ptr(cur.CaseID), ProposalID: ptr(cur.ID), Summary: summarize(cur.Changes), Reason: reason}
 
 	// 2. 커밋 하나
 	commit := store.ReviewCommit{Cases: []model.CaseRecord{c}, Proposals: []model.Proposal{p},
@@ -288,8 +292,12 @@ func (s *Service) Apply(ctx context.Context, id string) (model.Proposal, model.C
 	return p.Clone(), c.Clone().Case, nil
 }
 
-// Discard: 제안을 버리고 건을 변경 없이 닫는다.
-func (s *Service) Discard(ctx context.Context, id string) (model.Proposal, model.Case, error) {
+// Discard: 제안을 버리고 건을 변경 없이 닫는다. 사유를 남기려고 변경 이력(proposal_discarded)도 같은 커밋에 쓴다(W15).
+func (s *Service) Discard(ctx context.Context, id, reason string) (model.Proposal, model.Case, error) {
+	reason, err := cleanReason(reason)
+	if err != nil {
+		return model.Proposal{}, model.Case{}, err
+	}
 	unlock := s.lockWrite()
 	defer unlock()
 	cur, ok := s.proposals[id]
@@ -302,8 +310,11 @@ func (s *Service) Discard(ctx context.Context, id string) (model.Proposal, model
 	now := s.o.Now()
 	p := cur.Clone()
 	p.State = model.ProposalDiscarded
+	chg := model.Change{ID: s.nextID("chg"), At: now, By: s.actor(ctx), Kind: model.ChangeProposalDiscarded,
+		CaseID: ptr(p.CaseID), ProposalID: ptr(p.ID), Summary: "제안 버림 — 변경 없이 건 종결", Reason: reason}
 	var commit store.ReviewCommit
 	commit.Proposals = []model.Proposal{p}
+	commit.Changes = []model.Change{chg}
 	var c model.CaseRecord
 	if x, ok := s.cases[p.CaseID]; ok {
 		c = x.Clone()
@@ -311,9 +322,11 @@ func (s *Service) Discard(ctx context.Context, id string) (model.Proposal, model
 		commit.Cases = []model.CaseRecord{c}
 	}
 	if err := s.commitLocked(ctx, commit); err != nil {
+		s.releaseID("chg")
 		return model.Proposal{}, model.Case{}, err
 	}
 	s.putProposal(&p)
+	s.changes = append(s.changes, chg)
 	if c.Case.ID != "" {
 		s.putCase(&c)
 		s.broadcastCase(&c)

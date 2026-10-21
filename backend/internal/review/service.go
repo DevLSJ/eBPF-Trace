@@ -16,8 +16,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/dockerapi"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/notify"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/rules"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/store"
 )
@@ -35,6 +38,8 @@ type Options struct {
 	Hub      Broadcaster
 	// Actor: 처리자 이름 (ACTOR_NAME, 기본 「보안 담당자」)
 	Actor string
+	// ActorFrom: 요청자 이름 (로그인 계정 표시 이름 · CLI 는 "cli"). nil 이거나 빈 값이면 Actor
+	ActorFrom func(context.Context) string
 	// EnforceKill: 미리보기에서 kill 판정을 killed(격리됨) / held(격리 대상)로 나눌 때 쓴다
 	EnforceKill bool
 	Now         func() time.Time
@@ -42,6 +47,15 @@ type Options struct {
 	OnInstallStart func(model.InstallSession)
 	// FlushInterval: Observe 로 바뀐 세션 · 건을 저장소에 쓰는 주기 (기본 1초)
 	FlushInterval time.Duration
+	// Notifier: 외부 알림(10/20). 판정 뒤 제안 대기 · 공급망 검사 건 열림을 보낸다. 설치 · 런타임 위반은 pipeline 이 위반 알림으로 보낸다(중복 방지). nil 이면 안 보냄
+	Notifier notify.Notifier
+	// Containers: 지금 실행 중인 컨테이너(dockerapi.Client). 판정 미리보기의 「같은 이미지 컨테이너 N개」(W15). nil 이면 수를 모른다고 표시
+	Containers ContainerLister
+}
+
+// ContainerLister: dockerapi.Client.List
+type ContainerLister interface {
+	List(ctx context.Context) ([]dockerapi.Container, error)
 }
 
 // 계약 상수
@@ -77,6 +91,17 @@ type Service struct {
 
 	dirtyInstalls map[string]bool
 	dirtyCases    map[string]bool
+}
+
+// actor: 이 요청의 처리자 — 판정 · 제안 작성 · 적용 · 차단 해제 · 정책 변경 기록에 남는다.
+// 요청자(ActorFrom: 로그인 계정 표시 이름 · Bearer CLI 는 "cli")가 있으면 그 이름, 없으면 ACTOR_NAME
+func (s *Service) actor(ctx context.Context) string {
+	if s.o.ActorFrom != nil {
+		if name := strings.TrimSpace(s.o.ActorFrom(ctx)); name != "" {
+			return name
+		}
+	}
+	return s.o.Actor
 }
 
 func New(o Options) *Service {
@@ -280,3 +305,12 @@ func (s *Service) broadcastCase(c *model.CaseRecord) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// cleanReason: 적용 · 버림 · 차단 해제 사유 — 앞뒤 공백을 떼고 500자(문자 수) 이하만
+func cleanReason(r string) (string, error) {
+	r = strings.TrimSpace(r)
+	if utf8.RuneCountInString(r) > model.MaxReasonRunes {
+		return "", invalid("reason: %d자 이하", model.MaxReasonRunes)
+	}
+	return r, nil
+}

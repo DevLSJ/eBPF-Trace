@@ -3,6 +3,7 @@ package scan
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -64,13 +65,17 @@ func parseGuardDog(b []byte, root string) ([]model.ScanFinding, *model.ScanRisk,
 	return out, risk, nil
 }
 
-// OSV-Scanner 2.x JSON: results[].packages[]{package{name, version, ecosystem}, vulnerabilities[], groups[{ids, max_severity}]}
-func parseOSV(b []byte, direct map[string]bool) ([]model.ScanVuln, error) {
+// OSV-Scanner 2.x JSON: results[]{source{path}, packages[]{package{name, version, ecosystem}, vulnerabilities[], groups[{ids, max_severity}]}}
+// 취약점이 있는 패키지(vulns)와 읽은 패키지 전체(packages — 차단 후보, W4)를 돌려준다. root 는 검사기 안의 대상 경로(잠금 파일 경로를 상대로)
+func parseOSV(b []byte, root string, direct map[string]bool) ([]model.ScanVuln, []model.ScanPackage, error) {
 	if len(strings.TrimSpace(string(b))) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	var o struct {
 		Results []struct {
+			Source struct {
+				Path string `json:"path"`
+			} `json:"source"`
 			Packages []struct {
 				Package struct {
 					Name      string `json:"name"`
@@ -87,16 +92,20 @@ func parseOSV(b []byte, direct map[string]bool) ([]model.ScanVuln, error) {
 		} `json:"results"`
 	}
 	if err := json.Unmarshal(b, &o); err != nil {
-		return nil, fmt.Errorf("OSV-Scanner 결과를 읽을 수 없습니다: %w", err)
+		return nil, nil, fmt.Errorf("OSV-Scanner 결과를 읽을 수 없습니다: %w", err)
 	}
 	var out []model.ScanVuln
+	var pkgs []model.ScanPackage
 	for _, r := range o.Results {
+		src := strings.TrimPrefix(strings.TrimPrefix(r.Source.Path, root), "/")
 		for _, p := range r.Packages {
+			isDirect := direct == nil || direct[strings.ToLower(p.Package.Name)]
+			pkgs = append(pkgs, model.ScanPackage{Manager: managerOf(p.Package.Ecosystem, src), Name: p.Package.Name, Version: p.Package.Version,
+				Ecosystem: p.Package.Ecosystem, Source: src, Direct: isDirect, Vulns: len(p.Vulnerabilities)})
 			if len(p.Vulnerabilities) == 0 {
 				continue
 			}
-			v := model.ScanVuln{Package: p.Package.Name, Version: p.Package.Version, Ecosystem: p.Package.Ecosystem, Count: len(p.Vulnerabilities),
-				Direct: direct == nil || direct[strings.ToLower(p.Package.Name)]}
+			v := model.ScanVuln{Package: p.Package.Name, Version: p.Package.Version, Ecosystem: p.Package.Ecosystem, Count: len(p.Vulnerabilities), Direct: isDirect}
 			var maxSev float64
 			for _, g := range p.Groups {
 				if f, err := strconv.ParseFloat(g.MaxSeverity, 64); err == nil && f > maxSev {
@@ -120,7 +129,29 @@ func parseOSV(b []byte, direct map[string]bool) ([]model.ScanVuln, error) {
 		}
 		return b.Count - a.Count
 	})
-	return out, nil
+	return out, pkgs, nil
+}
+
+// managerOf: 차단 목록 매니저 — OSV ecosystem 우선, 없으면 잠금 파일 이름(requirements*.txt → pip · package-lock.json → npm · Cargo.lock → cargo). 모르면 ""
+func managerOf(ecosystem, source string) string {
+	switch strings.ToLower(ecosystem) {
+	case "pypi":
+		return "pip"
+	case "npm":
+		return "npm"
+	case "crates.io":
+		return "cargo"
+	}
+	base := strings.ToLower(path.Base(source))
+	switch {
+	case strings.HasPrefix(base, "requirements") && strings.HasSuffix(base, ".txt"), base == "poetry.lock", base == "pipfile.lock", base == "pdm.lock", base == "uv.lock":
+		return "pip"
+	case base == "package-lock.json", base == "yarn.lock", base == "pnpm-lock.yaml", base == "bun.lock":
+		return "npm"
+	case base == "cargo.lock":
+		return "cargo"
+	}
+	return ""
 }
 
 // directNames: requirements*.txt 에 적힌 이름(직접 의존성). 그 밖의 잠금 파일이면 nil(모두 직접으로 본다)

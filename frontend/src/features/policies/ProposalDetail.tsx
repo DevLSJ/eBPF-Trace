@@ -2,13 +2,14 @@ import { Eye } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DecisionBadge } from '../../components/Badges';
-import { ConfirmButton } from '../../components/ConfirmButton';
+import { ConfirmDialog } from '../../components/Modal';
 import { Empty, LoadError, Panel } from '../../components/Panel';
 import { useCases } from '../../hooks/cases-context';
 import { useToast } from '../../hooks/toast-context';
 import { api, errorText } from '../../lib/api';
 import { fmtDateTime, fmtNum } from '../../lib/format';
-import { changeText, LIST_LABEL } from '../../lib/proposal';
+import { scanHref, SOURCE_LABEL } from '../../lib/guide';
+import { applyEffects, changeText, LIST_LABEL } from '../../lib/proposal';
 import { caseLabel, LEVEL_LABEL, type Level, type Preview, type Proposal } from '../../lib/types';
 
 const levelText = (v: string) => LEVEL_LABEL[v as Level] ?? (v === 'kill' ? '격리' : v === 'alert' ? '경고' : v);
@@ -33,6 +34,8 @@ export function ProposalDetail({
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewError, setPreviewError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  // 적용 · 버림은 확인 대화상자(10/20 B) — 사유는 변경 이력 reason
+  const [ask, setAsk] = useState<'apply' | 'discard' | null>(null);
 
   const id = p?.id;
   const draft = p?.state === 'draft';
@@ -68,11 +71,11 @@ export function ProposalDetail({
   // 옛 백엔드(nextOnly 없음)는 제안의 패키지 · 이미지 차단으로 대신한다
   const nextOnly =
     preview?.nextOnly ?? p.changes.flatMap((x) => (x.op === 'block' && x.list !== 'hosts' ? [{ list: x.list, value: x.value }] : []));
-  const act = async (kind: 'apply' | 'discard') => {
+  const act = async (kind: 'apply' | 'discard', reason: string) => {
     setBusy(true);
     try {
-      if (kind === 'apply') await api.applyProposal(p.id);
-      else await api.discardProposal(p.id);
+      if (kind === 'apply') await api.applyProposal(p.id, reason);
+      else await api.discardProposal(p.id, reason);
       toast(kind === 'apply' ? `제안 적용 — ${target} 건 종결, 변경 이력에 기록` : `제안 버림 — ${target} 건 종결(변경 없음)`, {
         key: `proposal:${p.id}`,
         tone: 'ok',
@@ -103,12 +106,17 @@ export function ProposalDetail({
             <p className="text-slate-600">
               {c ? (
                 <>
-                  {c.source === 'install' ? '설치 검사' : '런타임'} <span className="font-mono">{target}</span> · 위반 {fmtNum(c.violations)}건 ({c.ruleIds.join(', ')}) ·{' '}
+                  {SOURCE_LABEL[c.source] ?? c.source} <span className="font-mono">{target}</span> · 위반 {fmtNum(c.violations)}건 ({c.ruleIds.join(', ')}) ·{' '}
                   {c.decidedBy ?? p.createdBy} 판정 {c.decidedAt ? fmtDateTime(c.decidedAt) : fmtDateTime(p.createdAt)}
                   {c.note && <> · 메모 「{c.note}」</>}{' '}
                   {c.source === 'install' && c.installId && (
                     <Link to={`/installs?status=all&id=${encodeURIComponent(c.installId)}`} className="text-indigo-600 hover:underline">
                       세션 보기
+                    </Link>
+                  )}
+                  {scanHref(c) && (
+                    <Link to={scanHref(c)!} className="text-indigo-600 hover:underline">
+                      검사 결과 보기
                     </Link>
                   )}
                 </>
@@ -212,24 +220,27 @@ export function ProposalDetail({
               >
                 <Eye className="size-4" aria-hidden /> 미리보기
               </button>
-              {!canWrite && <span className="text-xs text-amber-700">관리자 토큰을 머리 칸에 입력하세요</span>}
-              <ConfirmButton
-                onConfirm={() => void act('discard')}
-                confirmLabel="버림 확정"
-                disabled={busy || !canWrite}
-                className="ml-auto rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-              >
-                버림
-              </ConfirmButton>
-              <button
+              {/* 조회자는 적용 · 버림을 그리지 않는다(W16) — 미리보기는 조회자도 */}
+              {canWrite && (
+                <button
+                  type="button"
+                  onClick={() => setAsk('discard')}
+                  disabled={busy}
+                  className="ml-auto rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                >
+                  버림
+                </button>
+              )}
+              {canWrite && <button
                 type="button"
-                onClick={() => void act('apply')}
-                disabled={busy || !canWrite || !preview}
+                onClick={() => setAsk('apply')}
+                disabled={busy || !preview}
                 title={preview ? undefined : '먼저 미리보기로 무엇이 바뀌는지 확인하세요'}
                 className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
               >
                 적용
-              </button>
+              </button>}
+              {!canWrite && <span className="ml-auto text-xs text-slate-500">적용 · 버림은 관리자만 합니다</span>}
             </>
           ) : (
             <span className="text-xs text-slate-500" data-testid="proposal-state">
@@ -238,6 +249,34 @@ export function ProposalDetail({
           )}
         </div>
       </div>
+      {ask && (
+        <ConfirmDialog
+          key={ask}
+          title={ask === 'apply' ? '제안 적용' : '제안 버림'}
+          target={`${target} · 제안 ${p.id}`}
+          tone={ask === 'apply' ? 'primary' : 'danger'}
+          okLabel={ask === 'apply' ? '적용' : '버림'}
+          reason
+          effects={
+            ask === 'apply'
+              ? applyEffects(p, preview)
+              : ['정책 · 차단 목록은 바뀌지 않습니다', `건 ${p.caseId} 은 판정(${p.decision === 'malicious' ? '악성' : '오탐'})만 남기고 종결`, '판정 · 변경 이력에 「제안 버림」으로 남습니다']
+          }
+          undo={
+            ask === 'apply'
+              ? p.decision === 'malicious'
+                ? '정책 › 차단 목록에서 「해제」하면 다음 설치 · 기동부터 풀립니다'
+                : '정책 편집에서 더한 예외 값을 지우고 저장하면 됩니다'
+              : '버린 제안은 되살리지 않습니다 — 같은 대상이 다시 걸리면 새 건으로 판정합니다'
+          }
+          onCancel={() => setAsk(null)}
+          onConfirm={(reason) => {
+            const k = ask;
+            setAsk(null);
+            void act(k, reason);
+          }}
+        />
+      )}
     </Panel>
   );
 }

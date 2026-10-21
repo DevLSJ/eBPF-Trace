@@ -30,6 +30,7 @@ for (const [w, h] of [
       void backend;
       await page.goto('/installs?id=ins-0011');
       await page.getByTestId('decision').getByRole('button', { name: '오탐' }).click();
+      await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
       await page.getByRole('button', { name: '제안 보기' }).click();
       await page.getByRole('button', { name: '미리보기' }).click();
       await expect(page.getByTestId('preview-summary')).toBeVisible();

@@ -48,8 +48,9 @@ test.describe('설치 검사 — 이 패키지는 무엇을 하려 했고, 악�
     const box = page.getByTestId('decision');
     await expect(box.getByRole('button', { name: '악성 확정' })).toBeEnabled();
     await expect(box.getByRole('button', { name: '오탐' })).toBeEnabled();
-    await box.getByLabel('메모 (선택)').fill('git:// 의존성');
     await box.getByRole('button', { name: '오탐' }).click();
+    await page.locator('dialog[data-part="confirm"] textarea[name="reason"]').fill('git:// 의존성'); // W18: 메모 칸 → 대화상자의 사유
+    await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
     await expect(box.locator('[data-decision="false_positive"]')).toBeVisible();
     await expect(box.getByTestId('decided-by')).toHaveText('보안 담당자');
     await expect(box).toContainText('git:// 의존성');

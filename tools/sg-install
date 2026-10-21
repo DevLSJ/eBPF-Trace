@@ -9,7 +9,8 @@
 #   sg-install pip ./deploy/demo/reqeusts # 로컬 디렉터리(악성 데모 패키지)를 읽기 전용으로 마운트
 #   sg-install --keep pip requests        # 설치 결과를 살펴보려면 컨테이너를 남긴다
 #
-# 종료 코드: 0 통과 · 1 설치 실패 · 2 위반(격리 · 경고) · 3 차단 목록이라 설치 전 거부 · 69 백엔드 연결 실패 · 77 토큰 거부
+# 종료 코드: 0 통과 · 1 설치 실패 · 2 위반(격리 · 경고) · 3 차단 목록이라 설치 전 거부 · 4 결과 확인 불가(통과로 보지 않는다)
+#           · 69 백엔드 연결 실패 · 77 토큰 거부
 # 환경: SUPPLYGUARD_API (기본 http://127.0.0.1:8000), SUPPLYGUARD_SANDBOX_TOKEN (백엔드 SANDBOX_TOKEN, mock 소스는 없어도 됨)
 #       SG_PIP_IMAGE / SG_NPM_IMAGE / SG_CARGO_IMAGE
 set -euo pipefail
@@ -62,10 +63,11 @@ case $mgr in
   *) echo "지원: pip | npm | cargo (받은 값: $mgr)" >&2; exit 64 ;;
 esac
 
-if ! curl -fsS -m 3 "$api/health" >/dev/null 2>&1; then
+# 가젯 확인은 공개된 /health 의 source 로 한다 (/api/info 는 로그인 뒤)
+if ! health=$(curl -fsS -m 3 "$api/health" 2>/dev/null); then
   echo "SupplyGuard 백엔드($api)에 연결할 수 없습니다. make sandbox-up 으로 먼저 띄우세요." >&2; exit 69
 fi
-if ! curl -fsS -m 3 "$api/api/info" 2>/dev/null | grep -q '"source":"gadget"'; then
+if [[ $(jget "$health" source) != gadget ]]; then
   echo "경고: 백엔드가 가젯 소스가 아닙니다. 설치는 진행하지만 커널 감시는 없습니다." >&2
 fi
 
@@ -98,34 +100,63 @@ fi
 
 echo "▶ $mgr install ${pkgs[*]}"
 echo "  컨테이너 $name ($image) — SupplyGuard 감시 중${session:+ · 세션 $session}"
-started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 set +e
 docker run --name "$name" --label supplyguard.sandbox=1 -w /work --pull missing ${mounts[@]+"${mounts[@]}"} "$image" "${cmd[@]}" 2>&1 | sed 's/^/  | /'
 code=${PIPESTATUS[0]}
 set -e
 
 # 3. 끝 보고 (종료 코드). 보고가 없으면 백엔드는 컨테이너 종료 10분 뒤 「결과 미확인」으로 둔다.
-if [[ -n $session ]]; then
-  api_call PUT "/api/installs/$session/finish" "{\"exitCode\": $code}" || true
-  [[ $http_code == 200 ]] || echo "경고: 설치 종료를 보고하지 못했습니다(HTTP $http_code)." >&2
-fi
+#    결과는 이 응답(설치 세션 + 위반 요약)에서 읽는다 — 감사 로그 · 화면 API 는 로그인 뒤라 CLI 가 읽지 않는다.
+#    커널 이벤트가 파이프라인을 다 지나도록 잠깐 기다린 뒤 보고한다(보고 시점의 위반이 응답에 담긴다).
 sleep 1.5
+result=
+if [[ -n $session ]]; then
+  if api_call PUT "/api/installs/$session/finish" "{\"exitCode\": $code}" && [[ $http_code == 200 ]]; then
+    result=$resp
+  else
+    echo "경고: 설치 종료를 보고하지 못했습니다(HTTP $http_code)." >&2
+  fi
+fi
 
-audit=$(curl -fsS -m 5 "$api/api/audit?container=$name&since=$started&limit=200" 2>/dev/null || echo '[]')
+# 4. 결과 출력. 결과를 받지 못하면 「결과 확인 불가」(종료 코드 4) — 절대 「위반 없음」으로 바꾸지 않는다
 set +e
-python3 - "$audit" "$code" <<'PY'
+python3 - "$result" "$code" <<'PY'
 import json, sys
-rows = json.loads(sys.argv[1]); code = int(sys.argv[2]); rows.reverse()
+raw, code = sys.argv[1], int(sys.argv[2])
+done = "완료" if code == 0 else "실패"
+def unknown(why):
+    print("\n[결과 확인 불가] %s — 설치 %s (종료 코드 %d)" % (why, done, code))
+    print("이 결과를 통과로 보지 마세요. 대시보드 -> 설치 검사에서 이 설치의 판정을 확인하세요.")
+    sys.exit(4)
+if not raw:
+    unknown("백엔드에서 설치 결과를 받지 못했습니다")
+try:
+    r = json.loads(raw)
+    status, n = r["status"], int(r["violationCount"])
+except Exception:
+    unknown("백엔드 응답을 읽을 수 없습니다")
+if n == 0:
+    if status not in ("passed", "failed"):
+        unknown("위반 0건인데 판정이 %r 입니다" % status)
+    print("\n[OK] 위반 없음 — 설치 %s (종료 코드 %d)" % (done, code)); sys.exit(0 if code == 0 else 1)
 def detail(e):
     return e.get("args") or e.get("path") or ("%s:%s%s" % (e.get("dstIp"), e.get("dstPort"), " (%s)" % e["dstHost"] if e.get("dstHost") else ""))
-if not rows:
-    print("\n[OK] 위반 없음 — 설치 %s (종료 코드 %d)" % ("완료" if code == 0 else "실패", code)); sys.exit(0 if code == 0 else 1)
-killed = any(r.get("enforced") for r in rows)
-print("\n[%s] 위반 %d건%s" % ("격리됨" if killed else "경고", len(rows), " — 컨테이너를 SIGKILL 로 격리했습니다" if killed else " (dry-run: 알림만)"))
-for i, r in enumerate(rows, 1):
-    e = r["event"]
-    print("  %d. [%-7s] %-22s %s" % (i, e["kind"], r.get("ruleId", ""), detail(e)[:90]))
-    print("     %s%s" % (r.get("reason", ""), "  <- 격리" if r.get("enforced") else ""))
+vs = r.get("violations") or []
+killed = status == "isolated" or any(v.get("enforced") for v in vs)
+print("\n[%s] 위반 %d건%s" % ("격리됨" if killed else "경고", n, " — 컨테이너를 SIGKILL 로 격리했습니다" if killed else " (dry-run: 알림만)"))
+for i, v in enumerate(vs[:20], 1):
+    e = v.get("event") or {}
+    print("  %d. [%-7s] %-22s %s  x%d" % (i, e.get("kind", ""), v.get("ruleId", ""), detail(e)[:80], v.get("count", 1)))
+    print("     %s%s" % (v.get("reason", ""), "  <- 격리" if v.get("enforced") else ""))
+if len(vs) > 20:
+    print("  … 외 %d종" % (len(vs) - 20))
+top = r.get("topRules") or []
+if top:
+    print("  많이 걸린 규칙: " + ", ".join("%s %d건" % (t["ruleId"], t["count"]) for t in top))
+if r.get("caseId"):
+    print("  판정 건: %s" % r["caseId"])
+if r.get("link"):
+    print("  대시보드 설치 검사: %s" % r["link"])
 print("\n이 패키지를 설치하지 마세요. 대시보드 -> 설치 검사에서 판정하면 차단 목록에 올라갑니다.")
 sys.exit(2)
 PY

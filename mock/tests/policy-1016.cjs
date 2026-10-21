@@ -30,7 +30,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     pg.on('pageerror', (e) => consoleErrors.push(`${pg.url()} PAGEERROR ${e.message}`));
     return pg;
   };
-  const go = async (pg, hash) => { await pg.goto(`${BASE}#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); };
+  const go = async (pg, hash) => { await pg.goto(`${BASE}?as=admin#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin)
   const shot = async (pg, name) => { if (!process.env.SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true }); await pg.waitForTimeout(250); await pg.screenshot({ path: path.join(SHOT_DIR, `${name}.png`) }); };
   const ED = '[data-view="rule-editor"]';
   const chips = (pg, group) => pg.$$eval(`${ED} [data-chips="${group}"] [data-chip]`, (els) => els.map((e) => `${e.dataset.type}:${e.dataset.value}`));
@@ -94,7 +94,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     ok(chk.includes('알림') && /격리에서 알림으로 바뀜|바뀌는 과거 위반/.test(chk), `확인 칸 "${chk.slice(0, 200)}"`);
     ok((await rule(pg, 'sensitive-files')).action === 'kill', '확인만 했는데 저장됨');
     await shot(pg, '03-save-check');
-    await pg.fill('input[aria-label="관리자 토큰"]', 'demo-token');
+    // 10/20: 관리자 토큰 칸 삭제 — 로그인(관리자)만으로 저장
     await pg.click(`${ED} [data-part="save-check"] button[aria-label="저장 후 적용"]`);
     await pg.waitForTimeout(400);
     ok((await rule(pg, 'sensitive-files')).action === 'alert', '저장 안 됨');
@@ -120,7 +120,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     ok(/^[a-z0-9-]+$/.test(id) && id.length > 3, `이름 "${id}"`);
     await pg.click(`${ED} button[aria-label="저장 전 확인"]`);
     await pg.waitForSelector(`${ED} [data-part="save-check"] [data-preview-count]`);
-    await pg.fill('input[aria-label="관리자 토큰"]', 'demo-token');
+    // 10/20: 관리자 토큰 칸 삭제 — 로그인(관리자)만으로 저장
     await pg.click(`${ED} [data-part="save-check"] button[aria-label="저장 후 적용"]`);
     await pg.waitForTimeout(400);
     ok((await rule(pg, id)).denyPorts.includes(4444), '새 정책 저장 안 됨');
@@ -155,8 +155,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
   // ---------------- 6. 서버 설정 ----------------
   await T('6 서버 설정: 자동 격리 · 감시 범위 · 제외를 쉬운 말로 보여 주고 바꾸는 방법만 안내', async () => {
     const pg = await newPage();
-    await go(pg, '/policies');
-    await pg.click('[data-server-settings]');
+    await go(pg, '/settings'); // 10/20: 서버 설정은 「설정」 화면(첫 탭)으로 옮김
     await pg.waitForSelector('[data-part="server-settings"]');
     const t = await pg.textContent('[data-part="server-settings"]');
     ok(t.includes('자동 격리') && t.includes('켜짐') && t.includes('모든 컨테이너') && t.includes('supplyguard-*'), `서버 설정 "${t.slice(0, 160)}"`);

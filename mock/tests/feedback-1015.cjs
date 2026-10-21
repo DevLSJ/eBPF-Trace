@@ -41,7 +41,7 @@ const TITLES = { '/': '대시보드', '/installs': '설치 검사', '/events': '
     pg.on('pageerror', (e) => consoleErrors.push(`${pg.url()} PAGEERROR ${e.message}`));
     return pg;
   };
-  const go = async (pg, hash, search = '') => { await pg.goto(`${BASE}${search}#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); };
+  const go = async (pg, hash, search = '') => { await pg.goto(`${BASE}${search ? search + '&' : '?'}as=admin#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin)
   const pendingNum = (pg) => pg.$eval('[data-pending-count]', (el) => Number(el.textContent.replace(/[^\d]/g, '')));
   const pg = await newPage();
 
@@ -51,7 +51,7 @@ const TITLES = { '/': '대시보드', '/installs': '설치 검사', '/events': '
     const groups = await pg.$$eval('.nav-group-title', (els) => els.map((e) => e.textContent.trim()));
     ok(JSON.stringify(groups) === JSON.stringify(['설치 검사', '런타임 감시', '설정 · 기록']), `묶음 ${JSON.stringify(groups)}`);
     const order = await pg.$$eval('.nav-link', (els) => els.map((e) => e.dataset.to));
-    ok(JSON.stringify(order) === JSON.stringify(['/', '/installs', '/scans', '/events', '/topology', '/policies', '/audit']), `순서 ${JSON.stringify(order)}`); // 10/16: 설치 검사 묶음에 공급망 검사
+    ok(JSON.stringify(order) === JSON.stringify(['/', '/installs', '/scans', '/events', '/topology', '/policies', '/audit', '/settings']), `순서 ${JSON.stringify(order)}`); // 10/16: 설치 검사 묶음에 공급망 검사 // 10/20: 「설정 · 기록」 끝에 설정
   });
 
   // ---------------- 2. 단계 칩 없음 · 화면 이름 ----------------
@@ -151,6 +151,7 @@ const TITLES = { '/': '대시보드', '/installs': '설치 검사', '/events': '
     await p.waitForSelector('.sheet[data-sheet="install"]');
     ok(await p.locator('.sheet button[aria-label="확인함"]').count() === 0, '확인함 버튼 남음');
     await p.click('.sheet button[aria-label="오탐"]');
+    await p.click('dialog[data-part="confirm"] [data-confirm="ok"]'); // 10/20: 판정은 확인 대화상자(B)
     await p.waitForTimeout(300);
     const c = await p.evaluate(async (sid) => UI.api.case((await UI.api.install(sid)).caseId), id);
     ok(c.state === 'decided' && c.decision === 'false_positive', `서버 건 ${c.state}`);
@@ -263,9 +264,9 @@ const TITLES = { '/': '대시보드', '/installs': '설치 검사', '/events': '
     ok(chip.includes('설치 검사 전용'), `칩 "${chip}"`);
     ok(await pg.locator('.rule-row:has-text("sensitive-files") .scope-chip').count() === 0, '전체 적용 정책에 칩');
   });
-  await T('12 정책: 관리자 토큰은 화면 머리', async () => {
+  await T('12 정책: 관리자 토큰 칸 없음(10/20 — 쓰기는 로그인 역할만)', async () => {
     await go(pg, '/policies');
-    ok(await pg.locator('.topbar input[type="password"]').count() === 1, '머리에 토큰 칸 없음');
+    ok(await pg.locator('.topbar input[type="password"]').count() === 0, '머리에 토큰 칸이 남음'); // 10/20: 토큰 칸 삭제
     ok(await pg.locator('.token-row').count() === 0, '목록 아래 토큰 칸 남음');
   });
 

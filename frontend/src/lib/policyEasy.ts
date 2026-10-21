@@ -1,4 +1,4 @@
-import type { Event, Kind, Rule } from './types';
+import type { DirectIp, Event, Kind, Rule } from './types';
 
 // 정책 「쉬운 설정」 로직(목업 mock/shared/policy-easy.js 확정, 2026-10-16) — 화면은 components/PolicyEasy.tsx
 // draft 는 고급 폼과 같은 모양(목록 필드 = 한 줄에 하나)이라 쉬운 설정 · 폼 · YAML 을 오가도 값이 그대로다.
@@ -21,6 +21,8 @@ export interface Draft {
   description: string;
   kind: Kind;
   action: Rule['action'];
+  // 도메인 조회 없는 IP 직접 연결(connect, 10/20) — '' = 쓰지 않음(옛 동작). 고급 폼 · YAML 에서 고친다
+  directIp: DirectIp | '';
   dryRun: boolean;
   disabled: boolean;
   lists: Record<ListField, string>;
@@ -37,7 +39,7 @@ const PORT_FIELDS: ListField[] = ['allowPorts', 'denyPorts'];
 export function toDraft(r: Rule): Draft {
   const lists = {} as Record<ListField, string>;
   for (const f of ALL_LIST_FIELDS) lists[f] = ((r[f] as (string | number)[] | undefined) ?? []).join('\n');
-  return { id: r.id, description: r.description ?? '', kind: r.kind, action: r.action, dryRun: !!r.dryRun, disabled: !!r.disabled, lists };
+  return { id: r.id, description: r.description ?? '', kind: r.kind, action: r.action, directIp: r.directIp ?? '', dryRun: !!r.dryRun, disabled: !!r.disabled, lists };
 }
 
 export const listOf = (d: Draft, f: ListField) =>
@@ -51,6 +53,7 @@ export const withList = (d: Draft, f: ListField, xs: string[]): Draft => ({ ...d
 export function toRule(d: Draft): Rule {
   const rule: Rule = { id: d.id.trim(), kind: d.kind, action: d.action };
   if (d.description.trim()) rule.description = d.description.trim();
+  if (d.directIp && d.kind === 'connect') rule.directIp = d.directIp;
   if (d.dryRun) rule.dryRun = true;
   if (d.disabled) rule.disabled = true;
   for (const f of ['containers' as ListField, ...KIND_FIELDS[d.kind]]) {

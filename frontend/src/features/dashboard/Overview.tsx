@@ -77,7 +77,7 @@ export function Overview() {
       ) : !s ? (
         <p className="p-4 text-sm text-slate-400">불러오는 중…</p>
       ) : (
-        <div className="grid gap-3 px-4 py-3">
+        <div className="grid min-h-0 gap-3 overflow-y-auto px-4 py-3" data-part="overview-body">
           <div className="grid grid-cols-5 gap-2">
             <Kpi k="collected" label="수집한 이벤트" value={s.collected.total} sub={`실행 ${fmtNum(s.collected.byKind.exec)} · 파일 ${fmtNum(s.collected.byKind.open)} · 통신 ${fmtNum(s.collected.byKind.connect)}`} to="/events?normal=1" />
             <Kpi k="violations" label="위반" value={s.violations.total} sub={`격리 ${fmtNum(s.violations.killed + s.violations.held)} · 경고 ${fmtNum(s.violations.alert)}`} to="/audit" danger />

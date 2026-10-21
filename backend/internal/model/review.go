@@ -291,7 +291,12 @@ const (
 	ChangePolicyReplace   ChangeKind = "policy_replace"
 	// ChangeBlocklistRemove: DELETE /api/blocklist — 계약의 「차단 해제, Change 기록」
 	ChangeBlocklistRemove ChangeKind = "blocklist_remove"
+	// ChangeProposalDiscarded: POST /api/proposals/{id}/discard — 변경 없이 건 종결(W15, 사유를 남기려고 기록)
+	ChangeProposalDiscarded ChangeKind = "proposal_discarded"
 )
+
+// MaxReasonRunes: 적용 · 버림 · 차단 해제 사유(Change.reason)의 상한(문자 수, W15)
+const MaxReasonRunes = 500
 
 type Change struct {
 	ID         string     `json:"id"`
@@ -301,6 +306,8 @@ type Change struct {
 	CaseID     *string    `json:"caseId"`
 	ProposalID *string    `json:"proposalId"`
 	Summary    string     `json:"summary"`
+	// Reason: 확인 대화상자의 사유(선택, 500자) — 적용 · 버림 · 차단 해제. 판정 사유는 건 메모(Case.note). 없으면 ""
+	Reason string `json:"reason"`
 }
 
 // Osv: GET /api/osv 응답

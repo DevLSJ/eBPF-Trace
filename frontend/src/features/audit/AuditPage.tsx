@@ -1,7 +1,11 @@
-import { RotateCw } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Download, History as HistoryIcon, RotateCw, ScrollText, SearchX } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DecisionBadge } from '../../components/Badges';
+import { DnsRow } from '../../components/DnsRow';
+import { downloadCSV } from '../../components/list/csv';
+import { rowKeys, useAutoRetry } from '../../components/list/hooks';
+import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
 import { KindBadge } from '../../components/KindBadge';
 import { PageActions } from '../../components/PageActions';
 import { Empty, LoadError, Panel } from '../../components/Panel';
@@ -10,10 +14,12 @@ import { Section, Sheet } from '../../components/Sheet';
 import { VerdictBadge } from '../../components/VerdictBadge';
 import { useCases } from '../../hooks/cases-context';
 import { useLoad } from '../../hooks/useLoad';
-import { api, type AuditParams } from '../../lib/api';
+import { api, errorText, type AuditParams } from '../../lib/api';
 import { fmtDateTime, shortId } from '../../lib/format';
+import { scanHref, SOURCE_LABEL } from '../../lib/guide';
 import { isInstallContainer } from '../../lib/topology';
-import { caseLabel, DECISION_LABEL, detailOf, KINDS, type AuditEntry, type Case } from '../../lib/types';
+import { caseLabel, CHANGE_KIND_LABEL, DECISION_LABEL, detailOf, KINDS, LEVEL_LABEL, levelOf, type AuditEntry, type Case } from '../../lib/types';
+import { EvidenceView } from './EvidenceView';
 
 const PAGE = 100;
 const ctl = 'h-8 rounded-md border border-slate-300 bg-white px-2 text-sm focus:border-indigo-500 focus:outline-none';
@@ -22,6 +28,11 @@ type Filters = Record<(typeof FILTERS)[number], string>;
 
 // datetime-local(로컬 시각) → RFC3339
 const toIso = (v: string) => (v ? new Date(v).toISOString() : '');
+const fdt = (v: string) => v.replace('T', ' ');
+const ACTION_KO: Record<string, string> = { alert: '경고', kill: '격리' };
+// CSV 내보내기(10/20 D): 백엔드 한 번에 최대 500행(store.MaxAuditLimit) — 나눠 받아 최대 10,000행
+const CSV_PAGE = 500;
+const CSV_MAX = 10_000;
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
@@ -37,18 +48,43 @@ export function AuditPage() {
   const [params, setParams] = useSearchParams();
   const view = params.get('view') === 'changes' ? 'changes' : 'violations';
   const id = params.get('id');
+  const tab = params.get('tab') === 'evidence' ? 'evidence' : 'detail';
   const filtersKey = FILTERS.map((k) => params.get(k) ?? '').join('\u0000');
   const filters = useMemo(() => Object.fromEntries(FILTERS.map((k, i) => [k, filtersKey.split('\u0000')[i]])) as Filters, [filtersKey]);
   const debounced = useDebounced(filters, 300);
   const { cases } = useCases();
   const caseOf = useMemo(() => new Map((cases ?? []).map((c) => [c.id, c])), [cases]);
 
-  const set = (k: string, v: string) => {
+  const set = (k: string, v: string, replace = k !== 'id') => {
     const next = new URLSearchParams(params);
     if (v) next.set(k, v);
     else next.delete(k);
-    setParams(next, { replace: k !== 'id' });
+    if (k === 'id' && !replace) next.delete('tab'); // 다른 행을 열면 상세 탭부터
+    setParams(next, { replace });
   };
+  const clearKeys = (keys: readonly string[]) => {
+    const next = new URLSearchParams(params);
+    for (const k of keys) next.delete(k);
+    next.delete('id');
+    next.delete('tab');
+    setParams(next, { replace: true });
+  };
+  const periodChip = !!(filters.since || filters.until) && {
+    key: 'period',
+    label: `기간: ${filters.since ? fdt(filters.since) : '처음'} ~ ${filters.until ? fdt(filters.until) : '지금'}`,
+    clear: () => clearKeys(['since', 'until']),
+  };
+  const chips =
+    view === 'violations'
+      ? [
+          !!filters.kind && { key: 'kind', label: `종류: ${filters.kind}`, clear: () => clearKeys(['kind']) },
+          !!filters.action && { key: 'action', label: `대응: ${ACTION_KO[filters.action] ?? filters.action}`, clear: () => clearKeys(['action']) },
+          !!filters.rule && { key: 'rule', label: `규칙: ${filters.rule}`, clear: () => clearKeys(['rule']) },
+          !!filters.container && { key: 'container', label: `컨테이너: ${filters.container}`, clear: () => clearKeys(['container']) },
+          periodChip,
+        ]
+      : [periodChip];
+  const filtered = chips.some(Boolean);
 
   return (
     <div className="flex h-full min-h-0 gap-4">
@@ -116,15 +152,27 @@ export function AuditPage() {
               ~
               <input type="datetime-local" className={ctl} value={filters.until} onChange={(e) => set('until', e.target.value)} aria-label="기간 끝" />
             </label>
+            {view === 'violations' && <ExportCsv filters={filters} caseOf={caseOf} />}
           </div>
+          <AppliedFilters items={chips} onClearAll={() => clearKeys(FILTERS)} />
           {view === 'violations' ? (
-            <Violations filters={debounced} caseOf={caseOf} selectedId={id} onOpen={(rid) => set('id', String(rid))} />
+            <Violations
+              filters={debounced}
+              caseOf={caseOf}
+              selectedId={id}
+              filtered={filtered}
+              autoOpen={tab === 'evidence' && !id}
+              onClear={() => clearKeys(FILTERS)}
+              onOpen={(rid, auto) => set('id', String(rid), auto)}
+            />
           ) : (
-            <History cases={cases} since={debounced.since} until={debounced.until} />
+            <History cases={cases} since={debounced.since} until={debounced.until} filtered={filtered} onClear={() => clearKeys(FILTERS)} />
           )}
         </div>
       </Panel>
-      {view === 'violations' && id && <AuditSheetLoader id={Number(id)} caseOf={caseOf} onClose={() => set('id', '')} />}
+      {view === 'violations' && id && (
+        <AuditSheetLoader id={Number(id)} caseOf={caseOf} tab={tab} onTab={(t) => set('tab', t === 'evidence' ? 'evidence' : '', true)} onClose={() => clearKeys([])} />
+      )}
     </div>
   );
 }
@@ -136,16 +184,25 @@ function Violations({
   filters,
   caseOf,
   selectedId,
+  filtered,
+  autoOpen,
+  onClear,
   onOpen,
 }: {
   filters: Filters;
   caseOf: Map<string, Case>;
   selectedId: string | null;
-  onOpen: (id: number) => void;
+  filtered: boolean;
+  // 「증거 보기」 링크(?container=…&tab=evidence)로 들어오면 격리된 첫 행(없으면 첫 행)을 연다
+  autoOpen: boolean;
+  onClear: () => void;
+  onOpen: (id: number, auto?: boolean) => void;
 }) {
   const [rows, setRows] = useState<AuditEntry[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  // 첫 페이지를 한 번이라도 받았나(스켈레톤) · 마지막 오류
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   const fetchPage = useCallback(
@@ -157,6 +214,7 @@ function Violations({
         page.forEach((r) => rowCache.set(r.id, r));
         setRows((prev) => (before ? [...prev, ...page] : page));
         setHasMore(page.length === PAGE);
+        setLoaded(true);
         setError(null);
       } catch (e) {
         setError(e);
@@ -172,12 +230,32 @@ function Violations({
     return () => window.clearTimeout(t);
   }, [fetchPage]);
 
+  const failing = !!error && !loaded;
+  const retry = useCallback(() => void fetchPage(), [fetchPage]);
+  useAutoRetry(failing, retry);
+
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!autoOpen || opened.current || !loaded || !rows.length) return;
+    opened.current = true;
+    const first = rows.find((r) => levelOf(r) === 'killed') ?? rows[0];
+    onOpen(first.id, true);
+  }, [autoOpen, loaded, rows, onOpen]);
+
   return (
     <>
-      {!!error && <LoadError error={error} what="감사 로그" compact />}
+      {!!error && loaded && <LoadError error={error} what="감사 로그" compact />}
       <div className="min-h-0 flex-1 overflow-auto" data-testid="audit-scroll">
-        {rows.length === 0 && !loading ? (
-          <Empty>조건에 맞는 기록 없음</Empty>
+        {failing ? (
+          <ListError error={error} what="감사 로그" onRetry={retry} retrying={loading} />
+        ) : !loaded ? (
+          <Skeleton rows={8} />
+        ) : rows.length === 0 ? (
+          filtered ? (
+            <EmptyState icon={SearchX} title="조건에 맞는 기록 없음" actions={<ClearFiltersButton onClick={onClear} />} />
+          ) : (
+            <EmptyState icon={ScrollText} title="아직 위반 기록이 없습니다" hint="정책에 걸린 행동이 있으면 여기에 쌓입니다. 정상 이벤트는 저장하지 않습니다." />
+          )
         ) : (
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs text-slate-500">
@@ -196,11 +274,10 @@ function Violations({
                 return (
                   <tr
                     key={a.id}
-                    tabIndex={0}
+                    {...rowKeys(() => onOpen(a.id))}
                     data-audit={a.id}
                     aria-selected={String(a.id) === selectedId}
                     onClick={() => onOpen(a.id)}
-                    onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen(a.id))}
                     className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${
                       String(a.id) === selectedId ? 'bg-indigo-50' : ''
                     }`}
@@ -253,15 +330,60 @@ function Violations({
   );
 }
 
-function AuditSheetLoader({ id, caseOf, onClose }: { id: number; caseOf: Map<string, Case>; onClose: () => void }) {
+function AuditSheetLoader({
+  id,
+  caseOf,
+  tab,
+  onTab,
+  onClose,
+}: {
+  id: number;
+  caseOf: Map<string, Case>;
+  tab: 'detail' | 'evidence';
+  onTab: (t: 'detail' | 'evidence') => void;
+  onClose: () => void;
+}) {
   // 목록에 없으면(직접 연 주소) 그 id 바로 앞에서 한 건을 다시 찾는다
   const cached = rowCache.get(id);
   const load = useCallback(() => (cached ? Promise.resolve([cached]) : api.audit({ before: id + 1, limit: 1 })), [cached, id]);
   const r = useLoad(load);
   const a = r.data?.find((x) => x.id === id);
+  // 증거는 격리(kill) 직전에만 모으므로 탭은 격리된 행에만 — 링크로 증거 탭을 바로 연 경우는 그대로 보인다
+  const tabs = !!a && (levelOf(a) === 'killed' || tab === 'evidence');
+  const shown = tabs ? tab : 'detail';
   return (
-    <Sheet kind="audit" title={`감사 기록 #${id}`} onClose={onClose}>
-      {a ? <AuditDetail a={a} c={a.caseId ? caseOf.get(a.caseId) : undefined} /> : r.error ? <LoadError error={r.error} what="감사 기록" /> : <Empty>{r.loading ? '불러오는 중…' : '기록을 찾을 수 없습니다'}</Empty>}
+    <Sheet kind="audit" title={`감사 기록 #${id}`} onClose={onClose} className="w-[460px]">
+      {a ? (
+        <>
+          {tabs && (
+            <div className="flex gap-1 border-b border-slate-100 px-4 pt-2" role="tablist" aria-label="보기">
+              {(
+                [
+                  ['detail', '상세'],
+                  ['evidence', '증거'],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="tab"
+                  aria-selected={shown === k}
+                  data-tab={k}
+                  onClick={() => onTab(k)}
+                  className={`-mb-px border-b-2 px-3 py-1.5 text-xs font-medium ${shown === k ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {shown === 'evidence' ? <EvidenceView a={a} /> : <AuditDetail a={a} c={a.caseId ? caseOf.get(a.caseId) : undefined} />}
+        </>
+      ) : r.error ? (
+        <LoadError error={r.error} what="감사 기록" />
+      ) : (
+        <Empty>{r.loading ? '불러오는 중…' : '기록을 찾을 수 없습니다'}</Empty>
+      )}
     </Sheet>
   );
 }
@@ -290,6 +412,7 @@ function AuditDetail({ a, c }: { a: AuditEntry; c: Case | undefined }) {
           <dd className="font-mono text-xs">{a.ruleId}</dd>
           <dt className="text-slate-500">상세</dt>
           <dd className="font-mono text-xs break-all">{detailOf(a.event)}</dd>
+          <DnsRow e={a.event} />
           {a.install && (
             <>
               <dt className="text-slate-500">패키지</dt>
@@ -345,9 +468,11 @@ function AuditDetail({ a, c }: { a: AuditEntry; c: Case | undefined }) {
 }
 
 // 판정 · 정책 변경 이력 — 판정(건)과 변경(Change)을 한 시간축에
-function History({ cases, since, until }: { cases: Case[] | null; since: string; until: string }) {
+function History({ cases, since, until, filtered, onClear }: { cases: Case[] | null; since: string; until: string; filtered: boolean; onClear: () => void }) {
   const load = useCallback(() => api.changes(500), []);
   const changes = useLoad(load);
+  const failing = !!changes.error && !changes.data;
+  useAutoRetry(failing, changes.reload);
   const s = since ? new Date(since).getTime() : -Infinity;
   const u = until ? new Date(until).getTime() : Infinity;
   const inRange = (iso: string) => {
@@ -362,16 +487,20 @@ function History({ cases, since, until }: { cases: Case[] | null; since: string;
         at: c.decidedAt!,
         kind: '판정',
         badge: <DecisionBadge decision={c.decision} />,
-        text: `${c.source === 'install' ? '설치 검사' : '런타임'} ${caseLabel(c)} — ${DECISION_LABEL[c.decision]}${c.note ? ` · ${c.note}` : ''}`,
+        text: `${SOURCE_LABEL[c.source] ?? c.source} ${caseLabel(c)} — ${DECISION_LABEL[c.decision]}${c.note ? ` · ${c.note}` : ''}`,
+        href: scanHref(c),
         by: c.decidedBy ?? '—',
+        reason: '',
       })),
     ...(changes.data ?? []).map((ch) => ({
       key: `chg:${ch.id}`,
       at: ch.at,
-      kind: ch.kind === 'proposal_applied' ? '제안 적용' : ch.kind === 'policy_edit' ? '정책 편집' : ch.kind === 'policy_replace' ? 'YAML 교체' : ch.kind,
+      kind: CHANGE_KIND_LABEL[ch.kind] ?? ch.kind,
       badge: null,
       text: ch.summary,
+      href: null as string | null,
       by: ch.by,
+      reason: ch.reason ?? '',
     })),
   ]
     .filter((x) => inRange(x.at))
@@ -379,10 +508,18 @@ function History({ cases, since, until }: { cases: Case[] | null; since: string;
 
   return (
     <>
-      {!!changes.error && <LoadError error={changes.error} what="변경 이력" compact />}
+      {!!changes.error && !!changes.data && <LoadError error={changes.error} what="변경 이력" compact />}
       <div className="min-h-0 flex-1 overflow-auto" data-testid="history">
-        {items.length === 0 ? (
-          <Empty>판정 · 변경 기록 없음</Empty>
+        {failing ? (
+          <ListError error={changes.error} what="변경 이력" onRetry={changes.reload} retrying={changes.loading} />
+        ) : !changes.data ? (
+          <Skeleton rows={6} />
+        ) : items.length === 0 ? (
+          filtered ? (
+            <EmptyState icon={SearchX} title="이 기간의 판정 · 변경 기록 없음" actions={<ClearFiltersButton onClick={onClear} />} />
+          ) : (
+            <EmptyState icon={HistoryIcon} title="판정 · 변경 기록 없음" hint="판정 · 제안 적용 · 정책 편집 · 차단 해제가 여기에 남습니다." />
+          )
         ) : (
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs text-slate-500">
@@ -404,7 +541,22 @@ function History({ cases, since, until }: { cases: Case[] | null; since: string;
                       {x.badge}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-slate-700">{x.text}</td>
+                  <td className="px-3 py-2 text-slate-700">
+                    {x.text}
+                    {x.href && (
+                      <>
+                        {' '}
+                        <Link to={x.href} className="text-xs text-indigo-600 hover:underline">
+                          검사 결과 보기
+                        </Link>
+                      </>
+                    )}
+                    {x.reason && (
+                      <div className="mt-0.5 text-xs text-slate-500" data-reason="">
+                        사유: {x.reason}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-xs whitespace-nowrap text-slate-500">{x.by}</td>
                 </tr>
               ))}
@@ -413,5 +565,61 @@ function History({ cases, since, until }: { cases: Case[] | null; since: string;
         )}
       </div>
     </>
+  );
+}
+
+// CSV 내보내기(10/20 D) — 기간(시작 · 끝)이 있어야 한다. 지금 필터 그대로, 최대 10,000행, BOM
+function ExportCsv({ filters, caseOf }: { filters: Filters; caseOf: Map<string, Case> }) {
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    if (!filters.since || !filters.until) {
+      setErr('기간(시작 · 끝)을 먼저 고르세요 — 내보내기는 기간 안의 기록만 담습니다');
+      return;
+    }
+    setErr('');
+    setBusy(true);
+    try {
+      const q: AuditParams = { kind: filters.kind, action: filters.action, rule: filters.rule, container: filters.container, since: toIso(filters.since), until: toIso(filters.until) };
+      const all: AuditEntry[] = [];
+      let before: number | undefined;
+      while (all.length < CSV_MAX) {
+        const page = await api.audit({ ...q, limit: CSV_PAGE, before });
+        all.push(...page);
+        if (page.length < CSV_PAGE) break;
+        before = page[page.length - 1].id;
+      }
+      const day = (v: string) => v.slice(0, 10).replace(/-/g, '');
+      downloadCSV(`supplyguard-audit-${day(filters.since)}-${day(filters.until)}.csv`, [
+        ['id', '시각', '컨테이너', '이미지', '종류', '상세', '규칙', '탐지 결과', '판정', '사유'],
+        ...all.slice(0, CSV_MAX).map((a) => {
+          const c = a.caseId ? caseOf.get(a.caseId) : undefined;
+          return [a.id, a.event.timestamp, a.install ? a.install.label : a.event.containerName, a.event.imageName, a.event.kind, detailOf(a.event), a.ruleId ?? '', LEVEL_LABEL[levelOf(a)], c ? DECISION_LABEL[c.decision] : '', a.reason ?? ''];
+        }),
+      ]);
+    } catch (e) {
+      setErr(`내보내기 실패 — ${errorText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <span className="ml-auto flex items-center gap-2">
+      {err && (
+        <span className="max-w-72 truncate text-xs text-red-600" data-part="export-error" role="alert" title={err}>
+          {err}
+        </span>
+      )}
+      <button
+        type="button"
+        data-action="export-csv"
+        disabled={busy}
+        onClick={() => void run()}
+        title="지금 필터 · 기간의 위반 기록을 CSV 로"
+        className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+      >
+        <Download className="size-3.5" aria-hidden /> CSV 내보내기
+      </button>
+    </span>
   );
 }

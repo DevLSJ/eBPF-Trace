@@ -1,10 +1,12 @@
-import { Copy } from 'lucide-react';
+import { Copy, PackageSearch, SearchX } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DecisionBadge, StatusBadge } from '../../components/Badges';
 import { FilterChips } from '../../components/FilterChips';
 import { PageActions } from '../../components/PageActions';
-import { Empty, LoadError, Panel } from '../../components/Panel';
+import { Panel } from '../../components/Panel';
+import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
+import { rowKeys, useAutoRetry } from '../../components/list/hooks';
 import { useCases } from '../../hooks/cases-context';
 import { useCopyCommand } from '../../hooks/useCopyCommand';
 import { useInterval, useLoad, useNow } from '../../hooks/useLoad';
@@ -29,13 +31,26 @@ export function InstallsPage() {
 
   const load = useCallback(() => api.installs({ limit: 500 }), []);
   const list = useLoad(load);
-  useInterval(list.reload, 5000);
+  // 첫 로드가 실패한 동안은 5초 갱신을 멈추고 30초마다 조용히 한 번 다시 부른다(10/20 D)
+  const failing = !!list.error && !list.data;
+  const { reload } = list;
+  const poll = useCallback(() => {
+    if (!failing) reload();
+  }, [failing, reload]);
+  useInterval(poll, 5000);
+  useAutoRetry(failing, reload);
 
   const set = (k: string, v: string | null) => {
     const next = new URLSearchParams(params);
     if (v) next.set(k, v);
     else next.delete(k);
     setParams(next, { replace: k !== 'id' });
+  };
+  const clearFilters = () => {
+    const next = new URLSearchParams(params);
+    next.delete('status');
+    next.delete('manager');
+    setParams(next, { replace: true });
   };
 
   const caseOf = useMemo(() => new Map((cases ?? []).map((c) => [c.id, c])), [cases]);
@@ -85,14 +100,25 @@ export function InstallsPage() {
             <FilterChips label="결과" options={statusOptions} value={status} onChange={(v) => set('status', v === 'pending' ? null : v)} />
             <FilterChips label="매니저" options={managerOptions} value={manager} onChange={(v) => set('manager', v || null)} />
           </div>
-          {list.error && !list.data ? (
-            <LoadError error={list.error} what="설치 세션" />
+          <AppliedFilters
+            items={[
+              status !== 'pending' && { key: 'status', label: `결과: ${status === 'all' ? '전체' : (INSTALL_STATUS_LABEL[status] ?? status)}`, clear: () => set('status', null) },
+              !!manager && { key: 'manager', label: `매니저: ${manager}`, clear: () => set('manager', null) },
+            ]}
+            onClearAll={clearFilters}
+          />
+          {failing ? (
+            <ListError error={list.error} what="설치 세션" onRetry={list.reload} retrying={list.loading} />
           ) : !list.data ? (
-            <Empty>불러오는 중…</Empty>
+            <Skeleton rows={6} />
           ) : sessions.length === 0 ? (
-            <EmptyState onCopy={() => copy(EXAMPLE_COMMAND)} />
+            <FirstUse onCopy={() => copy(EXAMPLE_COMMAND)} />
           ) : rows.length === 0 ? (
-            <Empty>{status === 'pending' ? '판정 대기인 설치가 없습니다 — 「전체」에서 지난 검사를 볼 수 있습니다' : '조건에 맞는 세션 없음'}</Empty>
+            status === 'pending' && !manager ? (
+              <EmptyState icon={PackageSearch} title="판정 대기인 설치가 없습니다" hint="「전체」에서 지난 검사를 볼 수 있습니다" actions={<ClearFiltersButton onClick={() => set('status', 'all')}>전체 보기</ClearFiltersButton>} />
+            ) : (
+              <EmptyState icon={SearchX} title="조건에 맞는 세션 없음" actions={<ClearFiltersButton onClick={clearFilters} />} />
+            )
           ) : (
             <div className="min-h-0 flex-1 overflow-auto">
               <table className="w-full text-sm">
@@ -126,11 +152,10 @@ function Row({ s, c, now, selected, onOpen }: { s: InstallSession; c: Case | und
   const danger = s.status === 'isolated' || s.status === 'warned';
   return (
     <tr
-      tabIndex={0}
+      {...rowKeys(onOpen)}
       data-install={s.id}
       aria-selected={selected}
       onClick={onOpen}
-      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onOpen())}
       className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${
         selected ? 'bg-indigo-50' : ''
       } ${danger ? 'shadow-[inset_3px_0_0_var(--color-red-500)]' : ''}`}
@@ -156,17 +181,22 @@ function Row({ s, c, now, selected, onOpen }: { s: InstallSession; c: Case | und
   );
 }
 
-function EmptyState({ onCopy }: { onCopy: () => void }) {
+// 설치 검사가 하나도 없을 때 — 첫 명령 안내
+function FirstUse({ onCopy }: { onCopy: () => void }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-slate-500" data-testid="installs-empty">
-      <b className="text-base text-slate-700">아직 설치 검사가 없습니다</b>
-      <p>개발자가 패키지를 설치할 때 감시 컨테이너에서 실행합니다. 위반이면 설치가 끝나기 전에 격리됩니다.</p>
-      <div className="flex items-center gap-2 rounded-md bg-slate-900 px-3 py-2 font-mono text-xs text-slate-100">
-        {EXAMPLE_COMMAND}
-        <button type="button" onClick={onCopy} className="rounded p-1 text-slate-300 hover:bg-slate-700" aria-label="명령 복사">
-          <Copy className="size-3.5" />
-        </button>
-      </div>
-    </div>
+    <EmptyState
+      testId="installs-empty"
+      icon={PackageSearch}
+      title="아직 설치 검사가 없습니다"
+      hint="개발자가 패키지를 설치할 때 감시 컨테이너에서 실행합니다. 위반이면 설치가 끝나기 전에 격리됩니다."
+      actions={
+        <div className="flex items-center gap-2 rounded-md bg-slate-900 px-3 py-2 font-mono text-xs text-slate-100">
+          {EXAMPLE_COMMAND}
+          <button type="button" onClick={onCopy} className="rounded p-1 text-slate-300 hover:bg-slate-700" aria-label="명령 복사">
+            <Copy className="size-3.5" />
+          </button>
+        </div>
+      }
+    />
   );
 }

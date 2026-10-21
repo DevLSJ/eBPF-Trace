@@ -18,7 +18,9 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/auth"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/chat"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/notify"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/osv"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/review"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/rules"
@@ -53,10 +55,22 @@ type Deps struct {
 	// nginx 뒤 동일 출처 요청에는 Origin 이 없거나 같은 호스트라 영향이 없다. 파일에서 연 페이지는 "null".
 	AllowedOrigins []string
 	Info           Info
+	// DNSTraced: 이벤트 소스가 지금 trace_dns 를 돌리고 있는지 (/api/info dnsResolve). nil 이면 off
+	DNSTraced func() bool
+	// Discovery: 가젯 소스가 실제로 쓰는 컨테이너 발견 방식(/api/info discovery). auto 는 시작 뒤에 정해지므로 요청마다 읽는다. nil 이면 빈 값
+	Discovery func() string
 	// Summary: 대시보드 eBPF 수집 종합(10/16). nil 이면 라우트 없음(「백엔드 미지원」)
 	Summary *summary.Service
 	// Scans: 공급망 검사(10/16). nil 이면 라우트 없음
 	Scans *scan.Service
+	// Notifier: 외부 알림(10/20). /api/info notify 를 요청마다 채우고 POST /api/notify/test 를 연다. nil 이면 둘 다 없음
+	Notifier *notify.Service
+	// Evidence: kill 직전에 모은 증거(10/20). nil 이면 라우트 없음
+	Evidence EvidenceReader
+	// PolicyFile: 기본 정책 파일(POLICY_FILE). 비면 GET /api/policies/defaults 를 열지 않는다
+	PolicyFile string
+	// Chat: AI 도우미(10/20). nil 이면 POST /api/chat 없음, /api/info chat=false
+	Chat *chat.Service
 	// Auth: 로그인(10/20). 있으면 /api/auth · /api/users · /api/license 를 열고, 화면 쓰기는 역할(admin)로 확인한다.
 	// 세션 확인 자체는 바깥에서 Secure(auth.Middleware)가 한다(/ws/events 포함). nil 이면 예전처럼 ADMIN_TOKEN 만
 	Auth *auth.Service
@@ -72,13 +86,27 @@ type Info struct {
 	// 서버 설정 보기(10/16): 관찰 범위 — 화면은 보기만, 바꾸는 것은 서버 설정(WATCH_CONTAINERS · IGNORE_CONTAINERS)
 	WatchContainers  []string `json:"watchContainers"`
 	IgnoreContainers []string `json:"ignoreContainers"`
+	// DNSResolve: "ok" = trace_dns 가 돌고 있어 도메인 · 직접 IP 연결을 판정한다 | "off" = 도메인 미확인 연결은 fail-open. 요청 때마다 Deps.DNSTraced 로 채운다
+	DNSResolve string `json:"dnsResolve"`
+	// Chat: AI 도우미 사용 가능(OLLAMA_URL 설정) — 화면이 「AI 도우미」 탭을 보일지 정한다
+	Chat bool `json:"chat"`
+	// Discovery: 실제로 쓰이는 컨테이너 발견 방식 "fanotify" | "docker-events" (mock · 가젯 시작 전은 빈 값). 요청 때마다 Deps.Discovery 로 채운다
+	Discovery string `json:"discovery"`
+	// DiscoveryNote: docker-events 일 때 놓칠 수 있는 구간 안내, 아니면 빈 값
+	DiscoveryNote string `json:"discoveryNote"`
+	// Notify: 외부 알림 채널 상태(호스트만 · 보낸/실패/버린 수). Deps.Notifier 가 없으면 생략
+	Notify *notify.Status `json:"notify,omitempty"`
 }
+
+// dockerEventsNote: docker-events 는 컨테이너 start 이벤트를 받은 뒤에 추적을 붙여, 그 전의 첫 동작을 놓친다(sg-vm 실측 10/20)
+const dockerEventsNote = "컨테이너 시작 직후 약 0.1초 안의 동작은 놓칠 수 있습니다"
 
 const maxBody = 64 << 10 // nginx client_max_body_size 64k와 맞춤
 
 func Router(d Deps) http.Handler {
 	// 로그인이 켜져 있으면 늘 true (mock 이어도 쓰기는 관리자 계정만)
 	d.Info.AuthRequired = d.Auth != nil || !(d.AllowAnonymousWrites && d.AdminToken == "")
+	d.Info.Chat = d.Chat != nil
 	if d.Info.WatchContainers == nil {
 		d.Info.WatchContainers = []string{}
 	}
@@ -97,6 +125,9 @@ func Router(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/audit", h.audit)
 	mux.HandleFunc("GET /api/policies", h.listPolicies)
 	mux.HandleFunc("GET /api/policies/export", h.exportPolicies)
+	if d.PolicyFile != "" {
+		mux.HandleFunc("GET /api/policies/defaults", h.policyDefaults)
+	}
 	mux.HandleFunc("POST /api/policies", h.auth(h.savePolicy))
 	mux.HandleFunc("PUT /api/policies", h.auth(h.replacePolicies))
 	mux.HandleFunc("DELETE /api/policies/{id}", h.auth(h.deletePolicy))
@@ -108,6 +139,15 @@ func Router(d Deps) http.Handler {
 	}
 	if d.Scans != nil {
 		h.routeScans(mux)
+	}
+	if d.Notifier != nil {
+		mux.HandleFunc("POST /api/notify/test", h.auth(h.notifyTest))
+	}
+	if d.Evidence != nil {
+		mux.Handle("GET /api/evidence", EvidenceHandler(d.Evidence))
+	}
+	if d.Chat != nil {
+		mux.Handle(ChatPattern, ChatHandler(d.Chat))
 	}
 	if d.Auth != nil {
 		RegisterAuth(mux, AuthDeps{Auth: d.Auth})
@@ -189,7 +229,36 @@ func (h *handlers) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, code, res)
 }
 
-func (h *handlers) info(w http.ResponseWriter, _ *http.Request) { writeJSON(w, http.StatusOK, h.Info) }
+func (h *handlers) info(w http.ResponseWriter, _ *http.Request) {
+	info := h.Info
+	info.DNSResolve = "off"
+	if h.DNSTraced != nil && h.DNSTraced() {
+		info.DNSResolve = "ok"
+	}
+	info.Discovery, info.DiscoveryNote = "", ""
+	if h.Discovery != nil {
+		info.Discovery = h.Discovery()
+	}
+	if info.Discovery == "docker-events" {
+		info.DiscoveryNote = dockerEventsNote
+	}
+	if h.Notifier != nil {
+		st := h.Notifier.Status()
+		info.Notify = &st
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+// notifyTest: POST /api/notify/test — 관리자. 채널이 없으면 409, 있으면 202 와 지금 상태(발송은 비동기 —
+// 화면은 1~2초 뒤 /api/info notify 의 sent · failed · lastError 를 다시 읽는다)
+func (h *handlers) notifyTest(w http.ResponseWriter, r *http.Request) {
+	if !h.Notifier.Enabled() {
+		writeErr(w, http.StatusConflict, "알림 채널이 설정되지 않음 (NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL)")
+		return
+	}
+	h.Notifier.Notify(r.Context(), notify.TestMessage(time.Now()))
+	writeJSON(w, http.StatusAccepted, h.Notifier.Status())
+}
 
 // summary: eBPF 수집 종합 — 읽기 전용, ?range=1h|24h|7d (기본 24h)
 func (h *handlers) summary(w http.ResponseWriter, r *http.Request) {

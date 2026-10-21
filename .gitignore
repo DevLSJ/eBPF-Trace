@@ -11,3 +11,4 @@ mock/screenshots/
 .DS_Store
 ._*
 docs/
+.claude/worktrees/

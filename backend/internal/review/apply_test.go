@@ -19,7 +19,7 @@ func TestApplyIsAtomic(t *testing.T) {
 	rulesBefore := e.engine.Rules()
 
 	e.store.setFail(true)
-	if _, _, err := e.svc.Apply(ctx, p.ID); err == nil {
+	if _, _, err := e.svc.Apply(ctx, p.ID, ""); err == nil {
 		t.Fatal("apply must fail when the store commit fails")
 	}
 	if got, _ := e.svc.GetProposal(p.ID); got.State != model.ProposalDraft {
@@ -43,7 +43,7 @@ func TestApplyIsAtomic(t *testing.T) {
 	}
 
 	e.store.setFail(false)
-	gotP, gotC, err := e.svc.Apply(ctx, p.ID)
+	gotP, gotC, err := e.svc.Apply(ctx, p.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestApplyIsAtomic(t *testing.T) {
 		t.Fatalf("store must hold the applied state: %d blocks, %d changes", len(snap.Blocklist), len(snap.Changes))
 	}
 
-	if _, _, err := e.svc.Apply(ctx, p.ID); ErrorKind(err) != KindConflict {
+	if _, _, err := e.svc.Apply(ctx, p.ID, ""); ErrorKind(err) != KindConflict {
 		t.Fatalf("second apply must be a conflict, got %v", err)
 	}
 }
@@ -104,7 +104,7 @@ func TestApplyFalsePositiveAddsException(t *testing.T) {
 	if !slices.Equal(p.Changes, want) {
 		t.Fatalf("changes = %+v, want %+v", p.Changes, want)
 	}
-	if _, _, err := e.svc.Apply(ctx, p.ID); err != nil {
+	if _, _, err := e.svc.Apply(ctx, p.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"git-port", "egress-allowlist"} {
@@ -134,7 +134,7 @@ func TestApplyMissingRuleConflicts(t *testing.T) {
 	if _, err := e.store.Memory.DeletePolicy(ctx, "sensitive-files"); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := e.svc.Apply(ctx, p.ID); ErrorKind(err) != KindConflict {
+	if _, _, err := e.svc.Apply(ctx, p.ID, ""); ErrorKind(err) != KindConflict {
 		t.Fatalf("want conflict, got %v", err)
 	}
 	if got, _ := e.svc.GetProposal(p.ID); got.State != model.ProposalDraft {
@@ -148,7 +148,7 @@ func TestBlocklistHostsSystemRule(t *testing.T) {
 	e := newEnv(t)
 	ctx := t.Context()
 	_, p := e.maliciousInstallCase(t)
-	if _, _, err := e.svc.Apply(ctx, p.ID); err != nil {
+	if _, _, err := e.svc.Apply(ctx, p.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	ev := model.Event{Kind: model.KindConnect, ContainerID: sandboxCID, ContainerName: "web-api", DstIP: "203.0.113.7", DstPort: 443, DstHost: "a.cdn.reqeusts-update.test"}
@@ -172,7 +172,7 @@ func TestBlocklistHostsSystemRule(t *testing.T) {
 		t.Fatal("system rule must not be stored as a policy (one source: the blocklist)")
 	}
 
-	if err := e.svc.RemoveBlock(ctx, model.ListHosts, "cdn.reqeusts-update.test"); err != nil {
+	if err := e.svc.RemoveBlock(ctx, model.ListHosts, "cdn.reqeusts-update.test", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := ruleByID(e.engine.Rules(), rules.SystemBlocklistHosts); ok {

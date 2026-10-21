@@ -1,12 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
 
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/scan"
 )
 
@@ -21,14 +23,36 @@ func (h *handlers) routeScans(mux *http.ServeMux) {
 		writeErr(w, http.StatusNotFound, "검사 없음")
 	})
 	mux.HandleFunc("POST /api/scans", h.auth(h.startScan))
-	mux.HandleFunc("POST /api/scans/{id}/block", h.auth(func(w http.ResponseWriter, r *http.Request) {
-		pid, err := h.Scans.Block(r.Context(), r.PathValue("id"))
-		if err != nil {
-			scanErr(w, err)
+	mux.HandleFunc("POST /api/scans/{id}/block", h.auth(h.blockScan))
+}
+
+// blockScan: 본문 없음 = 패키지 검사의 그 패키지. {packages: [{manager?, name, version?}]} = 저장소 · 파일 검사 결과에서 고른 패키지(W4).
+// 매니저 · 버전을 비우면 검사 결과에서 채운다 → {proposalId}.
+// reason(W18, 선택, 500자): 확인 대화상자의 사유 — 공급망 검사 건의 판정 메모 끝에 붙는다(넘으면 400)
+func (h *handlers) blockScan(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Packages []model.ScanPackage `json:"packages"`
+		Reason   string              `json:"reason"`
+	}
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "본문을 읽을 수 없습니다: "+err.Error())
+		return
+	}
+	if len(bytes.TrimSpace(raw)) > 0 {
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "JSON 형식 오류: "+err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"proposalId": pid})
-	}))
+	}
+	pid, err := h.Scans.BlockPackages(r.Context(), r.PathValue("id"), body.Packages, body.Reason)
+	if err != nil {
+		scanErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"proposalId": pid})
 }
 
 // startScan: JSON {kind, manager, name, version, url} 또는 multipart(kind=file, file=…) — 파일은 50MB

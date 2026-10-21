@@ -1,7 +1,10 @@
-import { Network } from 'lucide-react';
+import { Network, Radar, SearchX } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { DnsRow } from '../../components/DnsRow';
 import { EventFeed, PauseToggle } from '../../components/EventFeed';
+import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
+import { useAutoRetry } from '../../components/list/hooks';
 import { PageActions } from '../../components/PageActions';
 import { Panel } from '../../components/Panel';
 import { PolicyStarts } from '../../components/PolicyStarts';
@@ -25,9 +28,14 @@ const levelOptions: { value: LevelFilter; label: string }[] = [
 
 const ctl = 'h-8 rounded-md border border-slate-300 bg-white px-2 text-sm focus:border-indigo-500 focus:outline-none';
 
+const LEVEL_TEXT: Record<string, string> = { alert: '경고', kill: '격리 (대상 포함)' };
+
 // 이벤트 — 질문 하나: 「지금 무엇이 걸리고 있나?」 실시간만(기간 조회는 감사 로그)
 export function EventsPage() {
-  const { verdicts, paused, pause, resume } = useStream();
+  // 첫 로드 상태는 셸 스트림 값으로(W20) — 따로 다시 부르지 않는다. 오류 칸의 다시 시도 · 30초 자동 재시도 모두 retryLoad
+  const { verdicts, paused, pause, resume, recentLoading, recentError, retryLoad } = useStream();
+  const failing = verdicts.length === 0 && recentError != null;
+  useAutoRetry(failing, retryLoad);
   const [params, setParams] = useSearchParams();
   const kind = params.get('kind') ?? '';
   const level = (params.get('level') as LevelFilter) || '';
@@ -41,6 +49,12 @@ export function EventsPage() {
     else next.delete(k);
     setParams(next, { replace: k !== 'id' });
   };
+  const clearFilters = () => {
+    const next = new URLSearchParams(params);
+    for (const k of ['kind', 'level', 'container', 'normal']) next.delete(k);
+    setParams(next, { replace: true });
+  };
+  const filtered = !!(kind || level || container || withNormal);
 
   const rows = useMemo(() => {
     const q = container.toLowerCase();
@@ -60,8 +74,9 @@ export function EventsPage() {
   return (
     <div className="flex h-full min-h-0 gap-4">
       <PageActions>
-        <PauseToggle paused={paused} onPause={pause} onResume={resume} />
-        <span className="text-xs text-slate-400">실시간 · 지난 기록은 감사 로그</span>
+        {/* 머리 칸이 좁으면(768px 등) 일시정지는 목록 필터 줄로 옮긴다(W20) */}
+        <PauseToggle paused={paused} onPause={pause} onResume={resume} className="hidden lg:flex" />
+        <span className="hidden text-xs whitespace-nowrap text-slate-400 xl:inline">실시간 · 지난 기록은 감사 로그</span>
       </PageActions>
       <Panel
         className="min-w-0 flex-1"
@@ -74,7 +89,7 @@ export function EventsPage() {
       >
         <div className="flex h-full flex-col">
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-2.5 text-sm">
-            <label className="flex items-center gap-1.5 text-slate-500">
+            <label className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-slate-500">
               종류
               <select className={ctl} value={kind} onChange={(e) => set('kind', e.target.value)}>
                 <option value="">전체</option>
@@ -83,7 +98,7 @@ export function EventsPage() {
                 ))}
               </select>
             </label>
-            <label className="flex items-center gap-1.5 text-slate-500">
+            <label className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-slate-500">
               탐지 결과
               <select className={ctl} value={level} onChange={(e) => set('level', e.target.value)}>
                 {levelOptions.map((o) => (
@@ -93,24 +108,43 @@ export function EventsPage() {
                 ))}
               </select>
             </label>
-            <label className="flex items-center gap-1.5 text-slate-500">
+            <label className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-slate-500">
               컨테이너
-              <input className={`${ctl} w-44`} placeholder="이름 검색" value={container} onChange={(e) => set('container', e.target.value)} />
+              <input className={`${ctl} w-44 min-w-0`} placeholder="이름 검색" value={container} onChange={(e) => set('container', e.target.value)} />
             </label>
             <label className="ml-auto flex cursor-pointer items-center gap-2 text-slate-600 select-none">
               <input type="checkbox" className="accent-indigo-600" checked={withNormal} onChange={(e) => set('normal', e.target.checked ? '1' : '')} />
               정상 포함
             </label>
+            <PauseToggle paused={paused} onPause={pause} onResume={resume} className="lg:hidden" />
           </div>
+          <AppliedFilters
+            items={[
+              !!kind && { key: 'kind', label: `종류: ${kind}`, clear: () => set('kind', '') },
+              !!level && { key: 'level', label: `탐지 결과: ${LEVEL_TEXT[level] ?? level}`, clear: () => set('level', '') },
+              !!container && { key: 'container', label: `컨테이너: ${container}`, clear: () => set('container', '') },
+              withNormal && { key: 'normal', label: '정상 포함', clear: () => set('normal', '') },
+            ]}
+            onClearAll={clearFilters}
+          />
           <div className="min-h-0 flex-1">
-            <EventFeed
-              full
-              showImage={!id}
-              verdicts={rows}
-              selectedKey={selected?.key}
-              onSelect={(v) => set('id', String(v.key))}
-              empty={withNormal ? '조건에 맞는 이벤트 없음' : '지금 걸리는 위반 없음 — 「정상 포함」을 켜면 모든 이벤트가 보입니다'}
-            />
+            {failing ? (
+              <ListError error={recentError} what="최근 이벤트" onRetry={retryLoad} />
+            ) : verdicts.length === 0 && recentLoading ? (
+              <Skeleton rows={8} />
+            ) : rows.length === 0 ? (
+              verdicts.length && filtered ? (
+                <EmptyState icon={SearchX} title={withNormal ? '조건에 맞는 이벤트 없음' : '조건에 맞는 위반 없음'} actions={<ClearFiltersButton onClick={clearFilters} />} />
+              ) : (
+                <EmptyState
+                  icon={Radar}
+                  title={withNormal ? '아직 받은 이벤트가 없습니다' : '지금 걸리는 위반 없음'}
+                  hint={withNormal ? '감시 중인 컨테이너에서 이벤트가 들어오면 여기에 바로 보입니다' : '「정상 포함」을 켜면 모든 이벤트가 보입니다'}
+                />
+              )
+            ) : (
+              <EventFeed full showImage={!id} verdicts={rows} selectedKey={selected?.key} onSelect={(v) => set('id', String(v.key))} />
+            )}
           </div>
         </div>
       </Panel>
@@ -169,6 +203,7 @@ function EventDetail({ v }: { v: StreamVerdict }) {
           </dd>
           <dt className="text-slate-500">상세</dt>
           <dd className="font-mono text-xs break-all">{detailOf(v.event)}</dd>
+          <DnsRow e={v.event} />
           <dt className="text-slate-500">사유</dt>
           <dd>{v.reason ?? '—'}</dd>
           {v.enforceError && (

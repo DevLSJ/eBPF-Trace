@@ -11,6 +11,7 @@ import (
 
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/enforcer"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/notify"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/rules"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/stats"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/store"
@@ -35,6 +36,9 @@ type Options struct {
 	// 개발자 PC 처럼 남의 컨테이너(minikube 등)가 같이 도는 호스트에서 오탐 격리를 막는 안전장치.
 	WatchContainers []string
 	NormalEventRate int
+	// DNSGrace: trace_dns 가 켜져 있는데 도메인이 없는 공인 IP connect 는 이만큼 기다렸다 리졸버를 다시 보고 평가한다
+	// (connect 가 DNS 응답보다 먼저 처리되는 경쟁 완화). 0 이면 바로 평가.
+	DNSGrace time.Duration
 }
 
 type Pipeline struct {
@@ -47,12 +51,18 @@ type Pipeline struct {
 	audit    store.AuditStore
 	buffer   store.Buffer
 	review   Reviewer
+	notifier notify.Notifier
 
 	persist chan model.Verdict
 	killed  map[string]time.Time // 컨테이너 ID → 격리 시각 (중복 kill 방지)
 
 	rateSec   int64
 	rateCount int
+
+	// mu: 평가 · 격리 · 전송은 한 번에 하나만 — Run 루프와 DNS 유예 타이머(time.AfterFunc)가 같이 들어오므로.
+	// closed: Run 이 끝나 persist 가 닫힌 뒤 늦게 깬 타이머가 쓰지 않도록.
+	mu     sync.Mutex
+	closed bool
 }
 
 const (
@@ -75,6 +85,9 @@ func New(opt Options, engine *rules.Engine, enf enforcer.Enforcer, hub Broadcast
 // SetReview: 판정을 설치 세션 · 건에 묶는다. Run 전에 부른다.
 func (p *Pipeline) SetReview(r Reviewer) { p.review = r }
 
+// SetNotifier: 위반을 외부 알림(웹훅 · Slack)으로 보낸다. Run 전에 부른다.
+func (p *Pipeline) SetNotifier(n notify.Notifier) { p.notifier = n }
+
 // Run: events 채널이 닫히거나 ctx가 끝날 때까지 평가 루프를 돈다.
 func (p *Pipeline) Run(ctx context.Context, events <-chan model.Event) {
 	var wg sync.WaitGroup
@@ -84,6 +97,9 @@ func (p *Pipeline) Run(ctx context.Context, events <-chan model.Event) {
 		p.persistLoop()
 	}()
 	defer func() {
+		p.mu.Lock()
+		p.closed = true
+		p.mu.Unlock()
 		close(p.persist)
 		wg.Wait()
 	}()
@@ -131,13 +147,37 @@ func (p *Pipeline) Handle(ctx context.Context, ev model.Event) {
 	if ev.ContainerID == "" || p.Ignored(ev.ContainerName) {
 		return // 호스트 프로세스 또는 보호 대상
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return
+	}
 	if ev.Kind == model.KindStart || ev.Kind == model.KindExit {
 		p.lifecycle(ctx, ev)
 		return
 	}
 	if ev.Kind == model.KindConnect && ev.DstHost == "" {
 		ev.DstHost = p.resolver.Lookup(ev.ContainerID, ev.DstIP)
+		// DNS 경쟁: 응답 패킷보다 connect 가 먼저 처리될 수 있다. 직접 IP 연결로 판정될 후보만(trace_dns 켜짐 · 도메인 없음 · 공인 주소)
+		// 이 이벤트 하나만 DNSGrace 만큼 미뤘다가 리졸버를 다시 보고 평가한다. 다른 이벤트는 그대로 흐른다.
+		if ev.DstHost == "" && ev.DNSTraced && p.opt.DNSGrace > 0 && rules.IsPublicAddr(ev.DstIP) {
+			time.AfterFunc(p.opt.DNSGrace, func() {
+				p.mu.Lock()
+				defer p.mu.Unlock()
+				if p.closed || ctx.Err() != nil {
+					return
+				}
+				ev.DstHost = p.resolver.Lookup(ev.ContainerID, ev.DstIP)
+				p.evaluate(ctx, ev)
+			})
+			return
+		}
 	}
+	p.evaluate(ctx, ev)
+}
+
+// evaluate: 규칙 평가 → (kill) 격리 → 전송. p.mu 를 쥔 채 부른다.
+func (p *Pipeline) evaluate(ctx context.Context, ev model.Event) {
 	v := p.engine.Evaluate(ev)
 	if v.Matched && v.Action == model.ActionKill && !v.DryRun {
 		p.enforce(ctx, &v)
@@ -149,6 +189,12 @@ func (p *Pipeline) Handle(ctx context.Context, ev model.Event) {
 func (p *Pipeline) emit(v model.Verdict) {
 	if p.review != nil {
 		p.review.Observe(&v)
+	}
+	// 외부 알림(10/20): 건 id · 설치 ref 가 채워진 뒤라야 링크가 맞다. 큐에 넣고 바로 돌아온다
+	if p.notifier != nil {
+		if m, ok := notify.FromVerdict(v); ok {
+			p.notifier.Notify(context.Background(), m)
+		}
 	}
 	p.stats.Observe(v)
 

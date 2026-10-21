@@ -60,9 +60,13 @@ func (s *Service) hostsLocked(bl []model.BlockEntry) []string {
 }
 
 // RemoveBlock: DELETE /api/blocklist/{list}/{value} — 차단 해제 + 변경 이력
-func (s *Service) RemoveBlock(ctx context.Context, list, value string) error {
+func (s *Service) RemoveBlock(ctx context.Context, list, value, reason string) error {
 	if !model.ValidBlockList(list) {
 		return invalid("list: packages | images | hosts")
+	}
+	reason, err := cleanReason(reason)
+	if err != nil {
+		return err
 	}
 	unlock := s.lockWrite()
 	defer unlock()
@@ -85,8 +89,8 @@ func (s *Service) RemoveBlock(ctx context.Context, list, value string) error {
 		}
 	}
 	label := map[string]string{model.ListPackages: "패키지", model.ListImages: "이미지", model.ListHosts: "도메인"}[list]
-	chg := model.Change{ID: s.nextID("chg"), At: s.o.Now(), By: s.o.Actor, Kind: model.ChangeBlocklistRemove,
-		CaseID: entry.CaseID, Summary: label + " " + value + " 차단 해제"}
+	chg := model.Change{ID: s.nextID("chg"), At: s.o.Now(), By: s.actor(ctx), Kind: model.ChangeBlocklistRemove,
+		CaseID: entry.CaseID, Summary: label + " " + value + " 차단 해제", Reason: reason}
 	if err := s.commitLocked(ctx, store.ReviewCommit{BlockRemove: []model.BlockRef{{List: list, Value: value}}, Changes: []model.Change{chg}}); err != nil {
 		s.releaseID("chg")
 		return err
@@ -144,7 +148,7 @@ func (s *Service) PolicyWrite(ctx context.Context, kind model.ChangeKind, summar
 		return err
 	}
 	s.o.Engine.Replace(s.engineRules(pols, s.hostsLocked(s.blocklist)))
-	chg := model.Change{ID: s.nextID("chg"), At: s.o.Now(), By: s.o.Actor, Kind: kind, Summary: summary}
+	chg := model.Change{ID: s.nextID("chg"), At: s.o.Now(), By: s.actor(ctx), Kind: kind, Summary: summary}
 	if err := s.commitLocked(ctx, store.ReviewCommit{Changes: []model.Change{chg}}); err != nil {
 		// 정책은 이미 저장 · 적용됐다 — 이력만 못 남긴 것이므로 요청은 성공으로 둔다
 		s.releaseID("chg")

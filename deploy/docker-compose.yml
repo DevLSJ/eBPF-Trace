@@ -96,8 +96,29 @@ services:
     restart: unless-stopped
     # 외부 포트 바인딩 없음 — Docker 내부 네트워크만 접근 가능
 
+  # AI 도우미(10/20) — 선택 기능: `--profile ai` 로만 뜬다(EC2 t3.medium 처럼 메모리가 작은 곳은 끄고 운영).
+  # 켜면 .env 에 OLLAMA_URL=http://ollama:11434. 모델은 볼륨에 한 번 받아 둔다: docker compose exec ollama ollama pull qwen2.5:3b
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ai"]
+    environment:
+      OLLAMA_KEEP_ALIVE: "30m"
+      OLLAMA_NUM_PARALLEL: "1"
+    volumes:
+      - ollama_data:/root/.ollama
+    mem_limit: 4g
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    # 외부 포트 없음 — backend 만 http://ollama:11434 로 부른다
+
 volumes:
   scan_work:
+  ollama_data:
   postgres17_data:
   redis_data:
   ig_store:

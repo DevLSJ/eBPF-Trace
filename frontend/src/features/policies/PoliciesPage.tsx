@@ -1,20 +1,22 @@
-import { FileCode, KeyRound, Lock, Plus, Settings } from 'lucide-react';
+import { FileCode, Lock, Plus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DecisionBadge, ScopeChip } from '../../components/Badges';
-import { ConfirmButton } from '../../components/ConfirmButton';
 import { KindBadge } from '../../components/KindBadge';
-import { PageActions } from '../../components/PageActions';
+import { ConfirmDialog } from '../../components/Modal';
 import { Empty, LoadError, Panel } from '../../components/Panel';
 import { PolicyEditor } from '../../components/PolicyEditor';
 import { useCases } from '../../hooks/cases-context';
 import { useStream } from '../../hooks/stream-context';
-import { useAdminToken, useLoad } from '../../hooks/useLoad';
+import { useAuth } from '../../hooks/auth-context';
+import { useLoad } from '../../hooks/useLoad';
 import { api, errorText } from '../../lib/api';
 import { fmtTime } from '../../lib/format';
 import { actionLabel, fromTemplate, KIND_SHORT, KIND_TEXT, ruleFromBlock, ruleWithAllow, TEMPLATES } from '../../lib/policyEasy';
-import { caseLabel, KINDS, SYSTEM_RULES, type Info, type Kind } from '../../lib/types';
+import { caseLabel, KINDS, SYSTEM_RULES, type Kind } from '../../lib/types';
+import { mergeDefault } from '../../lib/policyDefaults';
 import { BlocklistPanel, ChangesPanel } from './BlocklistPanels';
+import { DefaultsBanner } from './DefaultsBanner';
 import { changeText } from '../../lib/proposal';
 import { ProposalDetail } from './ProposalDetail';
 
@@ -26,9 +28,11 @@ export function PoliciesPage() {
   const { info } = useStream();
   const { cases, reload: reloadCases } = useCases();
   const [params, setParams] = useSearchParams();
-  const [token, setToken] = useAdminToken();
+  const { isAdmin } = useAuth();
   const selected = params.get('id') ?? '';
   const proposalId = params.get('proposal') ?? '';
+  // 새 기본 규칙 「미리보기 후 추가」(10/20 F) — ?default=<id> 면 그 규칙(바뀐 규칙은 빠진 값만 더한 사본)으로 바로 저장 전 확인
+  const defaultId = params.get('default') ?? '';
 
   const rules = useLoad(api.listRules);
   const loadDrafts = useCallback(() => api.proposals(), []);
@@ -36,9 +40,11 @@ export function PoliciesPage() {
   const blocklist = useLoad(api.blocklist);
   const loadChanges = useCallback(() => api.changes(50), []);
   const changes = useLoad(loadChanges);
+  const defaults = useLoad(api.policyDefaults);
 
   const drafts = (proposals.data ?? []).filter((p) => p.state === 'draft');
-  const canWrite = !info?.authRequired || token !== '';
+  // 조회자는 쓰기 버튼을 그리지 않는다(W16) — 서버 설정 보기는 「설정」 화면으로 옮겼다
+  const canWrite = isAdmin;
 
   const select = useCallback((p: Record<string, string>) => setParams(p, { replace: true }), [setParams]);
 
@@ -47,16 +53,17 @@ export function PoliciesPage() {
   const firstRule = rules.data?.[0]?.id;
   const proposalsSettled = proposals.data !== undefined || !!proposals.error;
   useEffect(() => {
-    if (selected || proposalId || !proposalsSettled) return;
+    if (selected || proposalId || defaultId || !proposalsSettled) return;
     if (firstDraft) select({ proposal: firstDraft });
     else if (firstRule) select({ id: firstRule });
-  }, [selected, proposalId, proposalsSettled, firstDraft, firstRule, select]);
+  }, [selected, proposalId, defaultId, proposalsSettled, firstDraft, firstRule, select]);
 
   const refreshAll = () => {
     rules.reload();
     proposals.reload();
     blocklist.reload();
     changes.reload();
+    defaults.reload();
     reloadCases();
   };
 
@@ -70,7 +77,19 @@ export function PoliciesPage() {
   const intentKind = params.get('kind') as Kind | null;
   const intentValue = params.get('value') ?? '';
   // PolicyEditor 는 rule 을 처음 그릴 때만 읽는다(key 가 바뀌면 새로) — 매 렌더 새로 만들어도 편집 중인 값은 그대로
+  const pendingDefault = defaultId
+    ? (() => {
+        const d = defaults.data;
+        const miss = d?.missing?.find((r) => r.id === defaultId);
+        if (miss) return { rule: miss, isNew: true, title: `새 기본 규칙 · ${miss.id}` };
+        const diff = d?.differs?.find((x) => x.id === defaultId);
+        const cur = rules.data?.find((r) => r.id === defaultId);
+        if (diff && cur) return { rule: mergeDefault(cur, diff.default), isNew: false, title: `바뀐 기본 규칙 · ${diff.id} — 빠진 값만 더함` };
+        return null;
+      })()
+    : null;
   const start = (() => {
+    if (pendingDefault) return { rule: pendingDefault.rule, fresh: null };
     if (selected === NEW) {
       if (intent === 'block' && intentKind && KINDS.includes(intentKind) && intentValue) return { rule: ruleFromBlock(intentKind, intentValue, existingIds), fresh: null };
       if (tpl) return { rule: fromTemplate(tpl, existingIds), fresh: null };
@@ -79,215 +98,196 @@ export function PoliciesPage() {
     if (current && intent === 'allow' && intentValue) return ruleWithAllow(current, intentValue);
     return current ? { rule: current, fresh: null } : null;
   })();
-  const [ssOpen, setSsOpen] = useState(false);
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[21rem_minmax(0,1fr)] gap-4">
-      <PageActions>
-        <span className="relative">
-          <button
-            type="button"
-            data-server-settings=""
-            aria-expanded={ssOpen}
-            onClick={() => setSsOpen((o) => !o)}
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-          >
-            <Settings className="size-3.5" aria-hidden /> 서버 설정 · 자동 격리 {info?.enforceKill === false ? '꺼짐' : '켜짐'}
-          </button>
-          {ssOpen && info && <ServerSettings info={info} onClose={() => setSsOpen(false)} />}
-        </span>
-        {info?.authRequired ? (
-          <label className="flex items-center gap-2 text-xs text-slate-500">
-            <KeyRound className="size-4 shrink-0" aria-hidden />
-            관리자 토큰
-            <input
-              type="password"
-              autoComplete="off"
-              placeholder="변경 · 판정 시 필요"
-              className="h-8 w-56 rounded-md border border-slate-300 px-2 text-sm focus:border-indigo-500 focus:outline-none"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-            />
-          </label>
-        ) : (
-          <span className="text-xs text-slate-400">쓰기 토큰 불필요 (mock 소스)</span>
-        )}
-      </PageActions>
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <DefaultsBanner
+        data={defaults.error ? undefined : defaults.data}
+        canWrite={canWrite}
+        onPreview={(x) => select(x.kind === 'differs' ? { id: x.id, default: x.id } : { default: x.id })}
+      />
+      <div className="grid min-h-0 flex-1 grid-cols-[21rem_minmax(0,1fr)] gap-4">
 
-      <div className="flex min-h-0 flex-col gap-4">
-        <Panel
-          className="max-h-[45%] shrink-0"
-          testId="proposals"
-          title={
-            <span>
-              제안된 변경 <span className="num ml-1 font-normal text-slate-400">{drafts.length}</span>
-            </span>
-          }
-        >
-          {proposals.error && !proposals.data ? (
-            <LoadError error={proposals.error} what="제안" compact />
-          ) : drafts.length === 0 ? (
-            <p className="px-4 py-3 text-xs text-slate-400">적용 대기 제안 없음 — 설치 검사 · 토폴로지에서 판정하면 여기에 생깁니다</p>
-          ) : (
-            <ul className="h-full overflow-y-auto">
-              {drafts.map((p) => {
-                const c = cases?.find((x) => x.id === p.caseId);
-                return (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      data-proposal={p.id}
-                      onClick={() => select({ proposal: p.id })}
-                      className={`grid w-full gap-1 border-b border-slate-100 px-4 py-2.5 text-left text-sm hover:bg-slate-50 ${p.id === proposalId ? 'bg-indigo-50' : ''}`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <DecisionBadge decision={p.decision} />
-                        <span className="min-w-0 flex-1 truncate font-mono text-slate-800">{c ? caseLabel(c) : p.caseId}</span>
-                        <span className="num text-xs text-slate-400">{fmtTime(p.createdAt)}</span>
-                      </span>
-                      <span className="truncate text-xs text-slate-500">{p.changes.map(changeText).join(' · ')}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Panel>
-
-        <Panel
-          className="min-h-0 flex-1"
-          testId="rules"
-          title={`정책 ${rules.data ? rules.data.length : ''}`}
-          actions={
-            <div className="flex gap-1">
-              <button
-                type="button"
-                onClick={() => select({ id: BULK })}
-                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
-                title="전체 정책을 YAML로 보기·일괄 적용"
-              >
-                <FileCode className="size-3.5" aria-hidden /> YAML
-              </button>
-              <button
-                type="button"
-                onClick={() => select({ id: NEW })}
-                className="flex items-center gap-1 rounded-md bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700"
-              >
-                <Plus className="size-3.5" aria-hidden /> 새 정책
-              </button>
-            </div>
-          }
-        >
-          <div className="flex h-full flex-col">
-            {!!rules.error && <p className="p-4 text-sm text-red-600">불러오기 실패: {errorText(rules.error)}</p>}
-            {rules.data?.length === 0 && <Empty>정책 없음</Empty>}
-            <ul className="min-h-0 flex-1 overflow-y-auto">
-              {rules.data?.map((r) => (
-                <li key={r.id}>
-                  <button
-                    type="button"
-                    data-rule={r.id}
-                    onClick={() => select({ id: r.id })}
-                    className={`flex w-full items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-left text-sm hover:bg-slate-50 ${r.id === selected ? 'bg-indigo-50' : ''}`}
-                  >
-                    <span
-                      className={`size-2 shrink-0 rounded-full ${r.disabled ? 'border border-slate-400' : 'bg-emerald-500'}`}
-                      title={r.disabled ? '비활성' : '활성'}
-                    />
-                    {/* 쉬운 말 우선: 설명(없으면 이름) + 영문 이름은 작게 (10/16) */}
-                    <span className={`grid min-w-0 flex-1 ${r.disabled ? 'text-slate-400' : 'text-slate-800'}`} title={r.description || r.id}>
-                      <span className="truncate font-medium">{r.description || r.id}</span>
-                      <small className="truncate font-mono text-[11px] text-slate-400">{r.id}</small>
-                    </span>
-                    {SYSTEM_RULES.has(r.id) ? (
-                      <span className="flex shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600" data-system>
-                        <Lock className="size-3" aria-hidden /> 차단 목록
-                      </span>
-                    ) : (
-                      <ScopeChip rule={r} />
-                    )}
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                        r.action === 'kill' && !r.dryRun ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
-                      }`}
-                    >
-                      {actionLabel(r)}
-                    </span>
-                    <KindBadge kind={r.kind} label={KIND_SHORT[r.kind]} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Panel>
-      </div>
-
-      <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_13rem] gap-4">
-        {proposalId ? (
-          <ProposalDetail
-            key={proposalId}
-            proposal={proposal}
-            loading={!proposals.data && !proposals.error}
-            error={proposals.error}
-            canWrite={canWrite}
-            onDone={refreshAll}
-          />
-        ) : (
+        <div className="flex min-h-0 flex-col gap-4">
           <Panel
-            className="min-h-0"
-            testId="editor"
+            className="max-h-[45%] shrink-0"
+            testId="proposals"
             title={
-              selected === NEW
-                ? start
-                  ? `새 정책 · ${start.rule.description || start.rule.id}`
-                  : '새 정책 · 무엇을 하고 싶나요?'
-                : selected === BULK
-                  ? '전체 정책 YAML'
-                  : current
-                    ? `정책 편집 · ${current.id}${start?.fresh ? ' — 예외 추가' : ''}`
-                    : '정책 편집'
+              <span>
+                제안된 변경 <span className="num ml-1 font-normal text-slate-400">{drafts.length}</span>
+              </span>
             }
           >
-            {selected === BULK ? (
-              <BulkYaml canWrite={canWrite} onApplied={refreshAll} />
-            ) : selected === NEW && !start ? (
-              <Templates onPick={(key) => select({ id: NEW, tpl: key })} />
-            ) : start ? (
-              <div className="flex h-full flex-col">
-                {current && SYSTEM_RULES.has(current.id) && (
-                  <p className="flex shrink-0 items-center gap-2 border-b border-slate-100 bg-slate-50 px-5 py-2 text-xs text-slate-600" data-testid="system-rule">
-                    <Lock className="size-3.5" aria-hidden /> 시스템 규칙 — 차단 목록(도메인)에서 관리합니다. 여기서 직접 편집할 수 없습니다.
-                  </p>
-                )}
-                <div className="min-h-0 flex-1">
-                  <PolicyEditor
-                    key={`${selected}|${tpl}|${intent}|${intentValue}`}
-                    rule={start.rule}
-                    isNew={selected === NEW}
-                    canWrite={canWrite}
-                    readOnly={!!current && SYSTEM_RULES.has(current.id)}
-                    enforceKill={info?.enforceKill !== false}
-                    existingIds={existingIds}
-                    fresh={start.fresh}
-                    onSaved={(r) => {
-                      refreshAll();
-                      select({ id: r.id });
-                    }}
-                    onDeleted={() => {
-                      refreshAll();
-                      select({});
-                    }}
-                  />
-                </div>
-              </div>
+            {proposals.error && !proposals.data ? (
+              <LoadError error={proposals.error} what="제안" compact />
+            ) : drafts.length === 0 ? (
+              <p className="px-4 py-3 text-xs text-slate-400">적용 대기 제안 없음 — 설치 검사 · 토폴로지에서 판정하면 여기에 생깁니다</p>
             ) : (
-              <Empty>왼쪽에서 정책을 고르거나 새 정책을 만드세요</Empty>
+              <ul className="h-full overflow-y-auto">
+                {drafts.map((p) => {
+                  const c = cases?.find((x) => x.id === p.caseId);
+                  return (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        data-proposal={p.id}
+                        onClick={() => select({ proposal: p.id })}
+                        className={`grid w-full gap-1 border-b border-slate-100 px-4 py-2.5 text-left text-sm hover:bg-slate-50 ${p.id === proposalId ? 'bg-indigo-50' : ''}`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <DecisionBadge decision={p.decision} />
+                          <span className="min-w-0 flex-1 truncate font-mono text-slate-800">{c ? caseLabel(c) : p.caseId}</span>
+                          <span className="num text-xs text-slate-400">{fmtTime(p.createdAt)}</span>
+                        </span>
+                        <span className="truncate text-xs text-slate-500">{p.changes.map(changeText).join(' · ')}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </Panel>
-        )}
-        <div className="grid min-h-0 grid-cols-2 gap-4">
-          <BlocklistPanel data={blocklist.data} error={blocklist.error} canWrite={canWrite} onChanged={refreshAll} />
-          <ChangesPanel data={changes.data} error={changes.error} />
+
+          <Panel
+            className="min-h-0 flex-1"
+            testId="rules"
+            title={`정책 ${rules.data ? rules.data.length : ''}`}
+            actions={
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => select({ id: BULK })}
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                  title="전체 정책을 YAML로 보기·일괄 적용"
+                >
+                  <FileCode className="size-3.5" aria-hidden /> YAML
+                </button>
+                {canWrite && (
+                  <button
+                    type="button"
+                    onClick={() => select({ id: NEW })}
+                    className="flex items-center gap-1 rounded-md bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700"
+                  >
+                    <Plus className="size-3.5" aria-hidden /> 새 정책
+                  </button>
+                )}
+              </div>
+            }
+          >
+            <div className="flex h-full flex-col">
+              {!!rules.error && <p className="p-4 text-sm text-red-600">불러오기 실패: {errorText(rules.error)}</p>}
+              {rules.data?.length === 0 && <Empty>정책 없음</Empty>}
+              <ul className="min-h-0 flex-1 overflow-y-auto">
+                {rules.data?.map((r) => (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      data-rule={r.id}
+                      onClick={() => select({ id: r.id })}
+                      className={`flex w-full items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-left text-sm hover:bg-slate-50 ${r.id === selected ? 'bg-indigo-50' : ''}`}
+                    >
+                      <span
+                        className={`size-2 shrink-0 rounded-full ${r.disabled ? 'border border-slate-400' : 'bg-emerald-500'}`}
+                        title={r.disabled ? '비활성' : '활성'}
+                      />
+                      {/* 쉬운 말 우선: 설명(없으면 이름) + 영문 이름은 작게 (10/16) */}
+                      <span className={`grid min-w-0 flex-1 ${r.disabled ? 'text-slate-400' : 'text-slate-800'}`} title={r.description || r.id}>
+                        <span className="truncate font-medium">{r.description || r.id}</span>
+                        <small className="truncate font-mono text-[11px] text-slate-400">{r.id}</small>
+                      </span>
+                      {SYSTEM_RULES.has(r.id) ? (
+                        <span className="flex shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600" data-system>
+                          <Lock className="size-3" aria-hidden /> 차단 목록
+                        </span>
+                      ) : (
+                        <ScopeChip rule={r} />
+                      )}
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                          r.action === 'kill' && !r.dryRun ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {actionLabel(r)}
+                      </span>
+                      <KindBadge kind={r.kind} label={KIND_SHORT[r.kind]} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </Panel>
+        </div>
+
+        <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_13rem] gap-4">
+          {proposalId ? (
+            <ProposalDetail
+              key={proposalId}
+              proposal={proposal}
+              loading={!proposals.data && !proposals.error}
+              error={proposals.error}
+              canWrite={canWrite}
+              onDone={refreshAll}
+            />
+          ) : (
+            <Panel
+              className="min-h-0"
+              testId="editor"
+              title={
+                pendingDefault
+                  ? pendingDefault.title
+                  : selected === NEW
+                  ? start
+                    ? `새 정책 · ${start.rule.description || start.rule.id}`
+                    : '새 정책 · 무엇을 하고 싶나요?'
+                  : selected === BULK
+                    ? '전체 정책 YAML'
+                    : current
+                      ? `정책 편집 · ${current.id}${start?.fresh ? ' — 예외 추가' : ''}`
+                      : '정책 편집'
+              }
+            >
+              {selected === BULK ? (
+                <BulkYaml canWrite={canWrite} ruleCount={(rules.data ?? []).filter((r) => !SYSTEM_RULES.has(r.id)).length} onApplied={refreshAll} />
+              ) : selected === NEW && !start ? (
+                <Templates onPick={(key) => select({ id: NEW, tpl: key })} />
+              ) : start ? (
+                <div className="flex h-full flex-col">
+                  {current && SYSTEM_RULES.has(current.id) && (
+                    <p className="flex shrink-0 items-center gap-2 border-b border-slate-100 bg-slate-50 px-5 py-2 text-xs text-slate-600" data-testid="system-rule">
+                      <Lock className="size-3.5" aria-hidden /> 시스템 규칙 — 차단 목록(도메인)에서 관리합니다. 여기서 직접 편집할 수 없습니다.
+                    </p>
+                  )}
+                  <div className="min-h-0 flex-1">
+                    <PolicyEditor
+                      key={`${selected}|${tpl}|${intent}|${intentValue}|${pendingDefault ? defaultId : ''}`}
+                      rule={start.rule}
+                      isNew={pendingDefault ? pendingDefault.isNew : selected === NEW}
+                      autoCheck={!!pendingDefault}
+                      canWrite={canWrite}
+                      readOnly={!!current && SYSTEM_RULES.has(current.id)}
+                      enforceKill={info?.enforceKill !== false}
+                      existingIds={existingIds}
+                      fresh={start.fresh}
+                      onSaved={(r) => {
+                        refreshAll();
+                        select({ id: r.id });
+                      }}
+                      onDeleted={() => {
+                        refreshAll();
+                        select({});
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <Empty>왼쪽에서 정책을 고르거나 새 정책을 만드세요</Empty>
+              )}
+            </Panel>
+          )}
+          <div className="grid min-h-0 grid-cols-2 gap-4">
+            <BlocklistPanel data={blocklist.data} error={blocklist.error} canWrite={canWrite} onChanged={refreshAll} />
+            <ChangesPanel data={changes.data} error={changes.error} />
+          </div>
         </div>
       </div>
     </div>
@@ -318,47 +318,12 @@ function Templates({ onPick }: { onPick: (key: string) => void }) {
   );
 }
 
-// 서버 설정 — 보기만. 바꾸는 방법은 서버 .env + 재시작 (10/16 확정: 화면에서 바꾸지 않는다 — 범위를 잘못 넓히면 다른 컨테이너가 격리된다)
-function ServerSettings({ info, onClose }: { info: Info; onClose: () => void }) {
-  const watch = info.watchContainers ?? [];
-  const ignore = info.ignoreContainers ?? [];
-  const rows: [string, string, string, string][] = [
-    ['자동 격리', info.enforceKill ? '켜짐' : '꺼짐 (알림만)', 'ENFORCE_KILL', info.enforceKill ? '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다' : '모든 정책이 알림만 보냅니다'],
-    ['감시 범위', watch.length ? watch.join(', ') : '모든 컨테이너', 'WATCH_CONTAINERS', '이 범위의 컨테이너만 평가 · 격리합니다'],
-    ['제외', ignore.length ? ignore.join(', ') : '없음', 'IGNORE_CONTAINERS', 'SupplyGuard 자신처럼 보지 않을 컨테이너'],
-  ];
-  return (
-    <div className="absolute top-9 left-0 z-30 grid w-[28rem] gap-2 rounded-lg border border-slate-200 bg-white p-4 text-left shadow-xl" data-part="server-settings" role="dialog" aria-label="서버 설정">
-      <div className="flex items-center justify-between">
-        <b className="text-sm text-slate-800">서버 설정</b>
-        <button type="button" onClick={onClose} aria-label="닫기" className="rounded px-1.5 text-slate-400 hover:bg-slate-100">
-          ✕
-        </button>
-      </div>
-      {rows.map(([label, value, env, desc]) => (
-        <div key={env} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-slate-100 pt-2">
-          <div>
-            <b className="text-sm font-medium text-slate-800">{label}</b>
-            <div className="text-xs text-slate-500">{desc}</div>
-          </div>
-          <div className="grid justify-items-end gap-0.5">
-            <span className="text-sm font-semibold text-slate-800">{value}</span>
-            <code className="text-[11px] text-slate-500">{env}</code>
-          </div>
-        </div>
-      ))}
-      <p className="border-t border-slate-100 pt-2 text-xs text-slate-500">
-        바꾸는 방법: 서버의 .env 에서 위 값을 고친 뒤 백엔드를 다시 시작하세요. 화면에서는 바꾸지 않습니다 — 범위를 잘못 넓히면 다른 컨테이너가 격리될 수 있습니다.
-      </p>
-    </div>
-  );
-}
-
 // 전체 교체: PUT /api/policies (YAML 원클릭 적용)
-function BulkYaml({ canWrite, onApplied }: { canWrite: boolean; onApplied: () => void }) {
+function BulkYaml({ canWrite, ruleCount, onApplied }: { canWrite: boolean; ruleCount: number; onApplied: () => void }) {
   const [text, setText] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [ask, setAsk] = useState(false);
 
   useEffect(() => {
     api
@@ -390,20 +355,42 @@ function BulkYaml({ canWrite, onApplied }: { canWrite: boolean; onApplied: () =>
           disabled={text === null}
           spellCheck={false}
           onChange={(e) => setText(e.target.value)}
+          readOnly={!canWrite}
           aria-label="전체 정책 YAML"
         />
       </div>
       <div className="flex shrink-0 items-center gap-3 border-t border-slate-100 px-5 py-3">
         {msg && <span className={`min-w-0 flex-1 truncate text-sm ${msg.ok ? 'text-emerald-600' : 'text-red-600'}`}>{msg.text}</span>}
-        <ConfirmButton
-          onConfirm={apply}
-          confirmLabel="기존 정책을 모두 교체 — 확정"
-          disabled={busy || !canWrite || text === null}
-          className="ml-auto rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
-        >
-          전체 교체 후 적용 ▶
-        </ConfirmButton>
+        {!canWrite && <span className="text-xs text-slate-500">읽기 전용 — 전체 교체는 관리자만 합니다</span>}
+        {canWrite && (
+          <button
+            type="button"
+            onClick={() => setAsk(true)}
+            disabled={busy || text === null}
+            className="ml-auto rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+          >
+            전체 교체 후 적용 ▶
+          </button>
+        )}
       </div>
+      {ask && (
+        <ConfirmDialog
+          title="전체 정책 교체"
+          target="YAML 의 정책 전체"
+          okLabel="교체 후 적용"
+          effects={[
+            `지금 정책 ${ruleCount}개를 YAML 의 내용으로 모두 바꿉니다(시스템 규칙 blocklist-hosts 는 그대로)`,
+            'YAML 에 없는 정책은 지워집니다',
+            '엔진에 바로 적용 · 변경 이력에 남습니다',
+          ]}
+          undo="바꾸기 전 YAML 을 복사해 두면 같은 화면에서 다시 교체할 수 있습니다"
+          onCancel={() => setAsk(false)}
+          onConfirm={() => {
+            setAsk(false);
+            void apply();
+          }}
+        />
+      )}
     </div>
   );
 }

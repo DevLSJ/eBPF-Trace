@@ -1,15 +1,19 @@
-import { KeyRound, OctagonX, Play } from 'lucide-react';
+import { OctagonX, Play, ScanSearch, SearchX } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { PageActions } from '../../components/PageActions';
+import { FilterChips } from '../../components/FilterChips';
+import { rowKeys, useAutoRetry } from '../../components/list/hooks';
+import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
+import { ConfirmDialog } from '../../components/Modal';
 import { Empty, LoadError, Panel } from '../../components/Panel';
 import { Section, Sheet } from '../../components/Sheet';
-import { useStream } from '../../hooks/stream-context';
+import { useAuth } from '../../hooks/auth-context';
 import { useToast } from '../../hooks/toast-context';
-import { useAdminToken, useInterval, useLoad } from '../../hooks/useLoad';
+import { useInterval, useLoad } from '../../hooks/useLoad';
 import { api, errorText } from '../../lib/api';
 import { fmtDateTime, fmtNum } from '../../lib/format';
 import type { Scan, ScanFinding } from '../../lib/types';
+import { ScanPackages } from './ScanPackages';
 
 // 공급망 검사(10/16, 목업 확정) — 「설치하기 전에, 이 패키지 · 저장소 · 파일에 위험한 코드나 알려진 취약점이 있나?」
 // 실제 오픈소스로 정적 검사: GuardDog(악성 코드 패턴 — 파일:줄) · OSV-Scanner(의존성의 알려진 취약점). 코드를 실행하지 않는다.
@@ -42,45 +46,79 @@ const RULE_KO: Record<string, string> = {
 };
 const input = 'h-8 min-w-0 rounded-md border border-slate-300 px-2 text-sm focus:border-indigo-500 focus:outline-none';
 
+// GitHub 주소(W4) — 백엔드 scan.ParseGitHubURL 과 같은 형식(공개 저장소만): 저장소 · …/tree/<ref>[/<폴더>] · …/commit/<sha> · …/releases/tag/<태그>.
+// ?쿼리 · #조각은 무시. ref 에 / 가 든 브랜치(feature/x)는 지원하지 않는다(첫 조각이 브랜치로 읽힌다)
+const GH_HINT = 'https://github.com/<소유자>/<저장소> 형식으로 써 주세요 — 브랜치 · 폴더는 …/tree/<브랜치>/<폴더>, 커밋은 …/commit/<sha>, 릴리스는 …/releases/tag/<태그>';
+const GH_RE = /^https:\/\/(?:www\.)?github\.com\/[\w.-]+\/[\w.-]+?(?:\.git)?(?:\/(?:tree\/[\w.+-]+(?:\/[\w.@+~-]+)*|commit\/[\w.+-]+|releases\/tag\/[\w.+-]+))?\/?$/;
+function repoUrlError(raw: string): string {
+  const url = raw.trim().replace(/[?#].*$/, '');
+  if (/^https:\/\/(?:www\.)?github\.com\/[\w.-]+\/[\w.-]+\/(?:blob|raw)\//.test(url)) return '파일 하나는 「파일 올리기」로 검사하세요 — 저장소 주소는 …/tree/<브랜치>/<폴더> 까지입니다';
+  if (!GH_RE.test(url)) return GH_HINT;
+  if (/\/\.{1,2}(?:\/|$)/.test(url.slice('https://'.length))) return '하위 경로에 . 또는 .. 조각은 쓸 수 없습니다';
+  return '';
+}
+
+type VerdictFilter = '' | 'malicious' | 'vulnerable' | 'clean';
+
 export function ScansPage() {
-  const { info } = useStream();
-  const [token, setToken] = useAdminToken();
+  const { isAdmin } = useAuth();
   const [params, setParams] = useSearchParams();
   const selId = params.get('id') ?? '';
+  // 결과 필터(10/20 D) — 주소에 남는다(?verdict=)
+  const vf = (params.get('verdict') ?? '') as VerdictFilter;
   const list = useLoad(api.scans);
   const running = list.data?.some((s) => s.status === 'running');
-  useInterval(list.reload, running ? 2000 : 15000);
-  const canWrite = !info?.authRequired || token !== '';
-  const select = (id: string) => setParams(id ? { id } : {}, { replace: true });
+  // 첫 로드가 실패한 동안은 갱신을 멈추고 30초마다 조용히 한 번 다시 부른다
+  const failing = !!list.error && !list.data;
+  const { reload } = list;
+  const poll = useCallback(() => {
+    if (!failing) reload();
+  }, [failing, reload]);
+  useInterval(poll, running ? 2000 : 15000);
+  useAutoRetry(failing, reload);
+  const canWrite = isAdmin; // 조회자는 검사 시작 · 차단 버튼을 그리지 않는다(W16)
+  const setQ = (k: 'id' | 'verdict', v: string) => {
+    const next = new URLSearchParams(params);
+    if (v) next.set(k, v);
+    else next.delete(k);
+    setParams(next, { replace: true });
+  };
+  const select = (id: string) => setQ('id', id);
+  const rows = (list.data ?? []).filter((x) => !vf || x.verdict === vf);
+  const vOptions = [
+    { value: '' as VerdictFilter, label: '전체', count: list.data?.length },
+    ...(['malicious', 'vulnerable', 'clean'] as const).map((k) => ({ value: k as VerdictFilter, label: VERDICT[k][0], count: list.data?.filter((x) => x.verdict === k).length })),
+  ];
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] gap-4">
-      <PageActions>
-        {info?.authRequired && (
-          <label className="flex items-center gap-2 text-xs text-slate-500">
-            <KeyRound className="size-4 shrink-0" aria-hidden />
-            관리자 토큰
-            <input type="password" autoComplete="off" placeholder="검사 시작 · 차단 시 필요" className={`${input} w-56`} value={token} onChange={(e) => setToken(e.target.value)} />
-          </label>
-        )}
-      </PageActions>
       <div className="flex min-h-0 flex-col gap-4">
         <ScanForm canWrite={canWrite} onStarted={() => { select(''); list.reload(); }} />
-        <Panel title="검사 기록" className="min-h-0 flex-1">
-          {list.error && !list.data ? (
-            <LoadError error={list.error} what="공급망 검사" />
-          ) : !list.data?.length ? (
-            <Empty>아직 검사가 없습니다. 위에서 패키지 이름 · 저장소 주소 · 파일로 시작하세요.</Empty>
+        <Panel title="검사 기록" className="min-h-0 flex-1" actions={list.data?.length ? <FilterChips label="결과" options={vOptions} value={vf} onChange={(v) => setQ('verdict', v)} /> : undefined}>
+          <div className="flex h-full flex-col">
+          <AppliedFilters items={[!!vf && { key: 'verdict', label: `결과: ${VERDICT[vf]?.[0] ?? vf}`, clear: () => setQ('verdict', '') }]} onClearAll={() => setQ('verdict', '')} />
+          {failing ? (
+            <ListError error={list.error} what="공급망 검사" onRetry={list.reload} retrying={list.loading} />
+          ) : !list.data ? (
+            <Skeleton rows={5} />
+          ) : !list.data.length ? (
+            <EmptyState
+              icon={ScanSearch}
+              title="아직 검사가 없습니다"
+              hint={canWrite ? '위에서 패키지 이름 · 저장소 주소 · 파일로 시작하세요. 예: pip reqeusts (requests 의 오타 — 타이포스쿼팅 데모)' : '관리자가 검사를 시작하면 여기에 쌓입니다.'}
+            />
+          ) : !rows.length ? (
+            <EmptyState icon={SearchX} title="조건에 맞는 검사 없음" actions={<ClearFiltersButton onClick={() => setQ('verdict', '')} />} />
           ) : (
-            <div className="h-full overflow-auto">
+            <div className="min-h-0 flex-1 overflow-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-slate-50 text-left text-xs text-slate-500">
                   <tr>{['시작', '대상', '결과', '위험 점수', '위협', '취약점'].map((t) => <th key={t} className={`px-3 py-2 font-medium ${t === '대상' ? 'w-[38%]' : ''}`}>{t}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {list.data.map((s) => (
-                    <tr key={s.id} data-scan={s.id} data-status={s.status} onClick={() => select(s.id)}
-                      className={`cursor-pointer border-t border-slate-100 hover:bg-slate-50 ${s.id === selId ? 'bg-indigo-50' : ''} ${s.verdict === 'malicious' ? 'shadow-[inset_3px_0_0_#dc2626]' : ''}`}>
+                  {rows.map((s) => (
+                    <tr key={s.id} {...rowKeys(() => select(s.id))} data-scan={s.id} data-status={s.status} onClick={() => select(s.id)} aria-selected={s.id === selId}
+                      className={`cursor-pointer border-t border-slate-100 hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${s.id === selId ? 'bg-indigo-50' : ''} ${s.verdict === 'malicious' ? 'shadow-[inset_3px_0_0_#dc2626]' : ''}`}>
                       <td className="num px-3 py-2 font-mono text-xs whitespace-nowrap">{fmtDateTime(s.startedAt)}</td>
                       <td className="max-w-0 truncate px-3 py-2 font-mono" title={s.target.label}>{s.target.label}</td>
                       <td className="px-3 py-2"><StatusBadge s={s} /></td>
@@ -93,6 +131,7 @@ export function ScansPage() {
               </table>
             </div>
           )}
+          </div>
         </Panel>
       </div>
       {selId && <ScanSheet key={selId} id={selId} canWrite={canWrite} done={list.data?.find((s) => s.id === selId)?.status !== 'running'} onClose={() => select('')} />}
@@ -119,7 +158,10 @@ function ScanForm({ canWrite, onStarted }: { canWrite: boolean; onStarted: () =>
   const [busy, setBusy] = useState(false);
   const start = async () => {
     setErr('');
-    if (kind === 'repo' && !/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/.test(url.trim())) return setErr('https://github.com/<소유자>/<저장소> 형식으로 써 주세요');
+    if (kind === 'repo') {
+      const e = repoUrlError(url);
+      if (e) return setErr(e);
+    }
     if (kind === 'file' && !file) return setErr('파일을 고르세요');
     if (kind === 'file' && file && file.size > MAX_UPLOAD) return setErr(`「${file.name}」 — 파일은 50MB 까지 올릴 수 있습니다`);
     setBusy(true);
@@ -158,7 +200,10 @@ function ScanForm({ canWrite, onStarted }: { canWrite: boolean; onStarted: () =>
               <input className={`${input} w-32 font-mono`} data-field="version" aria-label="버전" placeholder="버전(선택)" value={version} onChange={(e) => setVersion(e.target.value)} />
             </>
           ) : kind === 'repo' ? (
-            <input className={`${input} flex-1 font-mono`} data-field="url" aria-label="저장소 주소" placeholder="https://github.com/소유자/저장소" value={url} onChange={(e) => setUrl(e.target.value)} />
+            <span className="flex min-w-0 flex-1 flex-col gap-1">
+              <input className={`${input} w-full font-mono`} data-field="url" aria-label="저장소 주소" placeholder="https://github.com/소유자/저장소 — …/tree/브랜치/폴더 도 됩니다" value={url} onChange={(e) => setUrl(e.target.value)} />
+              <span className="truncate text-xs text-slate-400" data-part="repo-hint">공개 저장소만 · 기본 브랜치 전체, 또는 …/tree/&lt;브랜치&gt;/&lt;폴더&gt; · …/commit/&lt;sha&gt; · …/releases/tag/&lt;태그&gt; (브랜치 이름의 / 는 지원하지 않음)</span>
+            </span>
           ) : (
             <span className="flex min-w-0 items-center gap-2">
               <input type="file" aria-label="파일" accept=".tar.gz,.tgz,.whl,.zip,.py,.js,.txt,.json,.lock,.yaml" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-sm" />
@@ -166,9 +211,13 @@ function ScanForm({ canWrite, onStarted }: { canWrite: boolean; onStarted: () =>
             </span>
           )}
         </div>
-        <button type="button" aria-label="검사 시작" disabled={busy || !canWrite} onClick={() => void start()} title={canWrite ? undefined : '관리자 토큰을 화면 머리에 입력하세요'}
-          className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40">검사 시작</button>
-        {(err || !canWrite) && <p className="col-span-2 text-xs text-red-600" data-form-error="">{err || '관리자 토큰을 화면 머리에 입력하면 검사를 시작할 수 있습니다'}</p>}
+        {canWrite ? (
+          <button type="button" aria-label="검사 시작" disabled={busy} onClick={() => void start()}
+            className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40">검사 시작</button>
+        ) : (
+          <span className="self-center text-xs text-slate-500">검사 시작은 관리자만</span>
+        )}
+        {err && <p className="col-span-2 text-xs text-red-600" data-form-error="">{err}</p>}
       </div>
     </section>
   );
@@ -191,6 +240,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
   const toast = useToast();
   const nav = useNavigate();
   const [focus, setFocus] = useState('');
+  const [askBlock, setAskBlock] = useState(false);
   const findings = s.findings ?? [];
   const threats = findings.filter((f) => f.category === 'threat');
   const caps = findings.filter((f) => f.category === 'capability');
@@ -198,9 +248,9 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
   const t = s.target;
   const cmd = t.kind === 'package' ? `sg-install ${t.manager} ${t.name}${t.version ? (t.manager === 'pip' ? '==' : '@') + t.version : ''}` : '';
   const [vk, vcls] = s.status === 'failed' ? ['실패', 'bg-slate-100 text-slate-600'] : s.status === 'running' ? ['검사 중…', 'bg-indigo-50 text-indigo-700'] : VERDICT[s.verdict ?? 'clean'];
-  const block = async () => {
+  const block = async (reason: string) => {
     try {
-      const r = await api.scanBlock(s.id);
+      const r = await api.scanBlock(s.id, reason);
       nav(`/policies?proposal=${encodeURIComponent(r.proposalId)}`);
     } catch (e) {
       toast(`차단 제안 실패: ${errorText(e)}`, { key: 'scan-block', tone: 'danger' });
@@ -233,16 +283,43 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
               : s.verdict === 'vulnerable' ? `의존성에 알려진 취약점이 ${fmtNum(s.vulnCount)}건 있습니다. 고쳐진 버전으로 올리세요.`
               : '정적 검사에서 위험한 코드 · 알려진 취약점을 찾지 못했습니다. 설치 검사(eBPF)로 실제 행동도 확인할 수 있습니다.'}
           </p>
+          {t.kind === 'repo' && t.url && (
+            <p className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600" data-part="repo-ref">
+              <a href={t.url} target="_blank" rel="noreferrer" className="truncate font-mono text-indigo-600 hover:underline">{t.url}</a>
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono" data-ref={t.ref ?? ''}>{t.ref ? `브랜치/태그 ${t.ref}` : '기본 브랜치'}</span>
+              {t.subpath && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono" data-subpath={t.subpath}>폴더 {t.subpath}</span>}
+            </p>
+          )}
           {s.status === 'done' && t.kind === 'package' && (
             <div className="flex flex-wrap gap-2">
               <button type="button" aria-label="설치 검사로 실제 설치해 보기" onClick={() => { void navigator.clipboard?.writeText(cmd).catch(() => {}); toast(`명령을 복사했습니다 — ${cmd} (감시 컨테이너에서 실제 설치 · eBPF 관찰)`, { key: 'copy', tone: 'ok', action: { label: '설치 검사', to: '/installs?status=all' } }); }}
                 className="flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-white"><Play className="size-3.5" aria-hidden /> 설치 검사로 실제 설치해 보기</button>
-              <button type="button" aria-label="차단 목록에 올리기" disabled={!canWrite} onClick={() => void block()}
-                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs disabled:opacity-40 ${s.verdict === 'malicious' ? 'bg-red-600 text-white hover:bg-red-700' : 'border border-slate-300 hover:bg-white'}`}><OctagonX className="size-3.5" aria-hidden /> 차단 목록에 올리기</button>
+              {canWrite && <button type="button" aria-label="차단 목록에 올리기" onClick={() => setAskBlock(true)}
+                className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs disabled:opacity-40 ${s.verdict === 'malicious' ? 'bg-red-600 text-white hover:bg-red-700' : 'border border-slate-300 hover:bg-white'}`}><OctagonX className="size-3.5" aria-hidden /> 차단 목록에 올리기</button>}
             </div>
           )}
         </div>
       </Section>
+      {s.status === 'done' && t.kind !== 'package' && <ScanPackages s={s} />}
+      {askBlock && (
+        <ConfirmDialog
+          title="차단 목록에 올리기"
+          target={`${t.label} · ${s.id}`}
+          okLabel="올리기"
+          reason
+          effects={[
+            `차단 제안 초안 — 패키지 ${t.manager}:${t.name} (정책에서 미리보기 후 적용)`,
+            '적용하면 다음 sg-install 부터 이 패키지는 설치 전 거부(컨테이너를 띄우지 않음)',
+            '공급망 검사 건을 「악성」으로 판정한 기록이 남습니다(사유는 판정 메모)',
+          ]}
+          undo="정책에서 제안을 「버림」하면 차단 없이 끝납니다. 적용한 뒤에는 차단 목록에서 「해제」"
+          onCancel={() => setAskBlock(false)}
+          onConfirm={(reason) => {
+            setAskBlock(false);
+            void block(reason);
+          }}
+        />
+      )}
       <Section title={`위협 ${threats.length} — GuardDog, 누르면 코드에서 그 줄`}>
         <div data-part="findings" className="grid gap-2">
           {threats.length ? <ul className="grid gap-1">{threats.map(item)}</ul> : <p className="text-xs text-slate-500">없음</p>}

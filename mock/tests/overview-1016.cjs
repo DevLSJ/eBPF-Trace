@@ -31,7 +31,7 @@ const num = (s) => Number(String(s).replace(/[^\d]/g, ''));
     pg.on('pageerror', (e) => consoleErrors.push(`${pg.url()} PAGEERROR ${e.message}`));
     return pg;
   };
-  const go = async (pg, hash) => { await pg.goto(`${BASE}#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(500); };
+  const go = async (pg, hash) => { await pg.goto(`${BASE}?as=admin#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(500); }; // 10/20: 로그인 건너뜀(?as=admin)
   const shot = async (pg, n) => { if (!process.env.SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true }); await pg.waitForTimeout(250); await pg.screenshot({ path: path.join(SHOT_DIR, `${n}.png`) }); };
   const OV = '[data-section="overview"]';
   const summary = (pg, range) => pg.evaluate(async (r) => UI.api.summary(r), range);

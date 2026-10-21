@@ -34,7 +34,8 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     pg.on('pageerror', (e) => consoleErrors.push(`${pg.url()} PAGEERROR ${e.message}`));
     return pg;
   };
-  const go = async (pg, hash) => { await pg.goto(`${BASE}#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); };
+  const go = async (pg, hash) => { await pg.goto(`${BASE}?as=admin#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin)
+  const confirmOk = (pg) => pg.click('dialog[data-part="confirm"] [data-confirm="ok"]'); // 10/20: 판정 · 적용은 확인 대화상자(B)
   const shot = async (pg, name) => { if (!process.env.SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true }); await pg.waitForTimeout(250); await pg.screenshot({ path: path.join(SHOT_DIR, `${name}.png`) }); };
   const runInstall = async (pg, kind) => {
     const id = await pg.evaluate((k) => UI.runInstallDemo(typeof k === 'string' ? k : Object.assign({}, MOCK.demoSpecs[k.base], k.patch)), kind);
@@ -81,6 +82,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     await pg.waitForSelector('.sheet[data-sheet="install"]');
     ok((await pg.getAttribute('.sheet[data-sheet="install"]', 'aria-label')) === 'pip ./reqeusts', '시트 제목');
     await pg.click('.sheet [data-part="decision"] button[aria-label="악성 확정"]');
+    await confirmOk(pg); // 10/20
     await pg.waitForTimeout(300);
     ok((await pg.textContent('.toasts')).includes('pip ./reqeusts 악성 확정'), '판정 토스트 표기');
     await pg.click('.toast-action:has-text("제안 보기")');
@@ -89,6 +91,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     ok((await pg.textContent('[data-view="proposal"] [data-part="basis"]')).includes('pip ./reqeusts'), '근거 표기');
     ok((await pg.textContent('[data-view="proposal"] [data-changes]')).includes('패키지 차단 pip:reqeusts'), '변경 내용은 정규화 이름');
     await pg.click('[data-view="proposal"] button[aria-label="적용"]');
+    await confirmOk(pg); // 10/20
     await pg.waitForTimeout(400);
     ok(await pg.locator('[data-view="blocklist"] [data-list="packages"] [data-value="pip:reqeusts"]').count() === 1, '차단 목록 정규화 이름');
     await pg.close();
@@ -107,9 +110,10 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     ok(await pg.locator('.sheet .sheet-foot [data-part="decision"]').count() === 1, '판정 칸이 아래 고정 칸에 없음');
     const [foot, sheet] = await Promise.all([pg.$eval('.sheet .sheet-foot', (e) => e.getBoundingClientRect().bottom), pg.$eval('.sheet', (e) => e.getBoundingClientRect().bottom)]);
     ok(Math.abs(foot - sheet) < 2, `판정 칸이 시트 아래에 붙지 않음 ${foot} / ${sheet}`);
-    await pg.fill('.sheet [data-memo]', '타이포스쿼팅 — 이름이 requests 와 한 글자 다름');
     await shot(pg, '02-install-sheet');
     await pg.click('.sheet [data-part="decision"] button[aria-label="악성 확정"]');
+    await pg.fill('dialog[data-part="confirm"] textarea[name="reason"]', '타이포스쿼팅 — 이름이 requests 와 한 글자 다름'); // 10/20: 메모 칸 → 확인 대화상자의 사유(B)
+    await confirmOk(pg);
     await pg.waitForTimeout(300);
     const c = await pg.evaluate(async (id) => UI.api.case(id), s.caseId);
     ok(c.note.startsWith('타이포스쿼팅'), `메모 "${c.note}"`);

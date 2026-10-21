@@ -5,12 +5,16 @@ import type {
   BlockList,
   Case,
   Change,
+  DecisionEffect,
+  DecisionPreview,
   Event,
+  Evidence,
   Info,
   InstallSession,
   InstallViolation,
   Level,
   OsvResult,
+  PolicyDefaults,
   Preview,
   Proposal,
   ProposalChange,
@@ -20,36 +24,69 @@ import type {
   Verdict,
   WsMessage,
 } from '../src/lib/types';
+import { ACTOR, MockAuth } from './mock-auth';
 
 // 계약(Claude Docs 「API 계약」 탭, 2026-10-15)을 따르는 상태 있는 가짜 백엔드.
 // page.route 로 /api/** 를, page.routeWebSocket 으로 /ws/events 를 가로챈다. 실제 서버에는 닿지 않는다.
 
-export const ACTOR = '보안 담당자';
-export const TOKEN = 'e2e-admin-token';
+// 처리자(decidedBy · appliedBy · by)는 로그인한 계정의 표시 이름 — 기본 관리자 표시 이름이 ACTOR (backend auth.Actor.Name)
+export { ACTOR };
 
 const ago = (now: number, sec: number) => new Date(now - sec * 1000).toISOString();
 const levelOf = (v: Verdict): Level => (!v.matched ? 'normal' : v.action !== 'kill' ? 'alert' : v.enforced ? 'killed' : 'held');
 
 function ev(now: number, sec: number, container: string, image: string, e: Partial<Event> & Pick<Event, 'kind' | 'comm'>): Event {
-  return { timestamp: ago(now, sec), containerId: `${container.replace(/[^a-z0-9]/g, '')}0123456789abcdef`.slice(0, 64), containerName: container, imageName: image, pid: 4242, ...e };
+  // W20: 백엔드처럼 connect 에는 dnsTraced 를 늘 명시한다(가짜 /api/info dnsResolve 'ok' → true)
+  const dns = e.kind === 'connect' ? { dnsTraced: true } : {};
+  return { timestamp: ago(now, sec), containerId: `${container.replace(/[^a-z0-9]/g, '')}0123456789abcdef`.slice(0, 64), containerName: container, imageName: image, pid: 4242, ...dns, ...e };
 }
 const kill = (event: Event, ruleId: string, reason: string): Verdict => ({ event, matched: true, ruleId, action: 'kill', reason, enforced: true });
 const alert = (event: Event, ruleId: string, reason: string): Verdict => ({ event, matched: true, ruleId, action: 'alert', reason });
 const ok = (event: Event): Verdict => ({ event, matched: false });
+// SSE 본문: 시작 주석 · 중간 ping 주석을 섞는다(백엔드 api/chat.go 와 같은 모양)
+export const sseBody = (events: [string, unknown][]) =>
+  ': start\n\n' + events.map(([e, d], i) => (i === 1 ? ': ping\n\n' : '') + `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join('');
 
 const INSTALL_CTR = 'sg-install-pip-1792043525-24739';
 const PYIMG = 'python:3.12-slim';
 
 export class MockBackend {
   now = Date.now();
-  info: Info = { source: 'mock', gadgets: ['exec', 'open', 'connect'], enforceKill: true, authRequired: false, gadgetVersion: 'v0.56.1', watchContainers: [], ignoreContainers: ['supplyguard-*'] };
+  // 10/20: dnsResolve · notify(알림 채널 상태 — 호스트만) — 메인 백엔드 /api/info 와 같은 모양
+  info: Info = {
+    source: 'mock',
+    gadgets: ['exec', 'open', 'connect'],
+    enforceKill: true,
+    authRequired: false,
+    gadgetVersion: 'v0.56.1',
+    watchContainers: [],
+    ignoreContainers: ['supplyguard-*'],
+    dnsResolve: 'ok',
+    // 10/20: AI 도우미(/api/chat) 켜짐 여부 — 기본은 꺼짐(기존 시나리오는 가이드 탭 하나). 켜는 시나리오는 assistant-chat-1020.spec
+    chat: false,
+    notify: { enabled: true, channels: [{ name: 'webhook', host: 'hooks.example.test', sent: 3, failed: 0, dropped: 0, queued: 0 }], sent: 3, failed: 0, dropped: 0, suppressed: 0 },
+  };
   // 라우트 자체가 없는 것처럼(404 + 텍스트) 굴 경로 접두사 — 「백엔드 미지원」 재현
   unsupported = new Set<string>();
   osvFail = false;
   // 목록 응답에서 violations · activity 를 빼고 violationCount 만 준다(계약: 상세에만 있을 수 있음)
   listOmitsDetail = false;
   requests: { method: string; path: string; auth: string | null; body?: string }[] = [];
+  // 10/20 인증(W16): 기본은 관리자 active 세션 · OTP 꺼짐. 로그인 단계 · 계정 · 라이선스 · 인증 감사도 여기서
+  auth = new MockAuth();
+  // /api/chat 가짜 SSE(메인 백엔드 api/chat.go 계약). status 가 200 이 아니면 시작 전 JSON 오류 {error}
+  chatReply: { status?: number; error?: string; events?: [string, unknown][] } | null = null;
   ws: WebSocketRoute | null = null;
+  notifyTests = 0;
+  // W18: 새 기본 규칙(GET /api/policies/defaults) — 기본은 차이 없음(띠 없음) · kill 직전 증거(GET /api/evidence)
+  policyDefaults: PolicyDefaults = { missing: [], differs: [] };
+  evidence: Evidence[] = [];
+  // W19: 실시간 끊김 재현 — wsRefuse 동안 새 연결을 바로 닫고, dropWs() 는 지금 연결을 끊는다. failing: 경로 → 상태 코드(최초 로드 실패 재현)
+  wsRefuse = false;
+  failing = new Map<string, number>();
+  dropWs() {
+    void this.ws?.close({ code: 1006, reason: 'drop' });
+  }
   private seq = 100;
 
   rules: Rule[] = [
@@ -223,16 +260,65 @@ export class MockBackend {
   case(id: string) {
     return this.cases.find((c) => c.id === id)!;
   }
+  // W16: 앱은 로그인 확인(/api/auth/me) 뒤에 실시간 연결을 연다 — 그 전에 보낸 메시지는 연결되면 보낸다
+  private pending: string[] = [];
   send(msg: WsMessage) {
-    this.ws?.send(JSON.stringify(msg));
+    if (this.ws) this.ws.send(JSON.stringify(msg));
+    else this.pending.push(JSON.stringify(msg));
   }
   writes() {
     return this.requests.filter((r) => r.method !== 'GET');
   }
 
+  // 10/20 도우미: 새 건이 열린 것처럼 — 설치 세션(설치 건이면) · 건을 만들고 WS {type:"case"} 로 알린다
+  openCase(o: { source?: 'install' | 'runtime'; level?: Level; ruleIds?: string[]; label?: string } = {}): Case {
+    const n = ++this.seq;
+    const id = `case-${String(n).padStart(4, '0')}`;
+    const source = o.source ?? 'install';
+    const level = o.level ?? (this.info.enforceKill ? 'killed' : 'held');
+    const ruleIds = o.ruleIds ?? ['pipe-to-shell', 'no-shell-download', 'sandbox-secrets', 'sensitive-files', 'sandbox-egress'];
+    const now = Date.now();
+    const at = new Date(now).toISOString();
+    const installId = source === 'install' ? `ins-${String(n).padStart(4, '0')}` : null;
+    const container = source === 'install' ? `sg-install-pip-${Math.floor(now / 1000)}-${n}` : (o.label ?? 'pkg-runtime');
+    if (installId) {
+      const violations: InstallViolation[] = ruleIds.map((r, i) => ({
+        ...(level === 'alert' ? alert : kill)(ev(now, 2 - i * 0.1, container, PYIMG, { kind: 'exec', comm: 'sh', args: `sh -c demo ${r}` }), r, r),
+        enforced: level === 'killed',
+        count: 1,
+      }));
+      this.installs.unshift({
+        id: installId, manager: 'pip', packages: ['./reqeusts'], container, containerId: `${installId}abcdef0123456789`, image: PYIMG,
+        startedAt: ago(now, 5), finishedAt: at, exitCode: level === 'killed' ? 137 : 0, status: level === 'alert' ? 'warned' : 'isolated',
+        caseId: id, refusedBy: null, violations, activity: { kinds: { exec: ruleIds.length }, hosts: [], programs: [] },
+      });
+    }
+    const c: Case = {
+      id, source, installId, container, label: o.label ?? (source === 'install' ? 'pip ./reqeusts' : container), image: source === 'install' ? PYIMG : 'demo/runtime:1.0',
+      package: source === 'install' ? 'pip:reqeusts' : null, openedAt: at, level, violations: ruleIds.length, ruleIds, state: 'open', decision: 'pending',
+      decidedAt: null, decidedBy: null, note: '', proposalId: null, closedAt: null,
+    };
+    this.cases.unshift(c);
+    this.send({ type: 'case', data: { ...c } });
+    return c;
+  }
+
   async attach(page: Page) {
     await page.routeWebSocket(/\/ws\/events$/, (ws) => {
-      this.ws = ws; // connectToServer 를 부르지 않으므로 서버 없이 열린 상태가 된다
+      // 실제 백엔드는 로그인 안 된 /ws/events 업그레이드를 401 로 거절한다 — 여기서는 바로 닫는다
+      if (!this.auth.active()) {
+        void ws.close({ code: 1008, reason: 'unauthorized' });
+        return;
+      }
+      if (this.wsRefuse) {
+        void ws.close({ code: 1006, reason: 'down' });
+        return;
+      }
+      this.ws = ws;
+      // StrictMode 는 첫 연결을 바로 닫고 다시 연다 — 남은 연결(마지막 ws)에만 밀린 메시지를 보낸다
+      setTimeout(() => {
+        if (this.ws === ws) for (const m of this.pending.splice(0)) void ws.send(m);
+      }, 200); // connectToServer 를 부르지 않으므로 서버 없이 열린 상태가 된다
       ws.onMessage(() => {});
     });
     await page.route(/\/api\//, (route) => this.handle(route));
@@ -251,9 +337,24 @@ export class MockBackend {
     }
     const json = (data: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
     const fail = (status: number, error: string) => json({ error }, status);
+    if (this.failing.has(path)) return fail(this.failing.get(path)!, '모의 오류 — 서버가 응답하지 않습니다');
     const q = url.searchParams;
-    const writing = method !== 'GET' && !path.endsWith('/preview');
-    if (writing && this.info.authRequired && req.headers()['authorization'] !== `Bearer ${TOKEN}`) return fail(401, '관리자 토큰이 필요합니다');
+    // 읽기 전용 POST(미리보기 · AI 도우미 질문)는 조회자도 부른다 — 백엔드 ViewerWritePatterns
+    const writing = method !== 'GET' && !path.endsWith('/preview') && path !== '/chat';
+    // 인증 미들웨어(backend auth.Middleware) → 단계 · 계정 · 라이선스 경로
+    const gate = this.auth.gate(method, path, writing);
+    if (gate) return json(gate.body, gate.status);
+    const a = this.auth.handle(method, path, body);
+    if (a) return a.status === 204 ? route.fulfill({ status: 204 }) : json(a.body, a.status);
+    if (method === 'POST' && path === '/notify/test') {
+      const n = this.info.notify;
+      if (!n?.channels.length) return fail(409, '설정된 알림 채널이 없습니다');
+      this.notifyTests++;
+      // 발송은 비동기 — 다음 /api/info 에서 보낸 수가 오른다
+      n.channels = n.channels.map((c) => ({ ...c, sent: c.sent + 1, lastAt: new Date().toISOString() }));
+      n.sent += n.channels.length;
+      return json({ queued: n.channels.length }, 202);
+    }
     let m: RegExpMatchArray | null;
 
     // 기존 API
@@ -345,11 +446,27 @@ export class MockBackend {
       if (c.decision !== 'pending') return fail(409, '이미 판정된 건');
       const { decision, note } = JSON.parse(body ?? '{}') as { decision: 'malicious' | 'false_positive'; note?: string };
       const { changes, notes } = this.proposalChanges(c, decision);
-      const p: Proposal = { id: `prop-${String(++this.seq).padStart(4, '0')}`, caseId: c.id, decision, state: 'draft', createdAt: new Date().toISOString(), createdBy: ACTOR, appliedAt: null, appliedBy: null, changes, notes };
+      const p: Proposal = { id: `prop-${String(++this.seq).padStart(4, '0')}`, caseId: c.id, decision, state: 'draft', createdAt: new Date().toISOString(), createdBy: this.auth.actorName(), appliedAt: null, appliedBy: null, changes, notes };
       this.proposals.unshift(p);
-      Object.assign(c, { decision, note: note ?? '', state: 'decided', decidedAt: new Date().toISOString(), decidedBy: ACTOR, proposalId: p.id });
+      Object.assign(c, { decision, note: note ?? '', state: 'decided', decidedAt: new Date().toISOString(), decidedBy: this.auth.actorName(), proposalId: p.id });
       this.send({ type: 'case', data: { ...c } });
       return json({ case: c, proposal: p });
+    }
+    // W18: 판정 미리보기(백엔드 review/decision_preview.go 계약, 간이) — 저장 없음
+    if (method === 'POST' && (m = path.match(/^\/cases\/([^/]+)\/preview$/))) {
+      const c = this.cases.find((x) => x.id === m![1]);
+      if (!c) return fail(404, '건 없음');
+      if (c.decision !== 'pending') return fail(409, '이미 판정된 건');
+      const { decision } = JSON.parse(body ?? '{}') as { decision: 'malicious' | 'false_positive' };
+      if (decision !== 'malicious' && decision !== 'false_positive') return fail(400, 'decision: malicious | false_positive');
+      return json(this.decisionPreview(c, decision));
+    }
+    // W18: 새 기본 규칙 · 증거
+    if (method === 'GET' && path === '/policies/defaults') return json(this.policyDefaults);
+    if (method === 'GET' && path === '/evidence') {
+      const k = q.get('container') ?? '';
+      if (!k) return fail(400, 'container 가 필요합니다');
+      return json(this.evidence.filter((e) => e.containerName === k || e.containerId.startsWith(k)).sort((a, b) => b.collectedAt.localeCompare(a.collectedAt)));
     }
 
     // 제안
@@ -361,18 +478,22 @@ export class MockBackend {
       if (p.state !== 'draft') return fail(409, '초안이 아닌 제안');
       const c = this.case(p.caseId);
       const at = new Date().toISOString();
+      const reason = ((JSON.parse(body || '{}') as { reason?: string }).reason ?? '').trim(); // W15 · W18: 사유 → 변경 이력
       if (m[2] === 'apply') {
         for (const ch of p.changes) {
-          if (ch.op === 'block') this.blocklist[ch.list].unshift({ value: ch.value, caseId: c.id, at, by: ACTOR });
+          if (ch.op === 'block') this.blocklist[ch.list].unshift({ value: ch.value, caseId: c.id, at, by: this.auth.actorName() });
           else {
             const r = this.rules.find((x) => x.id === ch.ruleId)!;
             const key = ch.field as keyof Rule;
             (r[key] as unknown as string[]) = [...((r[key] as unknown as string[]) ?? []), ch.value];
           }
         }
-        Object.assign(p, { state: 'applied', appliedAt: at, appliedBy: ACTOR });
-        this.addChange('proposal_applied', this.changeSummary(p), c.id, p.id);
-      } else Object.assign(p, { state: 'discarded' });
+        Object.assign(p, { state: 'applied', appliedAt: at, appliedBy: this.auth.actorName() });
+        this.addChange('proposal_applied', this.changeSummary(p), c.id, p.id, reason);
+      } else {
+        Object.assign(p, { state: 'discarded' });
+        this.addChange('proposal_discarded', `제안 ${p.id} 버림 — 변경 없이 건 종결`, c.id, p.id, reason);
+      }
       Object.assign(c, { state: 'closed', closedAt: at });
       this.send({ type: 'case', data: { ...c } });
       return json(p);
@@ -384,7 +505,7 @@ export class MockBackend {
       const list = m[1] as BlockList;
       const value = decodeURIComponent(m[2]);
       this.blocklist[list] = this.blocklist[list].filter((e) => e.value !== value);
-      this.addChange('blocklist_remove', `${value} 차단 해제`);
+      this.addChange('blocklist_remove', `${value} 차단 해제`, null, null, ((JSON.parse(body || '{}') as { reason?: string }).reason ?? '').trim());
       return route.fulfill({ status: 204 });
     }
     if (method === 'GET' && path === '/changes') return json(this.changes.slice(0, Number(q.get('limit') ?? 100)));
@@ -396,7 +517,46 @@ export class MockBackend {
         : { ecosystem: eco, name, vulns: this.osv[`${eco}:${name}`] ?? 0, ids: Array.from({ length: Math.min(3, this.osv[`${eco}:${name}`] ?? 0) }, (_, i) => `PYSEC-2023-${74 + i}`), queriedAt: new Date().toISOString(), source: 'osv.dev', error: null };
       return json(r);
     }
+    if (method === 'POST' && path === '/chat') {
+      if (!this.info.chat) return route.fulfill({ status: 404, contentType: 'text/plain', body: '404 page not found' });
+      const r = this.chatReply ?? {};
+      if (r.status && r.status !== 200) return fail(r.status, r.error ?? '오류');
+      return route.fulfill({ status: 200, contentType: 'text/event-stream; charset=utf-8', body: sseBody(r.events ?? this.chatPending()) });
+    }
     return route.fulfill({ status: 404, contentType: 'text/plain', body: '404 page not found' });
+  }
+
+  // 기본 답: 판정 대기 요약 — token 조각 → facts → links → done
+  chatPending(): [string, unknown][] {
+    const open = this.cases.filter((c) => c.state === 'open');
+    return [
+      ['token', `판정 대기 건이 `],
+      ['token', `${open.length}개 있습니다. `],
+      ['token', '각 건을 열어 판정하세요.'],
+      ['facts', { intent: 'pending', tool: 'pending_cases', status: `판정 대기 ${open.length}건`, sentences: open.map((c) => `${c.label} 은 판정 대기입니다.`), cases: [] }],
+      ['links', [{ label: '감사 로그 — 판정 · 변경 이력', href: '/audit?view=changes' }]],
+      ['done', {}],
+    ];
+  }
+
+  // 10/16: 공급망 검사 「차단 목록에 올리기」로 연 건(source scan). decided 면 악성 판정 + 초안 제안까지
+  scanCase(o: { decided?: boolean } = {}): { c: Case; p: Proposal | null } {
+    const n = ++this.seq;
+    const id = `case-${String(n).padStart(4, '0')}`;
+    const at = new Date().toISOString();
+    const c: Case = {
+      id, source: 'scan', installId: null, scanId: 'scan-0007', container: '', label: 'pip evil-pkg 0.1.0', image: '', package: 'pip:evil-pkg',
+      openedAt: at, level: 'held', violations: 1, ruleIds: ['supply-chain-scan'], state: 'open', decision: 'pending',
+      decidedAt: null, decidedBy: null, note: '', proposalId: null, closedAt: null,
+    };
+    let p: Proposal | null = null;
+    if (o.decided) {
+      p = { id: `prop-${String(++this.seq).padStart(4, '0')}`, caseId: id, decision: 'malicious', state: 'draft', createdAt: at, createdBy: ACTOR, appliedAt: null, appliedBy: null, changes: [{ op: 'block', list: 'packages', value: 'pip:evil-pkg' }], notes: [] };
+      this.proposals.unshift(p);
+      Object.assign(c, { decision: 'malicious', state: 'decided', decidedAt: at, decidedBy: ACTOR, note: '공급망 검사 scan-0007', proposalId: p.id });
+    }
+    this.cases.unshift(c);
+    return { c, p };
   }
 
   summaryRanges: Record<string, [number, number]> = { '1h': [60, 60], '24h': [24, 3600], '7d': [28, 21600] };
@@ -462,8 +622,42 @@ export class MockBackend {
     };
   }
 
-  private addChange(kind: Change['kind'], summary: string, caseId: string | null = null, proposalId: string | null = null) {
-    this.changes.unshift({ id: `chg-${String(++this.seq).padStart(4, '0')}`, at: new Date().toISOString(), by: ACTOR, kind, caseId, proposalId, summary });
+  private addChange(kind: Change['kind'], summary: string, caseId: string | null = null, proposalId: string | null = null, reason = '') {
+    this.changes.unshift({ id: `chg-${String(++this.seq).padStart(4, '0')}`, at: new Date().toISOString(), by: this.auth.actorName(), kind, caseId, proposalId, summary, reason });
+  }
+
+  // W18: 판정 미리보기 effects — 백엔드와 같은 kind(blocklist · already_blocked · package · image · host · exception · none · note · next)
+  private decisionPreview(c: Case, decision: 'malicious' | 'false_positive'): DecisionPreview {
+    const { changes, notes } = this.proposalChanges(c, decision);
+    const label = { packages: '패키지', images: '이미지', hosts: '도메인' } as const;
+    const effects: DecisionEffect[] = [];
+    if (decision === 'malicious') {
+      const blocks = changes.filter((x): x is Extract<ProposalChange, { op: 'block' }> => x.op === 'block');
+      const fresh = blocks.filter((x) => !this.blocklist[x.list].some((e) => e.value === x.value));
+      const already = blocks.filter((x) => !fresh.includes(x));
+      if (fresh.length) {
+        const by = (['packages', 'images', 'hosts'] as const).filter((l) => fresh.some((x) => x.list === l)).map((l) => `${label[l]} ${fresh.filter((x) => x.list === l).length}`);
+        effects.push({ kind: 'blocklist', count: fresh.length, text: `차단 목록 +${fresh.length} (${by.join(' · ')})` });
+      }
+      if (already.length) effects.push({ kind: 'already_blocked', count: already.length, text: `이미 차단 목록에 있는 ${already.length}개(${already.map((x) => `${label[x.list]} ${x.value}`).join(', ')})는 그대로 둡니다` });
+      if (!fresh.length) effects.push({ kind: 'none', text: '새로 차단할 대상이 없습니다 — 적용하면 건만 종결합니다' });
+      for (const x of fresh) {
+        if (x.list === 'packages') effects.push({ kind: 'package', text: `다음 sg-install 부터 ${x.value} 는 설치 전에 거부됩니다(컨테이너를 띄우지 않음)` });
+        if (x.list === 'images') effects.push({ kind: 'image', count: 1, text: `같은 이미지(${x.value})를 쓰는 실행 중 컨테이너 1개 — 적용하면 다음 시작 때 격리됩니다(지금 실행은 그대로)` });
+      }
+      const hosts = fresh.filter((x) => x.list === 'hosts').map((x) => x.value);
+      if (hosts.length) effects.push({ kind: 'host', count: hosts.length, text: `도메인 ${hosts.length}개(${hosts.join(', ')})는 적용 즉시 시스템 규칙 blocklist-hosts 로 차단됩니다(런타임 · 설치 모두)` });
+    } else {
+      const ex = changes.filter((x): x is Extract<ProposalChange, { op: 'except' }> => x.op === 'except');
+      for (const x of ex) {
+        const r = this.rules.find((y) => y.id === x.ruleId);
+        effects.push({ kind: 'exception', text: `규칙 ${x.ruleId} 예외 추가 — ${x.field} 에 ${x.value} (범위: ${r?.containers?.length ? `컨테이너 ${r.containers.join(', ')}` : '모든 컨테이너'}). 적용 즉시 엔진에 반영됩니다` });
+      }
+      if (!ex.length) effects.push({ kind: 'none', text: '자동으로 만들 예외가 없습니다 — 정책 탭에서 직접 고칩니다' });
+    }
+    for (const n of notes) effects.push({ kind: 'note', text: n });
+    effects.push({ kind: 'next', text: '판정하면 제안 초안이 생깁니다 — 아직 아무것도 바뀌지 않으며, 정책 화면에서 미리보기 후 적용합니다' });
+    return { caseId: c.id, decision, changes, notes, effects };
   }
 
   private changeSummary(p: Proposal) {
@@ -483,7 +677,7 @@ export class MockBackend {
     const note = (n: string) => !notes.includes(n) && notes.push(n);
     const hostMatches = (pat: string, host: string) => host === pat || host.endsWith(`.${pat.replace(/^\*\./, '')}`);
     if (decision === 'malicious') {
-      if (c.source === 'install') add({ op: 'block', list: 'packages', value: c.package! });
+      if (c.source === 'install' || c.source === 'scan') add({ op: 'block', list: 'packages', value: c.package! });
       else add({ op: 'block', list: 'images', value: c.image });
       for (const v of vs) {
         const host = v.event.kind === 'connect' ? v.event.dstHost : undefined;

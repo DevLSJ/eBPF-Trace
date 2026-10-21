@@ -122,17 +122,41 @@ func fetchPackage(ctx context.Context, manager, name, version, dst string) (stri
 	return resolved, extract(path.Base(archive), io.LimitReader(res.Body, maxDownload+1), dst)
 }
 
-// fetchRepo: GitHub 저장소 기본 브랜치 tarball
-func fetchRepo(ctx context.Context, owner, repo, dst string) error {
-	res, err := get(ctx, "https://codeload.github.com/"+url.PathEscape(owner)+"/"+url.PathEscape(repo)+"/tar.gz/HEAD")
+// fetchRepo: GitHub tarball(codeload, base 는 기본 codeload 주소 또는 테스트 서버) — ref 가 비면 HEAD.
+// tarball 의 최상위 폴더(repo-ref)를 벗겨 저장소 기준 경로로 두고, 하위 경로가 있으면 그 폴더 아래만 둔다(그 밖은 읽지 않고 건너뛴다).
+// 항목 이름은 먼저 정리(path.Clean)하므로 ../ 로 하위 경로 밖 · 작업 폴더 밖으로 나가지 못한다(writeFile 이 한 번 더 막는다)
+func fetchRepo(ctx context.Context, base string, ref RepoRef, dst string) error {
+	res, err := get(ctx, ref.Tarball(base))
 	if err != nil {
 		if errors.Is(err, errNotFound) {
-			return fmt.Errorf("github.com/%s/%s 을(를) 찾을 수 없습니다(공개 저장소만)", owner, repo)
+			msg := ref.Label() + " 을(를) 찾을 수 없습니다 — 공개 저장소 · 브랜치/태그를 확인하세요"
+			if ref.Subpath != "" {
+				msg += "(브랜치 이름에 / 가 있으면 지원하지 않습니다)"
+			}
+			return errors.New(msg)
 		}
 		return err
 	}
 	defer res.Body.Close()
-	return extract("repo.tar.gz", io.LimitReader(res.Body, maxDownload+1), dst)
+	prefix := ""
+	if ref.Subpath != "" {
+		prefix = ref.Subpath + "/"
+	}
+	n, err := extractTarGz(io.LimitReader(res.Body, maxDownload+1), dst, func(name string) (string, bool) {
+		clean := path.Clean("/" + filepath.ToSlash(name))[1:]
+		_, rest, ok := strings.Cut(clean, "/") // 최상위 폴더를 벗긴다
+		if !ok || rest == "" || (prefix != "" && !strings.HasPrefix(rest, prefix)) {
+			return "", false
+		}
+		return rest, true
+	})
+	if err != nil {
+		return err
+	}
+	if n == 0 && ref.Subpath != "" {
+		return fmt.Errorf("내려받은 압축본에 %s 폴더가 없습니다 — 경로 · 브랜치를 확인하세요. 브랜치 이름에 / 가 있으면 지원하지 않고, 저장소의 .gitattributes 가 export-ignore 로 뺀 폴더(흔히 tests/)는 GitHub 압축본에 들어 있지 않습니다", ref.Subpath)
+	}
+	return nil
 }
 
 func ver(v, sep string) string {
@@ -148,33 +172,8 @@ func extract(name string, r io.Reader, dst string) error {
 	low := strings.ToLower(name)
 	switch {
 	case strings.HasSuffix(low, ".tar.gz") || strings.HasSuffix(low, ".tgz"):
-		gz, err := gzip.NewReader(r)
-		if err != nil {
-			return fmt.Errorf("압축을 풀 수 없습니다: %w", err)
-		}
-		tr := tar.NewReader(gz)
-		var total int64
-		for n := 0; ; n++ {
-			h, err := tr.Next()
-			if err == io.EOF {
-				return nil
-			}
-			if err != nil {
-				return fmt.Errorf("압축을 풀 수 없습니다: %w", err)
-			}
-			if n > maxFiles {
-				return errors.New("파일이 너무 많습니다")
-			}
-			if h.Typeflag != tar.TypeReg {
-				continue
-			}
-			if total += h.Size; total > maxExtract {
-				return errors.New("풀었을 때 200MB 를 넘습니다")
-			}
-			if err := writeFile(dst, h.Name, tr, h.Size); err != nil {
-				return err
-			}
-		}
+		_, err := extractTarGz(r, dst, func(name string) (string, bool) { return name, true })
+		return err
 	case strings.HasSuffix(low, ".whl") || strings.HasSuffix(low, ".zip"):
 		tmp, err := os.CreateTemp("", "sg-zip-*")
 		if err != nil {
@@ -217,6 +216,44 @@ func extract(name string, r io.Reader, dst string) error {
 		return nil
 	default:
 		return writeFile(dst, filepath.Base(name), r, maxDownload)
+	}
+}
+
+// extractTarGz: tar.gz 를 dst 에 푼다. mapName 이 항목 이름을 쓸 경로로 바꾸거나(false 면) 건너뛴다. 쓴 파일 수를 돌려준다.
+// 일반 파일만, 개수 · 합계 크기 상한, 경로 탈출은 writeFile 이 막는다
+func extractTarGz(r io.Reader, dst string, mapName func(string) (string, bool)) (int, error) {
+	gz, err := gzip.NewReader(r)
+	if err != nil {
+		return 0, fmt.Errorf("압축을 풀 수 없습니다: %w", err)
+	}
+	tr := tar.NewReader(gz)
+	var total int64
+	written := 0
+	for n := 0; ; n++ {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return written, nil
+		}
+		if err != nil {
+			return written, fmt.Errorf("압축을 풀 수 없습니다: %w", err)
+		}
+		if n > maxFiles {
+			return written, errors.New("파일이 너무 많습니다")
+		}
+		if h.Typeflag != tar.TypeReg {
+			continue
+		}
+		name, ok := mapName(h.Name)
+		if !ok {
+			continue
+		}
+		if total += h.Size; total > maxExtract {
+			return written, errors.New("풀었을 때 200MB 를 넘습니다")
+		}
+		if err := writeFile(dst, name, tr, h.Size); err != nil {
+			return written, err
+		}
+		written++
 	}
 }
 

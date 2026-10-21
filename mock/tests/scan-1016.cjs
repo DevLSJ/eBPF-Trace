@@ -31,7 +31,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     pg.on('pageerror', (e) => consoleErrors.push(`${pg.url()} PAGEERROR ${e.message}`));
     return pg;
   };
-  const go = async (pg, hash) => { await pg.goto(`${BASE}?source=sim#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); };
+  const go = async (pg, hash) => { await pg.goto(`${BASE}?source=sim&as=admin#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin)
   const shot = async (pg, n) => { if (!process.env.SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true }); await pg.waitForTimeout(250); await pg.screenshot({ path: path.join(SHOT_DIR, `${n}.png`) }); };
   const F = '[data-part="scan-form"]';
   // 패키지 이름으로 검사 시작 → 끝날 때까지 기다리고 그 검사의 id

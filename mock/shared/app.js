@@ -52,8 +52,13 @@
   // 용어 [10/15 목표]: 엔진이 내리는 것은 「탐지 결과」(LEVEL_LABEL), 사람이 내리는 것은 「판정」(DECISION_LABEL)
   const DECISION_LABEL = { pending: '판정 대기', malicious: '악성', false_positive: '오탐', none: '건 없음' };
   const ACTOR = '보안 담당자'; // 처리자 — 데모 계정 하나 (백엔드 설정 ACTOR_NAME 기본값)
+  // 처리자 = 로그인한 계정의 이름 [10/20 A]. 시드 · 로그인 전은 ACTOR
+  const actor = () => (window.UI && UI.state.auth && UI.state.auth.user && UI.state.auth.user.displayName) || ACTOR;
   const SANDBOX = 'sg-install-';
   const LIST_LABEL = { packages: '패키지', images: '이미지', hosts: '도메인' };
+  // 건의 출처 · 링크 — 한 곳에서만 [10/20 J — React 와 같게]. 공급망 검사 건은 런타임 · 토폴로지가 아니라 검사 결과로
+  const CASE_SOURCE = { install: '설치 검사', runtime: '런타임', scan: '공급망 검사' };
+  const caseHref = (c, all) => (c.source === 'install' ? `#/installs?${all ? 'status=all&' : ''}id=${c.installId}` : c.source === 'scan' ? `#/scans?id=${c.scanId}` : `#/topology?container=${encodeURIComponent(c.container)}`);
   const levelOf = (v) => (!v.matched ? 'normal' : v.action !== 'kill' ? 'alert' : v.enforced ? 'killed' : 'held');
   const detailOf = (e) => (e.kind === 'exec' ? e.args || e.comm : e.kind === 'open' ? e.path || '' : e.dstHost ? `${e.dstIp}:${e.dstPort} (${e.dstHost})` : `${e.dstIp}:${e.dstPort}`);
 
@@ -123,15 +128,46 @@
     source: params.get('source') || saved('supplyguard.mock.source', 'sim'),
     apiBase: (params.get('api') || saved('supplyguard.mock.api', 'http://127.0.0.1:8000')).replace(/\/$/, ''),
     liveError: '',
-    connected: true, paused: false, verdicts: [], unseen: 0, token: '',
+    connected: true, paused: false, verdicts: [], unseen: 0, // 관리자 토큰 칸은 없앴다 — 쓰기는 로그인 역할(쿠키 세션)만 [10/20 결정 1]
     rules: JSON.parse(JSON.stringify(M.rules)),
-    info: { source: 'mock', gadgets: KINDS, enforceKill: true, authRequired: true, gadgetVersion: 'v0.56.1', watchContainers: [], ignoreContainers: ['supplyguard-*'] },
+    info: null, // 아래 simInfo() — /api/info 와 같은 모양
     stats: null, audit: fresh ? [] : M.buildAudit(now0, installs0), topology: new TopologyStore(),
     installs: installs0, installSeq: installs0.length, scans: [],
     // 판정 흐름 [10/15 목표] — 모의 서버가 들고 있는 건 · 제안 · 차단 목록 · 변경 이력 (API 계약 「데이터 모양」)
     cases: [], proposals: [], changes: [], blocklist: { packages: [], images: [], hosts: [] },
     seq: { case: 0, prop: 0, chg: 0, scan: 0 },
+    // 서버 상태 모의 값 [10/20 도우미] — notify: 'webhook' | 'none', dnsResolve: 'on' | 'off'(trace_dns 가 안 떠 도메인 규칙 통과). 실제 백엔드에는 아직 없어 undefined(「미확인」)
+    server: {},
+    // 10/20 2차 시안: 로그인 세션(auth.js) · 이벤트 첫 로드 상태 · 끊긴 동안 채운 수 · 증거(kill 직전, 컨테이너 이름 → 최근 것부터)
+    auth: null, eventsReady: false, eventsError: null, backfill: null, evidence: new Map(),
   };
+  // 시뮬 서버의 /api/info [10/20 H] — notify(웹훅 · Slack 채널 상태) · discovery(fanotify | docker-events) · dnsResolve(ok | off).
+  //   ?notify=off(채널 없음) · ?notify=fail(웹훅 실패 3회) · ?dns=off · ?discovery=fanotify
+  const DOCKER_EVENTS_NOTE = '컨테이너 시작 직후 약 0.1초 안의 동작은 놓칠 수 있습니다';
+  function simNotify() {
+    const mode = params.get('notify'), at = new Date(Date.now() - 4 * 60000).toISOString();
+    if (mode === 'off') return { enabled: false, channels: [], sent: 0, failed: 0, dropped: 0, suppressed: 0 };
+    const fail = mode === 'fail';
+    const chs = [{ name: 'webhook', host: 'hooks.example.test', sent: 12, failed: fail ? 3 : 0, dropped: 0, lastError: fail ? 'HTTP 502 Bad Gateway — 3번 다시 보내도 실패해 포기' : '', lastAt: at, queued: 0 },
+      { name: 'slack', host: 'hooks.slack.com', sent: 12, failed: 0, dropped: 0, lastError: '', lastAt: at, queued: 0 }];
+    return { enabled: true, channels: chs, sent: 24, failed: fail ? 3 : 0, dropped: 0, suppressed: 5, lastError: fail ? chs[0].lastError : '' };
+  }
+  const simInfo = () => { const disc = params.get('discovery') === 'fanotify' ? 'fanotify' : 'docker-events';
+    return { source: 'mock', gadgets: KINDS, enforceKill: true, authRequired: true, gadgetVersion: 'v0.56.1', watchContainers: [], ignoreContainers: ['supplyguard-*'],
+      dnsResolve: params.get('dns') === 'off' ? 'off' : 'ok', discovery: disc, discoveryNote: disc === 'docker-events' ? DOCKER_EVENTS_NOTE : '', notify: simNotify() }; };
+  // 도우미(guide.js)가 쓰는 요약 — /api/info 에서 만든다. live 에 값이 없으면 비워서 「미확인」
+  function serverFromInfo(i) {
+    const n = i && i.notify;
+    return { notify: !n ? undefined : !n.enabled ? 'none' : n.failed ? 'failed' : 'webhook', dnsResolve: !i || !i.dnsResolve ? undefined : i.dnsResolve === 'off' ? 'off' : 'on' };
+  }
+  state.info = simInfo();
+  state.server = state.source === 'live' ? {} : serverFromInfo(state.info);
+  // 모의 지연 · 실패 [10/20 D] — ?latency=ms(첫 로드 스켈레톤 확인) · ?fail=audit,installs,scans,events(그 조회가 한 번 실패 → 「다시 시도」)
+  //   10/20 결정 4: ?fail=이름:N 이면 N 번 실패(자동 재시도 확인) · ?retry=ms 로 자동 재시도 주기(기본 30초)를 줄인다
+  const LATENCY = Math.max(0, Number(params.get('latency')) || 0);
+  const failLeft = new Map((params.get('fail') || '').split(',').map((x) => x.trim()).filter(Boolean).map((x) => { const [k, n] = x.split(':'); return [k, Math.max(1, Number(n) || 1)]; }));
+  const failHit = (name) => { const n = failLeft.get(name); if (!n) return false; if (n <= 1) failLeft.delete(name); else failLeft.set(name, n - 1); return true; };
+  const RETRY_MS = Math.max(500, Number(params.get('retry')) || 30000);
   state.auditSeq = state.audit.reduce((m, a) => Math.max(m, a.id), 0);
   const listeners = new Set();
   const emit = () => { for (const f of listeners) f(); };
@@ -147,7 +183,10 @@
   };
   const rnd = (n) => Math.floor(Math.random() * n);
   function mkEvent(c, tpl, at) {
-    return Object.assign({ timestamp: new Date(at).toISOString(), containerId: c.id, containerName: c.name, imageName: c.image, pid: 1000 + rnd(30000) }, tpl);
+    const e = Object.assign({ timestamp: new Date(at).toISOString(), containerId: c.id, containerName: c.name, imageName: c.image, pid: 1000 + rnd(30000) }, tpl);
+    // dnsTraced [10/20 I]: 이 connect 가 올 때 trace_dns 가 돌고 있었는지 — 도메인 판단이 꺼져 있으면 false(판단 불가, fail-open)
+    if (e.kind === 'connect' && e.dnsTraced === undefined) e.dnsTraced = state.info.dnsResolve !== 'off';
+    return e;
   }
   function bucketOf(t) { return Math.floor(t / 5000) * 5000; }
   function record(v, at) {
@@ -168,7 +207,7 @@
     if (v.matched && v.action === 'kill') {
       if (!state.info.enforceKill || v.dryRun) v.dryRun = true;
       else if (c.killedAt) v.enforced = true; // 이미 격리 중 — 중복 kill 안 함
-      else { v.enforced = true; c.killedAt = at; sim.killed.unshift({ id: c.id, name: c.name, at: new Date(at).toISOString() }); if (!o.silent && !o.session) UI.toast(`${c.name} 격리됨 — ${v.reason}`, { tone: 'danger', key: `kill:${c.name}`, action: { label: '이벤트 보기', go: '#/events?verdict=kill' } }); }
+      else { v.enforced = true; c.killedAt = at; sim.killed.unshift({ id: c.id, name: c.name, at: new Date(at).toISOString() }); srv.collectEvidence(c, at, o.session); if (!o.silent && !o.session) UI.toast(`${c.name} 격리됨 — ${v.reason}`, { tone: 'danger', key: `kill:${c.name}`, action: { label: '이벤트 보기', go: '#/events?verdict=kill' } }); }
     }
     record(v, at);
     state.topology.ingest(v);
@@ -291,21 +330,26 @@
     flushTimer = setInterval(() => { flush(); emit(); }, 250);
   }
   function stop() { clearInterval(tickTimer); clearInterval(flushTimer); clearInterval(statsTimer); }
+  // 끊김 [10/20 D]: 상단 붉은 배너(셸) — 서버는 그동안에도 이벤트를 받는다. 다시 붙으면 끊긴 구간을 채우고(실제 앱: /api/events/recent) 「끊긴 동안 N건을 채웠습니다」
   function disconnect(ms) {
     if (state.source !== 'sim') { live.ws && live.ws.close(); return; } // 실제 모드: 소켓을 끊어 재연결 백오프를 그대로 본다
     if (!state.connected) return;
-    state.connected = false; stop(); emit();
-    UI.toast('실시간 연결이 끊겼습니다 — 재연결 중 (1s → 10s 백오프)', { tone: 'warn' });
-    setTimeout(() => { state.connected = true; start(); emit(); UI.toast('실시간 연결 복구', { tone: 'ok' }); }, ms || 3000);
+    const from = Date.now();
+    state.connected = false; state.backfill = null; stop(); emit();
+    setTimeout(() => {
+      const to = Date.now(); let n = 0;
+      for (let t = from; t < to; t += sim.interval) for (const c of sim.containers) if (!c.killedAt && rnd(3) === 0) { pipeline(c, mkEvent(c, c.normal[rnd(c.normal.length)], t), t, { silent: true }); n++; }
+      flush(); state.connected = true; state.backfill = { n, at: new Date(to).toISOString() }; start(); emit();
+    }, ms || 3000);
   }
 
   // ── 실제 백엔드 (frontend/src/hooks/useEventStream.ts 와 같은 동작) ──
   const live = { ws: null, retry: null, attempt: 0, closed: false };
   async function fetchJSON(path, init) {
     const headers = new Headers((init && init.headers) || {});
-    if (state.token && init && init.method && init.method !== 'GET') headers.set('Authorization', `Bearer ${state.token}`);
-    const res = await fetch(state.apiBase + path, Object.assign({}, init, { headers }));
-    if (!res.ok) { let msg = res.statusText; try { msg = (await res.json()).error || msg; } catch { /* 본문 없음 */ } throw new Error(`${res.status} · ${msg}`); }
+    // 쿠키 세션 [10/20 A] — 목업과 백엔드를 같은 호스트 이름(127.0.0.1)으로 열어야 쿠키가 붙는다
+    const res = await fetch(state.apiBase + path, Object.assign({ credentials: 'include' }, init, { headers }));
+    if (!res.ok) { let msg = res.statusText; try { msg = (await res.json()).error || msg; } catch { /* 본문 없음 */ } throw Object.assign(new Error(`${res.status} · ${msg}`), { status: res.status }); }
     if (res.status === 204) return null;
     return (res.headers.get('Content-Type') || '').includes('json') ? res.json() : res.text();
   }
@@ -313,8 +357,8 @@
     live.closed = false;
     const url = state.apiBase.replace(/^http/, 'ws') + '/ws/events';
     const ws = new WebSocket(url); live.ws = ws;
-    ws.onopen = () => { live.attempt = 0; state.connected = true; state.liveError = ''; emit(); };
-    ws.onclose = () => { state.connected = false; emit(); if (live.closed) return; const delay = Math.min(1000 * 2 ** live.attempt, 10000); live.attempt++; live.retry = setTimeout(liveConnect, delay); };
+    ws.onopen = () => { live.attempt = 0; state.connected = true; state.liveError = ''; emit(); if (live.wasDown) { live.wasDown = false; liveBackfill(); } };
+    ws.onclose = () => { state.connected = false; if (state.eventsReady) live.wasDown = true; emit(); if (live.closed) return; const delay = Math.min(1000 * 2 ** live.attempt, 10000); live.attempt++; live.retry = setTimeout(liveConnect, delay); };
     ws.onerror = () => { state.liveError = `${url} 연결 실패 — 백엔드가 떠 있고 ALLOWED_ORIGINS 에 ${location.origin} 이 있는지 확인`; };
     ws.onmessage = (e) => {
       let msg; try { msg = JSON.parse(e.data); } catch { return; }
@@ -322,29 +366,53 @@
       else if (msg.type === 'stats') state.stats = msg.data;
     };
   }
+  // 다시 붙으면 끊긴 구간을 REST 로 채운다 — 이미 받은 것(시각 · 컨테이너 · 종류 · 상세)은 건너뛴다
+  const vKey = (v) => `${v.event.timestamp}|${v.event.containerId}|${v.event.kind}|${detailOf(v.event)}`;
+  function liveBackfill() {
+    const last = state.verdicts.length ? Date.parse(state.verdicts[0].event.timestamp) : 0;
+    fetchJSON('/api/events/recent?limit=500').then((recent) => {
+      const have = new Set(state.verdicts.map(vKey));
+      const gap = recent.filter((v) => Date.parse(v.event.timestamp) >= last && !have.has(vKey(v)));
+      [...gap].reverse().forEach((v) => state.topology.ingest(v));
+      state.verdicts = gap.map((v) => Object.assign({ key: ++sim.seq }, v)).concat(state.verdicts).slice(0, 500);
+      state.backfill = { n: gap.length, at: new Date().toISOString() }; emit();
+    }).catch(() => { /* 다음 재연결에서 다시 */ });
+  }
   async function liveStart() {
-    state.verdicts = []; state.stats = null; state.unseen = 0; state.topology = new TopologyStore(); state.liveError = '';
+    state.verdicts = []; state.stats = null; state.unseen = 0; state.topology = new TopologyStore(); state.liveError = ''; state.eventsReady = false; state.eventsError = null;
     start(); liveConnect();
     try {
       const [info, recent, stats, rules] = await Promise.all([fetchJSON('/api/info'), fetchJSON('/api/events/recent?limit=500'), fetchJSON('/api/stats'), fetchJSON('/api/policies')]);
-      state.info = info; state.stats = stats; state.rules = rules || [];
+      state.info = info; state.server = serverFromInfo(info); state.stats = stats; state.rules = rules || [];
       [...recent].reverse().forEach((v) => state.topology.ingest(v));
-      state.verdicts = recent.map((v) => Object.assign({ key: ++sim.seq }, v));
+      state.verdicts = recent.map((v) => Object.assign({ key: ++sim.seq }, v)); state.eventsReady = true;
       emit(); toast(`실제 백엔드 연결: ${state.apiBase} (${info.source} 소스 · IG ${info.gadgetVersion})`, { tone: 'ok' });
-    } catch (e) { state.liveError = `${state.apiBase} REST 실패 — ${e.message}`; emit(); toast(state.liveError, { tone: 'danger' }); }
+    } catch (e) { state.liveError = `${state.apiBase} REST 실패 — ${e.message}`; state.eventsError = e; emit(); toast(state.liveError, { tone: 'danger' }); }
+  }
+  // 이벤트 첫 로드 [10/20 D] — sim 은 ?latency=ms 만큼 늦게, ?fail=events 면 한 번 실패(「다시 시도」로 다시 부른다)
+  // quiet [10/20 결정 4]: 자동 재시도 — 스켈레톤으로 바꾸지 않고, 실패하면 오류를 새로(다음 주기), 성공하면 목록
+  function loadEvents(quiet) {
+    if (state.source === 'live') { liveStop(); liveStart(); return; }
+    if (!quiet) { state.eventsError = null; state.eventsReady = false; emit(); }
+    setTimeout(() => {
+      if (failHit('events')) { state.eventsError = httpErr(503, '모의 오류 — 이벤트 서버가 응답하지 않습니다'); emit(); return; }
+      state.eventsError = null; seed(); state.eventsReady = true; start(); emit();
+    }, LATENCY);
   }
   function liveStop() { live.closed = true; clearTimeout(live.retry); if (live.ws) live.ws.close(); live.ws = null; }
   function setSource(source, apiBase) {
     try { localStorage.setItem('supplyguard.mock.source', source); if (apiBase) localStorage.setItem('supplyguard.mock.api', apiBase); } catch { /* 저장소 차단 */ }
     stop(); liveStop();
     state.source = source; if (apiBase) state.apiBase = apiBase.replace(/\/$/, '');
+    if (source !== 'live') state.info = simInfo();
+    state.server = source === 'live' ? {} : serverFromInfo(state.info);
     if (source === 'live') { liveStart(); }
     else {
       state.verdicts = []; state.stats = null; state.unseen = 0; state.topology = new TopologyStore(); state.liveError = '';
-      state.rules = JSON.parse(JSON.stringify(M.rules)); state.info = { source: 'mock', gadgets: KINDS, enforceKill: true, authRequired: true, gadgetVersion: 'v0.56.1', watchContainers: [], ignoreContainers: ['supplyguard-*'] };
+      state.rules = JSON.parse(JSON.stringify(M.rules));
       sim.total = 0; sim.violations = 0; sim.killed = []; sim.perContainer = new Map(); sim.recent = []; sim.trend = []; sim.queue = [];
       for (const c of sim.containers) { c.killedAt = 0; c.blockedImage = false; c.id = M.hexId(Math.random, 64); }
-      seed(); state.connected = true; start(); toast('내장 시뮬레이션으로 전환', { tone: 'info' });
+      seed(); state.eventsReady = true; state.eventsError = null; state.connected = true; start(); toast('내장 시뮬레이션으로 전환', { tone: 'info' });
     }
     emit();
   }
@@ -401,7 +469,7 @@
       const blocked = (list, value) => state.blocklist[list].some((x) => x.value === value);
       const hostIn = (pat, host) => { pat = pat.toLowerCase().replace(/\.$/, ''); return host === pat || host.endsWith('.' + pat); };
       if (decision === 'malicious') {
-        if (c.source === 'scan') { if (!blocked('packages', c.package)) add({ op: 'block', list: 'packages', value: c.package }); } // 공급망 검사에서 올린 것(10/16)
+        if (c.source === 'scan') { for (const k of c.packages || [c.package]) if (!blocked('packages', k)) add({ op: 'block', list: 'packages', value: k }); } // 공급망 검사에서 올린 것(10/16 · 10/20 여러 패키지)
         else if (c.source === 'install') {
           const s = state.installs.find((x) => x.id === c.installId);
           const keys = s ? s.packages.map((p) => M.pkgKey(s.manager, p)) : [c.package];
@@ -446,9 +514,9 @@
       if (c.state !== 'open') throw httpErr(409, '이미 판정된 건');
       const decision = body && body.decision;
       if (!['malicious', 'false_positive'].includes(decision)) throw httpErr(400, 'decision 은 malicious | false_positive');
-      c.decision = decision; c.state = 'decided'; c.decidedAt = iso(at); c.decidedBy = ACTOR; c.note = (body && body.note) || '';
+      c.decision = decision; c.state = 'decided'; c.decidedAt = iso(at); c.decidedBy = actor(); c.note = (body && body.note) || '';
       const { changes, notes } = srv.proposalChanges(c, decision);
-      const p = { id: nextId('prop', 'prop'), caseId: c.id, decision, state: 'draft', createdAt: c.decidedAt, createdBy: ACTOR, appliedAt: null, appliedBy: null, changes, notes };
+      const p = { id: nextId('prop', 'prop'), caseId: c.id, decision, state: 'draft', createdAt: c.decidedAt, createdBy: actor(), appliedAt: null, appliedBy: null, changes, notes };
       state.proposals.unshift(p); c.proposalId = p.id;
       return { case: clone(c), proposal: clone(p) };
     },
@@ -511,6 +579,10 @@
       if (gd) { sc.risk = gd.risk; sc.findings = gd.findings.map((f) => Object.assign({}, f)); sc.files = Object.assign({}, gd.files); }
       else if (!isDeps) sc.risk = { score: 0, label: 'no_risks_detected' };
       if (isDeps) sc.vulns = F.osv['requirements.txt'].map((v) => Object.assign({}, v));
+      // 패키지 목록(차단 후보, W4 · 10/20 G) — 저장소 · 파일 검사만. 잠금 파일마다 한 행(같은 패키지가 여러 번 나올 수 있다)
+      const pk = isDeps ? F.packages['requirements.txt'] : t.kind === 'repo' && t.name.toLowerCase() === 'requests' ? F.packages['repo:requests'] : null;
+      sc.packages = pk ? pk.map((x) => Object.assign({}, x)) : [];
+      if (t.kind === 'repo' && pk) sc.vulns = F.osv['repo:requests'].map((v) => Object.assign({}, v));
       const threats = sc.findings.filter((f) => f.category === 'threat').length;
       sc.verdict = threats || (sc.risk && sc.risk.score >= 5) ? 'malicious' : sc.vulns.length ? 'vulnerable' : 'clean';
       sc.status = 'done'; sc.finishedAt = iso();
@@ -518,21 +590,35 @@
     scanView(sc, full) {
       const v = clone(sc);
       Object.assign(v, { threats: sc.findings.filter((f) => f.category === 'threat').length, capabilities: sc.findings.filter((f) => f.category === 'capability').length, vulnCount: sc.vulns.reduce((n, x) => n + x.count, 0), vulnMax: sc.vulns.reduce((m, x) => Math.max(m, Number(x.maxSeverity)), 0) || null });
-      if (!full) { delete v.findings; delete v.files; delete v.vulns; }
+      if (!full) { delete v.findings; delete v.files; delete v.vulns; delete v.packages; }
+      else if (!v.packages) v.packages = [];
       return v;
     },
     // 차단 목록에 올리기: 공급망 검사 건(source scan)을 열고 「악성」으로 판정 → 패키지 차단 제안(기존 흐름: 미리보기 → 적용)
-    scanBlock(id) {
+    // body.packages [W4 · 10/20 G]: 저장소 · 파일 검사 결과에서 고른 패키지 [{manager?, name, version?}] — 비우면 패키지 검사의 그 패키지(지금처럼 한 번에)
+    scanBlock(id, body, reason) {
       const sc = state.scans.find((x) => x.id === id); if (!sc) throw httpErr(404, '검사 없음');
-      if (sc.target.kind !== 'package') throw httpErr(400, '패키지 이름으로 검사한 것만 차단 목록에 올릴 수 있습니다');
-      if (!sc.caseId) {
-        const c = { id: nextId('case', 'case'), source: 'scan', installId: null, scanId: sc.id, container: '', label: sc.target.label, image: '', package: M.pkgKey(sc.target.manager, sc.target.name),
-          openedAt: iso(), level: sc.verdict === 'malicious' ? 'killed' : 'alert', violations: sc.findings.filter((f) => f.category === 'threat').length, ruleIds: [...new Set(sc.findings.filter((f) => f.category === 'threat').map((f) => f.rule))], state: 'open', decision: 'pending', decidedAt: null, decidedBy: null, note: '', proposalId: null, closedAt: null };
-        state.cases.unshift(c); sc.caseId = c.id;
+      const picked = body && Array.isArray(body.packages) && body.packages.length ? body.packages : null;
+      if (!picked && sc.target.kind !== 'package') throw httpErr(400, '저장소 · 파일 검사는 차단할 패키지를 고르세요(packages)');
+      let keys;
+      if (picked) {
+        keys = [];
+        for (const p of picked) {
+          const hit = (sc.packages || []).find((x) => x.name === p.name && (!p.manager || x.manager === p.manager));
+          const mgr = p.manager || (hit && hit.manager); if (!hit || !mgr) throw httpErr(400, `검사 결과에 없거나 차단 목록이 다루지 않는 패키지: ${p.name}`);
+          const k = M.pkgKey(mgr, p.name); if (!keys.includes(k)) keys.push(k);
+        }
+      } else keys = [M.pkgKey(sc.target.manager, sc.target.name)];
+      // 고른 패키지마다 새 건(공급망 검사 건 하나에 패키지 여러 개) — 같은 묶음을 다시 올리면 열린 제안을 돌려준다
+      const sig = keys.join(' ');
+      let c = state.cases.find((x) => x.source === 'scan' && x.scanId === sc.id && (x.packages || [x.package]).join(' ') === sig);
+      if (!c) {
+        c = { id: nextId('case', 'case'), source: 'scan', installId: null, scanId: sc.id, container: '', label: picked ? `${sc.target.label} · 패키지 ${keys.length}개` : sc.target.label, image: '', package: keys[0], packages: keys,
+          openedAt: iso(), level: sc.verdict === 'malicious' ? 'killed' : 'alert', violations: picked ? keys.length : sc.findings.filter((f) => f.category === 'threat').length, ruleIds: picked ? ['osv-vulnerable'] : [...new Set(sc.findings.filter((f) => f.category === 'threat').map((f) => f.rule))], state: 'open', decision: 'pending', decidedAt: null, decidedBy: null, note: '', proposalId: null, closedAt: null };
+        state.cases.unshift(c); if (!picked) sc.caseId = c.id;
       }
-      const c = srv.caseById(sc.caseId);
       if (c.proposalId) return { proposalId: c.proposalId, caseId: c.id };
-      const { proposal } = srv.decide(c.id, { decision: 'malicious', note: `공급망 검사 ${sc.id} — 위험 점수 ${sc.risk ? sc.risk.score : '—'}` });
+      const { proposal } = srv.decide(c.id, { decision: 'malicious', note: reason || (picked ? `공급망 검사 ${sc.id} — 고른 패키지 ${keys.join(', ')}` : `공급망 검사 ${sc.id} — 위험 점수 ${sc.risk ? sc.risk.score : '—'}`) });
       return { proposalId: proposal.id, caseId: c.id };
     },
     // eBPF 수집 종합(10/16) — GET /api/summary?range=1h|24h|7d. 저장된 기록(감사 로그 · 세션 · 건 · 차단 목록) + 1분 단위 수집량
@@ -579,34 +665,92 @@
       return parts.join(' · ');
     },
     // 적용 — 한 번에: 차단 목록 추가 · 규칙 필드에 값 추가 · 엔진 리로드(state.rules 교체) · Change 기록 · 제안 applied · 건 closed
-    apply(id, at) {
+    // reason [10/20 B]: 확인 대화상자의 사유(선택) — 변경 이력(Change.reason)에 남는다. 계약 추가(안): POST …/apply {reason?}
+    apply(id, at, reason) {
       const p = state.proposals.find((x) => x.id === id); if (!p) throw httpErr(404, '제안 없음');
       if (p.state !== 'draft') throw httpErr(409, '초안이 아닌 제안');
       const t = iso(at), c = srv.caseById(p.caseId);
       state.rules = srv.rulesWith(p.changes);
-      for (const ch of p.changes) if (ch.op === 'block' && !state.blocklist[ch.list].some((x) => x.value === ch.value)) state.blocklist[ch.list].push({ value: ch.value, caseId: p.caseId, at: t, by: ACTOR });
-      const chg = { id: nextId('chg', 'chg'), at: t, by: ACTOR, kind: 'proposal_applied', caseId: p.caseId, proposalId: p.id, summary: srv.summary(p.changes) };
+      for (const ch of p.changes) if (ch.op === 'block' && !state.blocklist[ch.list].some((x) => x.value === ch.value)) state.blocklist[ch.list].push({ value: ch.value, caseId: p.caseId, at: t, by: actor() });
+      const chg = { id: nextId('chg', 'chg'), at: t, by: actor(), kind: 'proposal_applied', caseId: p.caseId, proposalId: p.id, summary: srv.summary(p.changes), reason: reason || '' };
       state.changes.unshift(chg);
-      p.state = 'applied'; p.appliedAt = t; p.appliedBy = ACTOR;
+      p.state = 'applied'; p.appliedAt = t; p.appliedBy = actor();
       if (c) { c.state = 'closed'; c.closedAt = t; }
       return { proposal: clone(p), case: c ? clone(c) : null, change: clone(chg) };
     },
-    discard(id) {
+    discard(id, reason) {
       const p = state.proposals.find((x) => x.id === id); if (!p) throw httpErr(404, '제안 없음');
       if (p.state !== 'draft') throw httpErr(409, '초안이 아닌 제안');
-      const c = srv.caseById(p.caseId); p.state = 'discarded';
+      const c = srv.caseById(p.caseId); p.state = 'discarded'; p.reason = reason || '';
       if (c) { c.state = 'closed'; c.closedAt = iso(); }
       return { proposal: clone(p), case: c ? clone(c) : null };
     },
-    unblock(list, value) {
+    unblock(list, value, reason) {
       const arr = state.blocklist[list]; if (!arr) throw httpErr(400, 'list 는 packages | images | hosts');
       const i = arr.findIndex((x) => x.value === value); if (i < 0) throw httpErr(404, '차단 목록에 없음');
       const [entry] = arr.splice(i, 1);
       if (list === 'hosts') { const r = state.rules.find((x) => x.id === M.SYSTEM_RULE); if (r) r.denyHosts = (r.denyHosts || []).filter((x) => x !== value); }
       if (list === 'images') for (const c of sim.containers) if (c.image === value) c.blockedImage = false; // 다음 재기동부터 다시 뜬다
-      state.changes.unshift({ id: nextId('chg', 'chg'), at: iso(), by: ACTOR, kind: 'blocklist_remove', caseId: entry.caseId, proposalId: null, summary: `${LIST_LABEL[list]} ${value} 차단 해제` });
+      state.changes.unshift({ id: nextId('chg', 'chg'), at: iso(), by: actor(), kind: 'blocklist_remove', caseId: entry.caseId, proposalId: null, summary: `${LIST_LABEL[list]} ${value} 차단 해제`, reason: reason || '' });
     },
-    recordChange(kind, summary) { state.changes.unshift({ id: nextId('chg', 'chg'), at: iso(), by: ACTOR, kind, caseId: null, proposalId: null, summary }); },
+    recordChange(kind, summary) { state.changes.unshift({ id: nextId('chg', 'chg'), at: iso(), by: actor(), kind, caseId: null, proposalId: null, summary }); },
+    // ── 영향 미리 계산 [10/20 B] — 확인 대화상자의 「함께 일어나는 일」. 모의 서버 상태만 읽는다(바꾸지 않음) ──
+    sameImage(image) { return sim.containers.filter((x) => x.image === image).length; },
+    // 판정 미리보기 [10/20 결정 7] — POST /api/cases/{id}/preview {decision} → {changes, effects:[{kind, text}]}. 상태를 바꾸지 않는다(판정 전 「함께 일어나는 일」)
+    //   kind: proposal(만들 제안 초안) · image(같은 이미지 컨테이너) · case(건 상태 · 처리자) · note(자동으로 못 만든 것 안내). 열린 건만(판정된 건 409), decision 이 틀리면 400 — decide 와 같은 규칙
+    casePreview(id, body) {
+      const c = srv.caseById(id);
+      if (!c) throw httpErr(404, '건 없음');
+      if (c.state !== 'open') throw httpErr(409, '이미 판정된 건');
+      const decision = body && body.decision;
+      if (!['malicious', 'false_positive'].includes(decision)) throw httpErr(400, 'decision 은 malicious | false_positive');
+      const { changes, notes } = srv.proposalChanges(c, decision);
+      const effects = [], add = (kind, text) => effects.push({ kind, text });
+      const blocks = changes.filter((x) => x.op === 'block'), ex = changes.filter((x) => x.op === 'except');
+      if (decision === 'malicious') add('proposal', blocks.length ? `차단 제안 초안 — ${blocks.map((x) => `${LIST_LABEL[x.list]} ${x.value}`).join(' · ')} (아직 차단 목록에 넣지 않음, 정책에서 미리보기 후 적용)` : '새로 차단할 대상이 없습니다(이미 차단 목록에 있음) — 적용하면 건만 종결');
+      else add('proposal', ex.length ? `예외 제안 초안 — ${ex.map((x) => `${x.ruleId} ${x.field} += ${x.value}`).join(' · ')} (정책에서 미리보기 후 적용)` : '자동 예외가 없습니다 — 정책 탭에서 직접 고칩니다');
+      const img = blocks.find((x) => x.list === 'images');
+      if (img) add('image', `적용하면 같은 이미지 컨테이너 ${srv.sameImage(img.value)}개가 다음 시작 때 격리됩니다`);
+      add('case', `건 ${c.id} 판정 대기 → ${decision === 'malicious' ? '악성' : '오탐'} (판정 · 변경 이력에 처리자 ${actor()})`);
+      for (const n of notes) add('note', n);
+      return { changes: clone(changes), effects };
+    },
+    impactApply(p, pv) {
+      const out = [], blocks = p.changes.filter((x) => x.op === 'block'), ex = p.changes.filter((x) => x.op === 'except');
+      if (blocks.length) { const by = (l) => blocks.filter((x) => x.list === l).length; out.push(`차단 목록 +${blocks.length} (${['packages', 'images', 'hosts'].filter(by).map((l) => `${LIST_LABEL[l]} ${by(l)}`).join(' · ')})`); }
+      for (const b of blocks.filter((x) => x.list === 'packages')) out.push(`다음 sg-install 부터 ${b.value} 는 설치 전 거부(컨테이너를 띄우지 않음)`);
+      for (const b of blocks.filter((x) => x.list === 'images')) out.push(`같은 이미지 컨테이너 ${srv.sameImage(b.value)}개 다음 시작 때 격리 (${b.value})`);
+      if (blocks.some((x) => x.list === 'hosts')) out.push(`도메인 차단은 시스템 규칙 ${M.SYSTEM_RULE} 로 바로 집행(런타임 · 설치 모두)`);
+      if (ex.length) out.push(`규칙 예외 +${ex.length} (${[...new Set(ex.map((x) => x.ruleId))].join(', ')}) — 엔진에 바로 반영`);
+      if (pv && !pv.error) out.push(`과거 위반 ${pv.changed.length}건의 탐지 결과가 바뀜 (통과로 ${pv.counts.toNormal} · 차단으로 ${pv.counts.toBlocked})`);
+      out.push(`건 ${p.caseId} 종결 · 변경 이력에 남음`);
+      return out;
+    },
+    impactUnblock(list, value) {
+      if (list === 'packages') return [`다음 설치부터 ${value} 를 다시 설치할 수 있습니다(설치 검사는 그대로 감시)`, '변경 이력에 「차단 해제」로 남습니다'];
+      if (list === 'images') return [`같은 이미지 컨테이너 ${srv.sameImage(value)}개가 다음 재기동부터 다시 뜹니다`, '변경 이력에 「차단 해제」로 남습니다'];
+      return [`시스템 규칙 ${M.SYSTEM_RULE} 에서 ${value} 를 빼 바로 통신을 허용합니다`, '변경 이력에 「차단 해제」로 남습니다'];
+    },
+    // ── 새 기본 규칙 [10/20 F] — GET /api/policies/defaults: 기본 정책 파일(M.defaultRules)과 지금 규칙 비교. 설명 · 꺼짐 · dryRun 은 사용자 값이라 비교하지 않는다 ──
+    policyDefaults() {
+      const norm = (r) => { const x = clone(r); delete x.description; delete x.disabled; delete x.dryRun; return JSON.stringify(Object.keys(x).sort().reduce((o, k) => { o[k] = x[k]; return o; }, {})); };
+      const cur = new Map(state.rules.map((r) => [r.id, r]));
+      const missing = [], differs = [];
+      for (const d of M.defaultRules) { const c = cur.get(d.id); if (!c) missing.push(clone(d)); else if (norm(c) !== norm(d)) differs.push({ id: d.id, default: clone(d), current: clone(c) }); }
+      return { missing, differs };
+    },
+    // ── 증거 [10/20 I] — kill 직전에 모은 로그 · docker diff · docker top (GET /api/evidence?container=) ──
+    collectEvidence(c, at, session) {
+      const tpl = session ? M.evidenceTemplate.install(`${session.manager} ${session.packages.join(' ')}`) : M.evidenceTemplate.runtime();
+      const ev = Object.assign({ id: `ev-${String(state.evidence.size + 1).padStart(4, '0')}-${Math.floor(at / 1000)}`, containerId: c.id, containerName: c.name, image: c.image, collectedAt: iso(at) }, tpl);
+      state.evidence.set(c.name, [ev].concat(state.evidence.get(c.name) || []));
+    },
+    // ── 알림 테스트 발송 [10/20 H] — POST /api/notify/test → 202. 발송은 비동기라 1~2초 뒤 /api/info 의 sent · failed 를 다시 읽는다 ──
+    notifyTest() {
+      const n = state.info.notify; if (!n || !n.enabled) throw httpErr(409, '알림 채널이 없습니다 — NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL 을 설정하세요');
+      setTimeout(() => { for (const ch of n.channels) { if (ch.lastError) { ch.failed++; n.failed++; } else { ch.sent++; n.sent++; ch.lastAt = iso(); } } state.server = serverFromInfo(state.info); emit(); }, 900);
+      return clone(n);
+    },
     blocklistCheck(manager, pkg) {
       const value = M.pkgKey(manager, pkg); const e = state.blocklist.packages.find((x) => x.value === value);
       return { blocked: !!e, value, caseId: e ? e.caseId : null };
@@ -623,6 +767,7 @@
     srv.syncInstallCase(s);
     const c = srv.caseById(s.caseId); if (!c) return;
     c.openedAt = s.containerExitedAt || s.startedAt;
+    if (M.statusOf(s) === 'isolated') srv.collectEvidence({ id: s.containerId, name: s.container, image: s.image }, Date.parse(s.containerExitedAt || s.startedAt), s); // 시드 격리 세션의 증거
     if (!s.seedDecided) return;
     const t = Date.parse(s.startedAt) + s.seedDecided.afterMins * 60000;
     const { proposal } = srv.decide(c.id, { decision: s.seedDecided.decision, note: '' }, t);
@@ -637,36 +782,64 @@
   //   화면 (쓰기는 ADMIN_TOKEN — mock 소스는 토큰 없이)
   //     GET  /api/installs?status&manager&limit · GET /api/installs/{id}
   //     GET  /api/cases?state&source · GET /api/cases/{id} · POST /api/cases/{id}/decide {decision, note} → {case, proposal} (판정된 건 409)
+  //     POST /api/cases/{id}/preview {decision} → {changes, effects:[{kind, text}]} — 판정 전 「함께 일어나는 일」, 상태 안 바뀜(판정된 건 409 · 조회자 허용) [10/20 결정 7]
+  //     POST /api/proposals/{id}/apply {reason?} · …/discard {reason?} · DELETE /api/blocklist/{list}/{value} {reason?} → 변경 이력 Change.reason [10/20 결정 7 — 이름 확인]
   //     GET  /api/proposals?state · POST /api/proposals/{id}/preview → {evaluated, changed[], counts} · POST …/apply · POST …/discard (draft 아니면 409)
   //     GET  /api/blocklist · DELETE /api/blocklist/{list}/{value} · GET /api/changes?limit · GET /api/osv?ecosystem&name
   //   결과 미확인: 컨테이너가 끝난 뒤 10분 안에 finish 보고가 없으면 백엔드가 unknown 으로 둔다
   // 실제 백엔드 모드에는 아직 이 API들이 없다 → 「백엔드 미지원」
   const installView = (s) => { const v = Object.assign(clone(s), { status: M.statusOf(s), violationCount: s.violations.reduce((n, x) => n + (x.count || 1), 0) }); delete v.seedDecided; return v; };
   const unsupported = (what) => Promise.reject(Object.assign(new Error(`백엔드 미지원 — ${what || '설치 세션 API(GET /api/installs)'}가 아직 백엔드에 없습니다`), { unsupported: true }));
-  const simOnly = (what, fn) => (...args) => (state.source === 'live' ? unsupported(what) : Promise.resolve().then(() => fn(...args)));
+  // 모의 서버 응답 [10/20]: ?latency 만큼 늦게 · ?fail 에 있는 이름은 한 번 실패 · 조회자의 쓰기는 403(실제 백엔드 auth 미들웨어와 같은 문구)
+  const simCall = (name, fn, write) => (...args) => {
+    const run = () => {
+      if (failHit(name)) throw httpErr(503, '모의 오류 — 서버가 응답하지 않습니다');
+      if (write && state.auth && state.auth.user && state.auth.user.role !== 'admin') throw httpErr(403, '조회자는 읽기만 할 수 있습니다');
+      return fn(...args);
+    };
+    // 지연이 없으면 예전처럼 마이크로태스크로 바로 답한다(화면 반응 · 기존 회귀의 타이밍 유지)
+    return LATENCY ? new Promise((ok, no) => setTimeout(() => { try { ok(run()); } catch (e) { no(e); } }, LATENCY)) : Promise.resolve().then(run);
+  };
+  const simOnly = (what, fn, name, write) => { const f = simCall(name || '', fn, write); return (...args) => (state.source === 'live' ? unsupported(what) : f(...args)); };
+  const WRITE = true;
   const osvCache = new Map();
   // OSV 조회 이름: 매니저 → 생태계, 패키지는 정규화(로컬 디렉터리 basename · 버전 표기 제거)
   const osvQuery = (manager, pkg) => ({ ecosystem: M.ECOSYSTEM[manager] || manager, name: M.pkgName(pkg) });
   const api = {
-    installs: simOnly(null, (p) => { const q = p || {}; return state.installs.map(installView).filter((s) => (!q.status || s.status === q.status) && (!q.manager || s.manager === q.manager)).slice(0, Math.min(q.limit || 50, 500)); }), // 최신순, 기본 50 · 상한 500
+    installs: simOnly(null, (p) => { const q = p || {}; return state.installs.map(installView).filter((s) => (!q.status || s.status === q.status) && (!q.manager || s.manager === q.manager)).slice(0, Math.min(q.limit || 50, 500)); }, 'installs'), // 최신순, 기본 50 · 상한 500
     install: simOnly(null, (id) => { const s = state.installs.find((x) => x.id === id); if (!s) throw httpErr(404, '세션 없음'); return installView(s); }),
     blocklistCheck: simOnly('차단 확인 API(GET /api/blocklist/check)', (p) => srv.blocklistCheck(p.manager, p.package)),
     installsRefused: simOnly('거부 보고 API(POST /api/installs/refused)', (body) => { const r = srv.installsRefused(body); emit(); return r; }),
     cases: simOnly('판정 API(GET /api/cases)', (p) => { const q = p || {}; return clone(state.cases.filter((c) => (!q.state || c.state === q.state) && (!q.source || c.source === q.source))); }),
     case: simOnly('판정 API(GET /api/cases)', (id) => { const c = srv.caseById(id); if (!c) throw httpErr(404, '건 없음'); return clone(c); }),
-    decide: simOnly('판정 API(POST /api/cases/{id}/decide)', (id, body) => { const r = srv.decide(id, body); emit(); return r; }),
+    decide: simOnly('판정 API(POST /api/cases/{id}/decide)', (id, body) => { const r = srv.decide(id, body); emit(); return r; }, 'decide', WRITE),
     proposals: simOnly('제안 API(GET /api/proposals)', (p) => { const q = p || {}; return clone(state.proposals.filter((x) => !q.state || x.state === q.state)); }),
     preview: simOnly('제안 API(POST /api/proposals/{id}/preview)', (id) => srv.preview(id)),
-    scans: simOnly('공급망 검사 API(GET /api/scans)', () => state.scans.map((x) => srv.scanView(x, false))),
+    scans: simOnly('공급망 검사 API(GET /api/scans)', () => state.scans.map((x) => srv.scanView(x, false)), 'scans'),
     scan: simOnly('공급망 검사 API(GET /api/scans/{id})', (id) => { const x = state.scans.find((y) => y.id === id); if (!x) throw httpErr(404, '검사 없음'); return srv.scanView(x, true); }),
-    startScan: simOnly('공급망 검사 API(POST /api/scans)', (body) => { const r = srv.scanStart(body); emit(); return r; }),
-    scanBlock: simOnly('공급망 검사 API(POST /api/scans/{id}/block)', (id) => { const r = srv.scanBlock(id); emit(); return r; }),
+    startScan: simOnly('공급망 검사 API(POST /api/scans)', (body) => { const r = srv.scanStart(body); emit(); return r; }, 'startScan', WRITE),
+    // body = {packages:[{manager?, name, version?}]} (저장소 · 파일 검사) · 없으면 패키지 검사의 그 패키지. reason 은 계약 추가(안)
+    scanBlock: simOnly('공급망 검사 API(POST /api/scans/{id}/block)', (id, body, reason) => { const r = srv.scanBlock(id, body, reason); emit(); return r; }, 'scanBlock', WRITE),
     summary: (range) => (state.source === 'live' ? fetchJSON(`/api/summary?range=${encodeURIComponent(range || '24h')}`) : Promise.resolve().then(() => srv.overview(range || '24h'))),
     previewRule: (rule) => (state.source === 'live' ? fetchJSON('/api/policies/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule) }) : Promise.resolve().then(() => srv.previewRule(rule))),
-    apply: simOnly('제안 API(POST /api/proposals/{id}/apply)', (id) => { const r = srv.apply(id); emit(); return r; }),
-    discard: simOnly('제안 API(POST /api/proposals/{id}/discard)', (id) => { const r = srv.discard(id); emit(); return r; }),
+    apply: simOnly('제안 API(POST /api/proposals/{id}/apply)', (id, body) => { const r = srv.apply(id, undefined, body && body.reason); emit(); return r; }, 'apply', WRITE),
+    discard: simOnly('제안 API(POST /api/proposals/{id}/discard)', (id, body) => { const r = srv.discard(id, body && body.reason); emit(); return r; }, 'discard', WRITE),
     blocklist: simOnly('차단 목록 API(GET /api/blocklist)', () => clone(state.blocklist)),
-    unblock: simOnly('차단 목록 API(DELETE /api/blocklist)', (list, value) => { srv.unblock(list, value); emit(); return null; }),
+    unblock: simOnly('차단 목록 API(DELETE /api/blocklist)', (list, value, body) => { srv.unblock(list, value, body && body.reason); emit(); return null; }, 'unblock', WRITE),
+    // 10/20 2차 시안 — 새 기본 규칙 · 증거 · 알림 테스트 · 서버 정보 (실제 백엔드에 있는 경로)
+    policyDefaults: () => (state.source === 'live' ? fetchJSON('/api/policies/defaults') : simCall('defaults', () => srv.policyDefaults())()),
+    evidence: (container) => (state.source === 'live' ? fetchJSON(`/api/evidence?container=${encodeURIComponent(container)}`) : simCall('evidence', () => clone(state.evidence.get(container) || []))()),
+    notifyTest: () => (state.source === 'live' ? fetchJSON('/api/notify/test', { method: 'POST' }) : simCall('notifyTest', () => srv.notifyTest(), WRITE)()),
+    info: () => (state.source === 'live' ? fetchJSON('/api/info').then((i) => { state.info = i; state.server = serverFromInfo(i); emit(); return i; }) : Promise.resolve(clone(state.info))),
+    // 판정 미리보기 [10/20 결정 7] — 서버가 계산한다(화면 계산 impactDecide 를 모의 서버로 옮김). 조회자도 부를 수 있다(읽기)
+    //   실제 백엔드에 아직 없으면(404 · 405) 안내 한 줄로 대신한다
+    casePreview: (id, body) => (state.source === 'live'
+      ? fetchJSON(`/api/cases/${encodeURIComponent(id)}/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+        .catch((e) => (e.status === 404 || e.status === 405 ? { changes: [], effects: [{ kind: 'note', text: '판정하면 제안 초안이 생깁니다 — 정책 화면에서 미리보기 후 적용합니다(백엔드에 판정 미리보기 API 가 아직 없음)' }] } : Promise.reject(e)))
+      : simCall('casePreview', () => srv.casePreview(id, body))()),
+    // 적용 · 해제 확인의 영향 — 제안 미리보기 결과와 차단 목록으로 만든다(sim)
+    impactApply: (p, pv) => Promise.resolve().then(() => srv.impactApply(p, pv)),
+    impactUnblock: (l, v) => Promise.resolve().then(() => srv.impactUnblock(l, v)),
     changes: simOnly('변경 이력 API(GET /api/changes)', (p) => clone(state.changes.slice(0, (p && p.limit) || 200))),
     // 목업은 브라우저에서 osv.dev 를 직접 부른다(CORS 허용 확인 2026-10-15). 실제 앱은 GET /api/osv. 실패해도 error 를 채워 돌려준다(화면이 깨지지 않게)
     osv: ({ ecosystem, name }) => {
@@ -697,11 +870,16 @@
     replaceRules: (rs) => { const sys = state.rules.find((x) => x.id === M.SYSTEM_RULE); state.rules = rs.filter((x) => x.id !== M.SYSTEM_RULE).concat(sys ? [sys] : []); srv.recordChange('policy_replace', `정책 ${rs.length}개 전체 교체`); return state.rules; },
     audit: (p) => {
       if (state.source === 'live') { const q = new URLSearchParams(); for (const [k, v] of Object.entries(p)) if (v !== undefined && v !== '') q.set(k, String(v)); return fetchJSON(`/api/audit?${q}`); }
-      const since = p.since ? new Date(p.since).getTime() : 0, until = p.until ? new Date(p.until).getTime() : Infinity;
-      let rows = state.audit.filter((a) => { const t = new Date(a.event.timestamp).getTime(); return (!p.kind || a.event.kind === p.kind) && (!p.action || a.action === p.action) && (!p.rule || (a.ruleId || '').includes(p.rule)) && (!p.container || a.event.containerName.includes(p.container)) && t >= since && t <= until && (!p.before || a.id < p.before); });
-      return Promise.resolve(clone(rows.slice(0, p.limit || 100)));
+      return simCall('audit', () => auditRows(p))();
     },
   };
+  function auditRows(p) {
+    {
+      const since = p.since ? new Date(p.since).getTime() : 0, until = p.until ? new Date(p.until).getTime() : Infinity;
+      let rows = state.audit.filter((a) => { const t = new Date(a.event.timestamp).getTime(); return (!p.kind || a.event.kind === p.kind) && (!p.action || a.action === p.action) && (!p.rule || (a.ruleId || '').includes(p.rule)) && (!p.container || a.event.containerName.includes(p.container)) && t >= since && t <= until && (!p.before || a.id < p.before); });
+      return clone(rows.slice(0, p.limit || 100));
+    }
+  }
 
   // ── 공통 컴포넌트 ────────────────────────────────────────
   const kindBadge = (kind) => h('span', { class: `badge badge-kind badge-kind-${kind}` }, kind);
@@ -740,16 +918,22 @@
     const o = opts || {};
     const root = h('div', { class: 'decision', 'data-part': 'decision', 'data-case-id': c.id });
     if (c.state === 'open') {
-      // 판정 칸 = 질문 · 메모(선택) · 큰 버튼 2개 · 안내 한 줄 [10/15 3차 — React DecisionBox 모습]. 시트 아래에 고정된다
+      // 판정 칸 = 질문 · 큰 버튼 2개 · 안내 한 줄 [10/15 3차 — React DecisionBox 모습]. 시트 아래에 고정된다
+      // 10/20 B: 메모 칸 대신 확인 대화상자(대상 · 함께 일어나는 일 · 사유 · 되돌리기)에서 사유를 받는다. 조회자는 버튼을 그리지 않는다
       const what = c.label || c.package || c.container;
-      const memo = h('input', { class: 'ctl', type: 'text', placeholder: '판단 근거', 'aria-label': '메모 (선택)', 'data-memo': '' });
-      const go = (d) => api.decide(c.id, { decision: d, note: memo.value.trim() }).then(({ proposal }) => {
-        toast(d === 'malicious' ? `${what} 악성 확정 — 차단 제안 ${proposal.id} 초안을 만들었습니다` : `${what} 오탐 — 예외 제안 ${proposal.id} 초안을 만들었습니다`, { tone: 'ok', key: 'decide', replace: true, action: { label: '제안 보기 →', go: `#/policies?proposal=${proposal.id}` } });
-        if (o.onDone) o.onDone();
-      }).catch((e) => toast(`판정 실패: ${e.message}`, { tone: 'danger' }));
       root.classList.add('decision-v');
+      if (!UI.can()) {
+        append(root, [h('div', { class: 'row-inline' }, h('span', { class: 'decision-q' }, o.question || '이 건은 악성인가?'), decisionBadge('pending')),
+          h('p', { class: 'small muted', 'data-part': 'viewer-note' }, '판정은 관리자가 합니다 — 조회자는 결과만 봅니다')]);
+        return root;
+      }
+      const go = (d) => UI.confirmDialog({ title: d === 'malicious' ? '악성 확정' : '오탐으로 판정', target: `${what} · 건 ${c.id}`, effects: api.casePreview(c.id, { decision: d }).then((r) => r.effects), // 서버 판정 미리보기 [10/20 결정 7] tone: d === 'malicious' ? 'danger' : 'primary', okLabel: d === 'malicious' ? '악성 확정' : '오탐으로 판정',
+        undo: d === 'malicious' ? '판정은 이력에 남습니다. 정책 화면에서 제안을 「버림」하면 차단 없이 건만 종결됩니다' : '정책 화면에서 제안을 「버림」하면 예외 없이 건만 종결됩니다' })
+        .then((r) => r && api.decide(c.id, { decision: d, note: r.reason }).then(({ proposal }) => {
+          toast(d === 'malicious' ? `${what} 악성 확정 — 차단 제안 ${proposal.id} 초안을 만들었습니다` : `${what} 오탐 — 예외 제안 ${proposal.id} 초안을 만들었습니다`, { tone: 'ok', key: 'decide', replace: true, action: { label: '제안 보기 →', go: `#/policies?proposal=${proposal.id}` } });
+          if (o.onDone) o.onDone();
+        })).catch((e) => toast(`판정 실패: ${e.message}`, { tone: 'danger' }));
       append(root, [h('div', { class: 'row-inline' }, h('span', { class: 'decision-q' }, o.question || '이 건은 악성인가?'), decisionBadge('pending')),
-        h('label', { class: 'memo-row' }, h('span', { class: 'small muted' }, '메모 (선택)'), memo),
         h('div', { class: 'decision-btns' },
           h('button', { type: 'button', class: 'btn btn-danger', 'aria-label': '악성 확정', title: '차단 제안을 만든다(패키지 · 이미지 · 도메인)', onclick: () => go('malicious') }, '악성 확정'),
           h('button', { type: 'button', class: 'btn btn-outline', 'aria-label': '오탐', title: '걸린 규칙에 가장 좁은 예외 제안을 만든다', onclick: () => go('false_positive') }, '오탐')),
@@ -795,16 +979,7 @@
     const sync = () => { b.className = `btn btn-xs ${state.paused ? 'btn-warn-soft' : 'btn-ghost'}`; b.textContent = state.paused ? '▶ 재개' : '⏸ 일시정지'; };
     sync(); b.sync = sync; return b;
   }
-  function confirmButton({ label, confirmLabel, onConfirm, class: cls, disabled }) {
-    let armed = false, timer;
-    const b = h('button', { type: 'button', class: cls, disabled }, label);
-    b.addEventListener('click', () => {
-      if (armed) { armed = false; clearTimeout(timer); b.classList.remove('armed'); b.textContent = label; onConfirm(); return; }
-      armed = true; b.classList.add('armed'); b.textContent = confirmLabel;
-      timer = setTimeout(() => { armed = false; b.classList.remove('armed'); b.textContent = label; }, 4000);
-    });
-    return b;
-  }
+  // 두 번 눌러 확정하는 버튼(confirmButton)은 10/20 B 에서 확인 대화상자(UI.confirmDialog, ui-kit.js)로 바꿨다
   function switchEl(checked, onchange) {
     const el = h('span', { class: `switch ${checked ? 'on' : ''}`, role: 'switch', 'aria-checked': String(checked), tabindex: '0' }, h('span', { class: 'knob' }));
     const toggle = () => { checked = !checked; el.classList.toggle('on', checked); el.setAttribute('aria-checked', String(checked)); onchange(checked); };
@@ -826,7 +1001,7 @@
     let rows = [], selectedKey = null, emptyEl = null;
     function rowEl(v, i) {
       const level = levelOf(v);
-      const li = h('li', { class: `feed-row ${onSelect ? 'clickable' : ''} ${v.key === selectedKey ? 'selected' : level === 'killed' || level === 'held' ? 'danger' : ''}`, style: `top:${i * ROW}px;height:${ROW}px` },
+      const li = h('li', { class: `feed-row ${onSelect ? 'clickable' : ''} ${v.key === selectedKey ? 'selected' : level === 'killed' || level === 'held' ? 'danger' : ''}`, style: `top:${i * ROW}px;height:${ROW}px`, 'data-key': v.key },
         h('span', { class: 'c-time num mono' }, fmt.time(v.event.timestamp)),
         h('span', { class: 'c-name', title: v.event.containerName }, v.event.containerName),
         full && showImage ? h('span', { class: 'c-img', title: v.event.imageName }, v.event.imageName) : null,
@@ -834,7 +1009,7 @@
         h('span', { class: 'c-detail mono', title: detailOf(v.event) }, detailOf(v.event)),
         full ? h('span', { class: 'c-rule', title: v.reason }, v.ruleId || '—') : v.matched ? h('span', { class: 'c-rule-inline', title: v.reason }, v.ruleId) : null,
         h('span', { class: 'c-verdict' }, verdictBadge(v)));
-      if (onSelect) li.addEventListener('click', () => onSelect(v));
+      if (onSelect) { li.addEventListener('click', () => onSelect(v)); UI.rowKeys(li, () => onSelect(v)); } // 키보드로 열기 [10/20 D]
       return li;
     }
     function draw() {
@@ -845,7 +1020,10 @@
       list.style.height = rows.length * ROW + 'px';
       const frag = document.createDocumentFragment();
       for (let i = start; i < end; i++) frag.append(rowEl(rows[i], i));
+      // 다시 그려도 키보드 포커스는 같은 행에 남긴다(스트림이 250ms 마다 갱신)
+      const fk = list.contains(document.activeElement) ? document.activeElement.dataset.key : null;
       replace(list, frag);
+      if (fk) { const el = list.querySelector(`[data-key="${fk}"]`); if (el) el.focus({ preventScroll: true }); }
     }
     scroller.addEventListener('scroll', draw);
     new ResizeObserver(draw).observe(scroller);
@@ -1016,39 +1194,58 @@
     [null, [['/', '대시보드', '▦']]],
     ['설치 검사', [['/installs', '설치 검사', '▣'], ['/scans', '공급망 검사', '⌕']]],
     ['런타임 감시', [['/events', '이벤트', '≣'], ['/topology', '토폴로지', '⌘']]],
-    ['설정 · 기록', [['/policies', '정책', '⚙'], ['/audit', '감사 로그', '◷']]],
+    ['설정 · 기록', [['/policies', '정책', '§'], ['/audit', '감사 로그', '◷'], ['/settings', '설정', '⚙']]], // 설정 화면 [10/20 결정 2]
   ];
   let current = null; // { unmount, update }
 
   function shell() {
     const nav = h('nav', { class: 'side-nav', 'aria-label': '메뉴' }, NAV.map(([group, links]) => [
       group ? h('div', { class: 'nav-group-title' }, group) : null,
-      links.map(([to, label, icon]) => h('a', { href: '#' + to, class: 'nav-link', 'data-to': to }, h('span', { class: 'nav-icon', 'aria-hidden': true }, icon), label,
+      links.map(([to, label, icon]) => h('a', { href: '#' + to, class: 'nav-link', 'data-to': to, title: label }, h('span', { class: 'nav-icon', 'aria-hidden': true }, icon), h('span', { class: 'nav-label' }, label),
         to === '/' ? h('span', { class: 'nav-badge num', 'data-nav-badge': '', hidden: true }) : null))]));
     const foot = h('div', { class: 'side-foot' });
-    const aside = h('aside', { class: 'sidebar' }, h('a', { href: '#/', class: 'brand' }, h('span', { class: 'brand-icon', 'aria-hidden': true }, '🛡'), 'SupplyGuard'), nav, foot);
+    // 10/20 E: 통합 검색(shell-plus.js 가 채움) · 접기 버튼. 10/20 C: 종 = 알림 센터(shell-plus.js) · 10/20 A: 라이선스 칩 · 계정 메뉴(auth.js)
+    const search = h('div', { class: 'side-search', 'data-part': 'search' });
+    const collapse = h('button', { type: 'button', class: 'side-collapse', 'data-action': 'collapse', 'aria-label': '사이드바 접기', title: '사이드바 접기 · 펼치기' }, h('span', { 'aria-hidden': true }, '«'));
+    const aside = h('aside', { class: 'sidebar' }, h('a', { href: '#/', class: 'brand' }, h('span', { class: 'brand-icon', 'aria-hidden': true }, '🛡'), h('span', { class: 'nav-label' }, 'SupplyGuard')), search, nav, foot, collapse);
     const ws = h('span', { class: 'ws' });
     const eps = h('span', { class: 'eps' });
-    const bell = h('a', { href: '#/events?verdict=violation', class: 'bell', 'aria-label': '새 위반', onclick: () => { state.unseen = 0; emit(); } }, h('span', { 'aria-hidden': true }, '🔔'), h('span', { class: 'bell-badge num', hidden: true }));
+    const bell = h('span', { class: 'bell-wrap', 'data-part': 'bell-wrap' });
+    const acct = UI.auth ? UI.auth.headerEl() : h('span');
     const head = h('div', { class: 'page-head' }, h('h1', { class: 'page-title' }), h('div', { class: 'page-actions' }));
-    const header = h('header', { class: 'topbar' }, head, h('div', { class: 'topbar-right' }, h('span', { class: 'ws-status', role: 'status' }, ws, eps), bell, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => $('#help').showModal(), title: '사용 안내 (?)' }, '? 안내'), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => $('#demo').classList.toggle('open') }, '데모 제어')));
+    const header = h('header', { class: 'topbar' }, head, h('div', { class: 'topbar-right' }, h('span', { class: 'ws-status', role: 'status' }, ws, eps), bell, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => $('#help').showModal(), title: '사용 안내 (?)' }, '? 안내'), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => $('#demo').classList.toggle('open') }, '데모 제어'), acct));
     const banner = h('div', { class: 'banner banner-danger', hidden: true, role: 'alert' });
+    // 실시간 연결 끊김 · 끊긴 동안 채운 수 [10/20 D]
+    const connBanner = h('div', { class: 'banner banner-danger', hidden: true, role: 'alert', 'data-banner': 'conn' }, h('b', null, '실시간 연결이 끊겼습니다'), ' — 다시 연결하는 중입니다(1초 → 10초 간격). 그동안의 이벤트는 다시 붙으면 채웁니다.');
+    let backfillShown = null;
+    const backfillText = h('span', { class: 'grow' });
+    const backfillBanner = h('div', { class: 'banner banner-info', hidden: true, role: 'status', 'data-banner': 'backfill' }, backfillText,
+      h('button', { type: 'button', class: 'banner-x', 'aria-label': '닫기', onclick: () => { backfillBanner.hidden = true; state.backfill = null; } }, '×'));
+    // 「도메인 판단 꺼짐」 경고 [10/20 도우미] — state.server.dnsResolve === 'off' 일 때. 한 번 닫으면 이 탭(세션) 동안 숨긴다
+    const DNS_KEY = 'supplyguard.banner.dns';
+    const dnsDismissed = () => { try { return sessionStorage.getItem(DNS_KEY) === '1'; } catch { return false; } };
+    const dnsBanner = h('div', { class: 'banner banner-warn', hidden: true, role: 'alert', 'data-banner': 'dns' },
+      h('span', { class: 'grow' }, h('b', null, '도메인 판단 꺼짐'), ' — trace_dns 가 뜨지 않아 도메인 기준 규칙(allowHosts · denyHosts · 차단 도메인)이 통과 처리됩니다. IP · 포트 규칙만 동작합니다. ', h('a', { href: '#/policies', class: 'link' }, '정책 보기 →')),
+      h('button', { type: 'button', class: 'banner-x', 'aria-label': '닫기', onclick: () => { try { sessionStorage.setItem(DNS_KEY, '1'); } catch { /* 저장 차단 */ } dnsBanner.hidden = true; } }, '×'));
     const page = h('main', { class: 'page', id: 'page' });
-    const main = h('div', { class: 'main' }, header, banner, page);
+    const main = h('div', { class: 'main' }, header, banner, connBanner, backfillBanner, dnsBanner, page);
     const root = h('div', { class: 'shell' }, aside, main);
     function sync() {
       const { path } = route();
       for (const a of nav.querySelectorAll('.nav-link')) a.classList.toggle('active', a.dataset.to === path);
       const st = state.stats, enforce = state.info.enforceKill;
       banner.hidden = !state.liveError; banner.textContent = state.liveError;
+      dnsBanner.hidden = !(state.server && state.server.dnsResolve === 'off') || dnsDismissed();
+      connBanner.hidden = state.connected || !state.eventsReady;
+      if (state.backfill && state.backfill !== backfillShown) { backfillShown = state.backfill; backfillText.textContent = `실시간 연결이 다시 붙었습니다 — 끊긴 동안 ${fmt.num(state.backfill.n)}건을 채웠습니다.`; backfillBanner.hidden = false; const b = state.backfill; setTimeout(() => { if (state.backfill === b) { state.backfill = null; backfillBanner.hidden = true; } }, 10000); }
+      if (!state.backfill) backfillBanner.hidden = true;
+      acct.sync && acct.sync();
       replace(foot, 
         h('div', null, h('span', null, '수집'), h('span', null, state.source === 'live' ? (state.info.source === 'gadget' ? 'eBPF 가젯' : 'Mock 데모') + ' · 실제' : 'Mock 데모 · 시뮬')),
         h('div', null, h('span', null, '격리'), h('span', { class: enforce ? 'tone-danger-soft' : 'tone-warn-soft' }, enforce ? '자동 종료' : 'dry-run')),
         h('div', null, h('span', null, 'IG'), h('span', { class: 'num' }, state.info.gadgetVersion)));
       ws.className = `ws ${state.connected ? 'on' : 'off'}`; ws.textContent = state.connected ? '실시간 연결됨' : '재연결 중…';
       replace(eps, '초당 ', h('b', { class: 'num' }, fmt.num(Math.round((st ? st.eventsPerSec : 0) * 10) / 10)), ' evt');
-      const badge = bell.lastChild; badge.hidden = state.unseen === 0; badge.textContent = state.unseen > 99 ? '99+' : state.unseen;
-      bell.setAttribute('aria-label', `새 위반 ${state.unseen}건`);
       // 사이드바 대시보드 배지 = 판정 대기 건수 [10/15 3차 — React 모습]
       const nb = nav.querySelector('[data-nav-badge]'); const pending = state.source === 'live' ? 0 : state.cases.filter((c) => c.state === 'open').length;
       nb.hidden = !pending; nb.textContent = pending; nb.setAttribute('aria-label', `판정 대기 ${pending}건`);
@@ -1071,6 +1268,10 @@
         h('h3', null, '사용 흐름'),
         h('ol', { class: 'steps' }, steps.map(([t, desc, go]) => h('li', null, h('div', null, h('b', null, t), h('p', null, desc)), h('a', { href: go, class: 'btn btn-ghost btn-xs', onclick: () => d.close() }, '이동')))),
         h('p', { class: 'muted' }, '데모 제어(상단 오른쪽)에서 공격 시나리오를 바로 실행하거나 격리 모드를 dry-run 으로 바꿔 볼 수 있습니다. 키보드 ? 로 이 안내를 엽니다.'),
+        // 단축키 [10/20 E]
+        h('div', { 'data-part': 'shortcuts' }, h('h4', null, '단축키'), h('dl', { class: 'shortcuts' },
+          [['/', '사이드바 검색으로 이동(패키지 · 컨테이너 · 규칙 id · 도메인 · 검사)'], ['?', '이 안내 열기'], ['Esc', '대화상자 · 패널 · 검색 결과 닫기'], ['Enter', '목록에서 고른 행 열기 (Space 도 같음)'], ['↑ ↓', '검색 결과 사이 이동'], ['[', '사이드바 접기 · 펼치기']]
+            .map(([k, t]) => [h('dt', null, h('kbd', null, k)), h('dd', null, t)]))),
         h('div', { class: 'dialog-foot' }, h('button', { class: 'btn btn-primary', value: 'close' }, '닫기'))));
     return d;
   }
@@ -1117,22 +1318,31 @@
     UI.shellEl.sync();
   }
 
-  function boot() {
-    if (state.source !== 'live') seed();
+  // 로그인(auth.js)을 마친 뒤에만 셸을 띄운다 [10/20 A]. 도우미 등 셸에 붙는 것은 UI.whenReady 로 기다린다
+  const readyQueue = []; let ready = false;
+  const whenReady = (fn) => { if (ready) fn(); else readyQueue.push(fn); };
+  function boot() { if (UI.auth) UI.auth.gate(startApp); else startApp(); }
+  function startApp() {
     const sh = shell();
     UI.shellEl = sh;
     document.body.append(sh, h('div', { id: 'toasts', class: 'toasts', 'aria-live': 'polite' }), helpDialog(), demoDrawer());
     listeners.add(() => { sh.sync(); if (current && current.update) current.update(); });
     window.addEventListener('hashchange', mount);
-    document.addEventListener('keydown', (e) => { if (e.key === '?' && !/input|textarea|select/i.test(e.target.tagName)) $('#help').showModal(); });
+    document.addEventListener('keydown', (e) => { if (e.key === '?' && !document.body.classList.contains('locked') && !/input|textarea|select/i.test(e.target.tagName) && !$('dialog[open]')) $('#help').showModal(); });
     mount();
-    if (state.source === 'live') { state.verdicts = []; state.stats = null; state.unseen = 0; state.topology = new TopologyStore(); liveStart(); } else start();
+    if (state.source === 'live') { state.verdicts = []; state.stats = null; state.unseen = 0; state.topology = new TopologyStore(); }
+    loadEvents();
+    ready = true; readyQueue.splice(0).forEach((fn) => fn());
   }
 
   // 화면 머리 오른쪽(화면 이름 옆)에 그 화면의 주 버튼 · 입력을 둔다. 화면이 바뀌면 비운다
   function headerActions(...nodes) { const el = $('.page-actions'); if (el) replace(el, nodes); }
 
-  window.UI = { h, s, $, replace, fmt, KINDS, levelOf, detailOf, LEVEL_LABEL, INSTALL_STATUS, DECISION_LABEL, LIST_LABEL, ACTOR, SANDBOX, state, emit, listeners, kindBadge, verdictBadge, statusBadge, decisionBadge, kpi, panel, sheet, empty, pauseToggle, SEV, confirmButton, switchEl, select, feed, barChart, perMinute, topologyGraph, toast, route, navigate, setQuery, headerActions, screens: {},
-    KIND_ORDER, KIND_STEP, fakeVerdict, attackChain, chainFromVerdicts, decisionBar, previewView, osvQuery, sim, runAttack, runAttackNow, runInstallDemo, simEvent, api, setSource };
+  window.UI = { h, s, $, replace, fmt, KINDS, levelOf, detailOf, LEVEL_LABEL, INSTALL_STATUS, DECISION_LABEL, LIST_LABEL, ACTOR, SANDBOX, state, emit, listeners, fresh, kindBadge, verdictBadge, statusBadge, decisionBadge, kpi, panel, sheet, empty, pauseToggle, SEV, switchEl, select, feed, barChart, perMinute, topologyGraph, toast, route, navigate, setQuery, headerActions, screens: {},
+    KIND_ORDER, KIND_STEP, fakeVerdict, attackChain, chainFromVerdicts, decisionBar, previewView, osvQuery, sim, runAttack, runAttackNow, runInstallDemo, simEvent, api, setSource,
+    // 10/20 2차 시안
+    disconnect, whenReady, remount: () => mount(), loadEvents, actor, serverFromInfo, CASE_SOURCE, caseHref,
+    // 10/20 결정 반영
+    RETRY_MS, simFail: failHit };
   document.addEventListener('DOMContentLoaded', boot);
 })();

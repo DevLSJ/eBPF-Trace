@@ -85,7 +85,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={toast}>
       {children}
-      <div className="pointer-events-none fixed right-5 bottom-5 z-50 flex w-96 flex-col gap-2" role="status" aria-live="polite" aria-label="알림">
+      {/* 10/20: 왼쪽 아래(사이드바 w-52 바로 오른쪽) — 오른쪽 아래 도우미 버튼 · 상세 시트와 겹치지 않게(목업 결정) */}
+      <div className="pointer-events-none fixed bottom-5 left-[calc(var(--sg-sidebar-w,13rem)+1.25rem)] z-50 flex w-96 flex-col gap-2" role="status" aria-live="polite" aria-label="알림">
         {items.map((t) => (
           <div
             key={t.id}

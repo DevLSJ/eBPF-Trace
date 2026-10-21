@@ -7,7 +7,7 @@
   const { h, state, fmt } = U;
   const KEY = 'supplyguard.chat';
   const LV = { killed: '격리됨', held: '격리 대상', alert: '경고', normal: '정상' };
-  const SRC = { install: '설치 검사', runtime: '런타임', scan: '공급망 검사' };
+  const SRC = U.CASE_SOURCE; // 출처 표기는 app.js 한 곳 [10/20 J]
   const SUGGEST = ['판정 대기 요약해 줘', '오늘 가장 많이 걸린 정책은?', '이 화면은 뭘 하는 곳이야?', '최근 공급망 검사 결과 알려 줘'];
 
   // 모의 서버: 질문 → { text, links } (실제: 도구 호출 → 사실 줄 → 모델 답 + 서버가 붙인 링크)
@@ -17,7 +17,7 @@
       if (!open.length) return { text: '지금 판정 대기 건은 없습니다. 새 격리 · 경고가 생기면 대시보드 맨 위에 올라옵니다.', links: [['대시보드', '#/']] };
       const lines = open.slice(0, 3).map((c) => `${SRC[c.source]} ${c.label || c.container}(${LV[c.level]}, 위반 ${c.violations}건 — ${c.ruleIds.slice(0, 2).join(', ')})`);
       return { text: `판정 대기 건이 ${open.length}개 있습니다. ${lines.join(' · ')}. 각 건을 열어 공격 체인을 보고 「악성 확정」 또는 「오탐」으로 판정하세요. 판정하면 정책에서 미리보기 뒤 적용합니다.`,
-        links: open.slice(0, 3).map((c) => [`${c.label || c.container} 판정하기`, c.source === 'install' ? `#/installs?id=${c.installId}` : `#/topology?container=${encodeURIComponent(c.container)}`]) };
+        links: open.slice(0, 3).map((c) => [`${c.label || c.container} 판정하기`, U.caseHref(c)]) };
     }
     const ctr = (q.match(/([a-z0-9][a-z0-9_.-]+)/i) || [])[1];
     if (/격리|왜/.test(q) && ctr) {
@@ -54,14 +54,15 @@
   const inp = h('textarea', { class: 'ctl chat-input', rows: 2, placeholder: '예: pkg-reqeusts 는 왜 격리됐어?', 'aria-label': '질문' });
   const send = h('button', { type: 'button', class: 'btn btn-primary btn-xs', 'aria-label': '보내기' }, '보내기');
   const sugg = h('div', { class: 'chat-sugg' }, SUGGEST.map((q) => h('button', { type: 'button', class: 'sugg', onclick: () => ask(q) }, q)));
-  const panel = h('section', { class: 'chat-panel', 'data-part': 'chat', role: 'dialog', 'aria-label': 'SupplyGuard 도우미', hidden: true },
-    h('header', { class: 'chat-head' }, h('b', null, 'SupplyGuard 도우미'), h('span', { class: 'small muted' }, '로컬 모델 qwen2.5:3b · 데이터는 서버 밖으로 나가지 않음'),
-      h('button', { type: 'button', class: 'btn btn-ghost btn-xs push-right', 'aria-label': '대화 지우기', onclick: () => { msgs = []; save(); draw(); } }, '지우기'),
-      h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'aria-label': '닫기', onclick: () => toggle(false) }, '✕')),
+  // 10/20 도우미: 떠 있는 창 · 💬 버튼은 guide.js 의 「도우미」 패널이 맡는다. 여기서는 「AI 도우미」 탭에 들어갈 본문만 만든다(동작은 그대로)
+  const panel = h('section', { class: 'chat-body', 'data-part': 'chat', 'aria-label': 'AI 도우미' },
+    h('header', { class: 'chat-head' }, h('span', { class: 'small muted' }, '로컬 모델 qwen2.5:3b · 데이터는 서버 밖으로 나가지 않음'),
+      h('button', { type: 'button', class: 'btn btn-ghost btn-xs push-right', 'aria-label': '대화 지우기', onclick: () => { msgs = []; save(); draw(); } }, '지우기')),
     list, sugg, h('div', { class: 'chat-form' }, inp, send),
     h('p', { class: 'small muted chat-note' }, '읽기 전용 — 판정 · 정책 변경은 하지 않습니다. 첫 질문은 모델을 불러오느라 1분 넘게 걸릴 수 있습니다.'));
-  const fab = h('button', { type: 'button', class: 'chat-fab', 'data-part': 'chat-fab', 'aria-label': 'AI 도우미 열기', onclick: () => toggle(panel.hidden) }, '💬');
-  function toggle(on) { panel.hidden = !on; fab.setAttribute('aria-expanded', String(on)); if (on) { draw(); setTimeout(() => inp.focus(), 0); } }
+  // toggle(true) = 도우미 패널을 AI 탭으로 연다(guide.js 가 있을 때). 탭이 보일 때 draw() 와 입력 포커스
+  function toggle(on) { if (on && U.assistant) U.assistant.open('chat'); else if (!on && U.assistant) U.assistant.close(); }
+  function shown() { draw(); setTimeout(() => inp.focus(), 0); }
   function draw() {
     list.replaceChildren(...(msgs.length ? msgs : [{ role: 'assistant', text: '무엇이든 물어보세요. 판정 대기 · 위반 기록 · 정책 · 공급망 검사 결과를 찾아 답합니다.', links: [] }]).map((m) =>
       h('div', { class: `chat-msg ${m.role}`, 'data-role': m.role }, h('div', { class: 'bubble' }, m.text || (m.pending ? h('span', { class: 'muted' }, '생각하는 중…') : '')),
@@ -87,7 +88,6 @@
   }
   send.addEventListener('click', () => ask());
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(); } });
-  const mount = () => { document.body.append(fab, panel); };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
-  U.chat = { ask, toggle };
+  draw();
+  U.chat = { ask, toggle, el: panel, shown };
 })();

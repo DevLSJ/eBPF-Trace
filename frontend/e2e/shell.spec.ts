@@ -9,13 +9,14 @@ test.describe('셸', () => {
     await expect(nav.locator('[data-nav-group]')).toHaveCount(4);
     for (const g of ['설치 검사', '런타임 감시', '설정 · 기록']) await expect(nav.locator(`[data-nav-group="${g}"]`)).toBeVisible();
     await expect(nav.locator('[data-nav-group="런타임 감시"] a')).toHaveText(['이벤트', '토폴로지']);
-    await expect(nav.locator('[data-nav-group="설정 · 기록"] a')).toHaveText(['정책', '감사 로그']);
+    await expect(nav.locator('[data-nav-group="설정 · 기록"] a')).toHaveText(['정책', '감사 로그', '설정']); // W16: 「설정」 화면
     for (const [label, title] of [
       ['설치 검사', '설치 검사'],
       ['이벤트', '이벤트'],
       ['토폴로지', '토폴로지'],
       ['정책', '정책'],
       ['감사 로그', '감사 로그'],
+      ['설정', '설정'],
       ['대시보드', '대시보드'],
     ]) {
       await nav.getByRole('link', { name: label, exact: false }).first().click();
@@ -32,8 +33,11 @@ test.describe('셸', () => {
     await expect(gw).toHaveCount(1);
     await expect(gw.locator('[data-toast-count]')).toHaveText('×3');
     await expect(page.locator('[data-toast="kill:billing"]')).toHaveCount(1);
-    // 알림 배지에 쌓인다
-    await expect(page.getByRole('link', { name: /새 위반 \d+건/ })).toContainText(/\d/);
+    // 알림 센터(W19): 종 배지 · 「새 위반」 항목에 쌓인다(종의 이벤트 바로가기는 알림 센터 항목으로 옮겼다 — 목업 10/20 C)
+    await expect(page.getByRole('button', { name: /알림 \d+건 안 읽음/ })).toContainText(/\d/);
+    await page.locator('[data-part="bell"]').click();
+    await expect(page.locator('[data-notice="violations"]')).toContainText(/새 위반 \d+건/);
+    await page.keyboard.press('Escape');
     await page.waitForTimeout(8_400);
     await expect(page.locator('[data-toast]')).toHaveCount(0);
   });
@@ -47,7 +51,7 @@ test.describe('셸', () => {
     });
     await page.goto('/policies?id=sensitive-files');
     await page.getByRole('button', { name: '삭제' }).click();
-    await expect(page.getByRole('button', { name: '눌러서 삭제 확정' })).toBeVisible();
+    await expect(page.locator('dialog[data-part="confirm"]')).toBeVisible(); // W18: 두 번 누르기 → 확인 대화상자(브라우저 confirm 아님)
     expect(dialogs).toBe(0);
   });
 });

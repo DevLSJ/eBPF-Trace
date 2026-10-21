@@ -16,11 +16,14 @@ import (
 
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/api"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/auth"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/chat"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/config"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/dockerapi"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/enforcer"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/evidence"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/ingestion"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/notify"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/osv"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/pipeline"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/review"
@@ -63,6 +66,7 @@ func run() error {
 	var reviewStore store.ReviewStore = mem
 	var buffer store.Buffer = mem
 	var collected store.CollectedStore = mem
+	var evStore evidence.Store = mem
 	var authStore store.AuthStore = store.NewMemoryAuth() // 계정 · 세션 · 라이선스 · 인증 감사 (메모리면 재시작 때 사라진다)
 	checks := map[string]api.Pinger{}
 	if cfg.DatabaseURL != "" {
@@ -71,12 +75,16 @@ func run() error {
 			return fmt.Errorf("postgres: %w", err)
 		}
 		defer pg.Close()
-		policies, audit, reviewStore, collected, checks["postgres"] = pg, pg, pg, pg, pg
+		if err := pg.EnsureEvidenceSchema(ctx); err != nil {
+			return fmt.Errorf("postgres evidence: %w", err)
+		}
+		policies, audit, reviewStore, collected, evStore, checks["postgres"] = pg, pg, pg, pg, pg, pg
 		if err := pg.MigrateAuth(ctx); err != nil {
 			return fmt.Errorf("postgres auth migrate: %w", err)
 		}
 		authStore = pg
 	}
+	go evidence.RunPrune(ctx, evStore, time.Hour) // 증거 보존 7일
 	if cfg.RedisURL != "" {
 		rd, err := store.NewRedis(ctx, cfg.RedisURL)
 		if err != nil {
@@ -113,24 +121,51 @@ func run() error {
 	var source, lifecycle ingestion.Source
 	var enf enforcer.Enforcer
 	var onInstallStart func(model.InstallSession)
+	var dnsTraced func() bool   // trace_dns 가 지금 돌고 있는지 (/api/info dnsResolve)
+	var discovery func() string // 실제로 쓰이는 컨테이너 발견 방식 (/api/info discovery, mock 은 nil)
 	switch cfg.EventSource {
 	case "mock":
 		m := ingestion.NewMock()
-		source, enf, onInstallStart = m, m, m.SimulateInstall
+		source, enf, onInstallStart, dnsTraced = m, m, m.SimulateInstall, m.DNSTraced
 	default:
-		source = &ingestion.Gadget{Kinds: cfg.Gadgets, ContainerName: cfg.ContainerName, Discovery: cfg.ContainerDiscovery, DockerHost: cfg.DockerHost, ResolveDNS: cfg.ResolveDNS}
+		g := &ingestion.Gadget{Kinds: cfg.Gadgets, ContainerName: cfg.ContainerName, Discovery: cfg.ContainerDiscovery, DockerHost: cfg.DockerHost, ResolveDNS: cfg.ResolveDNS}
+		source, dnsTraced, discovery = g, g.DNSTraced, g.ActiveDiscovery
 		lifecycle = &ingestion.DockerLifecycle{DockerHost: cfg.DockerHost}
-		if enf, err = enforcer.NewDocker(cfg.DockerHost); err != nil {
+		de, err := enforcer.NewDocker(cfg.DockerHost)
+		if err != nil {
 			return err
 		}
+		// kill 직전 증거(로그 · 파일 변경 · 프로세스)를 모은다. 훅은 700ms 를 넘기면 기다리지 않고 kill 한다(10/20)
+		if dc, err := dockerapi.New(cfg.DockerHost); err != nil {
+			slog.Warn("evidence disabled: docker", "err", err)
+		} else {
+			de.BeforeKill = evidence.New(dc, evStore).BeforeKill
+		}
+		enf = de
 	}
+
+	// 외부 알림(10/20): 채널이 없으면 no-op
+	ntf := notify.New(notify.Config{WebhookURL: cfg.NotifyWebhookURL, SlackURL: cfg.NotifySlackURL, PublicURL: cfg.PublicURL}, slog.Default())
+	defer func() {
+		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		ntf.Close(c)
+	}()
 
 	hub := ws.NewHub(cfg.AllowedOrigins)
 
+	// 판정 미리보기(10/20)가 「같은 이미지로 실행 중인 컨테이너 수」를 센다. mock 소스는 Docker 를 부르지 않는다(수 모름)
+	var containers review.ContainerLister
+	if cfg.EventSource == "gadget" {
+		if dc, err := dockerapi.New(cfg.DockerHost); err == nil {
+			containers = dc
+		}
+	}
 	// 설치 세션 · 건 · 제안 · 차단 목록 · 변경 이력. 엔진에는 저장된 정책 + 차단 도메인 시스템 규칙(blocklist-hosts)
 	rv := review.New(review.Options{
 		Store: reviewStore, Policies: policies, Audit: audit, Engine: engine, Hub: hub,
-		Actor: cfg.ActorName, EnforceKill: cfg.EnforceKill, OnInstallStart: onInstallStart,
+		Actor: cfg.ActorName, ActorFrom: api.RequesterName, EnforceKill: cfg.EnforceKill, OnInstallStart: onInstallStart, Notifier: ntf,
+		Containers: containers,
 	})
 	if err := rv.Load(ctx); err != nil {
 		return fmt.Errorf("review load: %w", err)
@@ -161,8 +196,10 @@ func run() error {
 		IgnoreContainers: cfg.IgnoreContainers,
 		WatchContainers:  cfg.WatchContainers,
 		NormalEventRate:  cfg.NormalEventRate,
+		DNSGrace:         cfg.DNSGrace,
 	}, engine, enf, hub, agg, audit, buffer)
 	pipe.SetReview(rv)
+	pipe.SetNotifier(ntf)
 
 	snapshot := func() stats.Snapshot {
 		s := agg.Snapshot()
@@ -199,6 +236,20 @@ func run() error {
 		}
 	}()
 
+	// AI 도우미(10/20): 읽기 전용 조회 → 한국어 사실 문장 → 로컬 Ollama. 판정 상태 · 링크는 서버가 붙인다
+	sum := summary.New(audit, collected, reviewView{rv})
+	var chatSvc *chat.Service
+	if cfg.OllamaURL != "" {
+		o := chat.Options{OllamaURL: cfg.OllamaURL, Model: cfg.OllamaModel, KeepAlive: cfg.OllamaKeepAlive,
+			Review: reviewView{rv}, Audit: audit, Summary: sum, Policies: policies}
+		if scans != nil {
+			o.Scans = scans // typed nil 을 인터페이스에 넣지 않는다
+		}
+		if chatSvc, err = chat.New(o); err != nil {
+			return fmt.Errorf("chat: %w", err)
+		}
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ws/events", hub.HandleWS)
 	mux.Handle("/", api.Router(api.Deps{
@@ -208,10 +259,16 @@ func run() error {
 		SandboxToken:         cfg.SandboxToken,
 		AllowAnonymousWrites: cfg.EventSource == "mock", // 비어 있는 토큰만 익명 허용 (정한 토큰은 mock 이어도 검사)
 		Review:               rv,
-		Summary:              summary.New(audit, collected, reviewView{rv}),
+		Summary:              sum,
+		Chat:                 chatSvc,
 		Scans:                scans,
 		OSV:                  osv.New(),
 		AllowedOrigins:       cfg.AllowedOrigins,
+		DNSTraced:            dnsTraced,
+		Discovery:            discovery,
+		Notifier:             ntf,
+		Evidence:             evStore,
+		PolicyFile:           cfg.PolicyFile,
 		Auth:                 authSvc,
 		Info: api.Info{Source: cfg.EventSource, Gadgets: cfg.Gadgets, EnforceKill: cfg.EnforceKill,
 			GadgetVersion: ingestion.GadgetVersion, WatchContainers: cfg.WatchContainers, IgnoreContainers: cfg.IgnoreContainers},

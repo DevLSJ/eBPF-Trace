@@ -1,25 +1,25 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { useCases } from '../hooks/cases-context';
-import { useStream } from '../hooks/stream-context';
 import { useToast } from '../hooks/toast-context';
-import { useAdminToken } from '../hooks/useLoad';
+import { useAuth } from '../hooks/auth-context';
 import { api, ApiError, errorText } from '../lib/api';
 import { fmtDateTime } from '../lib/format';
 import { caseLabel, type Case, type Decision } from '../lib/types';
 import { DecisionBadge } from './Badges';
+import { ConfirmDialog } from './Modal';
 
 const STATE_LABEL: Record<Case['state'], string> = { open: '판정 대기', decided: '판정됨 · 제안 적용 대기', closed: '종결' };
 
 // 판정 — 설치 검사 시트와 토폴로지가 같은 부품을 쓴다.
 // 악성 확정 → 차단 제안(설치: 패키지 · 도메인 / 런타임: 이미지 · 도메인), 오탐 → 걸린 규칙에 예외 제안.
+// 10/20 B: 두 버튼은 확인 대화상자를 연다 — 「함께 일어나는 일」은 서버 판정 미리보기(POST /api/cases/{id}/preview)의 effects 그대로, 사유 = 판정 메모(note)
 export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
   const { cases, error, upsert, reload } = useCases();
-  const { info } = useStream();
-  const [token] = useAdminToken();
+  const { isAdmin } = useAuth();
   const toast = useToast();
-  const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [ask, setAsk] = useState<Exclude<Decision, 'pending'> | null>(null);
 
   if (!caseId) return <p className="text-xs text-slate-500">판정할 건이 없습니다 (격리 · 경고가 아님).</p>;
   const c = cases?.find((x) => x.id === caseId);
@@ -28,12 +28,12 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
     return <p className="text-xs text-slate-400">건 정보를 불러오는 중…</p>;
   }
 
-  const canWrite = !info?.authRequired || token !== '';
+  const canWrite = isAdmin; // 조회자는 판정 버튼을 그리지 않는다(W16)
   const what = caseLabel(c);
-  const decide = async (d: Exclude<Decision, 'pending'>) => {
+  const decide = async (d: Exclude<Decision, 'pending'>, note: string) => {
     setBusy(true);
     try {
-      const r = await api.decide(c.id, d, note.trim());
+      const r = await api.decide(c.id, d, note);
       upsert(r.case);
       toast(
         d === 'malicious' ? `${what} 악성 확정 — 차단 제안을 만들었습니다` : `${what} 오탐 — 예외 제안을 만들었습니다`,
@@ -59,45 +59,52 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
           <span className="text-xs text-slate-500">{STATE_LABEL[c.state]}</span>
         </div>
       )}
-      {c.decision === 'pending' ? (
+      {c.decision === 'pending' && !canWrite ? (
+        <p className="text-xs text-slate-500">판정 대기 — 판정은 관리자가 합니다 (지금 계정은 조회자).</p>
+      ) : c.decision === 'pending' ? (
         <>
-          <label className="flex items-center gap-2 text-xs text-slate-600">
-            <span className="shrink-0">메모 (선택)</span>
-            <input
-              className="h-8 min-w-0 flex-1 rounded-md border border-slate-300 px-2 text-sm focus:border-indigo-500 focus:outline-none"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="판단 근거"
-            />
-          </label>
           <div className="flex gap-2">
             <button
               type="button"
-              disabled={busy || !canWrite}
-              onClick={() => void decide('malicious')}
+              disabled={busy}
+              onClick={() => setAsk('malicious')}
               className="flex-1 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40"
             >
               악성 확정
             </button>
             <button
               type="button"
-              disabled={busy || !canWrite}
-              onClick={() => void decide('false_positive')}
+              disabled={busy}
+              onClick={() => setAsk('false_positive')}
               className="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
             >
               오탐
             </button>
           </div>
-          {/* 토큰이 없으면 안내 한 줄만 — 아래 고정 칸이 길어져 시트 본문을 가리지 않게 (10/16 sg-vm 실측) */}
-          {canWrite && (
-            <p className="text-xs text-slate-500">
-              악성 확정 → {c.source === 'install' ? '패키지' : '이미지'} · 도메인 차단 제안 / 오탐 → 걸린 규칙에 예외 제안 (정책에서 미리보기 후 적용)
-            </p>
-          )}
-          {!canWrite && (
-            <p className="text-xs text-amber-700">
-              관리자 토큰이 필요합니다 — <Link to="/policies" className="underline">정책</Link> 화면 머리에 입력하세요.
-            </p>
+          <p className="text-xs text-slate-500">
+            악성 확정 → {c.source === 'install' ? '패키지' : '이미지'} · 도메인 차단 제안 / 오탐 → 걸린 규칙에 예외 제안 (정책에서 미리보기 후 적용)
+          </p>
+          {ask && (
+            <ConfirmDialog
+              key={ask}
+              title={ask === 'malicious' ? '악성 확정' : '오탐으로 판정'}
+              target={`${what} · 건 ${c.id}`}
+              loadEffects={() => api.previewDecision(c.id, ask).then((r) => r.effects ?? [])}
+              tone={ask === 'malicious' ? 'danger' : 'primary'}
+              okLabel={ask === 'malicious' ? '악성 확정' : '오탐으로 판정'}
+              reason
+              undo={
+                ask === 'malicious'
+                  ? '판정은 이력에 남습니다. 정책 화면에서 제안을 「버림」하면 차단 없이 건만 종결됩니다'
+                  : '정책 화면에서 제안을 「버림」하면 예외 없이 건만 종결됩니다'
+              }
+              onCancel={() => setAsk(null)}
+              onConfirm={(note) => {
+                const d = ask;
+                setAsk(null);
+                void decide(d, note);
+              }}
+            />
           )}
         </>
       ) : (

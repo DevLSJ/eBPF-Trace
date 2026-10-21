@@ -22,6 +22,7 @@ var ViewerWritePatterns = []string{
 	"POST /api/proposals/{id}/preview",
 	"POST /api/cases/{id}/preview", // 판정 미리보기(W15)
 	"POST /api/policies/preview",
+	ChatPattern, // AI 도우미 질문 — 읽기 전용
 }
 
 type AuthDeps struct {

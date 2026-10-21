@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestTokensMustDiffer(t *testing.T) {
 	t.Setenv("ADMIN_TOKEN", "same")
@@ -37,6 +40,27 @@ func TestContainerDiscovery(t *testing.T) {
 		t.Setenv("CONTAINER_DISCOVERY", bad)
 		if _, err := Load(); err == nil {
 			t.Fatalf("CONTAINER_DISCOVERY=%q must be rejected", bad)
+		}
+	}
+}
+
+func TestDNSGrace(t *testing.T) {
+	c, err := Load()
+	if err != nil || c.DNSGrace != 200*time.Millisecond {
+		t.Fatalf("default grace: %v %v", c.DNSGrace, err)
+	}
+	t.Setenv("DNS_GRACE_MS", "350")
+	if c, err = Load(); err != nil || c.DNSGrace != 350*time.Millisecond {
+		t.Fatalf("%v %v", c.DNSGrace, err)
+	}
+	t.Setenv("DNS_GRACE_MS", "0") // 0 = 지연 없음
+	if c, err = Load(); err != nil || c.DNSGrace != 0 {
+		t.Fatalf("%v %v", c.DNSGrace, err)
+	}
+	for _, bad := range []string{"abc", "-5"} {
+		t.Setenv("DNS_GRACE_MS", bad)
+		if _, err := Load(); err == nil {
+			t.Fatalf("DNS_GRACE_MS=%q must be rejected", bad)
 		}
 	}
 }

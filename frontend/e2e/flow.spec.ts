@@ -16,6 +16,7 @@ test('판정 흐름 한 바퀴 (설치 격리 → 악성 확정 → 미리보기
 
   // 2) 악성 확정 → 토스트 「제안 보기」
   await sheet.getByRole('button', { name: '악성 확정' }).click();
+  await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
   await expect(sheet.getByTestId('decision').locator('[data-decision="malicious"]')).toBeVisible();
   // 판정 대기 목록에서 빠진다(필터 「판정 대기」)
   await expect(page.locator('tr[data-install="ins-0012"]')).toHaveCount(0);
@@ -28,6 +29,7 @@ test('판정 흐름 한 바퀴 (설치 격리 → 악성 확정 → 미리보기
   await expect(detail.getByTestId('preview-summary')).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/flow-2-proposal-preview.png` });
   await detail.getByRole('button', { name: '적용' }).click();
+  await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
   await expect(detail.getByTestId('proposal-state')).toContainText('적용됨');
 
   // 4) 변경 이력 1건 · 차단 목록에 패키지

@@ -27,6 +27,7 @@ test.describe('토폴로지 — 이 컨테이너는 어디까지 손댔나?', ()
     await expect(box.getByRole('button', { name: '오탐' })).toBeVisible();
     await expect(box).toContainText('이미지 · 도메인 차단 제안');
     await box.getByRole('button', { name: '악성 확정' }).click();
+    await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
     await expect(box.locator('[data-decision="malicious"]')).toBeVisible();
     const p = backend.proposals[0];
     expect(p.caseId).toBe('case-0005');

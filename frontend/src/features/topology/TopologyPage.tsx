@@ -1,6 +1,6 @@
 import { Background, Controls, MarkerType, ReactFlow, type Edge, type Node, type NodeMouseHandler } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Box, Cpu, X } from 'lucide-react';
+import { Box, Cpu, FileSearch, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AttackChain } from '../../components/AttackChain';
@@ -11,6 +11,7 @@ import { Empty, Panel } from '../../components/Panel';
 import { LevelBadge } from '../../components/VerdictBadge';
 import { useCases } from '../../hooks/cases-context';
 import { useStream } from '../../hooks/stream-context';
+import { evidenceHref } from '../../lib/evidence';
 import { fmtNum, fmtTime } from '../../lib/format';
 import { attackChains, severity, type Chain, type NodeType, type TopoEdge, type TopoNode } from '../../lib/topology';
 import { LEVEL_LABEL, type Case, type Level } from '../../lib/types';
@@ -283,6 +284,11 @@ export function TopologyPage() {
                   판정 · {selectedCase.container} {selectedCase.decision === 'pending' && <DecisionBadge decision="pending" />}
                 </div>
                 <DecisionBox caseId={selectedCase.id} />
+                {selectedCase.level === 'killed' && (
+                  <Link to={evidenceHref(selectedCase.container)} className="mt-2 inline-flex items-center gap-1.5 text-xs text-indigo-700 hover:underline">
+                    <FileSearch className="size-3.5" aria-hidden /> 증거 보기
+                  </Link>
+                )}
               </div>
             )}
           </NodeDetail>

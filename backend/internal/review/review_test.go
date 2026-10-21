@@ -230,7 +230,7 @@ func TestRuntimeCases(t *testing.T) {
 		t.Fatal("a decided case still collects violations")
 	}
 	p := e.svc.ListProposals("")[0]
-	if _, _, err := e.svc.Discard(ctx, p.ID); err != nil {
+	if _, _, err := e.svc.Discard(ctx, p.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	if v := e.observe(t, ev(model.KindOpen)); v.CaseID == nil || *v.CaseID == c.ID {
@@ -381,7 +381,7 @@ func TestPersistAndReload(t *testing.T) {
 	e := newEnv(t)
 	ctx := t.Context()
 	_, p := e.maliciousInstallCase(t)
-	if _, _, err := e.svc.Apply(ctx, p.ID); err != nil {
+	if _, _, err := e.svc.Apply(ctx, p.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	e.svc.Flush(ctx) // Observe 로 바뀐 활동 요약
@@ -410,7 +410,7 @@ func TestPersistAndReload(t *testing.T) {
 func TestCheckPackage(t *testing.T) {
 	e := newEnv(t)
 	_, p := e.maliciousInstallCase(t)
-	_, _, _ = e.svc.Apply(t.Context(), p.ID)
+	_, _, _ = e.svc.Apply(t.Context(), p.ID, "")
 	r, err := e.svc.CheckPackage("pip", "Reqeusts==2.0")
 	if err != nil || !r.Blocked || r.Value != "pip:reqeusts" || r.CaseID == nil {
 		t.Fatalf("blocked: %+v %v", r, err)
@@ -433,7 +433,7 @@ func TestContainerStarted(t *testing.T) {
 	ev := model.Event{Kind: model.KindOpen, ContainerID: sandboxCID, ContainerName: "pkg-reqeusts", ImageName: "demo/reqeusts:1.0.2", Path: "/etc/shadow"}
 	v := e.observe(t, ev)
 	_, p, _ := e.svc.Decide(ctx, *v.CaseID, model.DecisionMalicious, "")
-	if _, _, err := e.svc.Apply(ctx, p.ID); err != nil {
+	if _, _, err := e.svc.Apply(ctx, p.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	if img, ok := e.svc.ContainerStarted(model.Event{ContainerName: "pkg-reqeusts", ImageName: "demo/reqeusts:1.0.2"}); !ok || img != "demo/reqeusts:1.0.2" {

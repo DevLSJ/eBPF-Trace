@@ -5,7 +5,7 @@
 (function () {
   'use strict';
   const U = window.UI;
-  const { h, state } = U;
+  const { h, state, fmt, replace } = U;
 
   const SANDBOX_SCOPE = 'sg-install-*';
   const listOf = (d, f) => (d.lists[f] || '').split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
@@ -151,7 +151,7 @@
       step('values', '2', d.kind === 'open' ? '어떤 파일인가요?' : d.kind === 'exec' ? '어떤 프로그램 · 명령인가요?' : '어디로 가는 연결인가요?',
         chipGroup('block', g.block), g.allow ? chipGroup('allow', g.allow) : h('p', { class: 'small muted' }, '실행 정책에는 예외 목록이 없습니다 — 예외가 필요하면 ④ 에서 적용할 컨테이너를 좁히세요.')),
       step('action', '3', '걸리면 어떻게 할까요?', radios('easy-act', Object.entries(ACT_TEXT), actOf(d), (v) => { d.action = v === 'alert' ? 'alert' : 'kill'; d.dryRun = v === 'dry'; ctx.rerender(); }),
-        state.info.enforceKill === false ? h('p', { class: 'note-box' }, '지금 서버의 자동 격리가 꺼져 있어 「즉시 격리」도 알림만 갑니다 — 서버 설정 참고') : null),
+        state.info.enforceKill === false ? h('p', { class: 'note-box' }, '지금 서버의 자동 격리가 꺼져 있어 「즉시 격리」도 알림만 갑니다 — ', h('a', { href: '#/settings', class: 'link' }, '설정 › 서버 설정'), ' 참고') : null),
       step('scope', '4', '어디에 적용할까요?', radios('easy-scope', [['all', ['모든 컨테이너', '운영 중인 컨테이너와 설치 검사 모두']], ['sandbox', ['설치 검사에서만', '패키지를 시험 설치하는 감시 컨테이너']], ['some', ['지정한 컨테이너만', '이름이나 이미지 패턴으로 고릅니다']]], scope, (v) => {
         setList(d, 'containers', v === 'all' ? [] : v === 'sandbox' ? [SANDBOX_SCOPE] : listOf(d, 'containers').filter((c) => c !== SANDBOX_SCOPE)); ctx.forceSome = v === 'some'; ctx.rerender(); }),
         scope === 'some' || ctx.forceSome ? chipGroup('containers', { label: '컨테이너', hint: '이름 또는 패턴(예: pkg-*)', classify: classifyName, fields: { name: 'containers' }, suggest: [] }) : null),
@@ -162,15 +162,42 @@
   }
 
   // 서버 설정 — 보기만. 바꾸는 방법은 서버 설정(.env) + 재시작 [10/16 확정: 화면에서 바꾸지 않음]
+  // 서버 설정 보기 — 10/20 H: 알림(웹훅 · Slack 채널 · 보낸/실패 · 마지막 오류 · 테스트 발송) · 컨테이너 발견 방식 · 도메인 판단을 더했다(모두 /api/info)
+  // 10/20 결정 2: 「설정」 화면의 서버 설정 탭에 그대로 들어간다(onClose 없음 = 화면 안 칸, 닫기 버튼 없음). 정책 화면의 떠 있는 칸은 없앴다
   function serverSettings(onClose) {
-    const i = state.info, watch = i.watchContainers || [], ignore = i.ignoreContainers || [];
-    const row = (label, value, env, desc) => h('div', { class: 'ss-row' }, h('div', null, h('b', null, label), h('div', { class: 'small muted' }, desc)), h('div', { class: 'ss-val' }, h('span', null, value), h('code', { class: 'small' }, env)));
-    return h('div', { class: 'card server-settings', 'data-part': 'server-settings', role: 'dialog', 'aria-label': '서버 설정' },
-      h('div', { class: 'card-head' }, h('b', null, '서버 설정'), h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'aria-label': '닫기', onclick: onClose }, '✕')),
-      row('자동 격리', i.enforceKill ? '켜짐' : '꺼짐 (알림만)', 'ENFORCE_KILL', i.enforceKill ? '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다' : '모든 정책이 알림만 보냅니다'),
-      row('감시 범위', watch.length ? watch.join(', ') : '모든 컨테이너', 'WATCH_CONTAINERS', '이 범위의 컨테이너만 평가 · 격리합니다'),
-      row('제외', ignore.length ? ignore.join(', ') : '없음', 'IGNORE_CONTAINERS', 'SupplyGuard 자신처럼 보지 않을 컨테이너'),
-      h('p', { class: 'small muted ss-how' }, '바꾸는 방법: 서버의 .env 에서 위 값을 고친 뒤 백엔드를 다시 시작하세요. 화면에서는 바꾸지 않습니다 — 범위를 잘못 넓히면 다른 컨테이너가 격리될 수 있습니다.'));
+    const root = h('div', { class: `card server-settings ${onClose ? '' : 'inline'}`, 'data-part': 'server-settings', role: onClose ? 'dialog' : 'region', 'aria-label': '서버 설정' });
+    let testing = false, testMsg = '';
+    const row = (key, label, value, env, desc, extra) => h('div', { class: 'ss-row', 'data-ss': key }, h('div', null, h('b', null, label), h('div', { class: 'small muted' }, desc)), h('div', { class: 'ss-val' }, h('span', null, value), env ? h('code', { class: 'small' }, env) : null, extra || null));
+    function notifyRow(n) {
+      if (!n) return row('notify', '알림', '미확인', 'NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL', '백엔드가 알림 상태를 알려 주지 않습니다(옛 버전)');
+      if (!n.enabled) return row('notify', '알림', '꺼짐 — 채널 없음', 'NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL', '격리 · 판정 대기를 밖으로 알리려면 웹훅이나 Slack 주소를 설정하세요');
+      const chs = h('ul', { class: 'ss-channels' }, n.channels.map((c) => h('li', { 'data-channel': c.name }, h('b', null, c.name === 'slack' ? 'Slack' : '웹훅'), ' ', h('span', { class: 'mono' }, c.host),
+        h('span', { class: 'small muted num' }, ` · 보냄 ${fmt.num(c.sent)} · 실패 `, h('b', { class: c.failed ? 'tone-danger' : '' }, fmt.num(c.failed)), c.lastAt ? ` · 마지막 성공 ${fmt.dateTime(c.lastAt)}` : ''),
+        c.lastError ? h('div', { class: 'small tone-danger' }, `마지막 오류: ${c.lastError}`) : null)));
+      const test = U.can() ? h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'data-action': 'notify-test', onclick: () => {
+        if (testing) return; testing = true; testMsg = '보내는 중…'; draw();
+        U.api.notifyTest().then(() => new Promise((r) => setTimeout(r, 1500))).then(() => U.api.info()).then(() => { testMsg = '보냈습니다 — 채널의 보냄 · 실패 수를 확인하세요'; })
+          .catch((e) => { testMsg = `보내지 못했습니다 — ${e.message}`; }).finally(() => { testing = false; draw(); });
+      } }, '✉ 테스트 발송') : null;
+      return row('notify', '알림', h('span', null, '합계 보냄 ', h('b', { class: 'num', 'data-notify-sent': '' }, String(n.sent)), ' · 실패 ', h('b', { class: `num ${n.failed ? 'tone-danger' : ''}`, 'data-notify-failed': '' }, String(n.failed)), n.suppressed ? h('span', { class: 'small muted' }, ` · 묶어서 줄임 ${fmt.num(n.suppressed)}`) : null),
+        'NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL', '격리 · 판정 대기를 밖으로 알린다. 호스트만 보입니다(토큰 · 경로는 숨김)',
+        h('div', { class: 'ss-extra' }, chs, test, testMsg ? h('span', { class: 'small muted', role: 'status' }, testMsg) : null));
+    }
+    function draw() {
+      const i = state.info, watch = i.watchContainers || [], ignore = i.ignoreContainers || [];
+      const disc = i.discovery, dns = i.dnsResolve;
+      replace(root,
+        h('div', { class: 'card-head' }, h('b', null, '서버 설정'), onClose ? h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'aria-label': '닫기', onclick: onClose }, '✕') : h('span', { class: 'small muted' }, '보기만 — GET /api/info')),
+        row('enforce', '자동 격리', i.enforceKill ? '켜짐' : '꺼짐 (알림만)', 'ENFORCE_KILL', i.enforceKill ? '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다' : '모든 정책이 알림만 보냅니다'),
+        row('watch', '감시 범위', watch.length ? watch.join(', ') : '모든 컨테이너', 'WATCH_CONTAINERS', '이 범위의 컨테이너만 평가 · 격리합니다'),
+        row('ignore', '제외', ignore.length ? ignore.join(', ') : '없음', 'IGNORE_CONTAINERS', 'SupplyGuard 자신처럼 보지 않을 컨테이너'),
+        row('discovery', '컨테이너 발견 방식', disc === 'fanotify' ? 'fanotify — 시작 순간부터 추적' : disc === 'docker-events' ? 'docker-events' : '미확인', 'CONTAINER_DISCOVERY', disc === 'docker-events' ? (i.discoveryNote || '컨테이너 시작 직후 약 0.1초 안의 동작은 놓칠 수 있습니다') : disc === 'fanotify' ? '컨테이너 런타임을 커널에서 바로 봅니다' : '가젯이 아직 시작되지 않았거나 mock 소스입니다'),
+        row('dns', '도메인 판단', dns === 'off' ? h('span', { class: 'tone-warn' }, '꺼짐 — 도메인 규칙 통과') : dns === 'ok' ? '켜짐 (trace_dns)' : '미확인', '', dns === 'off' ? 'trace_dns 가 뜨지 않아 allowHosts · denyHosts · 차단 도메인이 통과 처리됩니다. IP · 포트 규칙만 동작합니다' : '같은 컨테이너의 DNS 응답으로 목적지 도메인을 알아냅니다. 도메인 없이 IP 로 바로 붙으면 「직접 IP 연결」로 봅니다'),
+        notifyRow(i.notify),
+        h('p', { class: 'small muted ss-how' }, '바꾸는 방법: 서버의 .env 에서 위 값을 고친 뒤 백엔드를 다시 시작하세요. 화면에서는 바꾸지 않습니다 — 범위를 잘못 넓히면 다른 컨테이너가 격리될 수 있습니다.'));
+    }
+    draw();
+    return root;
   }
 
   U.policyEasy = { render, summarize, TEMPLATES, fromTemplate, ruleFromBlock, ruleWithAllow, blockLink, allowLink, serverSettings, classifyConnect, KIND_TEXT };

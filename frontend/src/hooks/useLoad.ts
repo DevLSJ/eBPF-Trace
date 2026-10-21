@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { adminToken, isUnsupported } from '../lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import { isUnsupported } from '../lib/api';
 
 interface LoadState<T> {
   fn: unknown;
@@ -51,9 +51,4 @@ export function useNow(ms = 30_000) {
     return () => window.clearInterval(t);
   }, [ms]);
   return now;
-}
-
-export function useAdminToken(): [string, (v: string) => void] {
-  const token = useSyncExternalStore(adminToken.subscribe, adminToken.get, () => '');
-  return [token, adminToken.set];
 }

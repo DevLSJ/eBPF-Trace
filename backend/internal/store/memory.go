@@ -21,6 +21,8 @@ type Memory struct {
 	// collected: 1분 단위 수집량 (Unix 분 → 합)
 	collected map[int64]model.MinuteCount
 	scans     map[string]model.Scan
+	// evidence: kill 전 증거(10/20) — 컨테이너당 최근 EvidenceKeep 개. 메서드는 evidence.go
+	evidence []model.Evidence
 }
 
 const memoryAuditCap = 5000

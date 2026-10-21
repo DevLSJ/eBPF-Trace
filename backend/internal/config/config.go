@@ -30,6 +30,8 @@ type Config struct {
 
 	// ResolveDNS: trace_dns 를 함께 돌려 connect 이벤트에 목적지 도메인을 붙인다 (allowHosts/denyHosts 에 필요)
 	ResolveDNS bool
+	// DNSGrace: connect 가 DNS 응답보다 먼저 올 때(경쟁) 도메인 없는 공인 IP 연결을 이만큼 기다렸다 다시 조회한다 (DNS_GRACE_MS, 0 = 안 기다림)
+	DNSGrace time.Duration
 
 	// EnforceKill=false면 kill 정책도 알림만 (전역 dry-run)
 	EnforceKill bool
@@ -54,6 +56,10 @@ type Config struct {
 	AuthOTPRequired      bool
 	AuthCookieSecure     bool
 	AuthSecretKey        string
+	// 외부 알림(10/20): 둘 다 비면 비활성. PublicURL 은 알림의 대시보드 링크 앞에 붙는다
+	NotifyWebhookURL, NotifySlackURL, PublicURL string
+	// AI 도우미(10/20): OLLAMA_URL 이 비면 챗봇 비활성(라우트 없음). 모델은 로컬 Ollama — 데이터가 서버 밖으로 나가지 않는다
+	OllamaURL, OllamaModel, OllamaKeepAlive string
 
 	// NormalEventRate: 정상 판정 이벤트를 WebSocket으로 보내는 초당 상한 (위반은 항상 전송)
 	NormalEventRate int
@@ -80,6 +86,12 @@ func Load() (Config, error) {
 		AdminToken:         env("ADMIN_TOKEN", ""),
 		SandboxToken:       env("SANDBOX_TOKEN", ""),
 		ActorName:          env("ACTOR_NAME", "보안 담당자"),
+		NotifyWebhookURL:   env("NOTIFY_WEBHOOK_URL", ""),
+		NotifySlackURL:     env("NOTIFY_SLACK_URL", ""),
+		PublicURL:          env("PUBLIC_URL", ""),
+		OllamaURL:          env("OLLAMA_URL", ""),
+		OllamaModel:        env("OLLAMA_MODEL", "qwen2.5:3b"),
+		OllamaKeepAlive:    env("OLLAMA_KEEP_ALIVE", "30m"),
 		AllowedOrigins:     list(env("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),
 		// 로그인(10/20). 비밀번호 · 키 형식 검사는 쓰는 쪽(auth.SeedAdmin · main 의 validateAuthSecret)이 한다
 		AdminUser:            env("ADMIN_USER", "admin"),
@@ -102,6 +114,11 @@ func Load() (Config, error) {
 	if c.NormalEventRate, err = intEnv("NORMAL_EVENT_RATE", 50); err != nil {
 		return c, err
 	}
+	graceMS, err := nonNegIntEnv("DNS_GRACE_MS", 200)
+	if err != nil {
+		return c, err
+	}
+	c.DNSGrace = time.Duration(graceMS) * time.Millisecond
 	if c.EventBuffer, err = intEnv("EVENT_BUFFER", 4096); err != nil {
 		return c, err
 	}
@@ -160,6 +177,19 @@ func boolEnv(key string, def bool) (bool, error) {
 		return def, fmt.Errorf("%s: %w", key, err)
 	}
 	return b, nil
+}
+
+// nonNegIntEnv: 0 을 허용하는 정수 (0 = 기능 끔)
+func nonNegIntEnv(key string, def int) (int, error) {
+	v := env(key, "")
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return def, fmt.Errorf("%s: non-negative integer required", key)
+	}
+	return n, nil
 }
 
 func intEnv(key string, def int) (int, error) {

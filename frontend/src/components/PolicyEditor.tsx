@@ -1,12 +1,12 @@
 import { ArrowLeft, ArrowRight, Play, Trash2 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import YAML from 'yaml';
 import { api, ApiError } from '../lib/api';
 import { fmtNum } from '../lib/format';
 import { ID_PATTERN, summarize, toDraft, toRule, type Draft, type ListField } from '../lib/policyEasy';
-import { ConfirmButton } from './ConfirmButton';
+import { ConfirmDialog } from './Modal';
 import { PolicyEasy } from './PolicyEasy';
-import { KINDS, type Kind, type Level, type Preview, type Rule } from '../lib/types';
+import { KINDS, type DirectIp, type Kind, type Level, type Preview, type Rule } from '../lib/types';
 
 // 고급 폼의 조건 필드 이름 · 설명(쉬운 설정은 components/PolicyEasy.tsx)
 const fieldsByKind: Record<Kind, { field: ListField; label: string; hint: string }[]> = {
@@ -38,6 +38,8 @@ interface Props {
   existingIds: string[];
   // 이벤트 · 감사 행 「이 행동 허용」으로 새로 더한 예외(강조)
   fresh?: { field: ListField; value: string } | null;
+  // 처음 그릴 때 바로 「저장 전 확인」을 연다(새 기본 규칙 「미리보기 후 추가」, 10/20 F)
+  autoCheck?: boolean;
   onSaved: (r: Rule) => void;
   onDeleted: (id: string) => void;
 }
@@ -54,7 +56,7 @@ const LV_TO: Record<Level, string> = { normal: '통과로', alert: '알림으로
 
 // 정책 편집 — 쉬운 설정(기본) · 고급 폼 · 고급 YAML 이 같은 draft 를 고친다.
 // 저장은 늘 「저장 전 확인」(한 줄 요약 + 최근 감사 로그 재평가 POST /api/policies/preview)을 거친다 (10/16 목업 확정)
-export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, existingIds, fresh, onSaved, onDeleted }: Props) {
+export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, existingIds, fresh, autoCheck, onSaved, onDeleted }: Props) {
   const [draft, setDraft] = useState<Draft>(() => toDraft(rule));
   const [mode, setMode] = useState<Mode>('easy');
   const [yamlText, setYamlText] = useState('');
@@ -63,6 +65,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
   const [saved, setSaved] = useState(false);
   const [freshMark, setFreshMark] = useState(fresh ?? null);
   const [check, setCheck] = useState<{ rule: Rule; preview: Preview | null; error: string } | null>(null);
+  const [askDelete, setAskDelete] = useState(false);
 
   const change = (d: Draft) => {
     setDraft(d);
@@ -116,6 +119,16 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
       setCheck((c) => (c && c.rule === r ? { ...c, error: e instanceof ApiError ? `${e.status} · ${e.message}` : (e as Error).message } : c));
     }
   };
+
+  // 새 기본 규칙: 열자마자 저장 전 확인(StrictMode 이중 실행에도 한 번)
+  const autoDone = useRef(false);
+  useEffect(() => {
+    if (!autoCheck || autoDone.current) return;
+    autoDone.current = true;
+    void openCheck();
+    // openCheck 는 처음 그린 draft 로 한 번만 부른다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoCheck]);
 
   const save = async (r: Rule) => {
     setError('');
@@ -233,6 +246,16 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
                 placeholder="전체"
               />
             </Field>
+            {draft.kind === 'connect' && (
+              <Field label="도메인 조회 없는 IP 직접 연결" hint="directIp — trace_dns 가 켜져 있을 때만 판단, 비우면 옛 동작">
+                <select className={input} data-field="directIp" value={draft.directIp} onChange={(e) => update({ directIp: e.target.value as DirectIp | '' })}>
+                  <option value="">(비움)</option>
+                  <option value="allow">allow — 통과</option>
+                  <option value="alert">alert — 알림</option>
+                  <option value="kill">kill — 격리</option>
+                </select>
+              </Field>
+            )}
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={draft.disabled} onChange={(e) => update({ disabled: e.target.checked })} className="accent-indigo-600" />
               비활성화 (평가하지 않음)
@@ -266,15 +289,15 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
         {error && <span className="min-w-0 flex-1 truncate text-sm text-red-600" title={error}>{error}</span>}
         {saved && !error && <span className="flex-1 text-sm text-emerald-600">저장 후 엔진에 적용됨</span>}
         <div className="ml-auto flex gap-2">
-          {!isNew && (
-            <ConfirmButton
-              onConfirm={remove}
-              confirmLabel="눌러서 삭제 확정"
-              disabled={busy || !canWrite || readOnly}
+          {!isNew && canWrite && (
+            <button
+              type="button"
+              onClick={() => setAskDelete(true)}
+              disabled={busy || readOnly}
               className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-40"
             >
               <Trash2 className="size-4" aria-hidden /> 삭제
-            </ConfirmButton>
+            </button>
           )}
           <button
             type="button"
@@ -286,6 +309,20 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
           </button>
         </div>
       </div>
+      {askDelete && (
+        <ConfirmDialog
+          title="정책 삭제"
+          target={rule.id}
+          okLabel="삭제"
+          effects={['엔진에서 바로 빠집니다 — 이 정책으로 걸리던 행동은 다음 이벤트부터 통과', '지난 감사 로그는 그대로 남습니다', '변경 이력에 「정책 편집」으로 남습니다']}
+          undo="YAML 을 복사해 두었다면 「새 정책 › 고급 · YAML」로 다시 만들 수 있습니다"
+          onCancel={() => setAskDelete(false)}
+          onConfirm={() => {
+            setAskDelete(false);
+            void remove();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -365,15 +402,19 @@ function SaveCheck({
             <button type="button" onClick={onBack} className="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
               <ArrowLeft className="size-3.5" aria-hidden /> 고치기
             </button>
-            {!canWrite && <span className="text-xs text-amber-700">관리자 토큰을 화면 머리에 입력하세요</span>}
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={busy || !canWrite}
-              className="flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
-            >
-              저장 후 적용 <Play className="size-3.5" aria-hidden />
-            </button>
+            {/* 조회자는 저장 버튼을 그리지 않는다(W16) — 미리보기는 조회자도 */}
+            {canWrite ? (
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={busy}
+                className="flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+              >
+                저장 후 적용 <Play className="size-3.5" aria-hidden />
+              </button>
+            ) : (
+              <span className="text-xs text-slate-500">저장은 관리자만 할 수 있습니다</span>
+            )}
           </div>
         </section>
       </div>

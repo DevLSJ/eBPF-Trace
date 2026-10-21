@@ -7,12 +7,13 @@ test.describe('정책 제안 — 자동 미리보기', () => {
     void backend;
     await page.goto('/installs?id=ins-0011');
     await page.getByTestId('decision').getByRole('button', { name: '오탐' }).click();
+    await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
     await page.getByRole('button', { name: '제안 보기' }).click();
     const detail = page.getByTestId('proposal');
     await expect(detail.getByTestId('preview-summary')).toBeVisible();
     await expect(detail.locator('[data-to-normal="2"]')).toBeVisible();
     await expect(detail.getByRole('button', { name: '적용' })).toBeEnabled();
-    expect(backend.requests.filter((r) => r.path.endsWith('/preview'))).toHaveLength(1);
+    expect(backend.requests.filter((r) => r.path.startsWith('/proposals/') && r.path.endsWith('/preview'))).toHaveLength(1); // W18: 판정 미리보기(/cases/…/preview)는 따로
   });
 });
 
@@ -28,6 +29,7 @@ test.describe('패키지 표기 — 화면은 친 그대로, 차단 목록 · �
     await row.click();
     await expect(page.locator('[data-sheet="install"]')).toHaveAttribute('aria-label', 'pip ./reqeusts');
     await page.getByTestId('decision').getByRole('button', { name: '악성 확정' }).click();
+    await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
     await expect(page.locator('[data-toast^="decide:"]')).toContainText('pip ./reqeusts 악성 확정');
     await page.getByRole('button', { name: '제안 보기' }).click();
 
@@ -37,6 +39,7 @@ test.describe('패키지 표기 — 화면은 친 그대로, 차단 목록 · �
     await expect(detail.locator('header')).toContainText('pip ./reqeusts');
     await expect(detail.getByTestId('proposal-changes')).toContainText('패키지 차단 pip:reqeusts');
     await detail.getByRole('button', { name: '적용' }).click();
+    await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
     await expect(page.getByTestId('blocklist').locator('[data-block="packages:pip:reqeusts"]')).toContainText('pip:reqeusts');
   });
 });
@@ -46,7 +49,7 @@ test.describe('계약 추가 (10/15)', () => {
     await page.goto('/policies');
     const entry = page.getByTestId('blocklist').locator('[data-block="packages:pip:colourama"]');
     await entry.getByRole('button', { name: '해제' }).click();
-    await entry.getByRole('button', { name: '해제 확정' }).click();
+    await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
     await expect(page.getByTestId('changes').locator('[data-change]').first()).toContainText('차단 해제');
     expect(backend.changes[0].kind).toBe('blocklist_remove');
     await page.goto('/audit?view=changes');
@@ -57,6 +60,7 @@ test.describe('계약 추가 (10/15)', () => {
     void backend;
     await page.goto('/installs?id=ins-0012');
     await page.getByTestId('decision').getByRole('button', { name: '오탐' }).click();
+    await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
     await page.getByRole('button', { name: '제안 보기' }).click();
     const notes = page.getByTestId('proposal-notes');
     await expect(notes).toContainText('pipe-to-shell');
@@ -67,6 +71,7 @@ test.describe('계약 추가 (10/15)', () => {
     void backend;
     await page.goto('/installs?id=ins-0012');
     await page.getByTestId('decision').getByRole('button', { name: '악성 확정' }).click();
+    await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
     await page.getByRole('button', { name: '제안 보기' }).click();
     const next = page.getByTestId('next-only');
     await expect(next).toContainText('다음 설치 · 기동부터 적용');
@@ -93,6 +98,7 @@ test.describe('계약 추가 (10/15)', () => {
   test('오탐 예외: 규칙에 allowHosts 가 원래 없으면 allowCidrs IP/32 제안, 금지 포트 규칙은 안내만', async ({ page, backend }) => {
     await page.goto('/topology?container=pkg-reqeusts&node=c%3Apkg-reqeusts');
     await page.getByTestId('topology-decision').getByRole('button', { name: '오탐' }).click();
+    await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
     const p = backend.proposals[0];
     expect(p.changes).toContainEqual({ op: 'except', ruleId: 'egress-allowlist', field: 'allowCidrs', value: '203.0.113.7/32' });
     expect(p.changes.some((c) => c.op === 'except' && c.ruleId === 'reverse-shell-ports')).toBe(false);
@@ -104,8 +110,10 @@ test.describe('계약 추가 (10/15)', () => {
   test('차단 이미지 재기동은 새 건을 열지 않는다', async ({ page, backend }) => {
     await page.goto('/topology?container=pkg-reqeusts&node=c%3Apkg-reqeusts');
     await page.getByTestId('topology-decision').getByRole('button', { name: '악성 확정' }).click();
+    await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
     await page.getByRole('button', { name: '제안 보기' }).click();
     await page.getByTestId('proposal').getByRole('button', { name: '적용' }).click();
+    await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
     await expect(page.getByTestId('proposal-state')).toContainText('적용됨');
     const before = backend.cases.length;
     backend.runtimeKill('pkg-reqeusts', 'demo/reqeusts:1.0.2'); // 같은 이미지로 다시 뜸 → 시작 즉시 격리(blocked-image)

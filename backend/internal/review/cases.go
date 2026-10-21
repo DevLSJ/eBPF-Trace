@@ -6,8 +6,10 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/notify"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/rules"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/store"
 )
@@ -44,34 +46,27 @@ func (s *Service) GetCase(id string) (model.Case, error) {
 
 // Decide: 판정을 남기고 제안 초안을 만든다. 이미 판정된 건은 409.
 func (s *Service) Decide(ctx context.Context, id string, decision model.Decision, note string) (model.Case, model.Proposal, error) {
-	if decision != model.DecisionMalicious && decision != model.DecisionFalsePositive {
-		return model.Case{}, model.Proposal{}, invalid("decision: malicious | false_positive")
+	if err := validDecision(decision); err != nil {
+		return model.Case{}, model.Proposal{}, err
 	}
-	if len(note) > 2000 {
+	if utf8.RuneCountInString(note) > 2000 { // 글자 수(10/20) — 바이트로 세면 한글 약 666자에서 잘린다
 		return model.Case{}, model.Proposal{}, invalid("note: 2000자 이하")
 	}
 	unlock := s.lockWrite()
 	defer unlock()
-	cur, ok := s.cases[id]
-	if !ok {
-		return model.Case{}, model.Proposal{}, notFound("건 없음")
+	cur, err := s.decidableLocked(id)
+	if err != nil {
+		return model.Case{}, model.Proposal{}, err
 	}
-	if cur.Case.Decision != model.DecisionPending || cur.Case.State != model.CaseOpen {
-		return model.Case{}, model.Proposal{}, conflict("이미 판정된 건")
-	}
-	now := s.o.Now()
+	now, by := s.o.Now(), s.actor(ctx)
 	p := model.Proposal{
 		ID: s.nextID("prop"), CaseID: id, Decision: decision, State: model.ProposalDraft,
-		CreatedAt: now, CreatedBy: s.o.Actor, Changes: []model.ProposalChange{}, Notes: []string{},
+		CreatedAt: now, CreatedBy: by,
 	}
-	if decision == model.DecisionMalicious {
-		s.maliciousChanges(cur, &p)
-	} else {
-		s.falsePositiveChanges(cur, &p)
-	}
+	p.Changes, p.Notes = s.draftChanges(cur, decision)
 	c := cur.Clone()
 	c.Case.State, c.Case.Decision = model.CaseDecided, decision
-	c.Case.DecidedAt, c.Case.DecidedBy, c.Case.Note = &now, ptr(s.o.Actor), note
+	c.Case.DecidedAt, c.Case.DecidedBy, c.Case.Note = &now, ptr(by), note
 	c.Case.ProposalID = ptr(p.ID)
 	if err := s.commitLocked(ctx, store.ReviewCommit{Cases: []model.CaseRecord{c}, Proposals: []model.Proposal{p}}); err != nil {
 		s.releaseID("prop")
@@ -80,7 +75,40 @@ func (s *Service) Decide(ctx context.Context, id string, decision model.Decision
 	s.putCase(&c)
 	s.putProposal(&p)
 	s.broadcastCase(&c)
+	if s.o.Notifier != nil {
+		s.o.Notifier.Notify(ctx, notify.FromProposal(p, ""))
+	}
 	return c.Clone().Case, p.Clone(), nil
+}
+
+func validDecision(d model.Decision) error {
+	if d != model.DecisionMalicious && d != model.DecisionFalsePositive {
+		return invalid("decision: malicious | false_positive")
+	}
+	return nil
+}
+
+// decidableLocked: 판정할 수 있는(열린 · 판정 대기) 건. s.mu 를 잡은 채 부른다. 없으면 404, 판정 · 종결 건은 409
+func (s *Service) decidableLocked(id string) (*model.CaseRecord, error) {
+	cur, ok := s.cases[id]
+	if !ok {
+		return nil, notFound("건 없음")
+	}
+	if cur.Case.Decision != model.DecisionPending || cur.Case.State != model.CaseOpen {
+		return nil, conflict("이미 판정된 건")
+	}
+	return cur, nil
+}
+
+// draftChanges: 판정이 만들 제안의 변경 · 안내 — Decide 와 판정 미리보기(PreviewDecision)가 같이 쓴다. s.mu 를 잡은 채 부른다
+func (s *Service) draftChanges(c *model.CaseRecord, d model.Decision) ([]model.ProposalChange, []string) {
+	p := model.Proposal{Changes: []model.ProposalChange{}, Notes: []string{}}
+	if d == model.DecisionMalicious {
+		s.maliciousChanges(c, &p)
+	} else {
+		s.falsePositiveChanges(c, &p)
+	}
+	return p.Changes, p.Notes
 }
 
 func addChange(p *model.Proposal, ch model.ProposalChange) {
@@ -115,9 +143,11 @@ func (s *Service) maliciousChanges(c *model.CaseRecord, p *model.Proposal) {
 		if len(pkgs) == 0 && c.Case.Package != "" {
 			addChange(p, model.ProposalChange{Op: "block", List: model.ListPackages, Value: c.Case.Package})
 		}
-	case model.CaseScan: // 공급망 검사에서 올린 패키지(10/16)
-		if c.Case.Package != "" {
-			addChange(p, model.ProposalChange{Op: "block", List: model.ListPackages, Value: c.Case.Package})
+	case model.CaseScan: // 공급망 검사에서 올린 패키지(10/16) — 저장소 · 파일 검사는 고른 키 여러 개를 ", " 로 이었다(W4)
+		for _, key := range strings.Split(c.Case.Package, ", ") {
+			if key != "" {
+				addChange(p, model.ProposalChange{Op: "block", List: model.ListPackages, Value: key})
+			}
 		}
 	case model.CaseRuntime:
 		if c.Case.Image != "" {
@@ -241,17 +271,26 @@ func withValue(r rules.Rule, field, value string) rules.Rule {
 	return r
 }
 
-// FromScan: 공급망 검사 「차단 목록에 올리기」(10/16) — 검사마다 건 하나(source scan)를 열고 악성으로 판정해 패키지 차단 제안을 만든다.
-// 이미 올렸으면 그 건 · 제안을 돌려준다. 적용은 정책 화면의 미리보기 → 적용(사람)
-func (s *Service) FromScan(ctx context.Context, sc model.Scan) (model.Case, model.Proposal, error) {
-	key, err := NormalizePackage(sc.Target.Manager, sc.Target.Name)
+// FromScan: 공급망 검사 「차단 목록에 올리기」(10/16) — 건 하나(source scan)를 열고 악성으로 판정해 패키지 차단 제안을 만든다.
+// pkgs 가 비면 패키지 검사의 대상 하나, 있으면(저장소 · 파일 검사, W4) 고른 패키지들 — 건은 (검사, 고른 키 묶음)마다 하나라
+// 같은 선택은 같은 건 · 제안을 돌려주고 다른 선택은 새 건을 연다. Case.Package 에 키를 정렬해 ", " 로 잇는다.
+// 적용은 정책 화면의 미리보기 → 적용(사람).
+// reason(W18): 확인 대화상자의 사유(선택, 500자) — 판정 메모 끝에 「 — 사유: …」로 붙는다. 넘으면 건을 열기 전에 거절.
+// 같은 선택으로 이미 제안이 있으면 그것을 돌려주고 사유는 쓰지 않는다(판정은 한 번)
+func (s *Service) FromScan(ctx context.Context, sc model.Scan, pkgs []model.ScanPackage, reason string) (model.Case, model.Proposal, error) {
+	reason, err := cleanReason(reason)
+	if err != nil {
+		return model.Case{}, model.Proposal{}, err
+	}
+	keys, picked, err := scanBlockKeys(sc, pkgs)
 	if err != nil {
 		return model.Case{}, model.Proposal{}, invalid("%s", err.Error())
 	}
+	key := strings.Join(keys, ", ")
 	unlock := s.lockWrite()
 	var found *model.CaseRecord
 	for _, id := range s.caseIDs {
-		if c := s.cases[id]; c.Case.ScanID != nil && *c.Case.ScanID == sc.ID {
+		if c := s.cases[id]; c.Case.ScanID != nil && *c.Case.ScanID == sc.ID && c.Case.Package == key {
 			found = c
 		}
 	}
@@ -282,6 +321,9 @@ func (s *Service) FromScan(ctx context.Context, sc model.Scan) (model.Case, mode
 		}
 		s.putCase(&c)
 		found = &c
+		if s.o.Notifier != nil {
+			s.o.Notifier.Notify(ctx, notify.FromCase(c.Case))
+		}
 	}
 	id := found.Case.ID
 	unlock()
@@ -289,5 +331,43 @@ func (s *Service) FromScan(ctx context.Context, sc model.Scan) (model.Case, mode
 	if sc.Risk != nil {
 		note += fmt.Sprintf(" — 위험 점수 %.1f", sc.Risk.Score)
 	}
+	if picked != "" {
+		note += " — 선택 패키지 " + picked
+	}
+	if reason != "" {
+		note += " — 사유: " + reason
+	}
 	return s.Decide(ctx, id, model.DecisionMalicious, note)
+}
+
+// scanBlockKeys: 차단 키 목록(정렬 · 중복 제거)과 판정 메모용 「키@버전」 나열.
+// 선택이 없으면 패키지 검사의 대상 하나 — 저장소 · 파일 검사는 선택이 있어야 한다
+func scanBlockKeys(sc model.Scan, pkgs []model.ScanPackage) (keys []string, picked string, err error) {
+	if len(pkgs) == 0 {
+		if sc.Target.Kind != "package" {
+			return nil, "", fmt.Errorf("저장소 · 파일 검사는 차단할 패키지를 골라야 합니다")
+		}
+		key, err := NormalizePackage(sc.Target.Manager, sc.Target.Name)
+		if err != nil {
+			return nil, "", err
+		}
+		return []string{key}, "", nil
+	}
+	var parts []string
+	for _, p := range pkgs {
+		key, err := NormalizePackage(p.Manager, p.Name)
+		if err != nil {
+			return nil, "", err
+		}
+		if slices.Contains(keys, key) {
+			continue
+		}
+		keys = append(keys, key)
+		if p.Version != "" {
+			key += "@" + p.Version
+		}
+		parts = append(parts, key)
+	}
+	slices.Sort(keys)
+	return keys, strings.Join(parts, ", "), nil
 }
