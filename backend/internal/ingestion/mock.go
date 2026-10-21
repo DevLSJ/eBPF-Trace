@@ -119,6 +119,9 @@ func (m *Mock) Run(ctx context.Context, out chan<- model.Event) error {
 	}
 }
 
+// DNSTraced: mock 은 DNS 응답을 이벤트에 직접 넣으므로 항상 추적 중으로 본다
+func (m *Mock) DNSTraced() bool { return true }
+
 // Kill: enforcer.Enforcer 구현 — 해당 컨테이너의 이벤트 생성을 멈추고 종료 이벤트를 보낸다.
 func (m *Mock) Kill(_ context.Context, containerID string) error {
 	m.mu.Lock()
@@ -256,6 +259,9 @@ func (c *mockContainer) event(tmpl model.Event, now time.Time) model.Event {
 	ev.Timestamp = now.UTC()
 	ev.ContainerID, ev.ContainerName, ev.ImageName = c.id, c.name, c.image
 	ev.Pid = uint32(1000 + rnd(30000))
+	if ev.Kind == model.KindConnect {
+		ev.DNSTraced = true // mock 은 trace_dns 가 늘 있는 셈 (DstHost 가 비면 직접 IP 연결)
+	}
 	return ev
 }
 

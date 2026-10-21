@@ -40,7 +40,18 @@ type Rule struct {
 	// 도메인: 같은 컨테이너의 DNS 응답(trace_dns)으로 알아낸 목적지 이름과 비교. "pypi.org" 는 pypi.org 와 *.pypi.org 에 맞는다.
 	AllowHosts []string `yaml:"allowHosts,omitempty" json:"allowHosts,omitempty"`
 	DenyHosts  []string `yaml:"denyHosts,omitempty" json:"denyHosts,omitempty"`
+	// DirectIP: trace_dns 가 켜져 있는데 도메인 조회 없이 공인 IP 로 바로 붙는 연결(C2 · 유출에 흔함)의 처리.
+	// "" = 옛 동작(allowHosts 가 있으면 fail-open) | allow = 통과 | alert · kill = 위반, 이 값이 규칙의 action 을 덮어쓴다.
+	// trace_dns 가 꺼져 있으면(DNSTraced=false) 판단할 수 없으므로 언제나 fail-open 이다. connect 규칙에서만 의미가 있다.
+	DirectIP string `yaml:"directIp,omitempty" json:"directIp,omitempty"`
 }
+
+// DirectIP 값
+const (
+	DirectIPAllow = "allow"
+	DirectIPAlert = "alert"
+	DirectIPKill  = "kill"
+)
 
 var hostPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
 
@@ -80,6 +91,11 @@ func (r Rule) Validate() error {
 			errs = append(errs, fmt.Errorf("host %q: 도메인 이름 형식이 아님", h))
 		}
 	}
+	switch r.DirectIP {
+	case "", DirectIPAllow, DirectIPAlert, DirectIPKill:
+	default:
+		errs = append(errs, fmt.Errorf("directIp %q: allow | alert | kill (또는 비움)", r.DirectIP))
+	}
 	var conds int
 	switch r.Kind {
 	case model.KindExec:
@@ -88,6 +104,9 @@ func (r Rule) Validate() error {
 		conds = len(r.DenyPaths)
 	case model.KindConnect:
 		conds = len(r.AllowPorts) + len(r.AllowCIDRs) + len(r.DenyPorts) + len(r.DenyCIDRs) + len(r.AllowHosts) + len(r.DenyHosts)
+		if r.DirectIP != "" {
+			conds++ // 직접 IP 연결 처리 자체가 조건 하나
+		}
 	}
 	if r.Kind.Valid() && conds == 0 {
 		errs = append(errs, fmt.Errorf("%s 규칙에 조건이 없음", r.Kind))

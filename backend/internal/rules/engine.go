@@ -72,12 +72,17 @@ func (e *Engine) Evaluate(ev model.Event) model.Verdict {
 		if r.Disabled || r.Kind != ev.Kind || !r.appliesTo(ev) {
 			continue
 		}
-		reason, ok := r.match(ev)
+		reason, override, ok := r.match(ev)
 		if !ok {
 			continue
 		}
-		v := model.Verdict{Event: ev, Matched: true, RuleID: r.ID, Action: r.Action, Reason: reason,
-			DryRun: r.Action == model.ActionKill && r.DryRun}
+		// override: 조건이 자기 행동을 정하는 경우(directIp) 규칙의 action 대신 그 값을 쓴다
+		action := r.Action
+		if override != "" {
+			action = override
+		}
+		v := model.Verdict{Event: ev, Matched: true, RuleID: r.ID, Action: action, Reason: reason,
+			DryRun: action == model.ActionKill && r.DryRun}
 		if rank(v) > rank(best) {
 			best = v
 		}
@@ -113,16 +118,19 @@ func (r compiled) appliesTo(ev model.Event) bool {
 	return false
 }
 
-func (r compiled) match(ev model.Event) (string, bool) {
+// match: (이유, 행동 덮어쓰기, 걸림). 덮어쓰기가 "" 이면 규칙의 action 을 쓴다.
+func (r compiled) match(ev model.Event) (string, model.Action, bool) {
 	switch ev.Kind {
 	case model.KindExec:
-		return r.matchExec(ev)
+		reason, ok := r.matchExec(ev)
+		return reason, "", ok
 	case model.KindOpen:
-		return r.matchOpen(ev)
+		reason, ok := r.matchOpen(ev)
+		return reason, "", ok
 	case model.KindConnect:
 		return r.matchConnect(ev)
 	}
-	return "", false
+	return "", "", false
 }
 
 func (r compiled) matchExec(ev model.Event) (string, bool) {
@@ -159,6 +167,17 @@ func (r compiled) matchOpen(ev model.Event) (string, bool) {
 	return "", false
 }
 
+// IsPublicAddr: 인터넷으로 나가는 주소인지 — 루프백 · 링크로컬 · 사설(10/8 · 172.16/12 · 192.168/16 · fc00::/7) · unspecified 는 아니다.
+// 파싱이 안 되면 false. 직접 IP 연결 판정과 pipeline 의 DNS 유예 대상 선별이 같은 기준을 쓴다.
+func IsPublicAddr(ip string) bool {
+	a, err := netip.ParseAddr(ip)
+	if err != nil {
+		return false
+	}
+	a = a.Unmap()
+	return !(a.IsLoopback() || a.IsLinkLocalUnicast() || a.IsLinkLocalMulticast() || a.IsPrivate() || a.IsUnspecified())
+}
+
 // pathMatch: glob 문자(*?[)가 있으면 glob, 아니면 prefix 비교
 func pathMatch(pattern, p string) bool {
 	if strings.ContainsAny(pattern, "*?[") {
@@ -168,10 +187,11 @@ func pathMatch(pattern, p string) bool {
 	return strings.HasPrefix(p, pattern)
 }
 
-func (r compiled) matchConnect(ev model.Event) (string, bool) {
+// matchConnect: 금지 목록 → 허용 목록(OR) → 직접 IP 연결(directIp) → 허용 목록 밖 순으로 본다.
+func (r compiled) matchConnect(ev model.Event) (string, model.Action, bool) {
 	addr, err := netip.ParseAddr(ev.DstIP)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
 	addr = addr.Unmap()
 	dst := ev.DstIP + ":" + strconv.Itoa(int(ev.DstPort))
@@ -179,39 +199,52 @@ func (r compiled) matchConnect(ev model.Event) (string, bool) {
 		dst += " (" + ev.DstHost + ")"
 	}
 	if slices.Contains(r.DenyPorts, ev.DstPort) {
-		return "금지 포트 연결: " + dst, true
+		return "금지 포트 연결: " + dst, "", true
 	}
 	for _, p := range r.deny {
 		if p.Contains(addr) {
-			return "금지 대역 연결: " + dst, true
+			return "금지 대역 연결: " + dst, "", true
 		}
 	}
 	for _, h := range r.DenyHosts {
 		if HostMatches(h, ev.DstHost) {
-			return "금지 도메인 연결: " + dst, true
+			return "금지 도메인 연결: " + dst, "", true
 		}
-	}
-	if len(r.AllowPorts) == 0 && len(r.allow) == 0 && len(r.AllowHosts) == 0 {
-		return "", false
 	}
 	// 허용 목록은 OR: 허용 포트이거나 허용 대역이거나 허용 도메인이면 통과
 	if slices.Contains(r.AllowPorts, ev.DstPort) {
-		return "", false
+		return "", "", false
 	}
 	for _, p := range r.allow {
 		if p.Contains(addr) {
-			return "", false
+			return "", "", false
 		}
 	}
 	for _, h := range r.AllowHosts {
 		if HostMatches(h, ev.DstHost) {
-			return "", false
+			return "", "", false
 		}
 	}
-	// 도메인 허용 목록이 있는데 목적지 도메인을 모르면(DNS 미확인 — trace_dns 미탑재 커널 등)
-	// 도메인 기준을 판단할 수 없으므로 이 연결로는 격리하지 않는다(fail-open). trace_dns 가 뜨면 실제로 판단한다.
-	if len(r.AllowHosts) > 0 && ev.DstHost == "" {
-		return "", false
+	// 직접 IP 연결: trace_dns 가 돌고 있는데(DNSTraced) 도메인 없이 공인 주소로 바로 붙었다 — 규칙의 directIp 대로.
+	// 사설 · 루프백 · 링크로컬 목적지는 직접 연결로 보지 않는다. trace_dns 가 꺼져 있으면(DNSTraced=false) 아래 fail-open 으로 간다.
+	if r.DirectIP != "" && ev.DstHost == "" && ev.DNSTraced && IsPublicAddr(ev.DstIP) {
+		if r.DirectIP == DirectIPAllow {
+			return "", "", false
+		}
+		return "도메인 조회 없는 IP 직접 연결: " + dst, model.Action(r.DirectIP), true
 	}
-	return "허용 목록 밖 외부 연결: " + dst, true
+	// directIp 만 있고 allowHosts 가 없는 규칙(예: runtime-direct-ip)은 직접 IP 연결 전용이다 —
+	// 도메인을 아는 연결 · DNS 추적이 꺼진 연결 · 사설 목적지는 이 규칙이 판정하지 않는다(허용 목록은 예외 지정용).
+	if r.DirectIP != "" && len(r.AllowHosts) == 0 {
+		return "", "", false
+	}
+	if len(r.AllowPorts) == 0 && len(r.allow) == 0 && len(r.AllowHosts) == 0 {
+		return "", "", false
+	}
+	// 도메인 허용 목록이 있는데 목적지 도메인을 모르면(DNS 미확인 — trace_dns 미탑재 커널 · directIp 미설정)
+	// 도메인 기준을 판단할 수 없으므로 이 연결로는 격리하지 않는다(fail-open). directIp 를 두면 위에서 실제로 판단한다.
+	if len(r.AllowHosts) > 0 && ev.DstHost == "" {
+		return "", "", false
+	}
+	return "허용 목록 밖 외부 연결: " + dst, "", true
 }

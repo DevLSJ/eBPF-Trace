@@ -46,6 +46,8 @@ type Gadget struct {
 	// ResolveDNS: connect 가 켜져 있으면 trace_dns 도 함께 돌려 목적지 도메인을 배운다
 	ResolveDNS bool
 	dropped    atomic.Uint64
+	// dnsTraced: trace_dns 가젯이 실제로 떠서 돌고 있는지 (시작 뒤 true, 멈추거나 포기하면 false)
+	dnsTraced atomic.Bool
 	// active: Run 이 실제로 만든 컨테이너 컬렉션 방식(DiscoveryFanotify | DiscoveryDockerEvents). Run 전에는 빈 값
 	active atomic.Value
 }
@@ -61,6 +63,9 @@ type collection struct {
 	lm    operators.DataOperator
 	close func()
 }
+
+// DNSTraced: 지금 trace_dns 가 돌고 있는지 — connect 이벤트의 DNSTraced 와 /api/info dnsResolve 가 쓴다
+func (g *Gadget) DNSTraced() bool { return g.dnsTraced.Load() }
 
 const opPriority = 50000
 
@@ -149,6 +154,9 @@ func (g *Gadget) runWithRetry(ctx context.Context, rt *local.Runtime, shared []o
 		start := time.Now()
 		slog.Info("gadget starting", "kind", k, "image", GadgetImage[k])
 		err := g.runOne(ctx, rt, shared, k, out)
+		if k == model.KindDNS {
+			g.dnsTraced.Store(false) // 멈춘 동안의 connect 는 도메인을 알 수 없다 → fail-open
+		}
 		if ctx.Err() != nil {
 			return
 		}
@@ -172,7 +180,7 @@ func (g *Gadget) runWithRetry(ctx context.Context, rt *local.Runtime, shared []o
 }
 
 func (g *Gadget) runOne(ctx context.Context, rt *local.Runtime, shared []operators.DataOperator, k model.Kind, out chan<- model.Event) error {
-	consumer := simple.New("supplyguard-consumer-"+string(k),
+	opts := []simple.Option{
 		simple.OnInit(func(gadgetCtx operators.GadgetContext) error {
 			for _, d := range gadgetCtx.GetDataSources() {
 				if err := g.subscribe(d, k, out); err != nil {
@@ -181,7 +189,17 @@ func (g *Gadget) runOne(ctx context.Context, rt *local.Runtime, shared []operato
 			}
 			return nil
 		}),
-	)
+	}
+	if k == model.KindDNS {
+		// 오퍼레이터는 우선순위 순으로 시작한다(ebpf=0 → 이 consumer=50000). 여기 Start 가 불렸다는 것은
+		// trace_dns 의 eBPF 프로그램이 로드 · 부착됐다는 뜻 — 그때부터 connect 이벤트에 DNSTraced 를 붙인다.
+		opts = append(opts, simple.OnStart(func(operators.GadgetContext) error {
+			g.dnsTraced.Store(true)
+			slog.Info("trace_dns running; destination domains and direct-IP detection enabled")
+			return nil
+		}))
+	}
+	consumer := simple.New("supplyguard-consumer-"+string(k), opts...)
 	gctx := gadgetcontext.New(ctx, GadgetImage[k],
 		gadgetcontext.WithDataOperators(append(append([]operators.DataOperator{}, shared...), consumer)...),
 	)
@@ -249,6 +267,7 @@ func (g *Gadget) subscribe(d datasource.DataSource, k model.Kind, out chan<- mod
 			if dstPortF != nil {
 				ev.DstPort, _ = dstPortF.Uint16(data)
 			}
+			ev.DNSTraced = g.dnsTraced.Load()
 		case model.KindDNS:
 			addrs := str(addrsF, data)
 			if addrs == "" {

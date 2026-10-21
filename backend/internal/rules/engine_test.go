@@ -130,3 +130,146 @@ func TestAllowHostsUseResolvedDomain(t *testing.T) {
 		t.Fatal("invalid host must fail validation")
 	}
 }
+
+// directIp: trace_dns 가 켜져 있는데 도메인 없이 공인 IP 로 바로 붙는 연결을 규칙 옵션대로 처리한다.
+func TestDirectIP(t *testing.T) {
+	base := Rule{ID: "sandbox-egress", Kind: model.KindConnect, Action: model.ActionKill,
+		AllowHosts: []string{"pypi.org"}, AllowCIDRs: []string{"10.0.0.0/8"}}
+	pub := model.Event{Kind: model.KindConnect, ContainerID: "c1", DstIP: "203.0.113.7", DstPort: 443, DNSTraced: true}
+	with := func(d string) Rule { r := base; r.DirectIP = d; return r }
+
+	t.Run("kill", func(t *testing.T) {
+		v := New([]Rule{with("kill")}).Evaluate(pub)
+		if !v.Matched || v.Action != model.ActionKill || !strings.Contains(v.Reason, "도메인 조회 없는 IP 직접 연결: 203.0.113.7:443") {
+			t.Fatalf("got %+v", v)
+		}
+	})
+	t.Run("directIp overrides rule action", func(t *testing.T) {
+		r := with("alert") // 규칙은 kill, directIp 는 alert → alert
+		if v := New([]Rule{r}).Evaluate(pub); !v.Matched || v.Action != model.ActionAlert {
+			t.Fatalf("want alert, got %+v", v)
+		}
+		r = with("kill")
+		r.Action = model.ActionAlert // 규칙은 alert, directIp 는 kill → kill
+		if v := New([]Rule{r}).Evaluate(pub); !v.Matched || v.Action != model.ActionKill {
+			t.Fatalf("want kill, got %+v", v)
+		}
+	})
+	t.Run("allow", func(t *testing.T) {
+		if v := New([]Rule{with("allow")}).Evaluate(pub); v.Matched {
+			t.Fatalf("directIp allow must pass, got %+v", v)
+		}
+	})
+	t.Run("deny wins over allow", func(t *testing.T) {
+		r := with("allow")
+		r.DenyPorts = []uint16{443}
+		if v := New([]Rule{r}).Evaluate(pub); !v.Matched || !strings.Contains(v.Reason, "금지 포트") {
+			t.Fatalf("deny must win, got %+v", v)
+		}
+	})
+	t.Run("private, loopback, link-local exempt", func(t *testing.T) {
+		r := with("kill")
+		r.AllowCIDRs = nil // CIDR 허용 없이도 사설 주소는 직접 연결로 보지 않는다
+		for _, ip := range []string{"10.1.2.3", "172.16.5.5", "192.168.0.9", "127.0.0.1", "169.254.1.1", "fd00::1", "::1", "0.0.0.0"} {
+			ev := pub
+			ev.DstIP = ip
+			if v := New([]Rule{r}).Evaluate(ev); v.Matched {
+				t.Fatalf("%s: non-public address must not be a direct-IP violation, got %+v", ip, v)
+			}
+		}
+	})
+	t.Run("dns off keeps fail-open", func(t *testing.T) {
+		ev := pub
+		ev.DNSTraced = false
+		if v := New([]Rule{with("kill")}).Evaluate(ev); v.Matched {
+			t.Fatalf("without trace_dns the connection must fail open, got %+v", v)
+		}
+	})
+	t.Run("empty directIp keeps fail-open", func(t *testing.T) {
+		if v := New([]Rule{base}).Evaluate(pub); v.Matched {
+			t.Fatalf("directIp unset must keep the old fail-open, got %+v", v)
+		}
+	})
+	t.Run("known host still judged by allowHosts", func(t *testing.T) {
+		ev := pub
+		ev.DstHost = "evil.test"
+		v := New([]Rule{with("alert")}).Evaluate(ev)
+		if !v.Matched || v.Action != model.ActionKill || !strings.Contains(v.Reason, "허용 목록 밖") {
+			t.Fatalf("known host outside allowHosts must hit the rule action, got %+v", v)
+		}
+		ev.DstHost = "files.pypi.org"
+		if v := New([]Rule{with("kill")}).Evaluate(ev); v.Matched {
+			t.Fatalf("allowed host must pass, got %+v", v)
+		}
+	})
+	t.Run("rule without allowHosts judges only direct ip", func(t *testing.T) {
+		// 기본 정책 runtime-direct-ip 꼴: 사설 대역 예외 + directIp alert. 도메인을 아는 연결과 DNS 꺼진 연결은 이 규칙이 보지 않는다.
+		r := Rule{ID: "runtime-direct-ip", Kind: model.KindConnect, Action: model.ActionAlert, DirectIP: "alert",
+			AllowCIDRs: []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "::1"}}
+		if err := r.Validate(); err != nil {
+			t.Fatal(err)
+		}
+		e := New([]Rule{r})
+		if v := e.Evaluate(pub); !v.Matched || v.Action != model.ActionAlert {
+			t.Fatalf("direct ip must alert, got %+v", v)
+		}
+		known := pub
+		known.DstHost = "api.github.com"
+		if v := e.Evaluate(known); v.Matched {
+			t.Fatalf("resolved host must pass a direct-ip-only rule, got %+v", v)
+		}
+		off := pub
+		off.DNSTraced = false
+		if v := e.Evaluate(off); v.Matched {
+			t.Fatalf("dns off must pass a direct-ip-only rule, got %+v", v)
+		}
+	})
+	t.Run("directIp alone is a condition", func(t *testing.T) {
+		if err := (Rule{ID: "d", Kind: model.KindConnect, Action: model.ActionAlert, DirectIP: "alert"}).Validate(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("validate rejects other values", func(t *testing.T) {
+		for _, bad := range []string{"block", "KILL", "true"} {
+			if err := (Rule{ID: "d", Kind: model.KindConnect, Action: model.ActionAlert, DirectIP: bad}).Validate(); err == nil {
+				t.Fatalf("directIp %q must be rejected", bad)
+			}
+		}
+	})
+	t.Run("yaml field", func(t *testing.T) {
+		rs, err := ParseYAML([]byte("rules:\n  - id: d\n    kind: connect\n    action: alert\n    directIp: kill\n"))
+		if err != nil || len(rs) != 1 || rs[0].DirectIP != "kill" {
+			t.Fatalf("%+v %v", rs, err)
+		}
+	})
+}
+
+func TestDefaultPolicyDirectIP(t *testing.T) {
+	rs, err := LoadFile("../../policies/default.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := New(rs)
+	direct := model.Event{Kind: model.KindConnect, ContainerID: "c1", ContainerName: "sg-install-pip-1", DstIP: "203.0.113.7", DstPort: 443, DNSTraced: true}
+	if v := e.Evaluate(direct); !v.Matched || v.RuleID != "sandbox-egress" || v.Action != model.ActionKill {
+		t.Fatalf("sandbox direct ip must be killed, got %+v", v)
+	}
+	direct.ContainerName = "web-api"
+	if v := e.Evaluate(direct); !v.Matched || v.RuleID != "runtime-direct-ip" || v.Action != model.ActionAlert {
+		t.Fatalf("runtime direct ip must alert, got %+v", v)
+	}
+	direct.DstHost = "api.github.com"
+	if v := e.Evaluate(direct); v.Matched {
+		t.Fatalf("resolved https must pass, got %+v", v)
+	}
+}
+
+func TestIsPublicAddr(t *testing.T) {
+	for ip, want := range map[string]bool{"203.0.113.7": true, "8.8.8.8": true, "2001:db8::1": true, "::ffff:1.2.3.4": true,
+		"10.0.0.1": false, "172.31.255.1": false, "192.168.1.1": false, "127.0.0.1": false, "169.254.0.1": false,
+		"fc00::1": false, "fe80::1": false, "::1": false, "0.0.0.0": false, "::": false, "not-an-ip": false} {
+		if got := IsPublicAddr(ip); got != want {
+			t.Errorf("IsPublicAddr(%q) = %v, want %v", ip, got, want)
+		}
+	}
+}

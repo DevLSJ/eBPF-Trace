@@ -3,6 +3,7 @@
 package model
 
 import (
+	"encoding/json"
 	"strconv"
 	"time"
 )
@@ -59,9 +60,48 @@ type Event struct {
 	DstPort uint16 `json:"dstPort,omitempty"` // connect
 	// DstHost: 같은 컨테이너가 직전에 조회한 DNS 응답으로 알아낸 목적지 도메인 (모르면 빈 문자열)
 	DstHost string `json:"dstHost,omitempty"` // connect
+	// DNSTraced: 이 connect 이벤트가 올 때 trace_dns 가 실제로 돌고 있었는지. true 인데 DstHost 가 비면
+	// 「도메인 조회 없는 IP 직접 연결」이고, false 면 판단 불가(fail-open). 가젯 소스는 trace_dns 로드 여부, mock 은 항상 true.
+	// JSON 은 connect 에만, false 도 명시해서 낸다(W20, MarshalJSON). 필드가 없으면 옛 기록이다.
+	DNSTraced bool `json:"dnsTraced,omitempty"` // connect
 	// DNS 응답 (KindDNS 내부 이벤트 전용, JSON 으로 내보내지 않음)
 	DNSName  string   `json:"-"`
 	DNSAddrs []string `json:"-"`
+	// dnsUnrecorded: 저장된 connect 기록에 dnsTraced 가 없었다(필드가 생기기 전 옛 기록). 다시 내보낼 때도 생략해
+	// 화면이 「기록 없음」으로 보이게 한다. 이 프로세스가 만든 이벤트는 늘 false(= 기록 있음).
+	dnsUnrecorded bool
+}
+
+// eventJSON: Event 의 기본 JSON 모양(메서드 없는 같은 구조) — MarshalJSON · UnmarshalJSON 재귀를 끊는다
+type eventJSON Event
+
+// MarshalJSON: dnsTraced 를 connect 이벤트에만, false 도 명시해서 낸다. 다른 종류에는 필드가 없다.
+func (e Event) MarshalJSON() ([]byte, error) {
+	w := struct {
+		eventJSON
+		DNSTraced *bool `json:"dnsTraced,omitempty"` // 바깥 필드가 안쪽(omitempty bool)을 가린다
+	}{eventJSON: eventJSON(e)}
+	if e.Kind == KindConnect && !e.dnsUnrecorded {
+		v := e.DNSTraced
+		w.DNSTraced = &v
+	}
+	return json.Marshal(w)
+}
+
+// UnmarshalJSON: 저장(PG jsonb · Redis)에서 읽을 때 connect 기록에 dnsTraced 가 없었는지 기억한다.
+// 없으면 DNSTraced=false(규칙 평가는 fail-open 그대로)이고 다시 내보낼 때도 생략한다.
+func (e *Event) UnmarshalJSON(b []byte) error {
+	var w struct {
+		eventJSON
+		DNSTraced *bool `json:"dnsTraced"`
+	}
+	if err := json.Unmarshal(b, &w); err != nil {
+		return err
+	}
+	*e = Event(w.eventJSON)
+	e.DNSTraced = w.DNSTraced != nil && *w.DNSTraced
+	e.dnsUnrecorded = e.Kind == KindConnect && w.DNSTraced == nil
+	return nil
 }
 
 // Detail: 이벤트 종류별 핵심 값 한 줄 (피드·감사로그 표시용)

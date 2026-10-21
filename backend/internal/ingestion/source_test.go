@@ -95,3 +95,18 @@ func TestMockSimulateInstall(t *testing.T) {
 		t.Fatal("second kill must report not running")
 	}
 }
+
+// mock 소스는 trace_dns 가 항상 있는 것으로 본다: connect 이벤트에 DNSTraced 가 붙고 DNSTraced() 는 true
+func TestMockReportsDNSTraced(t *testing.T) {
+	m := NewMock()
+	if !m.DNSTraced() {
+		t.Fatal("mock must report DNS tracing on")
+	}
+	c := &mockContainer{id: "x", name: "web-api"}
+	if ev := c.event(model.Event{Kind: model.KindConnect, DstIP: "203.0.113.7", DstPort: 443}, time.Now()); !ev.DNSTraced {
+		t.Fatalf("connect event must carry DNSTraced, got %+v", ev)
+	}
+	if ev := c.event(model.Event{Kind: model.KindExec, Comm: "sh"}, time.Now()); ev.DNSTraced {
+		t.Fatalf("non-connect event must not carry DNSTraced, got %+v", ev)
+	}
+}

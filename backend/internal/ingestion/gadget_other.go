@@ -22,5 +22,8 @@ func (g *Gadget) Run(context.Context, chan<- model.Event) error {
 	return errors.New("gadget source requires Linux; set EVENT_SOURCE=mock for local development")
 }
 
+// DNSTraced: Linux 가 아니면 가젯이 돌지 않으므로 늘 false
+func (g *Gadget) DNSTraced() bool { return false }
+
 // ActiveDiscovery: Linux 가 아니면 컨테이너 컬렉션을 만들지 않으므로 늘 빈 값
 func (g *Gadget) ActiveDiscovery() string { return "" }
