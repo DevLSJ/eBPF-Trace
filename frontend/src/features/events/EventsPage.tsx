@@ -35,7 +35,7 @@ export function EventsPage() {
   // 첫 로드 상태는 셸 스트림 값으로(W20) — 따로 다시 부르지 않는다. 오류 칸의 다시 시도 · 30초 자동 재시도 모두 retryLoad
   const { verdicts, paused, pause, resume, recentLoading, recentError, retryLoad } = useStream();
   const failing = verdicts.length === 0 && recentError != null;
-  useAutoRetry(failing, retryLoad);
+  useAutoRetry(failing, recentError, retryLoad);
   const [params, setParams] = useSearchParams();
   const kind = params.get('kind') ?? '';
   const level = (params.get('level') as LevelFilter) || '';

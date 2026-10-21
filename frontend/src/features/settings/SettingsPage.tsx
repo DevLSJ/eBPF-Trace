@@ -2,6 +2,7 @@ import { KeyRound, Plus, Send } from 'lucide-react';
 import { useCallback, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { KeyBoxes } from '../../components/KeyBoxes';
+import { AppliedFilters } from '../../components/list/ListStates';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { Empty, LoadError } from '../../components/Panel';
 import { useAuth } from '../../hooks/auth-context';
@@ -10,7 +11,7 @@ import { useLoad } from '../../hooks/useLoad';
 import { api, ApiError, authApi, errorText } from '../../lib/api';
 import { AUTH_MSG, daysLeft, licenseText, ROLE_KO } from '../../lib/auth';
 import { fmtDateTime, fmtNum } from '../../lib/format';
-import type { Info, Role, UserView } from '../../lib/types';
+import type { AuthAuditEntry, Info, Role, UserView } from '../../lib/types';
 
 // 설정(W16, 10/20 확정) — 서버 설정(보기 · 알림 테스트) · 계정 · 라이선스 · 인증 감사. 조회자는 계정 · 인증 감사 탭이 없다
 type Tab = 'server' | 'accounts' | 'license' | 'auth-audit';
@@ -448,8 +449,8 @@ function LicenseTab() {
     }
   };
   const last4 = key[3]?.length === 4 ? key[3] : '????';
-  // Enter 로 확인 대화상자를 열면 같은 키 입력이 새로 포커스된 「바꾸기」를 눌러 확인을 건너뛴다 — 키를 뗀 뒤에 연다
-  const confirmAfterEnter = () => !busy && window.addEventListener('keyup', () => setPhase((p) => (p === 'input' ? 'confirm' : p)), { once: true });
+  // Enter 는 KeyBoxes 가 키를 뗀 뒤에 알린다 — 새로 포커스된 「바꾸기」가 같은 Enter 로 눌리지 않는다
+  const confirmOnEnter = () => !busy && setPhase('confirm');
   const renew = isAdmin && (
     <>
       {phase === 'input' && (
@@ -470,7 +471,7 @@ function LicenseTab() {
           }
         >
           <p className="text-[13px] text-slate-500">받은 키 16자리를 넣으세요(XXXX-XXXX-XXXX-XXXX). 붙여넣으면 네 칸에 나눠 들어갑니다.</p>
-          <KeyBoxes value={key} onChange={setKey} label="라이선스 키" onEnter={confirmAfterEnter} />
+          <KeyBoxes value={key} onChange={setKey} label="라이선스 키" onEnter={confirmOnEnter} />
           {msg && (
             <p role="alert" className="rounded-md bg-red-50 px-2.5 py-2 text-[13px] text-red-700">
               {msg}
@@ -562,40 +563,116 @@ const ACTION_KO: Record<string, string> = {
   user_reset_password: '비밀번호 초기화',
   user_reset_otp: 'OTP 초기화',
 };
+// 서버가 남기는 동작 이름 13개(backend auth/service.go, 10/21 필터 계약) — 「한 일」 고르기 목록. 목록 밖 action 은 서버가 400
+const AUDIT_ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_register', 'license_renew', 'otp_enroll', 'otp_verify', 'otp_recovery',
+  'user_create', 'user_update', 'user_reset_password', 'user_reset_otp'];
+const AUDIT_PAGE = 200;
+const ctl = 'h-8 rounded-md border border-slate-300 bg-white px-2 text-sm focus:border-indigo-500 focus:outline-none';
+
+// 필터(한 일 · 실패만)는 서버가 거른다 — GET /api/auth/audit?action=&failed=1, 「더 보기」는 마지막 행 id 를 before 로
 function AuthAuditTab() {
-  const load = useCallback(() => authApi.audit(200), []);
-  const rows = useLoad(load);
-  if (!rows.data) return <div data-view="auth-audit">{rows.error ? <LoadError error={rows.error} what="인증 감사" /> : <Empty>불러오는 중…</Empty>}</div>;
+  const [action, setAction] = useState('');
+  const [failed, setFailed] = useState(false);
+  const chips = [
+    !!action && { key: 'action', label: `한 일: ${ACTION_KO[action] ?? action}`, clear: () => setAction('') },
+    failed && { key: 'failed', label: '실패만', clear: () => setFailed(false) },
+  ];
   return (
     <div data-view="auth-audit">
-      {rows.data.length === 0 ? (
-        <Empty>기록 없음</Empty>
-      ) : (
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-slate-50 text-left text-xs text-slate-500">
-            <tr>
-              {['시각', '계정', '동작', '대상', 'IP', '결과', '내용'].map((t) => (
-                <th key={t} className="px-4 py-2 font-medium">
-                  {t}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.data.map((a) => (
-              <tr key={a.id} data-audit={a.id} className="border-t border-slate-100">
-                <td className="num px-4 py-1.5 text-xs whitespace-nowrap">{fmtDateTime(a.at)}</td>
-                <td className="px-4 py-1.5 font-mono text-xs">{a.actor || '—'}</td>
-                <td className="px-4 py-1.5">{ACTION_KO[a.action] ?? a.action}</td>
-                <td className="px-4 py-1.5 font-mono text-xs">{a.target || '—'}</td>
-                <td className="px-4 py-1.5 font-mono text-xs text-slate-500">{a.ip || '—'}</td>
-                <td className={`px-4 py-1.5 text-xs ${a.ok ? 'text-emerald-700' : 'text-red-600'}`}>{a.ok ? '성공' : '실패'}</td>
-                <td className="px-4 py-1.5 text-xs text-slate-600">{a.detail}</td>
-              </tr>
+      <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-2.5 text-sm" data-part="auth-audit-filters">
+        <label className="flex items-center gap-1.5 text-slate-500">
+          한 일
+          <select className={ctl} data-field="action" value={action} onChange={(e) => setAction(e.target.value)}>
+            <option value="">전체</option>
+            {AUDIT_ACTIONS.map((a) => (
+              <option key={a} value={a}>
+                {ACTION_KO[a] ?? a}
+              </option>
             ))}
-          </tbody>
-        </table>
-      )}
+          </select>
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 text-slate-600 select-none">
+          <input type="checkbox" className="accent-indigo-600" data-field="failed" checked={failed} onChange={(e) => setFailed(e.target.checked)} />
+          실패만
+        </label>
+      </div>
+      <AppliedFilters
+        items={chips}
+        onClearAll={() => {
+          setAction('');
+          setFailed(false);
+        }}
+      />
+      {/* 필터가 바뀌면 처음부터 — 더 불러온 행 · 끝 표시를 버린다 */}
+      <AuthAuditRows key={`${action}|${failed}`} action={action} failed={failed} />
     </div>
+  );
+}
+
+function AuthAuditRows({ action, failed }: { action: string; failed: boolean }) {
+  const load = useCallback(() => authApi.audit({ limit: AUDIT_PAGE, action, failed }), [action, failed]);
+  const rows = useLoad(load);
+  const [extra, setExtra] = useState<AuthAuditEntry[]>([]);
+  const [end, setEnd] = useState(false);
+  const [moreBusy, setMoreBusy] = useState(false);
+  const [moreErr, setMoreErr] = useState<unknown>(null);
+  if (!rows.data) return rows.error ? <LoadError error={rows.error} what="인증 감사" /> : <Empty>불러오는 중…</Empty>;
+  const all = [...rows.data, ...extra];
+  const hasMore = !end && rows.data.length >= AUDIT_PAGE;
+  const more = async () => {
+    setMoreBusy(true);
+    setMoreErr(null);
+    try {
+      const next = await authApi.audit({ limit: AUDIT_PAGE, action, failed, before: all[all.length - 1].id });
+      setExtra((x) => [...x, ...next]);
+      if (next.length < AUDIT_PAGE) setEnd(true);
+    } catch (e) {
+      setMoreErr(e);
+    } finally {
+      setMoreBusy(false);
+    }
+  };
+  if (all.length === 0) return <Empty>{action || failed ? '조건에 맞는 기록 없음' : '기록 없음'}</Empty>;
+  return (
+    <>
+      <table className="w-full text-sm">
+        <thead className="sticky top-0 bg-slate-50 text-left text-xs text-slate-500">
+          <tr>
+            {['시각', '계정', '동작', '대상', 'IP', '결과', '내용'].map((t) => (
+              <th key={t} className="px-4 py-2 font-medium">
+                {t}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {all.map((a) => (
+            <tr key={a.id} data-audit={a.id} className="border-t border-slate-100">
+              <td className="num px-4 py-1.5 text-xs whitespace-nowrap">{fmtDateTime(a.at)}</td>
+              <td className="px-4 py-1.5 font-mono text-xs">{a.actor || '—'}</td>
+              <td className="px-4 py-1.5">{ACTION_KO[a.action] ?? a.action}</td>
+              <td className="px-4 py-1.5 font-mono text-xs">{a.target || '—'}</td>
+              <td className="px-4 py-1.5 font-mono text-xs text-slate-500">{a.ip || '—'}</td>
+              <td className={`px-4 py-1.5 text-xs ${a.ok ? 'text-emerald-700' : 'text-red-600'}`}>{a.ok ? '성공' : '실패'}</td>
+              <td className="px-4 py-1.5 text-xs text-slate-600">{a.detail}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {(hasMore || moreErr != null) && (
+        <div className="flex flex-col items-center gap-1 border-t border-slate-100 py-3 text-xs">
+          {moreErr != null && (
+            <span className="text-red-600" role="alert">
+              더 불러오지 못했습니다 — {errorText(moreErr)}
+            </span>
+          )}
+          {hasMore && (
+            <button type="button" data-action="more" disabled={moreBusy} onClick={() => void more()} className="rounded-md border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+              {moreBusy ? '불러오는 중…' : '더 보기'}
+            </button>
+          )}
+        </div>
+      )}
+    </>
   );
 }

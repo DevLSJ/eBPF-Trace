@@ -75,7 +75,7 @@ export function ScansPage() {
     if (!failing) reload();
   }, [failing, reload]);
   useInterval(poll, running ? 2000 : 15000);
-  useAutoRetry(failing, reload);
+  useAutoRetry(failing, list.error, reload);
   const canWrite = isAdmin; // 조회자는 검사 시작 · 차단 버튼을 그리지 않는다(W16)
   const setQ = (k: 'id' | 'verdict', v: string) => {
     const next = new URLSearchParams(params);

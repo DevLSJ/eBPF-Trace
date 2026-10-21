@@ -232,7 +232,7 @@ function Violations({
 
   const failing = !!error && !loaded;
   const retry = useCallback(() => void fetchPage(), [fetchPage]);
-  useAutoRetry(failing, retry);
+  useAutoRetry(failing, error, retry);
 
   const opened = useRef(false);
   useEffect(() => {
@@ -472,7 +472,7 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
   const load = useCallback(() => api.changes(500), []);
   const changes = useLoad(load);
   const failing = !!changes.error && !changes.data;
-  useAutoRetry(failing, changes.reload);
+  useAutoRetry(failing, changes.error, changes.reload);
   const s = since ? new Date(since).getTime() : -Infinity;
   const u = until ? new Date(until).getTime() : Infinity;
   const inRange = (iso: string) => {

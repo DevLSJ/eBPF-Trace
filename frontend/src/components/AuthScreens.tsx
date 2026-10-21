@@ -183,7 +183,7 @@ function LicenseStep({ run, busy, onState }: StepProps) {
     <>
       <Head title="라이선스 등록" desc="이 서버에 라이선스가 없습니다. 받은 키 16자리를 넣으세요(XXXX-XXXX-XXXX-XXXX). 붙여넣으면 네 칸에 나눠 들어갑니다." />
       <div className="grid gap-3">
-        <KeyBoxes value={key} onChange={setKey} label="라이선스 키" onEnter={submit} />
+        <KeyBoxes value={key} onChange={setKey} label="라이선스 키" onEnter={() => !busy && submit()} />
         <button type="button" className={primary} disabled={busy} onClick={submit}>
           등록하고 계속
         </button>

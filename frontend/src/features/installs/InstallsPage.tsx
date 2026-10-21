@@ -38,7 +38,7 @@ export function InstallsPage() {
     if (!failing) reload();
   }, [failing, reload]);
   useInterval(poll, 5000);
-  useAutoRetry(failing, reload);
+  useAutoRetry(failing, list.error, reload);
 
   const set = (k: string, v: string | null) => {
     const next = new URLSearchParams(params);

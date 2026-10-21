@@ -97,6 +97,34 @@ test.describe('인증 — 로그인 단계', () => {
     await expect(page.locator('[data-part="license-chip"]')).toHaveText('평가판 · 365일 남음');
   });
 
+  // W-B (10/21): 처리 중 Enter 를 또 눌러도 라이선스 등록 요청은 한 번만(KeyBoxes onEnter 는 keyup, 처리 중이면 무시)
+  test('라이선스 단계: 응답이 늦을 때 Enter 두 번 → POST 1건', async ({ page, backend }) => {
+    backend.auth.fresh();
+    backend.auth.user('admin').mustChangePassword = false;
+    let posts = 0;
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    // 나중에 건 route 가 먼저 받는다 — 세고, 풀어 줄 때까지 붙잡았다가 가짜 백엔드로 넘긴다
+    await page.route(/\/api\/auth\/license$/, async (route) => {
+      if (route.request().method() === 'POST') posts++;
+      await held;
+      await route.fallback();
+    });
+    await page.goto('/');
+    await login(page, 'admin', ADMIN_PW);
+    await expect(step(page)).toHaveAttribute('data-step', 'license');
+    const boxes = step(page).locator('[data-part="key-boxes"] input');
+    for (const [i, v] of ['1234', '5678', '9012', '3456'].entries()) await boxes.nth(i).fill(v);
+    await boxes.nth(3).press('Enter');
+    await expect.poll(() => posts).toBe(1);
+    await expect(step(page).getByRole('button', { name: '등록하고 계속' })).toBeDisabled();
+    await boxes.nth(3).press('Enter');
+    await page.waitForTimeout(300);
+    release();
+    await expect(page.getByTestId('page-title')).toHaveText('대시보드');
+    expect(posts).toBe(1);
+  });
+
   test('OTP 등록: 실제 QR(외부 요청 없음) · 수동 키 → 6자리 확인 → 복구 코드 10개(체크 뒤 시작)', async ({ page, backend }) => {
     backend.auth.otpRequired = true;
     backend.auth.loggedOut();

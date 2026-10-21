@@ -344,7 +344,7 @@ export class MockBackend {
     // 인증 미들웨어(backend auth.Middleware) → 단계 · 계정 · 라이선스 경로
     const gate = this.auth.gate(method, path, writing);
     if (gate) return json(gate.body, gate.status);
-    const a = this.auth.handle(method, path, body);
+    const a = this.auth.handle(method, path, body, q);
     if (a) return a.status === 204 ? route.fulfill({ status: 204 }) : json(a.body, a.status);
     if (method === 'POST' && path === '/notify/test') {
       const n = this.info.notify;

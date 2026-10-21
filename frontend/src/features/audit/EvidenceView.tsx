@@ -1,5 +1,6 @@
 import { FileSearch } from 'lucide-react';
 import { useCallback } from 'react';
+import { useAutoRetry } from '../../components/list/hooks';
 import { EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
 import { Section } from '../../components/Sheet';
 import { useLoad } from '../../hooks/useLoad';
@@ -19,6 +20,7 @@ export function EvidenceView({ a }: { a: AuditEntry }) {
   const name = a.event.containerName;
   const load = useCallback(() => api.evidence(name), [name]);
   const r = useLoad(load);
+  useAutoRetry(!!r.error && !r.data, r.error, r.reload); // 오류 칸의 「30초마다」 문구대로
   if (r.error && !r.data) return <ListError error={r.error} what="증거" onRetry={r.reload} retrying={r.loading} />;
   if (!r.data) return <Skeleton rows={4} />;
   if (!r.data.length)

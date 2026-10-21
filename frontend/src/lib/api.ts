@@ -217,10 +217,24 @@ export const authApi = {
     request<UserView>(`/users/${enc(id)}`, json('PATCH', b)),
   resetPassword: (id: string) => request<{ tempPassword: string }>(`/users/${enc(id)}/reset-password`, { method: 'POST' }),
   resetOtp: (id: string) => request<void>(`/users/${enc(id)}/reset-otp`, { method: 'POST' }),
-  audit: (limit = 200) => request<AuthAuditEntry[]>(`/auth/audit?limit=${limit}`),
+  // 인증 감사(10/21 필터) — action 은 서버 동작 이름 하나, failed 는 실패(ok=false)만, before 는 그 id 미만(최신순 · 「더 보기」)
+  audit: (q: AuthAuditQuery = {}) => {
+    const p = new URLSearchParams({ limit: String(q.limit ?? 200) });
+    if (q.action) p.set('action', q.action);
+    if (q.failed) p.set('failed', '1');
+    if (q.before != null) p.set('before', String(q.before));
+    return request<AuthAuditEntry[]>(`/auth/audit?${p}`);
+  },
   // 알림 테스트 발송(관리자) — 202, 채널이 없으면 409. 발송은 비동기라 화면은 잠시 뒤 /api/info 를 다시 읽는다
   notifyTest: () => request<unknown>('/notify/test', { method: 'POST' }),
 };
+
+export interface AuthAuditQuery {
+  limit?: number;
+  action?: string;
+  failed?: boolean;
+  before?: number;
+}
 
 // 로그인 여부 다시 확인(실시간 연결이 열리기 전에 닫혔을 때) — active 가 아니면 전역 401 처리로 넘긴다
 export async function recheckSession() {

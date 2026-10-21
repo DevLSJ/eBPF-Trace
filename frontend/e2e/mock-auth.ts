@@ -10,6 +10,9 @@ export const OTP_SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
 export const OTP_URI = `otpauth://totp/SupplyGuard:admin?secret=${OTP_SECRET}&issuer=SupplyGuard&algorithm=SHA1&digits=6&period=30`;
 export const RECOVERY = ['A2B3-C4D5', 'E6F7-G8H9', 'J2K3-L4M5', 'N6P7-Q8R9', 'S2T3-U4V5', 'W6X7-Y8Z9', 'A3B4-C5D6', 'E7F8-G9H2', 'J3K4-L5M6', 'N7P8-Q9R2'];
 const DAY = 86400e3;
+// 인증 감사 action 필터가 받는 서버 동작 이름 13개(backend auth/service.go)
+export const AUDIT_ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_register', 'license_renew', 'otp_enroll', 'otp_verify', 'otp_recovery',
+  'user_create', 'user_update', 'user_reset_password', 'user_reset_otp'];
 
 export const MSG = {
   login: '로그인이 필요합니다',
@@ -156,7 +159,7 @@ export class MockAuth {
   }
 
   // 인증 경로 처리. 해당 없으면 null
-  handle(method: string, path: string, body: string | undefined): Res | null {
+  handle(method: string, path: string, body: string | undefined, q = new URLSearchParams()): Res | null {
     const b = parseBody(body); // W18: YAML 본문(PUT /api/policies)도 지나가므로 JSON 이 아니면 빈 객체
     const s = (k: string) => (typeof b[k] === 'string' ? (b[k] as string) : '');
     let m: RegExpMatchArray | null;
@@ -270,7 +273,23 @@ export class MockAuth {
       return { status: 200, body: this.licView() };
     }
     if (method === 'GET' && path === '/license') return this.license ? { status: 200, body: this.licView() } : this.err(404, '등록된 라이선스가 없습니다');
-    if (method === 'GET' && path === '/auth/audit') return { status: 200, body: this.audit };
+    // 인증 감사(10/21 필터) — 서버처럼 거른다: action 하나(13개 중) · failed=1 은 ok=false 전부 · before 는 그 id 미만 · 최신순 · limit.
+    // 목록 밖 action · 잘못된 before(0 · 음수 · 숫자 아님) · failed 가 1/true/0/false/빈 값이 아니면 400
+    if (method === 'GET' && path === '/auth/audit') {
+      const action = q.get('action') ?? '';
+      if (action && !AUDIT_ACTIONS.includes(action)) return this.err(400, 'action: 알 수 없는 동작입니다');
+      const rawBefore = q.get('before');
+      const before = rawBefore == null ? 0 : /^\d+$/.test(rawBefore) ? Number(rawBefore) : -1;
+      if (rawBefore != null && before <= 0) return this.err(400, 'before: 1 이상의 id 여야 합니다');
+      const f = q.get('failed') ?? '';
+      if (!['', '0', '1', 'true', 'false'].includes(f)) return this.err(400, 'failed: 1 | true | 0 | false');
+      const failedOnly = f === '1' || f === 'true';
+      const limit = Number(q.get('limit') ?? 200) || 200;
+      const rows = [...this.audit]
+        .sort((x, y) => y.id - x.id)
+        .filter((a) => (!action || a.action === action) && (!failedOnly || !a.ok) && (!before || a.id < before));
+      return { status: 200, body: rows.slice(0, limit) };
+    }
     if (method === 'GET' && path === '/users') return { status: 200, body: this.users.map((u) => this.view(u)) };
     if (method === 'POST' && path === '/users') {
       const name = s('username').trim();

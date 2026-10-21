@@ -1,6 +1,7 @@
 import { Fragment, useRef } from 'react';
 
-// 4칸 키 입력(목업 ui-kit keyBoxes) — 칸마다 len 자리 숫자. 붙여넣으면 그 칸부터 나눠 채우고, 다 차면 다음 칸 · 빈 칸에서 지우면 앞 칸
+// 4칸 키 입력(목업 ui-kit keyBoxes) — 칸마다 len 자리 숫자. 붙여넣으면 그 칸부터 나눠 채우고, 다 차면 다음 칸 · 빈 칸에서 지우면 앞 칸.
+// Enter 는 키를 뗄 때(keyup) onEnter — 누를 때 부르면 그 사이 열린 확인 창의 버튼이 같은 Enter 로 눌린다. 그 칸에서 누른 것만 센다
 export function KeyBoxes({
   value,
   onChange,
@@ -17,6 +18,7 @@ export function KeyBoxes({
   onEnter?: () => void;
 }) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const enterDown = useRef<number | null>(null); // Enter 를 누른 칸 — 다른 곳에서 누르고 여기서 뗀 것은 무시
   const fillFrom = (start: number, digits: string) => {
     const next = [...value];
     let k = 0;
@@ -55,7 +57,16 @@ export function KeyBoxes({
             }}
             onKeyDown={(e) => {
               if (e.key === 'Backspace' && !value[i]) refs.current[i - 1]?.focus();
-              if (e.key === 'Enter') onEnter?.();
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (!e.repeat) enterDown.current = i;
+              }
+            }}
+            onKeyUp={(e) => {
+              if (e.key !== 'Enter') return;
+              const mine = enterDown.current === i;
+              enterDown.current = null;
+              if (mine) onEnter?.();
             }}
             className="h-9 w-[4.5rem] rounded-md border border-slate-300 text-center font-mono tracking-[0.15em] focus:border-indigo-500 focus:outline-none"
           />
