@@ -4,7 +4,7 @@
    3 수집량 추이(종류별 쌓은 막대) · 위반 추이(격리 · 경고) — 기간별 칸 수(1시간 60 · 24시간 24 · 7일 28)
    4 상위 규칙 · 상위 컨테이너 5개, 많은 순
    5 설치 검사 결과 · 판정 결과 · 차단 목록 수
-   6 기간을 바꾸면 URL(?range=) · 칸 수가 바뀐다
+   6 기간을 바꾸면 칸 수가 바뀐다 — 기간은 화면 상태만, 주소에 range 를 남기지 않는다(10/21b)
    7 공격이 들어오면 위반 숫자가 바로 늘어난다
    8 1440 · 1280 넘침 0 · 콘솔 오류 0
    실행: (mock/ 에서) python3 -m http.server 8766 → PLAYWRIGHT=<playwright 경로> node tests/overview-1016.cjs   (VERBOSE=1 · ONLY · SHOTS=1) */
@@ -101,12 +101,12 @@ const num = (s) => Number(String(s).replace(/[^\d]/g, ''));
     await pg.close();
   });
 
-  await T('6 기간 1시간 → URL ?range=1h · 60칸, 7일 → 28칸', async () => {
+  await T('6 기간 1시간 → 60칸(주소에 range 없음), 7일 → 28칸', async () => {
     const pg = await newPage();
     await go(pg, '/');
     await pg.click(`${OV} [data-range="1h"]`);
     await pg.waitForTimeout(300);
-    ok(pg.url().includes('range=1h'), pg.url());
+    ok(!pg.url().includes('range='), `주소에 기간이 남음 ${pg.url()}`); // 10/21b
     ok(await pg.locator(`${OV} [data-chart="collected"] [data-bucket]`).count() === 60, '1시간 칸 수');
     await pg.click(`${OV} [data-range="7d"]`);
     await pg.waitForTimeout(300);

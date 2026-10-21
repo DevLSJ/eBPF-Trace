@@ -18,6 +18,7 @@
    실행: (mock/ 에서) python3 -m http.server 8766 → PLAYWRIGHT=<playwright 경로> node tests/goals-1015.cjs   (VERBOSE=1 · ONLY=정규식 · BASE=주소) */
 const PW = process.env.PLAYWRIGHT || 'playwright';
 const { chromium } = require(PW);
+const { splitHash, goState } = require('./nav-state.cjs'); // 10/21b: 필터는 주소 대신 상태로
 const path = require('path');
 const fs = require('fs');
 const BASE = process.env.BASE || 'http://127.0.0.1:8766/index.html';
@@ -54,7 +55,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
     });
     return pg;
   };
-  const go = async (pg, hash, search = '') => { await pg.goto(`${BASE}${search ? search + '&' : '?'}as=admin#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin)
+  const go = async (pg, hash, search = '') => { await pg.goto(`${BASE}${search ? search + '&' : '?'}as=admin#${splitHash(hash)[0]}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); if (splitHash(hash)[1]) await goState(pg, hash, 0); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin) // 10/21b
   const confirmOk = (pg) => pg.click('dialog[data-part="confirm"] [data-confirm="ok"]'); // 10/20: 판정 · 적용 · 버림은 확인 대화상자(B)
   const shot = async (pg, name) => { if (!process.env.SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true }); await pg.waitForTimeout(250); await pg.screenshot({ path: path.join(SHOT_DIR, `${name}.png`) }); };
   const pendingCount = (pg) => pg.$eval('[data-pending-count]', (el) => Number(el.textContent.replace(/[^\d]/g, '')));
@@ -362,7 +363,8 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
     await pg.click('.feed-row');
     await pg.waitForSelector('.sheet[data-sheet="event"]');
     const href = await pg.getAttribute('.sheet a:has-text("토폴로지에서 보기")', 'href');
-    ok(href && href.startsWith('#/topology?container=pkg-reqeusts'), `링크 ${href}`);
+    ok(href === '#/topology?node=c%3Apkg-reqeusts', `링크 ${href}`); // 10/21b: 주소에는 컨테이너 노드(c:)만, 컨테이너 필터는 상태(data-nav)로
+    ok(JSON.parse(await pg.getAttribute('.sheet a:has-text("토폴로지에서 보기")', 'data-nav')).container === 'pkg-reqeusts', '컨테이너 필터를 상태로 넘기지 않음');
     await pg.close();
   });
 
@@ -427,7 +429,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
   });
   await T('9 감사 로그: 판정 · 정책 변경 이력 보기(시드 판정 2건 · 처리자)', async () => {
     const pg = await newPage();
-    await go(pg, '/audit?view=history');
+    await go(pg, '/audit?view=changes');
     await pg.waitForSelector('table[data-table="history"]');
     const rows = await pg.$$eval('table[data-table="history"] tbody tr', (els) => els.map((e) => e.textContent));
     ok(rows.filter((t) => t.includes('악성 확정')).length >= 2, `판정 이력 ${rows.length}행`);
@@ -693,7 +695,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
       await pg.evaluate(() => UI.runAttackNow());
       const { proposal } = await decideApi(pg, s.caseId, 'malicious');
       const bad = [];
-      for (const h of ['/', `/installs?id=${s.id}`, `/policies?proposal=${proposal.id}`, '/policies?id=__blocklist__', '/policies?id=blocklist-hosts', '/audit?view=history', '/topology?container=pkg-reqeusts']) {
+      for (const h of ['/', `/installs?id=${s.id}`, `/policies?proposal=${proposal.id}`, '/policies?id=__blocklist__', '/policies?id=blocklist-hosts', '/audit?view=changes', '/topology?container=pkg-reqeusts']) {
         await go(pg, h);
         const [sh, ch, sw, cw] = await pg.$eval('#page', (el) => [el.scrollHeight, el.clientHeight, el.scrollWidth, el.clientWidth]);
         if (sh > ch + 1 || sw > cw + 1) bad.push(`${h} ${sw}x${sh} > ${cw}x${ch}`);

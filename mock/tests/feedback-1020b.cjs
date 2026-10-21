@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
+const { splitHash, goState } = require('./nav-state.cjs'); // 10/21b: 필터는 주소 대신 상태로
 const BASE = process.env.BASE || 'http://127.0.0.1:8766/index.html';
 const SHOT_DIR = path.join(__dirname, '..', 'screenshots');
 const PW = 'demo-pass-1234';
@@ -32,7 +33,7 @@ const W = { timeout: 3000 };
   // 로그인 화면 그대로(qs 에 as 없음)
   const raw = async (pg, qs = '', hash = '/') => { await pg.goto(`${BASE}?source=sim${qs}#${hash}`); await pg.waitForSelector('[data-part="auth"], .page-title', W); await pg.waitForTimeout(250); };
   // 관리자로 바로(?as=admin)
-  const go = async (pg, hash, qs = '', as = 'admin') => { await pg.goto(`${BASE}?source=sim&as=${as}${qs}#${hash}`); await pg.waitForSelector('.page-title', W); await pg.waitForTimeout(400); };
+  const go = async (pg, hash, qs = '', as = 'admin') => { await pg.goto(`${BASE}?source=sim&as=${as}${qs}#${splitHash(hash)[0]}`); await pg.waitForSelector('.page-title', W); if (splitHash(hash)[1]) await goState(pg, hash, 0); await pg.waitForTimeout(400); }; // 10/21b
   const shot = async (pg, n) => { if (!process.env.SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true }); await pg.waitForTimeout(250); await pg.screenshot({ path: path.join(SHOT_DIR, `w10-${n}.png`) }); };
   const step = (pg) => pg.$eval('[data-part="auth"]', (e) => e.dataset.step).catch(() => '');
   const authErr = (pg) => pg.$eval('[data-part="auth-error"]', (e) => (e.hidden ? '' : e.textContent)).catch(() => '');
@@ -379,7 +380,7 @@ const W = { timeout: 3000 };
     await pg.waitForTimeout(1600);
     await pg.focus('[data-table="scans"] tbody tr'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(400);
     ok(await pg.locator('.sheet[data-sheet="scan"]').count() === 1, '검사 행 Enter');
-    await pg.evaluate(() => { location.hash = '#/events?normal=1'; }); await pg.waitForTimeout(500);
+    await goState(pg, '#/events?normal=1', 500); // 10/21b: 필터는 상태로
     await pg.focus('.feed-row'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(300);
     ok(await pg.locator('.sheet[data-sheet="event"]').count() === 1, '이벤트 행 Enter');
     await pg.close();
@@ -520,12 +521,12 @@ const W = { timeout: 3000 };
     await go(pg, '/events', '&normal=1');
     const key = await pg.evaluate(() => { UI.simEvent('web-api', { kind: 'connect', comm: 'node', dstIp: '203.0.113.9', dstPort: 443 }); const v = UI.state.verdicts.find((x) => x.event.dstIp === '203.0.113.9'); return v && v.key; });
     ok(key, '이벤트 없음');
-    await pg.evaluate((k) => { location.hash = `#/events?normal=1&id=${k}`; }, key); await pg.waitForTimeout(500);
+    await goState(pg, `#/events?normal=1&id=${key}`, 500); // 10/21b
     await pg.waitForSelector('.sheet[data-sheet="event"] [data-dns]', W);
     ok(await pg.$eval('[data-dns]', (e) => e.dataset.dns) === 'direct', '직접 연결 표시 아님');
     ok((await pg.textContent('[data-dns]')).includes('도메인 조회 없는 IP 직접 연결'), '문구');
     const key2 = await pg.evaluate(() => { UI.simEvent('web-api', { kind: 'connect', comm: 'node', dstIp: '104.16.2.35', dstPort: 443, dstHost: 'api.github.com' }); return UI.state.verdicts.find((x) => x.event.dstHost === 'api.github.com').key; });
-    await pg.evaluate((k) => { location.hash = `#/events?normal=1&id=${k}`; }, key2); await pg.waitForTimeout(500);
+    await goState(pg, `#/events?normal=1&id=${key2}`, 500); // 10/21b
     ok(await pg.$eval('[data-dns]', (e) => e.dataset.dns) === 'traced', '도메인 확인 표시 아님');
     await pg.close();
   });
@@ -562,7 +563,7 @@ const W = { timeout: 3000 };
     const basis = await pg.textContent('[data-view="proposal"] [data-part="basis"]');
     ok(basis.includes('공급망 검사') && await pg.locator(`[data-view="proposal"] [data-part="basis"] a[href="${href}"]`).count() === 1, `근거 ${basis}`);
     // 감사 › 판정 · 변경 이력: 대상은 패키지 이름, 건 링크는 검사 결과
-    await pg.evaluate(() => { location.hash = '#/audit?view=history'; }); await pg.waitForTimeout(600);
+    await pg.evaluate(() => { location.hash = '#/audit?view=changes'; /* 10/21b: React 와 같은 값 */ }); await pg.waitForTimeout(600);
     const row = pg.locator(`[data-table="history"] tr[data-case="${r.caseId}"]`).first();
     ok(await row.count() === 1, '이력에 그 건 행 없음');
     ok((await row.textContent()).includes('pip reqeusts') && (await row.getAttribute('data-source')) === 'scan', `이력 행 ${await row.textContent()}`);

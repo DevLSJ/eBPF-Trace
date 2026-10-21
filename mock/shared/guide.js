@@ -21,7 +21,7 @@
     const out = FOLLOW.map((f) => ({ ...f, hit: f.rules.filter((r) => c.ruleIds.includes(r)) })).filter((f) => f.hit.length);
     return out.length ? out : [{ group: 'default', rules: [], hit: c.ruleIds.slice(), text: '같은 이미지 · 패키지를 쓰는 다른 컨테이너 확인' }];
   };
-  const caseHref = (c) => U.caseHref(c, true);
+  const caseLink = (c) => U.caseLink(c, true); // { href, state } [10/21b]
 
   // ── 저장 (이 브라우저의 체크 상태) ──
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'null') || d; } catch { return d; } };
@@ -49,7 +49,7 @@
   // ── 구축 순서(건이 없을 때) — 데이터로 완료 판정. live 에서 모르는 것은 null(미확인) ──
   const INSTALL_CMD = 'sg-install pip requests';
   const SETUP = [
-    { id: 'install', title: '설치 검사 돌려 보기', desc: '터미널에서 감시 컨테이너로 패키지를 설치해 봅니다. 결과는 「설치 검사」에 쌓입니다.', go: '#/installs?status=all', label: '설치 검사 →',
+    { id: 'install', title: '설치 검사 돌려 보기', desc: '터미널에서 감시 컨테이너로 패키지를 설치해 봅니다. 결과는 「설치 검사」에 쌓입니다.', go: '#/installs', state: { status: 'all' }, label: '설치 검사 →',
       done: () => (state.source === 'live' ? null : state.installs.length > 0) },
     { id: 'policies', title: '정책 확인', desc: '기본 정책이 무엇을 막는지 한 번 봅니다(정책 화면을 열면 완료).', go: '#/policies', label: '정책 →', done: () => !!setupPref.visitedPolicies },
     { id: 'runtime', title: '런타임 감시 컨테이너 확인', desc: '토폴로지에 감시 중인 컨테이너가 보이면 런타임 감시가 돌고 있는 것입니다.', go: '#/topology', label: '토폴로지 →',
@@ -70,12 +70,12 @@
           h('div', { class: 'row-inline' },
             s.id === 'install' ? h('button', { type: 'button', class: 'btn btn-primary btn-xs', 'aria-label': 'sg-install 명령 복사', onclick: () => copy(INSTALL_CMD) }, '명령 복사') : null,
             s.id === 'install' ? h('code', { class: 'mono' }, INSTALL_CMD) : null,
-            h('a', { href: s.go, class: 'link small' }, s.label)))))),
+            h('a', { ...U.to(s.go, s.state), class: 'link small' }, s.label)))))),
       n === SETUP.length ? h('p', { class: 'small muted' }, '설치 검사 · 정책 · 런타임 감시까지 모두 확인했습니다. 격리 · 경고가 생기면 여기에 대응 가이드가 뜹니다.') : null);
   }
   function copy(text) {
     try { navigator.clipboard.writeText(text).catch(() => {}); } catch { /* 복사 차단 */ }
-    U.toast(`명령을 복사했습니다 — ${text}`, { tone: 'ok', key: 'copy', replace: true, action: { label: '설치 검사', go: '#/installs?status=all' } });
+    U.toast(`명령을 복사했습니다 — ${text}`, { tone: 'ok', key: 'copy', replace: true, action: { label: '설치 검사', go: '#/installs', state: { status: 'all' } } });
   }
   const bar = (n, total) => h('div', { class: 'guide-bar', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': total, 'aria-valuenow': n, 'aria-label': `${n}/${total}`, 'data-part': 'guide-progress', 'data-value': `${n}/${total}` }, h('span', { style: `width:${(n / total) * 100}%` }));
 
@@ -97,7 +97,7 @@
     const rows = state.audit.filter((a) => a.caseId === c.id);
     const firstAt = rows.length ? rows[rows.length - 1].event.timestamp : c.openedAt;
     const mark = (patch) => { const q = gpref(c.id); Object.assign(q, patch); store(gkey(c.id), q); draw(true); };
-    const href = caseHref(c);
+    const link = caseLink(c);
     const isolation = c.level === 'killed' ? ['tone-danger', '격리됨', c.source === 'install' ? '감시 컨테이너를 종료했습니다(kill). 설치는 끝나기 전에 막혔습니다.' : '컨테이너를 종료했습니다(kill). 15초 뒤 재기동되면 차단 이미지일 때만 즉시 다시 격리됩니다.']
       : c.level === 'held' ? ['tone-warn', '격리 대상', 'dry-run 이라 알림만 보냈습니다 — 컨테이너가 살아 있습니다. 필요하면 직접 멈추고, 격리 모드(ENFORCE_KILL)를 켜세요.']
       : ['tone-warn', '경고', '격리 정책이 아니라 알림만 보냈습니다. 컨테이너는 계속 동작 중입니다.'];
@@ -114,10 +114,10 @@
           h('ul', { class: 'rule-chips' }, c.ruleIds.map((id) => h('li', null, h('a', { href: `#/policies?id=${encodeURIComponent(id)}`, class: 'chip mono' }, id)))))),
         step(1, '격리 확인', h('p', { class: 'small' }, h('b', { class: isolation[0] }, isolation[1]), ' — ', h('span', { class: 'muted' }, isolation[2]))),
         step(2, '공격 체인 보기', h('div', { class: 'row-inline' },
-          h('a', { href, class: 'link small', 'data-part': 'chain-link', onclick: () => mark({ chain: true }) }, c.source === 'install' ? '설치 검사 시트에서 공격 체인 →' : c.source === 'scan' ? '검사 결과 보기 →' : '토폴로지에서 공격 체인 →'),
-          c.source === 'runtime' ? h('a', { href: `#/events?container=${encodeURIComponent(c.container)}&verdict=violation`, class: 'link small', onclick: () => mark({ chain: true }) }, '이벤트 →') : null)),
+          h('a', { ...U.to(link), class: 'link small', 'data-part': 'chain-link', onclick: () => mark({ chain: true }) }, c.source === 'install' ? '설치 검사 시트에서 공격 체인 →' : c.source === 'scan' ? '검사 결과 보기 →' : '토폴로지에서 공격 체인 →'),
+          c.source === 'runtime' ? h('a', { ...U.to('#/events', { container: c.container }), class: 'link small', onclick: () => mark({ chain: true }) }, '이벤트 →') : null)),
         step(3, '판정', c.decision === 'pending'
-          ? h('div', { class: 'row-inline' }, U.decisionBadge('pending'), h('a', { href, class: 'link small' }, '악성 확정 / 오탐 판정하러 가기 →'))
+          ? h('div', { class: 'row-inline' }, U.decisionBadge('pending'), h('a', { ...U.to(link), class: 'link small' }, '악성 확정 / 오탐 판정하러 가기 →'))
           : h('div', { class: 'row-inline' }, U.decisionBadge(c.decision), h('span', { class: 'small muted num' }, `${c.decidedBy} · ${fmt.dateTime(c.decidedAt)}`),
             c.state === 'decided' ? h('a', { href: `#/policies?proposal=${c.proposalId}`, class: 'link small' }, '제안 적용 →') : h('span', { class: 'small muted' }, '종결'))),
         step(4, '후속 조치', h('div', null,

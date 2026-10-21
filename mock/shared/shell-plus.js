@@ -23,7 +23,7 @@
     if (i.enforceKill === false) out.push({ id: 'dryrun', sig: 'off', tone: 'warn', icon: '⏸', title: '격리 꺼짐 (dry-run)', text: '「즉시 격리」 정책도 알림만 보냅니다 — 서버 설정 ENFORCE_KILL', go: '#/settings' });
     const n = i.notify;
     if (n && n.enabled && n.failed) out.push({ id: 'webhook', sig: String(n.failed), tone: 'danger', icon: '✉', title: `알림 발송 실패 ${n.failed}건`, text: n.lastError || '서버 설정 › 알림에서 마지막 오류를 확인하세요', go: '#/settings' });
-    if (state.unseen) out.push({ id: 'violations', sig: String(state.unseen), tone: 'info', icon: '≣', title: `새 위반 ${state.unseen > 99 ? '99+' : state.unseen}건`, text: '이벤트에서 실시간 위반 보기', go: '#/events?verdict=violation', after: () => { state.unseen = 0; } });
+    if (state.unseen) out.push({ id: 'violations', sig: String(state.unseen), tone: 'info', icon: '≣', title: `새 위반 ${state.unseen > 99 ? '99+' : state.unseen}건`, text: '이벤트에서 실시간 위반 보기', go: '#/events', after: () => { state.unseen = 0; } });
     return out.map((x) => Object.assign(x, { unread: read[x.id] !== x.sig }));
   }
   function bellCenter(wrap) {
@@ -44,7 +44,7 @@
       if (next === sig) return; sig = next;
       if (panel.hidden) return;
       replace(list, xs.length ? xs.map((x) => h('li', null, h('button', { type: 'button', class: `notice tone-${x.tone} ${x.unread ? 'unread' : ''}`, 'data-notice': x.id, 'data-unread': String(x.unread),
-        onclick: () => { read[x.id] = x.sig; store(READ_KEY, read); close(); if (x.after) x.after(); location.hash = x.go; U.emit(); } },
+        onclick: () => { read[x.id] = x.sig; store(READ_KEY, read); close(); if (x.after) x.after(); U.go(x.go, x.state); U.emit(); } },
         h('span', { class: 'notice-icon', 'aria-hidden': true }, x.icon), h('span', { class: 'notice-body' }, h('b', null, x.title), x.text ? h('span', { class: 'small muted' }, x.text) : null), x.unread ? h('i', { class: 'dot-unread', 'aria-label': '안 읽음' }) : null)))
         : h('li', { class: 'empty small' }, '새 알림 없음'));
     }
@@ -60,17 +60,17 @@
     ['라이선스', '평가판 · 만료일 · 키', 'license'], ['계정', '계정 추가 · 역할 · 비밀번호 초기화 · OTP 초기화', 'accounts', true], ['인증 감사', '로그인 · 실패 · 잠김 · 계정 변경 기록', 'auth-audit', true]];
   function index() {
     const out = [], seen = new Set();
-    const add = (type, label, sub, go) => { const k = `${type}|${label}|${go}`; if (seen.has(k)) return; seen.add(k); out.push({ type, label, sub, go }); };
-    for (const s of state.installs) for (const p of s.packages) add('package', `${s.manager} ${p}`, `설치 검사 ${s.id} · ${U.INSTALL_STATUS[M().statusOf(s)] || ''}`, `#/installs?status=all&id=${s.id}`);
+    const add = (type, label, sub, go, st) => { const k = `${type}|${label}|${go}|${JSON.stringify(st || null)}`; if (seen.has(k)) return; seen.add(k); out.push({ type, label, sub, go, state: st }); }; // 필터는 상태로 [10/21b]
+    for (const s of state.installs) for (const p of s.packages) add('package', `${s.manager} ${p}`, `설치 검사 ${s.id} · ${U.INSTALL_STATUS[M().statusOf(s)] || ''}`, `#/installs?id=${s.id}`, { status: 'all' });
     for (const x of state.blocklist.packages) add('package', x.value, '차단 목록', '#/policies?id=__blocklist__');
     for (const sc of state.scans) for (const p of sc.packages || []) add('package', `${p.manager || p.ecosystem} ${p.name}`, `공급망 검사 ${sc.id} · ${p.source}`, `#/scans?id=${sc.id}`);
-    for (const n of state.topology.containers()) add('container', n, '런타임 · 토폴로지', `#/topology?container=${encodeURIComponent(n)}`);
-    for (const c of U.sim.containers) add('container', c.name, `런타임 · ${c.image}`, `#/topology?container=${encodeURIComponent(c.name)}`);
-    for (const s of state.installs) if (s.container) add('container', s.container, `설치 검사 · ${s.manager} ${s.packages.join(' ')}`, `#/installs?status=all&id=${s.id}`);
+    for (const n of state.topology.containers()) add('container', n, '런타임 · 토폴로지', U.topoLink(n).href, { container: n });
+    for (const c of U.sim.containers) add('container', c.name, `런타임 · ${c.image}`, U.topoLink(c.name).href, { container: c.name });
+    for (const s of state.installs) if (s.container) add('container', s.container, `설치 검사 · ${s.manager} ${s.packages.join(' ')}`, `#/installs?id=${s.id}`, { status: 'all' });
     for (const r of state.rules) add('rule', r.id, r.description || '', `#/policies?id=${encodeURIComponent(r.id)}`);
     for (const x of state.blocklist.hosts) add('domain', x.value, '차단 목록', '#/policies?id=__blocklist__');
     for (const r of state.rules) for (const f of ['allowHosts', 'denyHosts']) for (const d of r[f] || []) add('domain', d, `${r.id} · ${f === 'allowHosts' ? '허용' : '금지'} 도메인`, `#/policies?id=${encodeURIComponent(r.id)}`);
-    for (const a of state.audit) if (a.event.dstHost) add('domain', a.event.dstHost, `감사 로그 · ${a.install ? a.install.label : a.event.containerName}`, `#/audit?container=${encodeURIComponent(a.event.containerName)}`);
+    for (const a of state.audit) if (a.event.dstHost) add('domain', a.event.dstHost, `감사 로그 · ${a.install ? a.install.label : a.event.containerName}`, '#/audit', { container: a.event.containerName });
     for (const sc of state.scans) add('scan', `${sc.id} · ${sc.target.label}`, sc.status === 'done' ? '공급망 검사 결과' : '검사 중', `#/scans?id=${sc.id}`);
     for (const [label, sub, tab, adminOnly] of SETTING_ITEMS) if (!adminOnly || U.can()) add('setting', label, sub, `#/settings${tab ? `?tab=${tab}` : ''}`);
     return out;
@@ -94,14 +94,14 @@
       if (!items.length) { replace(results, h('p', { class: 'small muted pad-sm' }, '찾는 것이 없습니다')); return; }
       let last = '';
       replace(results, items.map((x, i) => [x.type !== last ? h('div', { class: 'sr-group' }, TYPE_KO[(last = x.type)]) : null,
-        h('a', { href: x.go, class: `sr-item ${i === active ? 'on' : ''}`, role: 'option', 'aria-selected': String(i === active), 'data-result': '', 'data-type': x.type, onclick: () => setTimeout(reset, 0) },
+        h('a', { ...U.to(x.go, x.state), class: `sr-item ${i === active ? 'on' : ''}`, role: 'option', 'aria-selected': String(i === active), 'data-result': '', 'data-type': x.type, onclick: () => setTimeout(reset, 0) },
           h('span', { class: 'mono trunc-cell' }, x.label), x.sub ? h('span', { class: 'small muted trunc-cell' }, x.sub) : null)]));
     }
     function reset() { input.value = ''; results.hidden = true; input.setAttribute('aria-expanded', 'false'); slot.classList.remove('open'); input.blur(); }
     input.addEventListener('input', run);
     input.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (!items.length) return; active = (active + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length; draw(); }
-      else if (e.key === 'Enter') { e.preventDefault(); const x = items[active]; if (x && !results.hidden) { location.hash = x.go; reset(); } }
+      else if (e.key === 'Enter') { e.preventDefault(); const x = items[active]; if (x && !results.hidden) { U.go(x.go, x.state); reset(); } }
       else if (e.key === 'Escape') { e.preventDefault(); reset(); }
     });
     slot.addEventListener('focusout', (e) => { if (!slot.contains(e.relatedTarget)) setTimeout(() => { if (!slot.contains(document.activeElement)) { results.hidden = true; slot.classList.remove('open'); } }, 150); });

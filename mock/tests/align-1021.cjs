@@ -16,6 +16,7 @@
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
+const { splitHash, goState } = require('./nav-state.cjs'); // 10/21b: 필터는 주소 대신 상태로
 const { liveLogin } = require('./live-login.cjs');
 const BASE = process.env.BASE || 'http://127.0.0.1:8767/index.html';
 const API = process.env.API || 'http://127.0.0.1:8011';
@@ -43,8 +44,8 @@ const ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_re
     return pg;
   };
   const closeAll = async () => { while (pages.length) { const p = pages.pop(); if (!p.isClosed()) await p.close(); } };
-  const go = async (pg, hash, qs = '', as = 'admin') => { await pg.goto(`${BASE}?source=sim&as=${as}${qs}#${hash}`); await pg.waitForSelector('.page-title', W); await pg.waitForTimeout(400); };
-  const nav = async (pg, hash) => { await pg.evaluate((x) => { location.hash = x; }, hash); await pg.waitForTimeout(450); };
+  const go = async (pg, hash, qs = '', as = 'admin') => { await pg.goto(`${BASE}?source=sim&as=${as}${qs}#${splitHash(hash)[0]}`); await pg.waitForSelector('.page-title', W); if (splitHash(hash)[1]) await goState(pg, hash, 0); await pg.waitForTimeout(400); }; // 10/21b
+  const nav = async (pg, hash) => goState(pg, hash); // 10/21b: 화면 안 링크처럼(필터는 상태로)
   const shot = async (pg, n) => { if (!process.env.SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true }); await pg.waitForTimeout(250); await pg.screenshot({ path: path.join(SHOT_DIR, `a1021-${n}.png`) }); };
   const confirmOk = async (pg, reason) => { await pg.waitForSelector('dialog[data-part="confirm"][open]', W); if (reason) await pg.fill('dialog[data-part="confirm"] textarea[name="reason"]', reason); await pg.click('dialog[data-part="confirm"] [data-confirm="ok"]'); await pg.waitForTimeout(350); };
   const ERR = '#page [data-part="error"]';
@@ -64,7 +65,9 @@ const ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_re
   });
 
   await T('2② 「다시 시도」 — 오류 칸 유지 + 버튼 잠금 · 회전, 스켈레톤 없음 → 다시 실패하면 새 오류 칸(버튼 풀림) → 성공하면 목록', async () => {
-    for (const [hash, k, rowSel] of [['/installs?status=all', 'installs', '[data-table="installs"] tbody tr'], ['/audit', 'audit', '[data-table="audit"] tbody tr'], ['/scans', 'scans', null], ['/events?normal=1', 'events', '.feed-row']]) {
+    // 10/21b: 필터는 주소 대신 화면에서 건다 — 상태로 넘기면 다시 그리며 한 번 더 불러 fail 횟수를 쓰므로, 성공한 뒤 칩 · 토글로 목록을 넓힌다
+    const widen = { installs: '[data-filter="status"] button[data-value="all"]', events: '#page [data-toggle="normal"] input' };
+    for (const [hash, k, rowSel] of [['/installs', 'installs', '[data-table="installs"] tbody tr'], ['/audit', 'audit', '[data-table="audit"] tbody tr'], ['/scans', 'scans', null], ['/events', 'events', '.feed-row']]) {
       const pg = await newPage();
       await go(pg, hash, `&fail=${k}:2&latency=900`);
       await pg.waitForSelector(ERR, { timeout: 5000 });
@@ -79,6 +82,7 @@ const ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_re
       ok(!(await pg.$eval(`${ERR} [data-action="retry"]`, (b) => b.disabled)), `${hash} 새 오류 칸의 버튼이 잠김`);
       await pg.click(`${ERR} [data-action="retry"]`);
       await pg.waitForFunction(() => !document.querySelector('#page [data-part="error"]'), null, { timeout: 4000 });
+      if (widen[k]) { await pg.click(widen[k]); await pg.waitForTimeout(300); }
       if (rowSel) ok(await pg.locator(`#page ${rowSel}`).count() >= 1, `${hash} 목록 없음`);
       ok(await pg.evaluate(() => window.__sk) === 0, `${hash} 다시 시도에 스켈레톤이 보임`);
       await pg.close();
@@ -136,7 +140,7 @@ const ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_re
 
   await T('2⑤ 변경 이력 첫 로드 실패 — 오류 칸(「변경 이력을(를) 불러오지 못했습니다」) + 다시 시도 + 자동 재시도(?retry=1000)', async () => {
     const pg = await newPage();
-    await go(pg, '/audit?view=history', '&fail=changes');
+    await go(pg, '/audit?view=changes', '&fail=changes');
     await pg.waitForSelector(ERR, W);
     const t = await pg.textContent(ERR);
     ok(t.includes('변경 이력을(를) 불러오지 못했습니다') && t.includes('30초마다'), `문구 「${t}」`);
@@ -145,7 +149,7 @@ const ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_re
     await pg.waitForSelector('#page [data-table="history"]', W);
     await pg.close();
     const p2 = await newPage();
-    await go(p2, '/audit?view=history', '&fail=changes:2&retry=1000');
+    await go(p2, '/audit?view=changes', '&fail=changes:2&retry=1000');
     await p2.waitForSelector(ERR, W);
     await p2.waitForSelector('#page [data-table="history"]', { timeout: 5000 });
     ok(await p2.locator(ERR).count() === 0, '자동 재시도 뒤에도 오류');
@@ -352,7 +356,7 @@ const ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_re
       await liveLogin(pg, API);
       return pg;
     };
-    const goLive = async (pg, hash) => { await pg.goto(`${BASE}?source=live&api=${encodeURIComponent(API)}#${hash}`); await pg.waitForSelector('.page-title', { timeout: 8000 }); await pg.waitForTimeout(1200); };
+    const goLive = async (pg, hash) => { await pg.goto(`${BASE}?source=live&api=${encodeURIComponent(API)}#${splitHash(hash)[0]}`); await pg.waitForSelector('.page-title', { timeout: 8000 }); if (splitHash(hash)[1]) await goState(pg, hash, 0); await pg.waitForTimeout(1200); }; // 10/21b
     const scansStatus = await (async () => { const p = await livePage(); const s = await p.evaluate(async (api) => (await fetch(`${api}/api/scans`, { credentials: 'include' })).status, API); await p.close(); return s; })();
 
     await T('1 live — 설치 검사 · 대시보드 판정 대기 · 정책 제안 · 차단 목록 · 변경 이력이 실제 API 로 뜬다(「백엔드 미지원」 없음)', async () => {
@@ -367,7 +371,7 @@ const ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_re
       ok(!(await pg.textContent('[data-section="proposals"]')).includes('백엔드 미지원'), '정책 제안에 미지원');
       await goLive(pg, '/policies?id=__blocklist__');
       ok(!(await pg.textContent('#page')).includes('백엔드 미지원'), '차단 목록에 미지원');
-      await goLive(pg, '/audit?view=history');
+      await goLive(pg, '/audit?view=changes');
       ok(await pg.locator('#page [data-table="history"], #page .empty').count() >= 1 && await pg.locator(ERR).count() === 0, '변경 이력이 뜨지 않음');
       await shot(pg, 'live-installs');
       await pg.close();

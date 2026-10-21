@@ -19,6 +19,7 @@
    13번은 make backend(:8000)가 떠 있을 때만 돈다 */
 const PW = process.env.PLAYWRIGHT || 'playwright';
 const { chromium } = require(PW);
+const { splitHash, goState } = require('./nav-state.cjs'); // 10/21b: 필터는 주소 대신 상태로
 const BASE = process.env.BASE || 'http://127.0.0.1:8766/index.html';
 const API = process.env.API || 'http://127.0.0.1:8000';
 const results = []; const consoleErrors = [];
@@ -41,7 +42,7 @@ const TITLES = { '/': '대시보드', '/installs': '설치 검사', '/events': '
     pg.on('pageerror', (e) => consoleErrors.push(`${pg.url()} PAGEERROR ${e.message}`));
     return pg;
   };
-  const go = async (pg, hash, search = '') => { await pg.goto(`${BASE}${search ? search + '&' : '?'}as=admin#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin)
+  const go = async (pg, hash, search = '') => { await pg.goto(`${BASE}${search ? search + '&' : '?'}as=admin#${splitHash(hash)[0]}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); if (splitHash(hash)[1]) await goState(pg, hash, 0); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin) // 10/21b
   const pendingNum = (pg) => pg.$eval('[data-pending-count]', (el) => Number(el.textContent.replace(/[^\d]/g, '')));
   const pg = await newPage();
 
@@ -103,7 +104,7 @@ const TITLES = { '/': '대시보드', '/installs': '설치 검사', '/events': '
     await pg.waitForTimeout(200);
     const st = await pg.$$eval('table[data-table="installs"] tbody tr[data-id] [data-status]', (els) => els.map((e) => e.dataset.status));
     ok(st.length > 0 && st.every((s) => s === 'isolated'), `상태 ${JSON.stringify(st)}`);
-    ok(pg.url().includes('status=isolated'), `URL ${pg.url()}`);
+    ok(!pg.url().includes('status='), `주소에 필터가 남음 ${pg.url()}`); // 10/21b: 필터는 화면 상태만(주소에 남기지 않는다)
   });
   await T('4 설치 검사: 매니저 칩 「npm」 → npm만', async () => {
     await go(pg, '/installs?status=all'); // 10/15 목표: 기본 필터가 「판정 대기」

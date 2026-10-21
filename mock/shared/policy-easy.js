@@ -87,13 +87,13 @@
   // 막기: 그 행동을 막는 새 정책 / 허용: 걸린 정책에 가장 좁은 예외(오탐 제안과 같은 규칙 — 통신은 정책에 원래 허용 도메인이 있으면 도메인, 아니면 IP/32)
   function blockLink(e) {
     const value = e.kind === 'open' ? e.path : e.kind === 'exec' ? e.comm : e.dstHost || e.dstIp;
-    return value ? `#/policies?id=__new__&intent=block&kind=${e.kind}&value=${encodeURIComponent(value)}` : null;
+    return value ? { href: '#/policies?id=__new__', state: { intent: 'block', kind: e.kind, value } } : null; // 미리 채우기는 상태로 [10/21b]
   }
   function allowLink(ruleId, e) {
     const r = state.rules.find((x) => x.id === ruleId);
     if (!r || r.kind === 'exec' || ruleId === window.MOCK.SYSTEM_RULE) return null;
     const value = e.kind === 'open' ? e.path : e.dstHost && (r.allowHosts || []).length ? e.dstHost : `${e.dstIp}/32`;
-    return value ? `#/policies?id=${encodeURIComponent(ruleId)}&intent=allow&value=${encodeURIComponent(value)}` : null;
+    return value ? { href: `#/policies?id=${encodeURIComponent(ruleId)}`, state: { intent: 'allow', value } } : null;
   }
   function ruleFromBlock(kind, value) {
     const base = { open: { id: 'block-file', denyPaths: [value] }, exec: { id: 'block-program', denyComms: [value] }, connect: { id: 'block-destination' } }[kind];

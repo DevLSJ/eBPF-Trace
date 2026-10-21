@@ -58,7 +58,10 @@
   const LIST_LABEL = { packages: '패키지', images: '이미지', hosts: '도메인' };
   // 건의 출처 · 링크 — 한 곳에서만 [10/20 J — React 와 같게]. 공급망 검사 건은 런타임 · 토폴로지가 아니라 검사 결과로
   const CASE_SOURCE = { install: '설치 검사', runtime: '런타임', scan: '공급망 검사' };
-  const caseHref = (c, all) => (c.source === 'install' ? `#/installs?${all ? 'status=all&' : ''}id=${c.installId}` : c.source === 'scan' ? `#/scans?id=${c.scanId}` : `#/topology?container=${encodeURIComponent(c.container)}`);
+  const topoLink = (name) => ({ href: `#/topology?node=${encodeURIComponent(`c:${name}`)}`, state: { container: name } }); // 토폴로지: 컨테이너 노드(c:)는 주소, 컨테이너 필터는 상태
+  // → { href, state } — 주소에는 링크용 값(id · node)만, 필터(설치 「전체」 · 토폴로지 컨테이너)는 상태로 [10/21b]. <a> 는 U.to(link), 이동은 U.go(link.href, link.state)
+  const caseLink = (c, all) => (c.source === 'install' ? { href: `#/installs?id=${c.installId}`, state: all ? { status: 'all' } : null } : c.source === 'scan' ? { href: `#/scans?id=${c.scanId}` }
+    : topoLink(c.container));
   const levelOf = (v) => (!v.matched ? 'normal' : v.action !== 'kill' ? 'alert' : v.enforced ? 'killed' : 'held');
   const detailOf = (e) => (e.kind === 'exec' ? e.args || e.comm : e.kind === 'open' ? e.path || '' : e.dstHost ? `${e.dstIp}:${e.dstPort} (${e.dstHost})` : `${e.dstIp}:${e.dstPort}`);
 
@@ -207,7 +210,7 @@
     if (v.matched && v.action === 'kill') {
       if (!state.info.enforceKill || v.dryRun) v.dryRun = true;
       else if (c.killedAt) v.enforced = true; // 이미 격리 중 — 중복 kill 안 함
-      else { v.enforced = true; c.killedAt = at; sim.killed.unshift({ id: c.id, name: c.name, at: new Date(at).toISOString() }); srv.collectEvidence(c, at, o.session); if (!o.silent && !o.session) UI.toast(`${c.name} 격리됨 — ${v.reason}`, { tone: 'danger', key: `kill:${c.name}`, action: { label: '이벤트 보기', go: '#/events?verdict=kill' } }); }
+      else { v.enforced = true; c.killedAt = at; sim.killed.unshift({ id: c.id, name: c.name, at: new Date(at).toISOString() }); srv.collectEvidence(c, at, o.session); if (!o.silent && !o.session) UI.toast(`${c.name} 격리됨 — ${v.reason}`, { tone: 'danger', key: `kill:${c.name}`, action: { label: '이벤트 보기', go: '#/events', state: { verdict: 'kill' } } }); }
     }
     record(v, at);
     state.topology.ingest(v);
@@ -260,7 +263,7 @@
     runAttack(now);
     sim.nextAttack = sim.attackEvery ? now + sim.attackEvery : Infinity;
     flush(); state.stats = snapshot(); emit();
-    toast(`공격 시나리오 실행 — exec(curl|sh) → open(/etc/shadow) → connect(:4444) ${M.attack.length}개 이벤트`, { tone: 'danger', key: 'attack-run', action: { label: '이벤트 보기', go: '#/events?verdict=violation' } });
+    toast(`공격 시나리오 실행 — exec(curl|sh) → open(/etc/shadow) → connect(:4444) ${M.attack.length}개 이벤트`, { tone: 'danger', key: 'attack-run', action: { label: '이벤트 보기', go: '#/events' } });
   }
   // 데모 제어 「설치 검사 실행」: sg-install 이 하는 일을 흉내 낸다 — 차단 확인 → 세션 시작 보고 → 감시 컨테이너 이벤트 → 끝 보고.
   // 차단된 패키지면 컨테이너를 띄우지 않고 「설치 전 거부」 세션만 남긴다(CLI 종료 코드 3) [10/15 목표].
@@ -272,7 +275,7 @@
     if (chk.blocked) {
       const id = srv.installsRefused({ manager: spec.manager, packages: [spec.pkg], value: chk.value }).id;
       emit();
-      toast(`설치 전 거부 — 차단된 패키지 ${chk.value} (sg-install 종료 코드 3, 컨테이너 없음)`, { tone: 'danger', key: `install:${id}`, action: { label: '보기', go: `#/installs?status=all&id=${id}` } });
+      toast(`설치 전 거부 — 차단된 패키지 ${chk.value} (sg-install 종료 코드 3, 컨테이너 없음)`, { tone: 'danger', key: `install:${id}`, action: { label: '보기', go: `#/installs?id=${id}`, state: { status: 'all' } } });
       return id;
     }
     const s = M.newSession(spec, Date.now(), ++state.installSeq);
@@ -287,7 +290,7 @@
     setTimeout(() => {
       const end = new Date().toISOString(); s.containerExitedAt = end; s.finishedAt = end; s.exitCode = c.killedAt ? 137 : spec.exitCode;
       const st = M.statusOf(s); emit();
-      toast(`설치 검사 결과: ${INSTALL_STATUS[st]} — ${label}`, { tone: st === 'isolated' ? 'danger' : st === 'warned' ? 'warn' : 'ok', key: `install:${s.id}`, replace: true, action: { label: '보기', go: s.caseId ? `#/installs?id=${s.id}` : `#/installs?status=all&id=${s.id}` } });
+      toast(`설치 검사 결과: ${INSTALL_STATUS[st]} — ${label}`, { tone: st === 'isolated' ? 'danger' : st === 'warned' ? 'warn' : 'ok', key: `install:${s.id}`, replace: true, action: { label: '보기', go: `#/installs?id=${s.id}`, state: s.caseId ? null : { status: 'all' } } });
     }, 400 + spec.events.length * 180 + 600);
     return s.id;
   }
@@ -1180,7 +1183,7 @@
     t.text.textContent = text; t.count.textContent = t.n > 1 ? ` ×${t.n}` : '';
     replace(t.slot, o.action ? (o.action.run
       ? h('button', { type: 'button', class: 'toast-action', onclick: () => { t.close(); o.action.run(); } }, o.action.label)
-      : h('a', { href: o.action.go, class: 'toast-action', onclick: () => t.close() }, o.action.label)) : null);
+      : h('a', Object.assign(to(o.action.go, o.action.state), { class: 'toast-action', onclick: () => t.close() }), o.action.label)) : null);
     region.append(t.el);
     while (region.children.length > 4) region.firstChild.remove();
     clearTimeout(t.timer); t.timer = setTimeout(t.close, TOAST_TTL);
@@ -1200,6 +1203,35 @@
     const { path, query } = route();
     for (const [k, v] of Object.entries(patch)) { if (v === '' || v == null) query.delete(k); else query.set(k, v); }
     history.replaceState(null, '', '#' + path + ([...query].length ? '?' + query.toString() : ''));
+  }
+  // 주소에는 링크용 값만 [10/21b — 필터를 주소에 남기면 보안 취약성이 올라간다(사용자)]. id · proposal · tab · view, node 는 컨테이너(c:)만.
+  //   필터 · 미리 채우기 값은 화면 상태: 화면 안 링크는 go(href, state) · to(href, state) 로 넘기고, 화면을 다시 열거나 새로고침하면 기본값.
+  //   주소로 들어온 필터(옛 링크 · 알림)는 takeQuery 가 한 번 읽어 초기값으로 넘긴 뒤 주소에서 지운다. 옛 view=history 는 changes 로
+  const LINK_KEYS = ['id', 'proposal', 'tab', 'view', 'node'];
+  let navState = null;
+  function go(href, st) {
+    const target = '#' + String(href || '/').replace(/^#/, '');
+    navState = st || null;
+    if (location.hash === target) mount(); else location.hash = target;
+  }
+  const to = (href, st) => { if (href && typeof href === 'object') { st = href.state; href = href.href; } return { href, 'data-nav': st ? JSON.stringify(st) : null }; }; // <a> 속성(링크 객체도 받는다) — 클릭은 아래 위임 처리기가 go 로
+  function onNavClick(e) {
+    const a = e.target.closest ? e.target.closest('a[data-nav]') : null;
+    if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; // 새 탭은 주소만(필터 없이 기본값)
+    e.preventDefault(); go(a.getAttribute('href'), JSON.parse(a.dataset.nav));
+  }
+  function takeQuery() {
+    const { path, query } = route();
+    const keep = new URLSearchParams(), out = new URLSearchParams();
+    for (const [k, v] of query) {
+      if (LINK_KEYS.includes(k)) { if (k !== 'node' || v.startsWith('c:')) keep.set(k, k === 'view' && v === 'history' ? 'changes' : v); }
+      else out.set(k, v);
+    }
+    if (keep.toString() !== query.toString()) history.replaceState(null, '', '#' + path + ([...keep].length ? '?' + keep.toString() : ''));
+    for (const [k, v] of Object.entries(navState || {})) if (v != null && v !== '' && v !== false) out.set(k, v === true ? '1' : String(v));
+    navState = null;
+    for (const [k, v] of keep) out.set(k, v);
+    return { path, query: out };
   }
 
   // 사이드바 = 시나리오별 묶음 [10/15 확정]. 묶음 제목이 없는 첫 줄은 두 시나리오 공통
@@ -1326,7 +1358,7 @@
   }
 
   function mount() {
-    const { path, query } = route();
+    const { path, query } = takeQuery(); // 링크용 값 + (한 번만) 넘겨받은 필터 [10/21b]
     const def = UI.screens[path] || null;
     if (!def) { location.replace('#/'); return; }
     if (current && current.unmount) current.unmount();
@@ -1349,6 +1381,7 @@
     document.body.append(sh, h('div', { id: 'toasts', class: 'toasts', 'aria-live': 'polite' }), helpDialog(), demoDrawer());
     listeners.add(() => { sh.sync(); if (current && current.update) current.update(); });
     window.addEventListener('hashchange', mount);
+    document.addEventListener('click', onNavClick); // 상태를 넘기는 링크(data-nav) [10/21b]
     document.addEventListener('keydown', (e) => { if (e.key === '?' && !document.body.classList.contains('locked') && !/input|textarea|select/i.test(e.target.tagName) && !$('dialog[open]')) $('#help').showModal(); });
     mount();
     if (state.source === 'live') { state.verdicts = []; state.stats = null; state.unseen = 0; state.topology = new TopologyStore(); }
@@ -1359,10 +1392,10 @@
   // 화면 머리 오른쪽(화면 이름 옆)에 그 화면의 주 버튼 · 입력을 둔다. 화면이 바뀌면 비운다
   function headerActions(...nodes) { const el = $('.page-actions'); if (el) replace(el, nodes); }
 
-  window.UI = { h, s, $, replace, fmt, KINDS, levelOf, detailOf, LEVEL_LABEL, INSTALL_STATUS, DECISION_LABEL, LIST_LABEL, ACTOR, SANDBOX, state, emit, listeners, fresh, kindBadge, verdictBadge, statusBadge, decisionBadge, kpi, panel, sheet, empty, pauseToggle, SEV, switchEl, select, feed, barChart, perMinute, topologyGraph, toast, route, navigate, setQuery, headerActions, screens: {},
+  window.UI = { h, s, $, replace, fmt, KINDS, levelOf, detailOf, LEVEL_LABEL, INSTALL_STATUS, DECISION_LABEL, LIST_LABEL, ACTOR, SANDBOX, state, emit, listeners, fresh, kindBadge, verdictBadge, statusBadge, decisionBadge, kpi, panel, sheet, empty, pauseToggle, SEV, switchEl, select, feed, barChart, perMinute, topologyGraph, toast, route, navigate, setQuery, go, to, headerActions, screens: {},
     KIND_ORDER, KIND_STEP, fakeVerdict, attackChain, chainFromVerdicts, decisionBar, previewView, osvQuery, sim, runAttack, runAttackNow, runInstallDemo, simEvent, api, setSource,
     // 10/20 2차 시안
-    disconnect, whenReady, remount: () => mount(), loadEvents, actor, serverFromInfo, CASE_SOURCE, caseHref,
+    disconnect, whenReady, remount: () => mount(), loadEvents, actor, serverFromInfo, CASE_SOURCE, caseLink, topoLink,
     // 10/20 결정 반영
     RETRY_MS, simFail: failHit, simFailNext: (name, n) => failLeft.set(name, Math.max(1, Number(n) || 1)) }; // simFailNext: 회귀용 — 데이터를 받은 뒤 다음 n 번 실패 [10/21]
   document.addEventListener('DOMContentLoaded', boot);

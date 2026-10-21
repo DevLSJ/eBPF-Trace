@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
+const { splitHash, goState } = require('./nav-state.cjs'); // 10/21b: 필터는 주소 대신 상태로
 const BASE = process.env.BASE || 'http://127.0.0.1:8766/index.html';
 const SHOT_DIR = path.join(__dirname, '..', 'screenshots');
 const PW = 'demo-pass-1234';
@@ -37,8 +38,8 @@ const W = { timeout: 3000 };
   };
   const closeAll = async () => { while (pages.length) { const p = pages.pop(); if (!p.isClosed()) await p.close(); } };
   const raw = async (pg, qs = '', hash = '/') => { await pg.goto(`${BASE}?source=sim${qs}#${hash}`); await pg.waitForSelector('[data-part="auth"], .page-title', W); await pg.waitForTimeout(250); };
-  const go = async (pg, hash, qs = '', as = 'admin') => { await pg.goto(`${BASE}?source=sim&as=${as}${qs}#${hash}`); await pg.waitForSelector('.page-title', W); await pg.waitForTimeout(400); };
-  const nav = async (pg, hash) => { await pg.evaluate((x) => { location.hash = x; }, hash); await pg.waitForTimeout(450); };
+  const go = async (pg, hash, qs = '', as = 'admin') => { await pg.goto(`${BASE}?source=sim&as=${as}${qs}#${splitHash(hash)[0]}`); await pg.waitForSelector('.page-title', W); if (splitHash(hash)[1]) await goState(pg, hash, 0); await pg.waitForTimeout(400); }; // 10/21b
+  const nav = async (pg, hash) => goState(pg, hash); // 10/21b: 화면 안 링크처럼(필터는 상태로)
   const shot = async (pg, n) => { if (!process.env.SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true }); await pg.waitForTimeout(250); await pg.screenshot({ path: path.join(SHOT_DIR, `w17-${n}.png`) }); };
   const confirmOk = async (pg, reason) => { await pg.waitForSelector('dialog[data-part="confirm"][open]', W); if (reason) await pg.fill('dialog[data-part="confirm"] textarea[name="reason"]', reason); await pg.click('dialog[data-part="confirm"] [data-confirm="ok"]'); await pg.waitForTimeout(350); };
   const runMalicious = async (pg) => {
@@ -185,7 +186,9 @@ const W = { timeout: 3000 };
   });
 
   await T('4b 오류가 이어지면 주기마다 조용히(스켈레톤 없이) 다시 불러, 성공하면 목록 — ?retry=1000&fail=이름:2', async () => {
-    for (const [hash, k, rowSel] of [['/audit', 'audit', '[data-table="audit"] tbody tr'], ['/installs?status=all', 'installs', '[data-table="installs"] tbody tr'], ['/events?normal=1', 'events', '.feed-row']]) {
+    // 10/21b: 필터는 주소 대신 화면에서 건다 — 상태로 넘기면 다시 그리며 한 번 더 불러 fail 횟수를 쓰므로, 성공한 뒤 칩 · 토글로 목록을 넓힌다
+    const widen = { installs: '[data-filter="status"] button[data-value="all"]', events: '#page [data-toggle="normal"] input' };
+    for (const [hash, k, rowSel] of [['/audit', 'audit', '[data-table="audit"] tbody tr'], ['/installs', 'installs', '[data-table="installs"] tbody tr'], ['/events', 'events', '.feed-row']]) {
       const pg = await newPage();
       await go(pg, hash, `&fail=${k}:2&retry=1000`);
       await pg.waitForSelector('#page [data-part="error"]', W);
@@ -195,6 +198,7 @@ const W = { timeout: 3000 };
       await pg.waitForFunction(() => !document.querySelector('#page [data-part="error"]'), null, { timeout: 4000 }).catch(() => {});
       await pg.waitForTimeout(200);
       ok(await pg.locator('#page [data-part="error"]').count() === 0, `${hash} 자동 재시도 뒤에도 오류`);
+      if (widen[k]) { await pg.click(widen[k]); await pg.waitForTimeout(300); }
       ok(await pg.locator(`#page ${rowSel}`).count() >= 1, `${hash} 목록이 비어 있음`);
       ok(await pg.evaluate(() => window.__sk) === 0, `${hash} 자동 재시도에 스켈레톤이 보임`);
       await pg.close();
@@ -303,7 +307,7 @@ const W = { timeout: 3000 };
     await nav(pg, `#/policies?proposal=${pid2}`);
     await pg.click('[data-view="proposal"] button[aria-label="버림"]');
     await confirmOk(pg, '버림 사유');
-    await nav(pg, '#/audit?view=history');
+    await nav(pg, '#/audit?view=changes'); // 10/21b
     await pg.waitForSelector('[data-table="history"]', W);
     const t = await pg.textContent('[data-table="history"]');
     for (const r of ['적용 사유', '해제 사유', '버림 사유']) ok(t.includes(`사유 「${r}」`), `이력에 ${r} 없음`);

@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const PW = process.env.PLAYWRIGHT || 'playwright';
 const { chromium } = require(PW);
+const { splitHash, goState } = require('./nav-state.cjs'); // 10/21b: 필터는 주소 대신 상태로
 const BASE = process.env.BASE || 'http://127.0.0.1:8766/index.html';
 const SHOT_DIR = path.join(__dirname, '..', 'screenshots', '1016');
 const results = []; const consoleErrors = [];
@@ -34,7 +35,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     pg.on('pageerror', (e) => consoleErrors.push(`${pg.url()} PAGEERROR ${e.message}`));
     return pg;
   };
-  const go = async (pg, hash) => { await pg.goto(`${BASE}?as=admin#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin)
+  const go = async (pg, hash) => { await pg.goto(`${BASE}?as=admin#${splitHash(hash)[0]}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); if (splitHash(hash)[1]) await goState(pg, hash, 0); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin) // 10/21b
   const confirmOk = (pg) => pg.click('dialog[data-part="confirm"] [data-confirm="ok"]'); // 10/20: 판정 · 적용은 확인 대화상자(B)
   const shot = async (pg, name) => { if (!process.env.SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true }); await pg.waitForTimeout(250); await pg.screenshot({ path: path.join(SHOT_DIR, `${name}.png`) }); };
   const runInstall = async (pg, kind) => {

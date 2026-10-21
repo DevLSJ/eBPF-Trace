@@ -17,7 +17,7 @@
       if (!open.length) return { text: '지금 판정 대기 건은 없습니다. 새 격리 · 경고가 생기면 대시보드 맨 위에 올라옵니다.', links: [['대시보드', '#/']] };
       const lines = open.slice(0, 3).map((c) => `${SRC[c.source]} ${c.label || c.container}(${LV[c.level]}, 위반 ${c.violations}건 — ${c.ruleIds.slice(0, 2).join(', ')})`);
       return { text: `판정 대기 건이 ${open.length}개 있습니다. ${lines.join(' · ')}. 각 건을 열어 공격 체인을 보고 「악성 확정」 또는 「오탐」으로 판정하세요. 판정하면 정책에서 미리보기 뒤 적용합니다.`,
-        links: open.slice(0, 3).map((c) => [`${c.label || c.container} 판정하기`, U.caseHref(c)]) };
+        links: open.slice(0, 3).map((c) => { const l = U.caseLink(c); return [`${c.label || c.container} 판정하기`, l.href, l.state]; }) };
     }
     const ctr = (q.match(/([a-z0-9][a-z0-9_.-]+)/i) || [])[1];
     if (/격리|왜/.test(q) && ctr) {
@@ -26,7 +26,7 @@
       const rules = [...new Set(rows.map((a) => a.ruleId))];
       const c = state.cases.find((x) => x.container === rows[0].event.containerName && x.state !== 'closed');
       return { text: `${rows[0].event.containerName} 은(는) ${rules.join(', ')} 정책에 걸려 ${rows.some((a) => a.enforced) ? '격리됐습니다' : '경고가 났습니다'}. 예: ${U.detailOf(rows[0].event)}. ${c ? `지금 ${c.decision === 'pending' ? '판정 대기' : '판정됨'} 상태입니다 — 공격 체인을 보고 판정하세요.` : ''}`,
-        links: [['감사 로그에서 보기', `#/audit?container=${encodeURIComponent(rows[0].event.containerName)}`], ['토폴로지', `#/topology?container=${encodeURIComponent(rows[0].event.containerName)}`]] };
+        links: [['감사 로그에서 보기', '#/audit', { container: rows[0].event.containerName }], ['토폴로지', U.topoLink(rows[0].event.containerName).href, { container: rows[0].event.containerName }]] };
     }
     if (/정책|규칙|위반/.test(q)) {
       const o = state.audit.reduce((m, a) => (m.set(a.ruleId, (m.get(a.ruleId) || 0) + 1), m), new Map());
@@ -66,7 +66,7 @@
   function draw() {
     list.replaceChildren(...(msgs.length ? msgs : [{ role: 'assistant', text: '무엇이든 물어보세요. 판정 대기 · 위반 기록 · 정책 · 공급망 검사 결과를 찾아 답합니다.', links: [] }]).map((m) =>
       h('div', { class: `chat-msg ${m.role}`, 'data-role': m.role }, h('div', { class: 'bubble' }, m.text || (m.pending ? h('span', { class: 'muted' }, '생각하는 중…') : '')),
-        m.links && m.links.length ? h('div', { class: 'chat-links', 'data-part': 'chat-links' }, h('span', { class: 'small muted' }, '관련 화면'), m.links.map(([t, href]) => h('a', { href, class: 'link small' }, t + ' →'))) : null)));
+        m.links && m.links.length ? h('div', { class: 'chat-links', 'data-part': 'chat-links' }, h('span', { class: 'small muted' }, '관련 화면'), m.links.map(([t, href, st]) => h('a', { ...U.to(href, st), class: 'link small' }, t + ' →'))) : null)));
     list.scrollTop = list.scrollHeight;
     sugg.hidden = msgs.length > 0;
     send.disabled = busy;
