@@ -92,3 +92,37 @@ func TestEventJSONRoundTrip(t *testing.T) {
 		t.Fatalf("exec must not carry dnsTraced, got %s", got)
 	}
 }
+
+// DNS 질의 이벤트(10/30): qtype 이 실리고 dnsTraced 는 없다. 상세는 "<name> (<qtype>)". 응답 전용 내부 필드는 숨긴다
+func TestEventJSONDNS(t *testing.T) {
+	ts := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
+	name := strings.Repeat("deadbeef", 6) + ".exfil.example"
+	q := Event{Kind: KindDNS, Timestamp: ts, ContainerName: "sg-install-demo-1", Comm: "python3", Pid: 123, DstHost: name, Qtype: "A", DstIP: "127.0.0.11", DstPort: 53}
+	got := mustJSON(t, q)
+	for _, want := range []string{`"kind":"dns"`, `"qtype":"A"`, `"dstHost":"` + name + `"`, `"dstIp":"127.0.0.11"`, `"dstPort":53`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %s in %s", want, got)
+		}
+	}
+	for _, no := range []string{"dnsTraced", "DNSName", "DNSAddrs", "addresses"} {
+		if strings.Contains(got, no) {
+			t.Errorf("%s must be absent: %s", no, got)
+		}
+	}
+	if d := q.Detail(); d != name+" (A)" {
+		t.Fatalf("detail: %q", d)
+	}
+	if !q.IsDNSQuery() || (Event{Kind: KindDNS, DNSName: "a.test", DstHost: "a.test"}).IsDNSQuery() || (Event{Kind: KindConnect, DstHost: "a.test"}).IsDNSQuery() {
+		t.Fatal("IsDNSQuery: query = dns kind with a name and no answer")
+	}
+	var back Event
+	if err := json.Unmarshal([]byte(got), &back); err != nil || back.Qtype != "A" || back.DstHost != name || back.Kind != KindDNS {
+		t.Fatalf("round trip: %+v %v", back, err)
+	}
+	if !KindDNS.Valid() || len(Kinds) != 4 || Kinds[3] != KindDNS {
+		t.Fatalf("Kinds must end with dns: %v", Kinds)
+	}
+	if DNSDetail("x.test", "") != "x.test" || DNSDetail("x.test", "TXT") != "x.test (TXT)" {
+		t.Fatal("DNSDetail")
+	}
+}

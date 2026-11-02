@@ -8,4 +8,6 @@ type MinuteCount struct {
 	Exec    int64     `json:"exec"`
 	Open    int64     `json:"open"`
 	Connect int64     `json:"connect"`
+	// DNS: DNS 질의(kind: dns, 10/30). 옛 백엔드 호환을 위해 화면은 선택 값으로 읽는다
+	DNS int64 `json:"dns"`
 }

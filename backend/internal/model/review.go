@@ -135,6 +135,25 @@ type InstallSession struct {
 	// ViolationCount: 위반 수 합(violations 의 count 합) — 목록 화면용
 	ViolationCount int      `json:"violationCount"`
 	Activity       Activity `json:"activity"`
+	// Demo: 시연 실행(POST /api/demo/run, 10/30)이 만든 세션
+	Demo bool `json:"demo,omitempty"`
+	// Isolation: 격리 세션의 첫 kill 판정(감사 로그 id · 타임라인, 10/30). 격리되지 않았으면 없다
+	Isolation *Isolation `json:"isolation,omitempty"`
+}
+
+// Isolation: 격리 타임라인이 붙는 곳 — 설치 세션 · 건의 첫 실제 kill 판정
+type Isolation struct {
+	AuditID  int64    `json:"auditId"`
+	Timeline Timeline `json:"timeline"`
+}
+
+func (i *Isolation) clone() *Isolation {
+	if i == nil {
+		return nil
+	}
+	c := *i
+	c.Timeline = *i.Timeline.Clone()
+	return &c
 }
 
 func (s InstallSession) Label() string {
@@ -156,6 +175,7 @@ func (s InstallSession) Clone() InstallSession {
 	}
 	c.Activity.Hosts = slices.Clone(s.Activity.Hosts)
 	c.Activity.Programs = slices.Clone(s.Activity.Programs)
+	c.Isolation = s.Isolation.clone()
 	return c
 }
 
@@ -203,6 +223,8 @@ type Case struct {
 	Note       string     `json:"note"`
 	ProposalID *string    `json:"proposalId"`
 	ClosedAt   *time.Time `json:"closedAt"`
+	// Isolation: 이 건의 첫 실제 kill 판정(감사 로그 id · 타임라인, 10/30). 격리가 없었으면 없다
+	Isolation *Isolation `json:"isolation,omitempty"`
 }
 
 // CaseRecord: 저장용 — 건 + 제안을 만들 때 쓰는 위반 증거(화면 응답에는 Case 만 나간다)
@@ -215,6 +237,7 @@ func (r CaseRecord) Clone() CaseRecord {
 	c := r
 	c.Case.RuleIDs = slices.Clone(r.Case.RuleIDs)
 	c.Evidence = slices.Clone(r.Evidence)
+	c.Case.Isolation = r.Case.Isolation.clone()
 	return c
 }
 
@@ -293,6 +316,8 @@ const (
 	ChangeBlocklistRemove ChangeKind = "blocklist_remove"
 	// ChangeProposalDiscarded: POST /api/proposals/{id}/discard — 변경 없이 건 종결(W15, 사유를 남기려고 기록)
 	ChangeProposalDiscarded ChangeKind = "proposal_discarded"
+	// ChangeDemoRun: POST /api/demo/run — 시연 실행(10/30). 요약 「시연 실행: <scenario>」
+	ChangeDemoRun ChangeKind = "demo_run"
 )
 
 // MaxReasonRunes: 적용 · 버림 · 차단 해제 사유(Change.reason)의 상한(문자 수, W15)

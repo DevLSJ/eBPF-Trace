@@ -15,7 +15,8 @@ const (
 	KindExec    Kind = "exec"    // trace_exec (execve)
 	KindOpen    Kind = "open"    // trace_open (openat)
 	KindConnect Kind = "connect" // trace_tcp --connect-only (sys_connect)
-	// KindDNS: trace_dns 응답. 정책 평가 대상이 아니라 connect 이벤트의 목적지 도메인(DstHost)을 채우는 내부 이벤트.
+	// KindDNS: trace_dns. 질의(DNSName 이 비고 DstHost 가 질의 이름)는 정책 평가 대상(kind: dns, 10/30)이고,
+	// 응답(DNSName · DNSAddrs)은 connect 이벤트의 목적지 도메인(DstHost)을 채우는 내부 이벤트로 JSON 에 내보내지 않는다.
 	KindDNS Kind = "dns"
 	// KindStart · KindExit: Docker 컨테이너 시작 · 종료 (docker-events). 정책 평가 대상이 아닌 내부 이벤트 —
 	// 시작은 차단 이미지 확인, 종료는 설치 세션의 containerExitedAt 에 쓴다. ImageName 이 채워져 온다.
@@ -23,7 +24,7 @@ const (
 	KindExit  Kind = "exit"
 )
 
-var Kinds = []Kind{KindExec, KindOpen, KindConnect}
+var Kinds = []Kind{KindExec, KindOpen, KindConnect, KindDNS}
 
 func (k Kind) Valid() bool {
 	for _, v := range Kinds {
@@ -58,8 +59,11 @@ type Event struct {
 	Path    string `json:"path,omitempty"`    // open (fname)
 	DstIP   string `json:"dstIp,omitempty"`   // connect
 	DstPort uint16 `json:"dstPort,omitempty"` // connect
-	// DstHost: 같은 컨테이너가 직전에 조회한 DNS 응답으로 알아낸 목적지 도메인 (모르면 빈 문자열)
-	DstHost string `json:"dstHost,omitempty"` // connect
+	// DstHost: connect 는 같은 컨테이너가 직전에 조회한 DNS 응답으로 알아낸 목적지 도메인(모르면 빈 문자열),
+	// dns 질의는 질의 이름(소문자 · 끝 점 제거)
+	DstHost string `json:"dstHost,omitempty"` // connect · dns
+	// Qtype: dns 질의 유형 — IG 열거 그대로 대문자(A AAAA TXT CNAME MX NS PTR SOA SRV OPT WKS HINFO MINFO AXFR ALL …)
+	Qtype string `json:"qtype,omitempty"` // dns
 	// DNSTraced: 이 connect 이벤트가 올 때 trace_dns 가 실제로 돌고 있었는지. true 인데 DstHost 가 비면
 	// 「도메인 조회 없는 IP 직접 연결」이고, false 면 판단 불가(fail-open). 가젯 소스는 trace_dns 로드 여부, mock 은 항상 true.
 	// JSON 은 connect 에만, false 도 명시해서 낸다(W20, MarshalJSON). 필드가 없으면 옛 기록이다.
@@ -120,8 +124,58 @@ func (e Event) Detail() string {
 			d += " (" + e.DstHost + ")"
 		}
 		return d
+	case KindDNS:
+		return DNSDetail(e.DstHost, e.Qtype)
 	}
 	return ""
+}
+
+// DNSDetail: dns 질의 상세 "<name> (<qtype>)" — 화면 · 목업 · sg-install 과 같은 문구. 유형을 모르면 이름만
+func DNSDetail(name, qtype string) string {
+	if qtype == "" {
+		return name
+	}
+	return name + " (" + qtype + ")"
+}
+
+// IsDNSQuery: 정책 평가 대상인 DNS 질의(응답은 DNSName 이 있다)
+func (e Event) IsDNSQuery() bool { return e.Kind == KindDNS && e.DNSName == "" && e.DstHost != "" }
+
+// Timeline: 격리 타임라인(10/30) — 탐지 → 판정 → 증거 → 격리 → 알림 시각(RFC3339Nano UTC). 해당 없으면 키 생략.
+//   - DetectedAt 이벤트 시각(소스) · MatchedAt 엔진 평가 완료
+//   - Evidence* before-kill 훅 시작 · 끝(0.7초 예산) · KilledAt Docker kill 응답 시각 · NotifiedAt 알림 큐 투입 시각(발송 완료 아님)
+type Timeline struct {
+	DetectedAt        time.Time  `json:"detectedAt"`
+	MatchedAt         time.Time  `json:"matchedAt"`
+	EvidenceStartedAt *time.Time `json:"evidenceStartedAt,omitempty"`
+	EvidenceDoneAt    *time.Time `json:"evidenceDoneAt,omitempty"`
+	KilledAt          *time.Time `json:"killedAt,omitempty"`
+	NotifiedAt        *time.Time `json:"notifiedAt,omitempty"`
+}
+
+// IsolationMs: 탐지부터 격리까지 걸린 ms (KilledAt 이 없으면 ok=false)
+func (t Timeline) IsolationMs() (int64, bool) {
+	if t.KilledAt == nil {
+		return 0, false
+	}
+	return t.KilledAt.Sub(t.DetectedAt).Milliseconds(), true
+}
+
+// Clone: 포인터 시각을 복사한 사본
+func (t *Timeline) Clone() *Timeline {
+	if t == nil {
+		return nil
+	}
+	c := *t
+	cp := func(p *time.Time) *time.Time {
+		if p == nil {
+			return nil
+		}
+		v := *p
+		return &v
+	}
+	c.EvidenceStartedAt, c.EvidenceDoneAt, c.KilledAt, c.NotifiedAt = cp(t.EvidenceStartedAt), cp(t.EvidenceDoneAt), cp(t.KilledAt), cp(t.NotifiedAt)
+	return &c
 }
 
 // Verdict: 규칙 평가 결과
@@ -140,6 +194,8 @@ type Verdict struct {
 	// CaseID · Install: 이 판정이 묶인 건 · 설치 세션 (없으면 null). 감사 로그 행에도 그대로 남는다.
 	CaseID  *string     `json:"caseId"`
 	Install *InstallRef `json:"install"`
+	// Timeline: 격리 타임라인(10/30) — matched 판정에만. 옛 기록에는 없다
+	Timeline *Timeline `json:"timeline,omitempty"`
 }
 
 // AuditEntry: 저장된 위반 판정 (PostgreSQL audit_log)
