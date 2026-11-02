@@ -28,8 +28,8 @@ export function SettingsPage() {
   const tabs = TABS.filter((t) => isAdmin || !t.admin);
   const tab = tabs.find((t) => t.key === params.get('tab'))?.key ?? 'server';
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-lg border border-slate-200 bg-white">
-      <div role="tablist" data-part="settings-tabs" aria-label="설정" className="flex shrink-0 gap-1 border-b border-slate-100 px-3">
+    <div className="sg-card flex h-full min-h-0 flex-col overflow-hidden">
+      <div role="tablist" data-part="settings-tabs" aria-label="설정" className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-3 [scrollbar-width:none]">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -130,11 +130,12 @@ function ServerTab() {
           </p>
         ) : (
           <>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-slate-500">
                 <tr>
                   {['채널', '호스트', '보냄', '실패', '마지막 성공', '마지막 오류'].map((t) => (
-                    <th key={t} className="py-1 font-medium">
+                    <th key={t} className="py-1 font-semibold">
                       {t}
                     </th>
                   ))}
@@ -157,6 +158,7 @@ function ServerTab() {
                 ))}
               </tbody>
             </table>
+            </div>
             <p className="text-xs text-slate-500">
               합계 보냄 {fmtNum(n.sent)} · 실패 {fmtNum(n.failed)}
               {n.suppressed ? ` · 같은 알림 묶음 ${fmtNum(n.suppressed)}` : ''} — 채널은 <code>NOTIFY_WEBHOOK_URL</code> · <code>NOTIFY_SLACK_URL</code>
@@ -177,7 +179,7 @@ function ServerTab() {
           label="trace_dns"
           value={i.dnsResolve === 'off' ? '꺼짐' : i.dnsResolve === 'ok' ? '켜짐' : '—'}
           env="dnsResolve"
-          desc={i.dnsResolve === 'off' ? '도메인 기준 규칙(allowHosts · denyHosts · 차단 도메인)이 통과 처리됩니다. IP · 포트 규칙만 동작합니다' : '연결 대상 IP 를 DNS 응답으로 도메인에 맞춰 판단합니다'}
+          desc={i.dnsResolve === 'off' ? '도메인 기준 규칙(allowHosts · denyHosts · 차단 도메인)과 DNS 질의 규칙(kind: dns)이 통과 처리됩니다. IP · 포트 규칙만 동작합니다' : '연결 대상 IP 를 DNS 응답으로 도메인에 맞춰 판단하고, DNS 질의 규칙(kind: dns)을 평가합니다'}
         />
       </Section>
       <p className="px-5 py-4 text-xs text-slate-500">
@@ -273,11 +275,12 @@ function AccountsTab() {
         users.error ? <LoadError error={users.error} what="계정" /> : <Empty>불러오는 중…</Empty>
       ) : (
         <>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm" data-table="users">
             <thead className="bg-slate-50 text-left text-xs text-slate-500">
               <tr>
                 {['아이디', '이름', '역할', '상태', 'OTP', '마지막 로그인', ''].map((t, i) => (
-                  <th key={i} className="px-4 py-2 font-medium">
+                  <th key={i} className="px-4 py-2 font-semibold">
                     {t}
                   </th>
                 ))}
@@ -319,6 +322,7 @@ function AccountsTab() {
               })}
             </tbody>
           </table>
+          </div>
           <p className="px-5 py-3 text-xs text-slate-500" data-part="last-admin">
             관리자는 지금 {admins}명입니다. {AUTH_MSG.lastAdmin} — 다른 계정을 먼저 관리자로 올리세요.
           </p>
@@ -635,11 +639,12 @@ function AuthAuditRows({ action, failed }: { action: string; failed: boolean }) 
   if (all.length === 0) return <Empty>{action || failed ? '조건에 맞는 기록 없음' : '기록 없음'}</Empty>;
   return (
     <>
+      <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="sticky top-0 bg-slate-50 text-left text-xs text-slate-500">
           <tr>
             {['시각', '계정', '동작', '대상', 'IP', '결과', '내용'].map((t) => (
-              <th key={t} className="px-4 py-2 font-medium">
+              <th key={t} className="px-4 py-2 font-semibold">
                 {t}
               </th>
             ))}
@@ -659,6 +664,7 @@ function AuthAuditRows({ action, failed }: { action: string; failed: boolean }) 
           ))}
         </tbody>
       </table>
+      </div>
       {(hasMore || moreErr != null) && (
         <div className="flex flex-col items-center gap-1 border-t border-slate-100 py-3 text-xs">
           {moreErr != null && (

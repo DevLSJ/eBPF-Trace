@@ -97,7 +97,7 @@ export function ScanPackages({ s }: { s: Scan }) {
                   </th>
                 )}
                 {['패키지', '버전', '취약', '의존', '출처 파일'].map((h) => (
-                  <th key={h} className="px-2 py-1 font-medium">
+                  <th key={h} className="px-2 py-1 font-semibold">
                     {h}
                   </th>
                 ))}

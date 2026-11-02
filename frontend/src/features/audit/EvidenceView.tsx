@@ -86,7 +86,7 @@ function EvidenceCard({ ev }: { ev: Evidence }) {
         <h4 className="mb-1 text-xs font-semibold text-slate-700">
           로그 <span className="font-normal text-slate-400">— 마지막 200줄</span>
         </h4>
-        <pre className="max-h-48 overflow-auto rounded-md bg-slate-900 p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-slate-100" data-part="evidence-logs">
+        <pre className="sg-code max-h-48 overflow-auto p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap" data-part="evidence-logs">
           {ev.logs || '(비어 있음)'}
         </pre>
       </div>
@@ -123,9 +123,9 @@ function EvidenceCard({ ev }: { ev: Evidence }) {
           <table className="w-full text-xs" data-part="evidence-procs">
             <thead className="text-left text-slate-500">
               <tr>
-                <th className="py-0.5 font-medium">PID</th>
-                <th className="py-0.5 font-medium">사용자</th>
-                <th className="py-0.5 font-medium">명령</th>
+                <th className="py-0.5 font-semibold">PID</th>
+                <th className="py-0.5 font-semibold">사용자</th>
+                <th className="py-0.5 font-semibold">명령</th>
               </tr>
             </thead>
             <tbody>

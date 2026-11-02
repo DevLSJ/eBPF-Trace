@@ -77,8 +77,12 @@ test.describe('도우미 · AI 도우미 탭 (10/20 W13)', () => {
   test('1 탭 표시 조건: /api/info chat 이 false 면 가이드 탭 하나, true 면 「AI 도우미」 탭 · 머리 문구 · 추천 질문 4개 · 입력 포커스', async ({ page, backend }) => {
     await ready(page);
     await page.locator('[data-part="assistant-fab"]').click();
-    await expect(panel(page).getByRole('tab')).toHaveCount(1);
-    await expect(panel(page).getByRole('tab', { name: 'AI 도우미' })).toHaveCount(0);
+    // 11/02 결정: 꺼져 있어도 탭은 보이고 이유를 알린다(전엔 가이드 탭 하나)
+    await expect(panel(page).getByRole('tab')).toHaveText(['대응 가이드', 'AI 도우미']);
+    await panel(page).getByRole('tab', { name: 'AI 도우미' }).click();
+    await expect(panel(page).locator('[data-part="chat-off"]')).toContainText('AI 도우미가 꺼져 있습니다');
+    await expect(panel(page).locator('[data-part="chat-off"]')).toContainText('OLLAMA_URL');
+    await expect(chat(page)).toHaveCount(0);
 
     backend.info.chat = true;
     await ready(page);

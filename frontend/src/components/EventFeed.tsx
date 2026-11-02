@@ -32,6 +32,8 @@ export function EventFeed({ verdicts, selectedKey, onSelect, empty = '이벤트 
   const [scrollTop, setScrollTop] = useState(0);
   const [height, setHeight] = useState(400);
   const hasRows = verdicts.length > 0;
+  // 10/30 모션: 처음 그릴 때 있던 행(key ≤ base)은 그대로, 그 뒤 들어온 위반 행은 danger-soft → 투명 1.2s
+  const [base] = useState(() => verdicts.reduce((m, v) => Math.max(m, v.key), 0));
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -64,12 +66,14 @@ export function EventFeed({ verdicts, selectedKey, onSelect, empty = '이벤트 
         {verdicts.slice(start, end).map((v, i) => {
           const level = levelOf(v);
           const selected = v.key === selectedKey;
+          const fresh = v.matched && v.key > base;
           return (
             <li
               key={v.key}
               style={{ top: (start + i) * ROW, height: ROW }}
               data-key={v.key}
               data-level={level}
+              data-fresh={fresh ? 'true' : undefined}
               tabIndex={onSelect ? 0 : undefined}
               aria-selected={onSelect ? selected : undefined}
               onClick={onSelect && (() => onSelect(v))}
@@ -82,7 +86,7 @@ export function EventFeed({ verdicts, selectedKey, onSelect, empty = '이벤트 
                   }
                 })
               }
-              className={`absolute inset-x-0 flex items-center gap-3 border-b border-slate-100 px-4 text-sm ${
+              className={`absolute inset-x-0 flex items-center gap-3 border-b border-slate-100 px-4 text-sm ${fresh ? 'sg-flash' : ''} ${
                 onSelect ? 'cursor-pointer hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500' : ''
               } ${selected ? 'bg-indigo-50' : level === 'killed' || level === 'held' ? 'bg-red-50/60' : ''}`}
             >

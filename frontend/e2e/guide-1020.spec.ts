@@ -30,7 +30,7 @@ async function openPanel(page: Page) {
 const caseShown = (page: Page, id: string) => expect(guide(page)).toHaveAttribute('data-guide-case', id);
 
 test.describe('도우미 · 대응 가이드 (10/20)', () => {
-  test('1 오른쪽 아래 버튼 하나(도우미) · 탭은 「대응 가이드」 하나 · Esc 로 닫히고 포커스는 버튼으로', async ({ page, backend }) => {
+  test('1 오른쪽 아래 버튼 하나(도우미) · 처음 탭은 「대응 가이드」(11/02: AI 탭도 보임) · Esc 로 닫히고 포커스는 버튼으로', async ({ page, backend }) => {
     void backend;
     await ready(page);
     await expect(fab(page)).toHaveCount(1);
@@ -40,10 +40,9 @@ test.describe('도우미 · 대응 가이드 (10/20)', () => {
     await expect(panel(page)).toBeVisible();
     await expect(panel(page)).toHaveAttribute('role', 'dialog');
     const tabs = panel(page).getByRole('tab');
-    await expect(tabs).toHaveCount(1);
-    await expect(tabs.first()).toHaveText(/대응 가이드/);
+    // 11/02 결정: AI 가 꺼져 있어도 「AI 도우미」 탭은 보인다(안에서 OLLAMA_URL 안내) — 처음 선택은 대응 가이드 그대로
+    await expect(tabs).toHaveText([/대응 가이드/, /AI 도우미/]);
     await expect(tabs.first()).toHaveAttribute('aria-selected', 'true');
-    await expect(panel(page).getByRole('tab', { name: /AI 도우미/ })).toHaveCount(0);
     await page.keyboard.press('Escape');
     await expect(panel(page)).toBeHidden();
     await expect(fab(page)).toBeFocused();

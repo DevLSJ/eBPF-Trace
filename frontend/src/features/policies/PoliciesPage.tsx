@@ -115,7 +115,8 @@ export function PoliciesPage() {
         canWrite={canWrite}
         onPreview={(x) => select(x.kind === 'differs' ? { id: x.id, default: x.id } : { default: x.id })}
       />
-      <div className="grid min-h-0 flex-1 grid-cols-[21rem_minmax(0,1fr)] gap-4">
+      {/* 768 미만(10/30): 1열로 쌓고 화면 안에서 스크롤 */}
+      <div className="grid min-h-0 flex-1 gap-4 max-md:content-start max-md:overflow-y-auto md:grid-cols-[21rem_minmax(0,1fr)]">
 
         <div className="flex min-h-0 flex-col gap-4">
           <Panel
@@ -227,7 +228,7 @@ export function PoliciesPage() {
           </Panel>
         </div>
 
-        <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_13rem] gap-4">
+        <div className="grid min-h-0 gap-4 md:grid-rows-[minmax(0,1fr)_13rem]">
           {proposalId ? (
             <ProposalDetail
               key={proposalId}
@@ -293,7 +294,7 @@ export function PoliciesPage() {
               )}
             </Panel>
           )}
-          <div className="grid min-h-0 grid-cols-2 gap-4">
+          <div className="grid min-h-0 grid-cols-2 gap-4 max-md:h-52">
             <BlocklistPanel data={blocklist.data} error={blocklist.error} canWrite={canWrite} onChanged={refreshAll} />
             <ChangesPanel data={changes.data} error={changes.error} />
           </div>

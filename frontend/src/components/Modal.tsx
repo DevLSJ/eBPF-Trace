@@ -79,7 +79,7 @@ export function Modal({
           first.focus();
         }
       }}
-      className={`m-auto rounded-xl border border-slate-200 bg-white p-0 text-slate-800 shadow-2xl backdrop:bg-slate-900/40 ${wide ? 'w-[40rem]' : 'w-[28rem]'} max-w-[calc(100vw-2rem)]`}
+      className={`m-auto rounded-[var(--r-lg)] border border-border bg-surface p-0 text-text shadow-[var(--sh-hover)] backdrop:bg-black/50 ${wide ? 'w-[40rem]' : 'w-[28rem]'} max-w-[calc(100vw-2rem)]`}
     >
       <div className="grid gap-4 p-5">
         <div className="flex items-center justify-between gap-3">
@@ -178,14 +178,14 @@ export function ConfirmDialog({
       guard={() => reason && text.trim() !== ''}
       foot={
         <>
-          <button type="button" data-confirm="cancel" onClick={onCancel} className="rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
+          <button type="button" data-confirm="cancel" onClick={onCancel} className="sg-btn text-text-2 hover:bg-surface-2">
             취소
           </button>
           <button
             type="button"
             data-confirm="ok"
             onClick={() => onConfirm(text.trim())}
-            className={`rounded-md px-4 py-1.5 text-sm font-medium text-white ${tone === 'primary' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-red-600 hover:bg-red-700'}`}
+            className={`sg-btn ${tone === 'primary' ? 'sg-btn-primary' : 'sg-btn-danger'}`}
           >
             {okLabel}
           </button>

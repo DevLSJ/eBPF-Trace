@@ -124,7 +124,7 @@ export function InstallsPage() {
                 <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs text-slate-500">
                   <tr>
                     {['시작', '매니저', '패키지', '설치 결과', '판정', '위반', '걸린 시간'].map((h) => (
-                      <th key={h} className="px-3 py-2 font-medium whitespace-nowrap">
+                      <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">
                         {h}
                       </th>
                     ))}
@@ -189,9 +189,9 @@ function FirstUse({ onCopy }: { onCopy: () => void }) {
       title="아직 설치 검사가 없습니다"
       hint="개발자가 패키지를 설치할 때 감시 컨테이너에서 실행합니다. 위반이면 설치가 끝나기 전에 격리됩니다."
       actions={
-        <div className="flex items-center gap-2 rounded-md bg-slate-900 px-3 py-2 font-mono text-xs text-slate-100">
+        <div className="sg-code flex items-center gap-2 px-3 py-2 font-mono text-xs">
           {EXAMPLE_COMMAND}
-          <button type="button" onClick={onCopy} className="rounded p-1 text-slate-300 hover:bg-slate-700" aria-label="명령 복사">
+          <button type="button" onClick={onCopy} className="rounded p-1 text-text-3 hover:bg-surface-2 hover:text-text" aria-label="명령 복사">
             <Copy className="size-3.5" />
           </button>
         </div>

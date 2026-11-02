@@ -17,7 +17,8 @@ export interface FollowItem {
 }
 export const FOLLOW: FollowItem[] = [
   { group: 'secrets', rules: ['sensitive-files', 'sandbox-secrets'], text: '노출됐을 수 있는 키 · 토큰 교체, 같은 볼륨을 쓰는 컨테이너 확인' },
-  { group: 'egress', rules: ['reverse-shell-ports', 'runtime-direct-ip', 'sandbox-egress', 'egress-allowlist'], text: '목적지 IP · 도메인을 차단 목록에 올리기, 같은 이미지를 쓰는 다른 컨테이너 확인' },
+  // 10/30: dns 질의 규칙(runtime-dns-exfil · sandbox-dns)도 외부 유출 묶음
+  { group: 'egress', rules: ['reverse-shell-ports', 'runtime-direct-ip', 'sandbox-egress', 'egress-allowlist', 'runtime-dns-exfil', 'sandbox-dns'], text: '목적지 IP · 도메인을 차단 목록에 올리기, 같은 이미지를 쓰는 다른 컨테이너 확인' },
   { group: 'download', rules: ['no-shell-download', 'pipe-to-shell'], text: '설치 스크립트 출처 확인, 패키지 버전 고정 · 차단' },
   { group: 'blocked-image', rules: ['blocked-image'], text: '차단된 이미지가 다시 기동된 경로(배포 파이프라인 · 이미지 태그) 확인' },
   { group: 'hosts', rules: ['blocklist-hosts'], text: '차단 도메인으로 나간 프로세스와 그 이미지 확인' },

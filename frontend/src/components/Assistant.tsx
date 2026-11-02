@@ -23,12 +23,13 @@ export function Assistant() {
   const { cases, error } = useCases();
   const { subscribe, info } = useStream();
   const chatOn = info?.chat === true;
-  const TABS = chatOn ? [GUIDE_TAB, CHAT_TAB] : [GUIDE_TAB];
+  // 11/02 결정: 꺼져 있어도(OLLAMA_URL 없음) 탭은 보이고, 탭 안에서 이유를 알린다
+  const TABS = [GUIDE_TAB, CHAT_TAB];
   const toast = useToast();
   const { pathname, search } = useLocation();
   const [open, setOpen] = useState(false);
   const [tabSel, setTab] = useState<TabId>('guide');
-  const tab: TabId = tabSel === 'chat' && !chatOn ? 'guide' : tabSel;
+  const tab: TabId = tabSel;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [, setRev] = useState(0);
   const bump = useCallback(() => setRev((n) => n + 1), []);
@@ -152,7 +153,7 @@ export function Assistant() {
         role="dialog"
         aria-label="SupplyGuard 도우미"
         hidden={!open}
-        className={`fixed right-6 bottom-[88px] z-[60] h-[min(600px,calc(100vh-112px))] w-[400px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,.2)] ${open ? 'flex' : 'hidden'}`}
+        className={`fixed right-6 bottom-[88px] z-[60] h-[min(600px,calc(100vh-112px))] w-[min(400px,calc(100vw-3rem))] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[var(--sh-hover)] ${open ? 'flex' : 'hidden'}`}
       >
         <header className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-2.5">
           <ShieldCheck className="size-4 text-indigo-600" aria-hidden />
@@ -198,21 +199,26 @@ export function Assistant() {
         >
           {open && tab === 'guide' && <GuidePanel cases={list} selectedId={selectedId} onSelect={setSelectedId} onChange={bump} />}
         </div>
-        {chatOn && (
-          <div
-            role="tabpanel"
-            id="assist-chat"
-            aria-labelledby="assist-tab-chat"
-            hidden={tab !== 'chat'}
-            className={`min-h-0 flex-1 flex-col ${tab === 'chat' ? 'flex' : 'hidden'}`}
-            // 관련 화면 링크: 지금 화면과 같은 주소여도 닫는다(다른 주소면 화면 이동으로 닫힌다)
-            onClick={(e) => {
-              if ((e.target as HTMLElement).closest('a[href^="/"]')) close(true);
-            }}
-          >
+        <div
+          role="tabpanel"
+          id="assist-chat"
+          aria-labelledby="assist-tab-chat"
+          hidden={tab !== 'chat'}
+          className={`min-h-0 flex-1 flex-col ${tab === 'chat' ? 'flex' : 'hidden'}`}
+          // 관련 화면 링크: 지금 화면과 같은 주소여도 닫는다(다른 주소면 화면 이동으로 닫힌다)
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest('a[href^="/"]')) close(true);
+          }}
+        >
+          {chatOn ? (
             <ChatPanel active={open && tab === 'chat'} />
-          </div>
-        )}
+          ) : (
+            <div data-part="chat-off" role="note" className="m-3 grid gap-1.5 rounded-lg border-l-4 border-amber-500 bg-slate-50 p-4 text-sm">
+              <b className="text-slate-800">AI 도우미가 꺼져 있습니다</b>
+              <p className="text-xs text-slate-600">서버에 Ollama(OLLAMA_URL)를 연결하면 켜집니다. 대응 가이드 탭은 그대로 쓸 수 있습니다.</p>
+            </div>
+          )}
+        </div>
       </section>
     </>
   );

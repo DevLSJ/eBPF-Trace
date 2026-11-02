@@ -1,21 +1,22 @@
 import { X } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, type CSSProperties, type ReactNode } from 'react';
 
 // 오른쪽 상세 시트 — 목록 위치는 그대로, 열린 항목은 URL(?id=)에 남긴다. Esc 로 닫는다.
+// 10/30 계약 §7: 오른쪽 480px · surface · sh-2 · 들어올 때 translateX(16px)→0, 768 미만은 전체 화면
 export function Sheet({
   kind,
   title,
   actions,
   onClose,
   children,
-  className = 'w-[420px]',
+  width = 480,
 }: {
   kind: string;
   title: ReactNode;
   actions?: ReactNode;
   onClose: () => void;
   children: ReactNode;
-  className?: string;
+  width?: number;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -32,9 +33,10 @@ export function Sheet({
     <aside
       data-sheet={kind}
       aria-label={typeof title === 'string' ? title : '상세'}
-      className={`flex min-h-0 shrink-0 flex-col rounded-lg border border-slate-200 bg-white ${className}`}
+      style={{ '--sheet-w': `${width}px` } as CSSProperties}
+      className="sg-card sg-sheet flex min-h-0 shrink-0 flex-col overflow-hidden max-md:fixed max-md:inset-0 max-md:z-50 max-md:rounded-none max-md:border-0 md:w-[var(--sheet-w)]"
     >
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-slate-100 px-4">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{title}</h2>
         {actions}
         <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기">

@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/shield.svg" />
     <title>SupplyGuard</title>
+    <script>
+      // 테마(10/30): 첫 그리기 전에 data-theme 를 붙인다(깜빡임 없음) — src/lib/theme.ts 와 같은 키 · 규칙
+      (function () {
+        var t = 'light';
+        try {
+          var p = localStorage.getItem('supplyguard.theme');
+          var sys = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          t = p === 'dark' || ((p === null || p === 'system') && sys) ? 'dark' : 'light';
+        } catch (e) {
+          /* 저장소 차단 — 라이트 */
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

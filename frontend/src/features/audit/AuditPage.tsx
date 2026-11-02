@@ -20,7 +20,7 @@ import { fmtDateTime, shortId } from '../../lib/format';
 import { scanHref, SOURCE_LABEL } from '../../lib/guide';
 import { installDest, topologyDest } from '../../lib/nav';
 import { isInstallContainer } from '../../lib/topology';
-import { caseLabel, CHANGE_KIND_LABEL, DECISION_LABEL, detailOf, KINDS, LEVEL_LABEL, levelOf, type AuditEntry, type Case } from '../../lib/types';
+import { caseLabel, CHANGE_KIND_LABEL, DECISION_LABEL, detailOf, KIND_LONG, KINDS, LEVEL_LABEL, levelOf, type AuditEntry, type Case } from '../../lib/types';
 import { EvidenceView } from './EvidenceView';
 
 const PAGE = 100;
@@ -128,7 +128,9 @@ export function AuditPage() {
                   <select className={ctl} value={filters.kind} onChange={(e) => setFilter('kind', e.target.value)}>
                     <option value="">전체</option>
                     {KINDS.map((k) => (
-                      <option key={k}>{k}</option>
+                      <option key={k} value={k}>
+                        {k === 'dns' ? `dns (${KIND_LONG.dns})` : k}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -265,7 +267,7 @@ function Violations({
             <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs text-slate-500">
               <tr>
                 {['#', '시각', '컨테이너 · 패키지', '종류', '상세', '규칙', '탐지 결과', '판정'].map((h) => (
-                  <th key={h} className="px-3 py-2 font-medium whitespace-nowrap">
+                  <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">
                     {h}
                   </th>
                 ))}
@@ -356,7 +358,7 @@ function AuditSheetLoader({
   const tabs = !!a && (levelOf(a) === 'killed' || tab === 'evidence');
   const shown = tabs ? tab : 'detail';
   return (
-    <Sheet kind="audit" title={`감사 기록 #${id}`} onClose={onClose} className="w-[460px]">
+    <Sheet kind="audit" title={`감사 기록 #${id}`} onClose={onClose}>
       {a ? (
         <>
           {tabs && (
@@ -415,7 +417,9 @@ function AuditDetail({ a, c }: { a: AuditEntry; c: Case | undefined }) {
           <dt className="text-slate-500">규칙</dt>
           <dd className="font-mono text-xs">{a.ruleId}</dd>
           <dt className="text-slate-500">상세</dt>
-          <dd className="font-mono text-xs break-all">{detailOf(a.event)}</dd>
+          <dd className="font-mono text-xs break-all" data-part="detail">
+            {detailOf(a.event)}
+          </dd>
           <DnsRow e={a.event} />
           {a.install && (
             <>
@@ -529,7 +533,7 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
             <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs text-slate-500">
               <tr>
                 {['시각', '종류', '내용', '처리자'].map((h) => (
-                  <th key={h} className="px-3 py-2 font-medium whitespace-nowrap">
+                  <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">
                     {h}
                   </th>
                 ))}

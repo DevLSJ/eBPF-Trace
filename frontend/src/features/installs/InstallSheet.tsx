@@ -1,4 +1,4 @@
-import { FileSearch } from 'lucide-react';
+import { FileSearch, FileText } from 'lucide-react';
 import { useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { AttackChain } from '../../components/AttackChain';
@@ -7,6 +7,7 @@ import { DecisionBadge, StatusBadge } from '../../components/Badges';
 import { DecisionBox } from '../../components/DecisionBox';
 import { Empty, LoadError } from '../../components/Panel';
 import { Section, Sheet } from '../../components/Sheet';
+import { TimelineBar } from '../../components/TimelineBar';
 import { LevelBadge } from '../../components/VerdictBadge';
 import { useCases } from '../../hooks/cases-context';
 import { useInterval, useLoad } from '../../hooks/useLoad';
@@ -41,7 +42,6 @@ export function InstallSheet({ id, onClose, onChanged }: { id: string; onClose: 
       kind="install"
       title={s ? `${s.manager} ${sessionLabel(s)}` : '설치 세션'}
       onClose={onClose}
-      className="w-[440px]"
     >
       {detail.error && !s ? (
         <LoadError error={detail.error} what="설치 세션 상세" />
@@ -52,11 +52,24 @@ export function InstallSheet({ id, onClose, onChanged }: { id: string; onClose: 
           <div className="flex-1">
             <Section title="결과">
               <Summary s={s} />
-              {s.status === 'isolated' && (
-                <Link {...evidenceDest(s.container)} className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-indigo-200 px-2.5 py-1 text-xs text-indigo-700 hover:bg-indigo-50">
-                  <FileSearch className="size-3.5" aria-hidden /> 증거 보기
-                </Link>
+              {/* 격리 타임라인(10/30 계약 §3) — 격리 세션의 첫 kill 판정. 옛 백엔드는 없음 */}
+              {s.isolation?.timeline && (
+                <div className="mt-3">
+                  <TimelineBar timeline={s.isolation.timeline} />
+                </div>
               )}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {s.status === 'isolated' && (
+                  <Link {...evidenceDest(s.container)} className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 px-2.5 py-1 text-xs text-indigo-700 hover:bg-indigo-50">
+                    <FileSearch className="size-3.5" aria-hidden /> 증거 보기
+                  </Link>
+                )}
+                {(s.status === 'isolated' || s.status === 'warned') && (
+                  <Link to={`/report?install=${encodeURIComponent(s.id)}`} data-action="report" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50">
+                    <FileText className="size-3.5" aria-hidden /> 보고서
+                  </Link>
+                )}
+              </div>
             </Section>
             {s.status !== 'refused' && (
               <>
@@ -166,16 +179,17 @@ function OsvCompare({ s }: { s: InstallSession }) {
   );
 }
 
-const KIND_LABEL = { exec: '실행', open: '파일', connect: '통신' } as const;
+// 활동 요약 타일 — 종류별(10/30: 「조회」 = dns 질의)
+const KIND_LABEL = { exec: '실행', open: '파일', connect: '통신', dns: '조회' } as const;
 
 function Activity({ s }: { s: InstallSession }) {
   const a = s.activity;
   if (!a) return <p className="text-xs text-slate-400">활동 요약 없음</p>;
   return (
     <div className="grid gap-3 text-sm">
-      <div className="grid grid-cols-3 gap-2">
-        {(['exec', 'open', 'connect'] as const).map((k) => (
-          <div key={k} className="rounded-md border border-slate-200 px-3 py-2">
+      <div className="grid grid-cols-4 gap-2">
+        {(['exec', 'open', 'connect', 'dns'] as const).map((k) => (
+          <div key={k} className="rounded-md border border-slate-200 px-2.5 py-2" data-kind-tile={k}>
             <b className="num text-lg">{fmtNum(a.kinds[k] ?? 0)}</b>
             <div className="text-xs text-slate-500">{KIND_LABEL[k]}</div>
           </div>

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import YAML from 'yaml';
 import { api, ApiError } from '../lib/api';
 import { fmtNum } from '../lib/format';
-import { ID_PATTERN, summarize, toDraft, toRule, type Draft, type ListField } from '../lib/policyEasy';
+import { ID_PATTERN, NUM_FIELDS, summarize, toDraft, toRule, type Draft, type ListField } from '../lib/policyEasy';
 import { ConfirmDialog } from './Modal';
 import { PolicyEasy } from './PolicyEasy';
 import { KINDS, type DirectIp, type Kind, type Level, type Preview, type Rule } from '../lib/types';
@@ -25,6 +25,12 @@ const fieldsByKind: Record<Kind, { field: ListField; label: string; hint: string
     { field: 'denyPorts', label: '금지 포트', hint: '허용 목록과 무관하게 항상 위반' },
     { field: 'denyCidrs', label: '금지 대역', hint: '허용 목록과 무관하게 항상 위반' },
     { field: 'denyHosts', label: '금지 도메인', hint: '허용 목록과 무관하게 항상 위반' },
+  ],
+  // dns(10/30 계약 §1 고급 폼): 길이 상한 2개는 아래 숫자 칸(dns 에서만)
+  dns: [
+    { field: 'allowHosts', label: '허용 도메인', hint: '하나라도 있으면 여기 없는 도메인 질의는 위반(점 없는 이름 · *.arpa · *.local · *.internal 제외)' },
+    { field: 'denyHosts', label: '금지 도메인', hint: '접미사 일치 — 허용 목록과 무관하게 항상 위반' },
+    { field: 'denyQtypes', label: '금지 질의 유형', hint: '대문자(예: TXT, ALL) — 허용 목록과 무관하게 항상 위반' },
   ],
 };
 
@@ -213,7 +219,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="kind">
-                <select className={input} value={draft.kind} onChange={(e) => update({ kind: e.target.value as Kind })}>
+                <select className={input} data-field="kind" value={draft.kind} onChange={(e) => update({ kind: e.target.value as Kind })}>
                   {KINDS.map((k) => (
                     <option key={k}>{k}</option>
                   ))}
@@ -237,6 +243,15 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
                 />
               </Field>
             ))}
+            {draft.kind === 'dns' && (
+              <div className="grid grid-cols-2 gap-4">
+                {NUM_FIELDS.map(({ field, label, max, hint }) => (
+                  <Field key={field} label={label} hint={hint}>
+                    <input className={input} type="number" min={1} max={max} inputMode="numeric" data-field={field} value={draft[field]} placeholder="비우면 보지 않음" onChange={(e) => update({ [field]: e.target.value })} />
+                  </Field>
+                ))}
+              </div>
+            )}
             <Field label="적용 컨테이너" hint="이름 또는 이미지 glob, 비우면 전체 (예: pkg-*)">
               <textarea
                 className={`${input} min-h-14 font-mono text-xs`}
@@ -294,7 +309,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
               type="button"
               onClick={() => setAskDelete(true)}
               disabled={busy || readOnly}
-              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-40"
+              className="sg-btn text-danger hover:bg-danger-soft"
             >
               <Trash2 className="size-4" aria-hidden /> 삭제
             </button>
@@ -303,7 +318,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
             type="button"
             onClick={() => void openCheck()}
             disabled={busy || readOnly}
-            className="flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+            className="sg-btn sg-btn-primary"
           >
             저장 전 확인 <ArrowRight className="size-3.5" aria-hidden />
           </button>
@@ -378,9 +393,9 @@ function SaveCheck({
                 <table className="w-full text-xs">
                   <thead className="text-left text-slate-500">
                     <tr>
-                      <th className="py-1 font-medium">#</th>
-                      <th className="py-1 font-medium">컨테이너</th>
-                      <th className="py-1 font-medium">지금 → 저장 후</th>
+                      <th className="py-1 font-semibold">#</th>
+                      <th className="py-1 font-semibold">컨테이너</th>
+                      <th className="py-1 font-semibold">지금 → 저장 후</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -399,7 +414,7 @@ function SaveCheck({
             </>
           )}
           <div className="flex items-center gap-3 pt-1">
-            <button type="button" onClick={onBack} className="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
+            <button type="button" onClick={onBack} className="sg-btn text-text-2 hover:bg-surface-2">
               <ArrowLeft className="size-3.5" aria-hidden /> 고치기
             </button>
             {/* 조회자는 저장 버튼을 그리지 않는다(W16) — 미리보기는 조회자도 */}
@@ -408,7 +423,7 @@ function SaveCheck({
                 type="button"
                 onClick={onSave}
                 disabled={busy}
-                className="flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+                className="sg-btn sg-btn-primary"
               >
                 저장 후 적용 <Play className="size-3.5" aria-hidden />
               </button>

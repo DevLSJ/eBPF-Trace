@@ -1,5 +1,5 @@
-import { ChevronsLeft, ChevronsRight, CircleHelp, FileClock, LayoutDashboard, ListTree, Network, PackageSearch, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ChevronsLeft, ChevronsRight, CircleHelp, FileClock, LayoutDashboard, ListTree, Menu, Network, PackageSearch, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useCases } from '../hooks/cases-context';
 import { useStream } from '../hooks/stream-context';
@@ -58,6 +58,7 @@ const TITLES: Record<string, string> = {
   '/policies': '정책',
   '/audit': '감사 로그',
   '/settings': '설정',
+  '/report': '건 보고서', // 10/30 — 사이드바에는 없고 시트 · 판정 카드 · 판정 대기 행에서 연다
 };
 
 // W19(10/20 C · D · E): 알림 센터(종) · 통합 검색(/) · 사이드바 접기([, 1100px 이하 자동) · ? 도움말 · 실시간 끊김 배너.
@@ -68,16 +69,28 @@ export function AppShell() {
   const { pathname } = useLocation();
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const [help, setHelp] = useState(false);
-  const { collapsed, narrow, toggle } = useSidebar(pathname);
+  const { collapsed, narrow, mobile, mobileOpen, toggle, openMobile, closeMobile } = useSidebar(pathname);
   const enforce = stats?.enforceKill ?? info?.enforceKill;
   const source = stats?.source ?? info?.source;
   const pending = cases?.filter((c) => c.state === 'open').length ?? 0;
-  const overlay = narrow && !collapsed;
+  const overlay = narrow && !mobile && !collapsed;
 
-  // 토스트(toast-context)가 사이드바 바로 옆에 붙도록 본문이 차지하는 사이드바 폭을 알린다(10/20). 겹쳐 뜬 펼침은 접힌 폭 기준
+  // 토스트(toast-context)가 사이드바 바로 옆에 붙도록 본문이 차지하는 사이드바 폭을 알린다(10/20). 겹쳐 뜬 펼침은 접힌 폭 기준, 서랍(768 미만)은 0
   useEffect(() => {
-    document.documentElement.style.setProperty('--sg-sidebar-w', collapsed || overlay ? '3.5rem' : '13rem');
-  }, [collapsed, overlay]);
+    document.documentElement.style.setProperty('--sg-sidebar-w', mobile ? '0px' : collapsed || overlay ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)');
+  }, [collapsed, overlay, mobile]);
+
+  // 서랍은 Esc 로 닫힌다
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      closeMobile();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mobileOpen, closeMobile]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -89,96 +102,116 @@ export function AppShell() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
+  const showAside = !mobile || mobileOpen;
   return (
     <div className="flex h-full overflow-hidden">
       {/* 좁은 화면에서 펼친 사이드바는 겹쳐 뜬다 — 자리는 접힌 폭(56px)만 */}
-      {overlay && <div className="w-14 shrink-0" aria-hidden />}
-      <aside
-        data-part="sidebar"
-        data-collapsed={String(collapsed)}
-        className={`flex shrink-0 flex-col bg-slate-900 text-slate-300 ${collapsed ? 'w-14' : 'w-52'} ${overlay ? 'fixed inset-y-0 left-0 z-40 shadow-2xl' : ''}`}
-      >
-        <Link to="/" className={`flex h-14 shrink-0 items-center gap-2 text-white ${collapsed ? 'justify-center' : 'px-5'}`} title="SupplyGuard">
-          <ShieldCheck className="size-5 shrink-0 text-indigo-400" aria-hidden />
-          <span className={collapsed ? 'sr-only' : 'font-semibold tracking-tight'}>SupplyGuard</span>
-        </Link>
-        <div className={collapsed ? 'px-2' : 'px-3'}>
-          <SearchBox collapsed={collapsed} />
-        </div>
-        <nav className="flex min-h-0 flex-col gap-3 overflow-y-auto px-2 py-3" aria-label="화면">
-          {groups.map((g, gi) => (
-            <div key={gi} className="flex flex-col gap-0.5" data-nav-group={g.label ?? 'home'}>
-              {g.label &&
-                (collapsed ? (
-                  <div className="mx-2 mb-1 border-t border-slate-800" aria-hidden />
-                ) : (
-                  <div className="px-3 pb-1 text-[11px] font-medium tracking-wide text-slate-500">{g.label}</div>
-                ))}
-              {g.items.map(({ to, label, icon: Icon, end }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  state={FRESH}
-                  end={end}
-                  title={collapsed ? label : undefined}
-                  className={({ isActive }) =>
-                    `relative flex items-center gap-3 rounded-md py-2 text-sm transition-colors ${collapsed ? 'justify-center px-0' : 'px-3'} ${
-                      isActive ? 'bg-slate-800 text-white' : 'hover:bg-slate-800/60 hover:text-white'
-                    }`
-                  }
-                >
-                  <Icon className="size-4 shrink-0" aria-hidden />
-                  <span className={collapsed ? 'sr-only' : 'flex-1'}>{label}</span>
-                  {to === '/' && pending > 0 && (
-                    <span
-                      className={`num rounded-full bg-amber-400 px-1.5 text-[11px] font-semibold text-slate-900 ${collapsed ? 'absolute -top-0.5 right-0.5 px-1 text-[10px] leading-4' : ''}`}
-                      aria-label={`판정 대기 ${pending}건`}
-                    >
-                      {pending}
-                    </span>
-                  )}
-                </NavLink>
-              ))}
-            </div>
-          ))}
-        </nav>
-        {!collapsed && (
-          <div className="mt-auto space-y-1 border-t border-slate-800 px-5 py-4 text-xs">
-            <div className="flex justify-between">
-              <span className="text-slate-500">수집</span>
-              <span className="text-slate-200">{source === 'mock' ? 'Mock 데모' : source === 'gadget' ? 'eBPF 가젯' : '—'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">격리</span>
-              <span className={enforce ? 'text-red-400' : 'text-amber-300'}>
-                {enforce === undefined ? '—' : enforce ? '자동 종료' : 'dry-run'}
-              </span>
-            </div>
-            {info?.gadgetVersion && (
-              <div className="flex justify-between">
-                <span className="text-slate-500">IG</span>
-                <span className="num text-slate-200">{info.gadgetVersion}</span>
-              </div>
-            )}
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={toggle}
-          aria-label={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
-          title="사이드바 접기 · 펼치기 ([)"
-          className={`flex h-10 shrink-0 items-center border-t border-slate-800 text-slate-500 hover:text-white ${collapsed ? 'mt-auto justify-center' : 'justify-end px-4'}`}
+      {overlay && <div className="w-[var(--sidebar-w-collapsed)] shrink-0" aria-hidden />}
+      {/* 768 미만 서랍의 배경 dim — 누르면 닫힘 */}
+      {mobile && mobileOpen && <div data-part="sidebar-dim" className="fixed inset-0 z-40 bg-black/40" onClick={closeMobile} aria-hidden />}
+      {showAside && (
+        <aside
+          data-part="sidebar"
+          data-collapsed={String(collapsed)}
+          className={`flex shrink-0 flex-col border-r border-border bg-surface text-text-2 ${collapsed ? 'w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]'} ${
+            overlay || mobile ? 'fixed inset-y-0 left-0 z-50 shadow-[var(--sh-hover)]' : ''
+          } ${mobile ? 'sg-drawer' : ''}`}
         >
-          {collapsed ? <ChevronsRight className="size-4" aria-hidden /> : <ChevronsLeft className="size-4" aria-hidden />}
-        </button>
-      </aside>
+          <Link to="/" className={`flex h-[var(--header-h)] shrink-0 items-center gap-2 text-text ${collapsed ? 'justify-center' : 'px-5'}`} title="SupplyGuard">
+            <ShieldCheck className="size-5 shrink-0 text-accent" aria-hidden />
+            <span className={collapsed ? 'sr-only' : 'font-semibold tracking-tight'}>SupplyGuard</span>
+            {mobile && (
+              <button type="button" onClick={closeMobile} aria-label="메뉴 닫기" className="ml-auto rounded-md p-1.5 text-text-3 hover:bg-surface-2 hover:text-text">
+                <X className="size-4" aria-hidden />
+              </button>
+            )}
+          </Link>
+          <div className={collapsed ? 'px-2' : 'px-3'}>
+            <SearchBox collapsed={collapsed} />
+          </div>
+          <nav className="flex min-h-0 flex-col gap-3 overflow-y-auto px-2 py-3" aria-label="화면">
+            {groups.map((g, gi) => (
+              <div key={gi} className="flex flex-col gap-0.5" data-nav-group={g.label ?? 'home'}>
+                {g.label &&
+                  (collapsed ? (
+                    <div className="mx-2 mb-1 border-t border-border" aria-hidden />
+                  ) : (
+                    <div className="px-3 pb-1 text-[11px] font-medium tracking-wide text-text-3">{g.label}</div>
+                  ))}
+                {g.items.map(({ to, label, icon: Icon, end }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    state={FRESH}
+                    end={end}
+                    title={collapsed ? label : undefined}
+                    className={({ isActive }) =>
+                      `relative flex items-center gap-3 rounded-[var(--r-sm)] py-2 text-sm transition-colors duration-[var(--t-fast)] ${collapsed ? 'justify-center px-0' : 'px-3'} ${
+                        isActive ? 'bg-accent-soft font-medium text-accent-text' : 'hover:bg-surface-2 hover:text-text'
+                      }`
+                    }
+                  >
+                    <Icon className="size-4 shrink-0" aria-hidden />
+                    <span className={collapsed ? 'sr-only' : 'flex-1'}>{label}</span>
+                    {to === '/' && pending > 0 && (
+                      <span
+                        className={`num rounded-full bg-warn px-1.5 text-[11px] font-semibold text-text-inverse ${collapsed ? 'absolute -top-0.5 right-0.5 px-1 text-[10px] leading-4' : ''}`}
+                        aria-label={`판정 대기 ${pending}건`}
+                      >
+                        {pending}
+                      </span>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            ))}
+          </nav>
+          {!collapsed && (
+            <div className="mt-auto space-y-1 border-t border-border px-5 py-4 text-xs">
+              <div className="flex justify-between">
+                <span className="text-text-3">수집</span>
+                <span className="text-text">{source === 'mock' ? 'Mock 데모' : source === 'gadget' ? 'eBPF 가젯' : '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-3">격리</span>
+                <span className={enforce ? 'text-danger' : 'text-warn-text'}>
+                  {enforce === undefined ? '—' : enforce ? '자동 종료' : 'dry-run'}
+                </span>
+              </div>
+              {info?.gadgetVersion && (
+                <div className="flex justify-between">
+                  <span className="text-text-3">IG</span>
+                  <span className="num text-text">{info.gadgetVersion}</span>
+                </div>
+              )}
+            </div>
+          )}
+          {!mobile && (
+            <button
+              type="button"
+              onClick={toggle}
+              aria-label={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
+              title="사이드바 접기 · 펼치기 ([)"
+              className={`flex h-10 shrink-0 items-center border-t border-border text-text-3 hover:text-text ${collapsed ? 'mt-auto justify-center' : 'justify-end px-4'}`}
+            >
+              {collapsed ? <ChevronsRight className="size-4" aria-hidden /> : <ChevronsLeft className="size-4" aria-hidden />}
+            </button>
+          )}
+        </aside>
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-6">
-          <h1 className="shrink-0 text-lg font-semibold text-slate-900" data-testid="page-title">
+        <header data-part="header" className="flex h-[var(--header-h)] shrink-0 items-center gap-3 border-b border-border bg-surface px-4 md:gap-4 md:px-6">
+          {mobile && (
+            <button type="button" onClick={openMobile} aria-label="메뉴" aria-expanded={mobileOpen} className="rounded-md p-1.5 text-text-2 hover:bg-surface-2 hover:text-text">
+              <Menu className="size-5" aria-hidden />
+            </button>
+          )}
+          <h1 className="shrink-0 text-lg font-semibold text-text" data-testid="page-title">
             {TITLES[pathname] ?? ''}
           </h1>
-          <div ref={setSlot} className="flex min-w-0 flex-1 items-center gap-3" data-testid="page-actions" />
+          {/* 768 미만: 머리 칸의 화면 버튼은 가로로 넘기며 본다(머리 높이 56px 유지) */}
+          <div ref={setSlot} className="flex min-w-0 flex-1 items-center gap-3 max-md:overflow-x-auto max-md:[scrollbar-width:none]" data-testid="page-actions" />
           <WsStatus />
           <NoticeCenter />
           <button
@@ -186,7 +219,7 @@ export function AppShell() {
             onClick={() => setHelp(true)}
             aria-label="사용 안내 (?)"
             title="사용 안내 (?)"
-            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="hidden rounded-md p-1.5 text-text-3 hover:bg-surface-2 hover:text-text md:inline-flex"
           >
             <CircleHelp className="size-5" aria-hidden />
           </button>
@@ -194,9 +227,14 @@ export function AppShell() {
         </header>
         <StreamBanners />
         <DnsBanner />
-        <main className="min-h-0 flex-1 overflow-hidden p-6">
+        <main className="min-h-0 flex-1 overflow-hidden p-4 md:p-6">
           <HeaderSlotContext.Provider value={slot}>
-            <Outlet />
+            {/* 화면 전환: fade + 4px 상승(경로가 바뀔 때만 — 같은 화면의 ?id= 는 그대로). 바깥 칸이 움직이는 4px 를 잘라 본문 넘침이 생기지 않는다 */}
+            <div className="h-full min-h-0 overflow-hidden">
+              <div key={pathname} data-part="screen" className="sg-screen h-full min-h-0">
+                <Outlet />
+              </div>
+            </div>
           </HeaderSlotContext.Provider>
         </main>
       </div>
@@ -219,9 +257,9 @@ function DnsBanner() {
   });
   if (info?.dnsResolve !== 'off' || dismissed) return null;
   return (
-    <div data-banner="dns" role="alert" className="flex shrink-0 items-center gap-2 border-b border-amber-200 bg-amber-50 px-6 py-2 text-[13px] text-amber-900">
+    <div data-banner="dns" role="alert" style={{ '--banner-color': 'var(--warn)' } as CSSProperties} className="sg-banner flex shrink-0 items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[13px] text-amber-900 md:px-6">
       <span className="min-w-0 flex-1">
-        <b>도메인 판단 꺼짐</b> — trace_dns 가 뜨지 않아 도메인 기준 규칙(allowHosts · denyHosts · 차단 도메인)이 통과 처리됩니다. IP · 포트 규칙만 동작합니다.{' '}
+        <b>도메인 판단 꺼짐</b> — trace_dns 가 뜨지 않아 도메인 기준 규칙(allowHosts · denyHosts · 차단 도메인)과 DNS 질의 규칙(kind: dns)이 통과 처리됩니다. IP · 포트 규칙만 동작합니다.{' '}
         <Link to="/settings" className="text-amber-800 underline">
           서버 설정 보기 →
         </Link>

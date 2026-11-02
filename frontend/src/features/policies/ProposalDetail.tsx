@@ -174,10 +174,10 @@ export function ProposalDetail({
                   <table className="w-full text-xs">
                     <thead className="text-left text-slate-500">
                       <tr>
-                        <th className="py-1 font-medium">#</th>
-                        <th className="py-1 font-medium">컨테이너</th>
-                        <th className="py-1 font-medium">규칙</th>
-                        <th className="py-1 font-medium">탐지 결과</th>
+                        <th className="py-1 font-semibold">#</th>
+                        <th className="py-1 font-semibold">컨테이너</th>
+                        <th className="py-1 font-semibold">규칙</th>
+                        <th className="py-1 font-semibold">탐지 결과</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -217,7 +217,7 @@ export function ProposalDetail({
                 type="button"
                 onClick={() => void runPreview()}
                 disabled={busy}
-                className="flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                className="sg-btn sg-btn-secondary"
               >
                 <Eye className="size-4" aria-hidden /> 미리보기
               </button>
@@ -227,7 +227,7 @@ export function ProposalDetail({
                   type="button"
                   onClick={() => setAsk('discard')}
                   disabled={busy}
-                  className="ml-auto rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+                  className="sg-btn ml-auto text-text-2 hover:bg-surface-2"
                 >
                   버림
                 </button>
@@ -237,7 +237,7 @@ export function ProposalDetail({
                 onClick={() => setAsk('apply')}
                 disabled={busy || !preview}
                 title={preview ? undefined : '먼저 미리보기로 무엇이 바뀌는지 확인하세요'}
-                className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+                className="sg-btn sg-btn-primary"
               >
                 적용
               </button>}

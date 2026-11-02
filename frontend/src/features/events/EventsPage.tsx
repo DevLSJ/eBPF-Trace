@@ -18,7 +18,7 @@ import type { StreamVerdict } from '../../hooks/useEventStream';
 import { api } from '../../lib/api';
 import { fmtDateTime, fmtNum } from '../../lib/format';
 import { isInstallContainer } from '../../lib/topology';
-import { detailOf, KINDS, levelOf, type Rule } from '../../lib/types';
+import { detailOf, KIND_LONG, KINDS, levelOf, type Rule } from '../../lib/types';
 
 // 탐지 결과 필터 — 기본은 위반 전체. 「정상 포함」 토글을 켜야 정상 이벤트가 보인다.
 type LevelFilter = '' | 'alert' | 'kill';
@@ -94,7 +94,9 @@ export function EventsPage() {
               <select className={ctl} value={kind} onChange={(e) => set('kind', e.target.value)}>
                 <option value="">전체</option>
                 {KINDS.map((k) => (
-                  <option key={k}>{k}</option>
+                  <option key={k} value={k}>
+                    {k === 'dns' ? `dns (${KIND_LONG.dns})` : k}
+                  </option>
                 ))}
               </select>
             </label>
@@ -202,7 +204,9 @@ function EventDetail({ v }: { v: StreamVerdict }) {
             <KindBadge kind={v.event.kind} />
           </dd>
           <dt className="text-slate-500">상세</dt>
-          <dd className="font-mono text-xs break-all">{detailOf(v.event)}</dd>
+          <dd className="font-mono text-xs break-all" data-part="detail">
+            {detailOf(v.event)}
+          </dd>
           <DnsRow e={v.event} />
           <dt className="text-slate-500">사유</dt>
           <dd>{v.reason ?? '—'}</dd>
@@ -242,7 +246,7 @@ function EventDetail({ v }: { v: StreamVerdict }) {
       )}
       {v.matched && <PolicyStarts event={v.event} ruleId={v.ruleId} />}
       <Section title="원본 JSON">
-        <pre className="overflow-x-auto rounded-md bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-100">{JSON.stringify(verdict, null, 2)}</pre>
+        <pre className="sg-code overflow-x-auto p-3 font-mono text-xs leading-relaxed">{JSON.stringify(verdict, null, 2)}</pre>
       </Section>
     </div>
   );

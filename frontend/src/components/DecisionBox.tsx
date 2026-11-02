@@ -68,7 +68,7 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
               type="button"
               disabled={busy}
               onClick={() => setAsk('malicious')}
-              className="flex-1 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40"
+              className="sg-btn sg-btn-danger flex-1"
             >
               악성 확정
             </button>
@@ -76,7 +76,7 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
               type="button"
               disabled={busy}
               onClick={() => setAsk('false_positive')}
-              className="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              className="sg-btn sg-btn-secondary flex-1"
             >
               오탐
             </button>

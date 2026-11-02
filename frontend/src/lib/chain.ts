@@ -11,7 +11,8 @@ export interface ChainStepView {
   count?: number;
 }
 
-const KIND_ORDER: Record<Kind, number> = { exec: 1, open: 2, connect: 3 };
+// dns 는 통신 단계(3)에서 connect 보다 앞(10/30 계약 §1)
+const KIND_ORDER: Record<Kind, number> = { exec: 1, open: 2, dns: 3, connect: 4 };
 
 export const sortSteps = (steps: ChainStepView[]) =>
   [...steps].sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || severity[b.level] - severity[a.level]);

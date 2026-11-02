@@ -1,6 +1,6 @@
 // backend/internal/model · stats · rules 와 1:1 스키마
 
-export type Kind = 'exec' | 'open' | 'connect';
+export type Kind = 'exec' | 'open' | 'connect' | 'dns';
 export type Action = 'alert' | 'kill';
 
 export interface Event {
@@ -19,6 +19,22 @@ export interface Event {
   // connect — 이벤트가 올 때 trace_dns 가 돌고 있었는지(10/20). true 인데 dstHost 가 없고 공인 IP 면 「도메인 조회 없는 IP 직접 연결」.
   // connect 에는 false 도 명시해 온다(W20, false = trace_dns 꺼짐 → 판단 불가). 없음 = 필드가 생기기 전 옛 기록. 다른 종류에는 없다
   dnsTraced?: boolean;
+  // dns(10/30) — 질의 유형(IG 열거 그대로 대문자: A AAAA TXT …). 질의 이름은 dstHost(소문자 · 끝 점 없음)
+  qtype?: string;
+}
+
+// 격리 타임라인(10/30 계약 §3) — RFC3339Nano UTC. 해당 없으면 키 생략
+export interface Timeline {
+  detectedAt: string;
+  matchedAt: string;
+  evidenceStartedAt?: string;
+  evidenceDoneAt?: string;
+  killedAt?: string;
+  notifiedAt?: string;
+}
+export interface IsolationRef {
+  auditId: number;
+  timeline: Timeline;
 }
 
 export interface Verdict {
@@ -30,6 +46,8 @@ export interface Verdict {
   dryRun?: boolean; // kill 대상이지만 dry-run이라 종료 안 함
   enforced?: boolean; // 실제 격리됨
   enforceError?: string;
+  // 격리 타임라인(10/30) — matched 판정만, 옛 백엔드는 없음
+  timeline?: Timeline;
 }
 
 export interface AuditEntry extends Verdict {
@@ -58,6 +76,10 @@ export interface Rule {
   denyHosts?: string[];
   // 도메인 조회 없는 IP 직접 연결(10/20, connect 만) — 규칙의 action 대신 이 값. 비면 옛 동작(백엔드 rules/engine.go)
   directIp?: DirectIp;
+  // dns(10/30, kind: dns 만) — 금지 질의 유형(대문자) · 이름 길이 상한(1..253) · 라벨 길이 상한(1..63). allowHosts · denyHosts 는 재사용
+  denyQtypes?: string[];
+  maxNameLength?: number;
+  maxLabelLength?: number;
 }
 
 export type DirectIp = 'allow' | 'alert' | 'kill';
@@ -67,6 +89,7 @@ export interface TrendPoint {
   exec: number;
   open: number;
   connect: number;
+  dns?: number; // 10/30 — 옛 백엔드는 없음
   violations: number;
 }
 
@@ -106,6 +129,30 @@ export interface Info {
   // 10/20: 실제로 쓰이는 컨테이너 발견 방식 fanotify | docker-events(mock · 가젯 시작 전은 빈 값) · docker-events 일 때 놓칠 수 있는 구간 안내
   discovery?: string;
   discoveryNote?: string;
+  // 10/30: 시연 실행 API(DEMO_ENABLED) — true 일 때만 대시보드 「시연」 카드(관리자). 옛 백엔드는 없음
+  demo?: boolean;
+}
+
+// ── 시연 실행(10/30 계약 §2) ──
+export type DemoScenario = 'all' | 'shell' | 'revshell' | 'direct-ip' | 'domain' | 'dns-exfil';
+export const DEMO_SCENARIOS: DemoScenario[] = ['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil'];
+export type DemoStatus = 'running' | 'finished' | 'timeout' | 'failed' | 'refused';
+export interface DemoRun {
+  id: string;
+  scenario: DemoScenario;
+  container: string;
+  installId: string;
+  startedAt: string;
+  finishedAt: string | null;
+  status: DemoStatus;
+  exitCode: number | null;
+  simulated: boolean;
+}
+export interface DemoState {
+  enabled: boolean;
+  scenarios: DemoScenario[];
+  running: DemoRun | null;
+  last: DemoRun | null;
 }
 
 // ── AI 도우미(10/20, 백엔드 internal/chat/types.go) ──
@@ -154,7 +201,9 @@ export interface NotifyStatus {
 
 export type WsMessage = { type: 'verdict'; data: Verdict } | { type: 'stats'; data: Stats } | { type: 'case'; data: Case };
 
-export const KINDS: Kind[] = ['exec', 'open', 'connect'];
+export const KINDS: Kind[] = ['exec', 'open', 'connect', 'dns'];
+// 종류 긴 이름(10/30 계약 §1 라벨) — 배지 툴팁 · 필터
+export const KIND_LONG: Record<Kind, string> = { exec: '프로그램 실행', open: '파일 열기', connect: '외부 통신', dns: '도메인 조회' };
 
 // 탐지 결과(엔진이 내리는 것): 정상 · 경고 · 격리 대상(dry-run/실패) · 격리됨. 사람의 결론은 「판정」(Decision)
 export type Level = 'normal' | 'alert' | 'held' | 'killed';
@@ -180,6 +229,9 @@ export function detailOf(e: Event): string {
       return e.path ?? '';
     case 'connect':
       return e.dstHost ? `${e.dstIp}:${e.dstPort} (${e.dstHost})` : `${e.dstIp}:${e.dstPort}`;
+    case 'dns':
+      // 계약 §1: "<name> (<qtype>)" — Go Detail() · 목업 · sg-install 과 같은 문구
+      return `${e.dstHost ?? ''} (${e.qtype ?? ''})`;
   }
 }
 
@@ -229,6 +281,8 @@ export interface InstallSession {
   violationCount?: number;
   hostCount?: number;
   activity?: InstallActivity;
+  // 격리 세션의 첫 kill 판정 타임라인(10/30) — 옛 백엔드는 없음
+  isolation?: IsolationRef | null;
 }
 
 export type Decision = 'pending' | 'malicious' | 'false_positive';
@@ -261,6 +315,8 @@ export interface Case {
   note?: string;
   proposalId?: string | null;
   closedAt?: string | null;
+  // 런타임 격리 건의 타임라인(10/30) — 옛 백엔드는 없음
+  isolation?: IsolationRef | null;
 }
 
 export type BlockList = 'packages' | 'images' | 'hosts';
@@ -384,15 +440,18 @@ export interface Summary {
   from: string;
   to: string;
   bucketSec: number;
-  collected: { total: number; byKind: Record<'exec' | 'open' | 'connect', number> };
+  // byKind.dns · series[].dns 는 옛 백엔드 호환으로 선택(10/30)
+  collected: { total: number; byKind: Record<'exec' | 'open' | 'connect', number> & { dns?: number } };
   violations: { total: number; killed: number; alert: number; held: number };
   isolatedContainers: number;
-  series: { t: string; exec: number; open: number; connect: number; killed: number; alert: number }[];
+  series: { t: string; exec: number; open: number; connect: number; dns?: number; killed: number; alert: number }[];
   topRules: SummaryTop[];
   topContainers: SummaryTop[];
   installs: { total: number; passed: number; isolated: number; warned: number; refused: number; failed: number; running: number };
   decisions: { malicious: number; falsePositive: number; pending: number };
   blocklist: { packages: number; images: number; hosts: number };
+  // 격리 지연(10/30): 범위 안 killedAt 있는 행, ms = killedAt − detectedAt. 없으면 count 0 · 나머지 null. 옛 백엔드는 없음
+  isolation?: { count: number; medianMs: number | null; p95Ms: number | null; maxMs: number | null };
 }
 
 // 공급망 검사(10/16) — GuardDog(악성 코드 패턴) · OSV-Scanner(알려진 취약점). 백엔드 internal/scan
@@ -403,6 +462,8 @@ export interface ScanFinding {
   file: string;
   line: number;
   match: string;
+  /** 테스트 코드(tests/ · test_*.py 등)의 탐지 — 위험 점수 · 판정 · 위협 수에 넣지 않는다(11/02) */
+  test?: boolean;
 }
 export interface ScanVuln {
   package: string;
@@ -441,6 +502,8 @@ export interface Scan {
   caseId: string | null;
   threats: number;
   capabilities: number;
+  /** 테스트 코드 탐지 수(점수 제외, 11/02 — 옛 백엔드는 없음) */
+  testFindings?: number;
   vulnCount: number;
   vulnMax: number | null;
 }

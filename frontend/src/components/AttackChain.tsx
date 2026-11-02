@@ -2,10 +2,10 @@ import type { ChainStepView } from '../lib/chain';
 import type { Kind } from '../lib/types';
 import { LevelBadge } from './VerdictBadge';
 
-// 공격 체인 — 설치 검사 시트와 토폴로지가 같은 부품을 쓴다. 1 실행 → 2 파일 → 3 통신 순서.
+// 공격 체인 — 설치 검사 시트와 토폴로지가 같은 부품을 쓴다. 1 실행 → 2 파일 → 3 통신 순서. dns 는 「3 통신」 단계(connect 와 같은 단계, 정렬은 dns 먼저 — 10/30)
 
-const KIND_STEP: Record<Kind, string> = { exec: '1 실행', open: '2 파일', connect: '3 통신' };
-const stepTone: Record<Kind, string> = { exec: 'bg-violet-50 text-violet-700', open: 'bg-sky-50 text-sky-700', connect: 'bg-teal-50 text-teal-700' };
+const KIND_STEP: Record<Kind, string> = { exec: '1 실행', open: '2 파일', connect: '3 통신', dns: '3 통신' };
+const stepTone: Record<Kind, string> = { exec: 'bg-violet-50 text-violet-700', open: 'bg-sky-50 text-sky-700', connect: 'bg-teal-50 text-teal-700', dns: 'bg-amber-50 text-amber-800' };
 
 export function AttackChain({
   steps,

@@ -10,6 +10,9 @@ import type {
   ChatRequest,
   Decision,
   DecisionPreview,
+  DemoRun,
+  DemoScenario,
+  DemoState,
   Evidence,
   Info,
   InstallSession,
@@ -42,6 +45,8 @@ export class ApiError extends Error {
     public json = false,
     // 인증 오류 본문의 로그인 단계({error, state}) — need_password · need_license · need_otp_enroll · need_otp
     public state = '',
+    // 오류 본문 전체(10/30: 시연 409 의 running 처럼 error 밖의 값이 필요할 때)
+    public body: Record<string, unknown> | null = null,
   ) {
     super(message);
   }
@@ -72,12 +77,14 @@ async function send(path: string, init: RequestInit = {}, flow = false): Promise
     let msg = res.statusText;
     let json = false;
     let state = '';
+    let body: Record<string, unknown> | null = null;
     if ((res.headers.get('Content-Type') ?? '').includes('json')) {
       try {
         const b = (await res.json()) as { error?: string; state?: string };
         msg = b.error ?? msg;
         state = b.state ?? '';
         json = true;
+        body = b as Record<string, unknown>;
       } catch {
         /* 본문 없음 */
       }
@@ -86,7 +93,7 @@ async function send(path: string, init: RequestInit = {}, flow = false): Promise
       if (res.status === 401) authHooks.unauthorized(state, msg);
       else if (res.status === 403) authHooks.forbidden(msg);
     }
-    throw new ApiError(res.status, msg, json, state);
+    throw new ApiError(res.status, msg, json, state, body);
   }
   return res;
 }
@@ -185,6 +192,9 @@ export const api = {
   osv: (ecosystem: string, name: string) => request<OsvResult>(`/osv${qs({ ecosystem, name })}`),
   // kill 직전 증거(10/20) — 컨테이너 이름 또는 ID(앞부분), 최근 것부터
   evidence: (container: string) => request<Evidence[]>(`/evidence${qs({ container })}`),
+  // 시연 실행(10/30 계약 §2, DEMO_ENABLED 일 때만 경로가 있다): 상태(조회자 포함) · 시작(관리자, 202 Run / 409 실행 중 / 503 Docker 없음)
+  demo: () => request<DemoState>('/demo'),
+  demoRun: (scenario: DemoScenario) => request<DemoRun>('/demo/run', json('POST', { scenario })),
 
   // AI 도우미(10/20): POST /api/chat → SSE token… → facts → links → done | error.
   // 시작 전 오류(400 · 429)는 ApiError 로 던지고, 스트림의 error 이벤트는 { error } 로 돌려준다. 멈추기는 signal(AbortError 를 던진다)

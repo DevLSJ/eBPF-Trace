@@ -6,6 +6,7 @@ import { useToast } from '../hooks/toast-context';
 import { authApi } from '../lib/api';
 import { AUTH_MSG, licenseText, licenseTone, PW_MIN, ROLE_KO, validatePassword } from '../lib/auth';
 import { fmtDateTime } from '../lib/format';
+import { THEME_LABEL, THEME_PREFS, useTheme } from '../lib/theme';
 import { Modal } from './Modal';
 
 // 상단 오른쪽: 라이선스 칩 + 계정 메뉴(내 정보 · 비밀번호 변경 · 로그아웃) [W16, 목업 auth.js headerEl]
@@ -22,6 +23,7 @@ export function AccountMenu() {
   const [dialog, setDialog] = useState<'profile' | 'password' | null>(null);
   const wrap = useRef<HTMLSpanElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
+  const [theme, setTheme] = useTheme();
 
   useEffect(() => {
     if (!open) return;
@@ -47,7 +49,7 @@ export function AccountMenu() {
         data-part="license-chip"
         data-tone={tone}
         title={lic ? `${lic.keyMasked} · 만료 ${fmtDateTime(lic.expiresAt)}` : undefined}
-        className={`rounded-full px-2 py-0.5 text-xs whitespace-nowrap ${TONE[tone]}`}
+        className={`hidden rounded-full px-2 py-0.5 text-xs whitespace-nowrap md:inline ${TONE[tone]}`}
       >
         {noAuth ? '인증 없음' : licenseText(lic)}
       </Link>
@@ -62,7 +64,9 @@ export function AccountMenu() {
           className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
         >
           <UserRound className="size-4" aria-hidden />
-          {me.user.displayName} · {ROLE_KO[me.user.role] ?? me.user.role}
+          <span className="hidden md:inline">
+            {me.user.displayName} · {ROLE_KO[me.user.role] ?? me.user.role}
+          </span>
           <ChevronDown className="size-3.5" aria-hidden />
         </button>
         {open && (
@@ -97,6 +101,24 @@ export function AccountMenu() {
                 {label}
               </button>
             ))}
+            {/* 테마(10/30 계약 §7): 시스템 · 라이트 · 다크 — localStorage supplyguard.theme */}
+            <div className="my-1 border-t border-border" role="separator" />
+            <div className="px-2.5 pt-0.5 text-[11px] text-text-3">테마</div>
+            <div className="flex gap-1 p-1" role="group" aria-label="테마">
+              {THEME_PREFS.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={theme === t}
+                  data-theme-pick={t}
+                  onClick={() => setTheme(t)}
+                  className={`flex-1 rounded-md px-2 py-1 text-xs ${theme === t ? 'bg-accent-soft font-medium text-accent-text' : 'text-text-2 hover:bg-surface-2'}`}
+                >
+                  {THEME_LABEL[t]}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </span>

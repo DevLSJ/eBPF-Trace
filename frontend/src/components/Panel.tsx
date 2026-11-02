@@ -16,8 +16,8 @@ export function Panel({
   testId?: string;
 }) {
   return (
-    <section className={`flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white ${className}`} data-testid={testId}>
-      <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4">
+    <section className={`sg-card flex min-h-0 flex-col overflow-hidden ${className}`} data-testid={testId}>
+      <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
         <h2 className="truncate text-sm font-semibold text-slate-800">{title}</h2>
         {actions}
       </header>

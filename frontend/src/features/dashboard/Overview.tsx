@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { LoadError } from '../../components/Panel';
+import { useCountUp } from '../../hooks/useCountUp';
 import { useStream } from '../../hooks/stream-context';
 import { useFilters } from '../../hooks/useFilters';
 import { useInterval, useLoad } from '../../hooks/useLoad';
@@ -42,8 +43,8 @@ export function Overview() {
   const s = sum.data;
 
   return (
-    <section className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white" data-section="overview">
-      <header className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-4 py-2.5">
+    <section className="sg-card flex min-h-0 flex-col overflow-hidden" data-section="overview">
+      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-2.5">
         <h2 className="text-sm font-semibold text-slate-800">eBPF 수집 종합</h2>
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
           <span className="size-2 animate-pulse rounded-full bg-emerald-500" aria-hidden />
@@ -72,22 +73,38 @@ export function Overview() {
         <p className="p-4 text-sm text-slate-400">불러오는 중…</p>
       ) : (
         <div className="grid min-h-0 gap-3 overflow-y-auto px-4 py-3" data-part="overview-body">
-          <div className="grid grid-cols-5 gap-2">
-            <Kpi k="collected" label="수집한 이벤트" value={s.collected.total} sub={`실행 ${fmtNum(s.collected.byKind.exec)} · 파일 ${fmtNum(s.collected.byKind.open)} · 통신 ${fmtNum(s.collected.byKind.connect)}`} to={dest('/events', { normal: '1' })} />
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+            {/* 10/30: byKind.dns 는 선택(옛 백엔드 없음) — 있을 때만 「조회 N」 */}
+            <Kpi
+              k="collected"
+              label="수집한 이벤트"
+              value={s.collected.total}
+              sub={`실행 ${fmtNum(s.collected.byKind.exec)} · 파일 ${fmtNum(s.collected.byKind.open)} · 통신 ${fmtNum(s.collected.byKind.connect)}${s.collected.byKind.dns !== undefined ? ` · 조회 ${fmtNum(s.collected.byKind.dns)}` : ''}`}
+              to={dest('/events', { normal: '1' })}
+            />
             <Kpi k="violations" label="위반" value={s.violations.total} sub={`격리 ${fmtNum(s.violations.killed + s.violations.held)} · 경고 ${fmtNum(s.violations.alert)}`} to={{ to: '/audit' }} danger />
             <Kpi k="isolated" label="격리한 컨테이너" value={s.isolatedContainers} sub="설치 검사 포함" to={dest('/audit', { action: 'kill' })} danger />
             <Kpi k="installs" label="설치 검사" value={s.installs.total} sub={`통과 ${s.installs.passed} · 격리 ${s.installs.isolated} · 거부 ${s.installs.refused}`} to={dest('/installs', { status: 'all' })} />
             <Kpi k="decided" label="판정 완료" value={s.decisions.malicious + s.decisions.falsePositive} sub={`악성 ${s.decisions.malicious} · 오탐 ${s.decisions.falsePositive} · 대기 ${s.decisions.pending}`} to={{ to: '/audit?view=changes' }} />
+            {/* 격리 지연(10/30 계약 §3): killedAt − detectedAt 의 중앙값. 기록이 없으면(count 0 · 옛 백엔드) 「—」 */}
+            <Kpi
+              k="isolation"
+              label="격리 지연 중앙값"
+              value={s.isolation?.count ? `${fmtNum(s.isolation.medianMs ?? 0)} ms` : '—'}
+              sub={s.isolation?.count ? `격리 ${fmtNum(s.isolation.count)}건 · p95 ${fmtNum(s.isolation.p95Ms ?? 0)} ms · 최대 ${fmtNum(s.isolation.maxMs ?? 0)} ms` : '격리 타임라인 기록 없음'}
+              to={dest('/audit', { action: 'kill' })}
+            />
           </div>
-          <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             <Card title="수집량 추이 — 종류별">
-              <Stacked name="collected" s={s} keys={[['exec', '실행', '#8b5cf6'], ['open', '파일', '#38bdf8'], ['connect', '통신', '#14b8a6']]} />
+              {/* 색은 토큰(라이트: 실행 #8b5cf6 · 파일 #38bdf8 · 통신 #14b8a6 · 조회 #fb923c) — 다크에서 밝은 값으로 바뀐다 */}
+              <Stacked name="collected" s={s} keys={[['exec', '실행', 'var(--k-exec)'], ['open', '파일', 'var(--k-open)'], ['connect', '통신', 'var(--k-connect)'], ...(s.collected.byKind.dns !== undefined ? ([['dns', '조회', 'var(--k-dns)']] as [Key, string, string][]) : [])]} />
             </Card>
             <Card title="위반 추이">
-              <Stacked name="violations" s={s} keys={[['killed', '격리', '#dc2626'], ['alert', '경고', '#f59e0b']]} />
+              <Stacked name="violations" s={s} keys={[['killed', '격리', 'var(--danger)'], ['alert', '경고', 'var(--warn)']]} />
             </Card>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid gap-3 md:grid-cols-3">
             <Card title="많이 걸린 정책">
               <TopList testId="rules" rows={s.topRules} keyOf={(r) => r.ruleId ?? ''} href={(k) => ({ to: `/policies?id=${encodeURIComponent(k)}` })} />
             </Card>
@@ -104,12 +121,14 @@ export function Overview() {
   );
 }
 
-function Kpi({ k, label, value, sub, to, danger }: { k: string; label: string; value: number; sub: string; to: Dest; danger?: boolean }) {
+// 스탯 타일(10/30 계약 §7): 큰 숫자 24px/600 · 라벨 12px text-3 · 보조 한 줄, 누르면 들리는 카드. 숫자는 600ms 카운트업
+function Kpi({ k, label, value, sub, to, danger }: { k: string; label: string; value: number | string; sub: string; to: Dest; danger?: boolean }) {
+  const n = useCountUp(typeof value === 'number' ? value : 0);
   return (
-    <Link {...to} className="grid min-w-0 gap-0.5 rounded-lg border border-slate-200 px-3 py-2 hover:border-indigo-400" data-kpi={k}>
-      <span className="text-xs text-slate-500">{label}</span>
-      <b className={`num text-xl font-semibold ${danger && value ? 'text-red-600' : 'text-slate-900'}`} data-value="">
-        {fmtNum(value)}
+    <Link {...to} className="sg-card sg-card-hover grid min-w-0 gap-0.5 rounded-[var(--r-md)] bg-surface-2 px-3 py-2 shadow-none hover:border-accent" data-kpi={k}>
+      <span className="truncate text-xs text-text-3">{label}</span>
+      <b className={`num truncate text-2xl font-semibold ${danger && value ? 'text-danger' : 'text-text'}`} data-value="">
+        {typeof value === 'number' ? fmtNum(n) : value}
       </b>
       <span className="truncate text-[11px] text-slate-500" title={sub}>
         {sub}
@@ -127,11 +146,11 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-type Key = 'exec' | 'open' | 'connect' | 'killed' | 'alert';
-// 쌓은 막대 — 칸마다 <g data-bucket>, 조각마다 rect[data-kind]
+type Key = 'exec' | 'open' | 'connect' | 'dns' | 'killed' | 'alert';
+// 쌓은 막대 — 칸마다 <g data-bucket>, 조각마다 rect[data-kind]. dns(10/30)는 series 에 없을 수 있다(0 으로)
 function Stacked({ name, s, keys }: { name: string; s: Summary; keys: [Key, string, string][] }) {
   const pts = s.series;
-  const tot = (p: Summary['series'][number]) => keys.reduce((n, [k]) => n + p[k], 0);
+  const tot = (p: Summary['series'][number]) => keys.reduce((n, [k]) => n + (p[k] ?? 0), 0);
   const max = Math.max(4, ...pts.map(tot));
   const W = 100 * pts.length;
   const H = 100;
@@ -141,7 +160,7 @@ function Stacked({ name, s, keys }: { name: string; s: Summary; keys: [Key, stri
     <div data-chart={name} className="grid gap-1">
       <div className="flex gap-3 text-[11px] text-slate-500">
         {keys.map(([k, ko, c]) => (
-          <span key={k} className="flex items-center gap-1">
+          <span key={k} className="flex items-center gap-1" data-key={k}>
             <i className="size-2 rounded-sm" style={{ background: c }} />
             {ko}
           </span>
@@ -153,16 +172,16 @@ function Stacked({ name, s, keys }: { name: string; s: Summary; keys: [Key, stri
           let acc = 0;
           return (
             <g key={p.t} data-bucket={p.t}>
-              <title>{`${label(p.t)} · ${keys.map(([k, ko]) => `${ko} ${fmtNum(p[k])}`).join(' · ')}`}</title>
+              <title>{`${label(p.t)} · ${keys.map(([k, ko]) => `${ko} ${fmtNum(p[k] ?? 0)}`).join(' · ')}`}</title>
               {keys.map(([k, , c]) => {
-                const v = p[k];
+                const v = p[k] ?? 0;
                 if (!v) return null;
                 const y1 = H - ((acc + v) / max) * H;
                 const y0 = H - (acc / max) * H;
                 acc += v;
-                return <rect key={k} data-kind={k} x={i * 100 + 15} y={y1} width={70} height={Math.max(0.5, y0 - y1)} fill={c} />;
+                return <rect key={k} data-kind={k} x={i * 100 + 15} y={y1} width={70} height={Math.max(0.5, y0 - y1)} style={{ fill: c }} />;
               })}
-              {!tot(p) && <rect x={i * 100 + 15} y={H - 1} width={70} height={1} fill="#e2e8f0" />}
+              {!tot(p) && <rect x={i * 100 + 15} y={H - 1} width={70} height={1} style={{ fill: 'var(--border)' }} />}
             </g>
           );
         })}

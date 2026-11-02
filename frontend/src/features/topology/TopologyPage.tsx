@@ -1,6 +1,6 @@
 import { Background, Controls, MarkerType, ReactFlow, type Edge, type Node, type NodeMouseHandler } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Box, Cpu, FileSearch, X } from 'lucide-react';
+import { Box, Cpu, FileSearch, FileText, X } from 'lucide-react';
 import { startTransition, useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AttackChain } from '../../components/AttackChain';
@@ -8,6 +8,7 @@ import { DecisionBadge } from '../../components/Badges';
 import { DecisionBox } from '../../components/DecisionBox';
 import { PageActions } from '../../components/PageActions';
 import { Empty, Panel } from '../../components/Panel';
+import { TimelineBar } from '../../components/TimelineBar';
 import { LevelBadge } from '../../components/VerdictBadge';
 import { useCases } from '../../hooks/cases-context';
 import { useStream } from '../../hooks/stream-context';
@@ -25,15 +26,15 @@ const ROW_H = 56;
 const NODE_W = 240;
 const LEAF_W = 290;
 
-// React Flow 기본 노드 스타일을 이기도록 색은 인라인 style로 준다
+// React Flow 기본 노드 스타일을 이기도록 색은 인라인 style로 준다 — 값은 토큰(10/30, 다크 모드도 따라온다)
 const nodeStyle: Record<Level, CSSProperties> = {
-  normal: { background: '#ffffff', borderColor: '#cbd5e1', color: '#334155' },
-  alert: { background: '#fffbeb', borderColor: '#f59e0b', color: '#78350f' },
-  held: { background: '#fef2f2', borderColor: '#f87171', color: '#991b1b', borderStyle: 'dashed' },
-  killed: { background: '#dc2626', borderColor: '#b91c1c', color: '#ffffff' },
+  normal: { background: 'var(--surface)', borderColor: 'var(--border-strong)', color: 'var(--text-2)' },
+  alert: { background: 'var(--warn-soft)', borderColor: 'var(--warn)', color: 'var(--warn-text)' },
+  held: { background: 'var(--danger-soft)', borderColor: 'var(--danger)', color: 'var(--danger-text)', borderStyle: 'dashed' },
+  killed: { background: 'var(--danger)', borderColor: 'var(--danger)', color: 'var(--text-inverse)' },
 };
-const edgeColor: Record<Level, string> = { normal: '#cbd5e1', alert: '#f59e0b', held: '#ef4444', killed: '#dc2626' };
-const chipStyle: Record<'open' | 'connect', string> = { open: 'bg-sky-100 text-sky-800', connect: 'bg-teal-100 text-teal-800' };
+const edgeColor: Record<Level, string> = { normal: 'var(--border-strong)', alert: 'var(--warn)', held: 'var(--danger)', killed: 'var(--danger)' };
+const chipStyle: Record<'open' | 'connect' | 'dns', string> = { open: 'bg-sky-100 text-sky-800', connect: 'bg-teal-100 text-teal-800', dns: 'bg-amber-100 text-amber-900' };
 const statusChip: Record<Level, string> = {
   normal: '',
   alert: 'bg-amber-200 text-amber-900',
@@ -50,13 +51,16 @@ const ellipsize = (t: string, max: number) => {
 };
 const bySeverity = (a: TopoNode, b: TopoNode) => severity[b.level] - severity[a.level] || a.label.localeCompare(b.label);
 
+// 말단 노드 칩: 파일 open · 목적지 connect · 질의 이름 dns(10/30)
+const leafKind = (n: TopoNode): 'open' | 'connect' | 'dns' => (n.type === 'file' ? 'open' : n.kind === 'dns' ? 'dns' : 'connect');
+
 function NodeLabel({ n }: { n: TopoNode }) {
   const chipTone = n.level === 'killed' ? 'bg-white/25 text-white' : undefined;
   return (
     <div className="flex items-center gap-2 text-left" title={`${n.label}\n${n.count}회${n.violations ? ` · 위반 ${n.violations}` : ''}${n.reason ? `\n${n.reason}` : ''}`}>
       {isLeaf(n.type) ? (
-        <span className={`w-14 shrink-0 rounded px-1 text-center font-mono text-[10.5px] font-semibold ${chipTone ?? chipStyle[n.type === 'file' ? 'open' : 'connect']}`}>
-          {n.type === 'file' ? 'open' : 'connect'}
+        <span className={`w-14 shrink-0 rounded px-1 text-center font-mono text-[10.5px] font-semibold ${chipTone ?? chipStyle[leafKind(n)]}`}>
+          {leafKind(n)}
         </span>
       ) : n.type === 'container' ? (
         <Box className="size-3.5 shrink-0" aria-hidden />
@@ -114,7 +118,7 @@ function layout(nodes: TopoNode[], edges: TopoEdge[], selectedId: string | null)
               ...nodeStyle[n.level],
               width: isLeaf(n.type) ? LEAF_W : NODE_W,
               borderWidth: n.id === selectedId ? 2 : 1,
-              borderColor: n.id === selectedId ? '#4f46e5' : nodeStyle[n.level].borderColor,
+              borderColor: n.id === selectedId ? 'var(--accent)' : nodeStyle[n.level].borderColor,
               borderRadius: 6,
               padding: '6px 10px',
               fontSize: 12,
@@ -208,7 +212,7 @@ export function TopologyPage() {
   const selectedCase = selectedContainer ? caseFor(selectedContainer) : undefined;
 
   return (
-    <div className="flex h-full min-h-0 gap-4">
+    <div className="flex h-full min-h-0 gap-4 max-md:flex-col max-md:overflow-y-auto">
       <PageActions>
         <label className="flex items-center gap-1.5 text-sm text-slate-500">
           컨테이너
@@ -241,7 +245,7 @@ export function TopologyPage() {
         </label>
       </PageActions>
       <Panel
-        className="min-w-0 flex-1"
+        className="min-w-0 flex-1 max-md:min-h-[22rem] max-md:shrink-0"
         testId="topology"
         title={
           <span>
@@ -267,7 +271,7 @@ export function TopologyPage() {
                 nodesDraggable={false}
                 nodesConnectable={false}
               >
-                <Background color="#e2e8f0" gap={24} />
+                <Background color="var(--border-strong)" gap={24} />
                 <Controls showInteractive={false} />
               </ReactFlow>
             )}
@@ -275,7 +279,7 @@ export function TopologyPage() {
         </div>
       </Panel>
 
-      <aside className="flex min-h-0 w-[340px] shrink-0 flex-col gap-4">
+      <aside className="flex min-h-0 shrink-0 flex-col gap-4 max-md:w-full md:w-[340px]">
         {selected && (
           <NodeDetail n={selected} onClose={() => setNode(null)}>
             {selectedCase && (selected.type === 'container' || selectedCase.state !== 'closed') && (
@@ -284,11 +288,22 @@ export function TopologyPage() {
                   판정 · {selectedCase.container} {selectedCase.decision === 'pending' && <DecisionBadge decision="pending" />}
                 </div>
                 <DecisionBox caseId={selectedCase.id} />
-                {selectedCase.level === 'killed' && (
-                  <Link {...evidenceDest(selectedCase.container)} className="mt-2 inline-flex items-center gap-1.5 text-xs text-indigo-700 hover:underline">
-                    <FileSearch className="size-3.5" aria-hidden /> 증거 보기
-                  </Link>
+                {/* 격리 타임라인(10/30) — 런타임 격리 건 */}
+                {selectedCase.isolation?.timeline && (
+                  <div className="mt-3">
+                    <TimelineBar timeline={selectedCase.isolation.timeline} />
+                  </div>
                 )}
+                <div className="mt-2 flex flex-wrap gap-3">
+                  {selectedCase.level === 'killed' && (
+                    <Link {...evidenceDest(selectedCase.container)} className="inline-flex items-center gap-1.5 text-xs text-indigo-700 hover:underline">
+                      <FileSearch className="size-3.5" aria-hidden /> 증거 보기
+                    </Link>
+                  )}
+                  <Link to={`/report?case=${encodeURIComponent(selectedCase.id)}`} data-action="report" className="inline-flex items-center gap-1.5 text-xs text-indigo-700 hover:underline">
+                    <FileText className="size-3.5" aria-hidden /> 보고서
+                  </Link>
+                </div>
               </div>
             )}
           </NodeDetail>
@@ -324,7 +339,7 @@ function Legend() {
 function NodeDetail({ n, onClose, children }: { n: TopoNode; onClose: () => void; children?: ReactNode }) {
   const rules = [...n.rules.entries()].sort((a, b) => b[1] - a[1]);
   return (
-    <section className="max-h-[68%] shrink-0 overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 text-sm" data-testid="node-detail">
+    <section className="sg-card max-h-[68%] shrink-0 overflow-y-auto p-4 text-sm" data-testid="node-detail">
       <div className="mb-2 flex items-center justify-between">
         <b>선택한 노드</b>
         <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="선택 해제">
@@ -390,8 +405,8 @@ function ChainPanel({
   caseFor: (name: string) => Case | undefined;
 }) {
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-lg border border-slate-200 bg-white" data-testid="chains">
-      <header className="flex h-11 shrink-0 items-center justify-between border-b border-slate-100 px-4">
+    <section className="sg-card flex min-h-0 flex-1 flex-col overflow-hidden" data-testid="chains">
+      <header className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
         <h2 className="text-sm font-semibold text-slate-800">공격 체인</h2>
         <span className="num text-xs text-slate-400">
           최근 {windowMin}분 · {chains.length}개 컨테이너

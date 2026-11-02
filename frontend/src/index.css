@@ -1,22 +1,344 @@
 @import 'tailwindcss';
 
-@theme {
-  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
-    'Noto Sans KR', 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+/* ── 10/30 디자인 토큰(계약 contract-1030 §7 — 값 그대로). 라이트가 기본, <html data-theme="dark"> 가 다크 ── */
+:root {
+  --bg: #F7F7F8; --surface: #FFFFFF; --surface-2: #F1F2F4; --surface-3: #E9EAEE; --border: #E6E7EB; --border-strong: #D5D7DE;
+  --text: #111827; --text-2: #4B5563; --text-3: #6B7280; --text-inverse: #FFFFFF;
+  --accent: #4F46E5; --accent-hover: #4338CA; --accent-soft: #EEF2FF; --accent-text: #3730A3;
+  --danger: #E11D48; --danger-soft: #FFF1F2; --danger-text: #9F1239; /* 격리 · 위험에만 */
+  --warn: #D97706; --warn-soft: #FFFBEB; --warn-text: #92400E; /* 경고 · dns 배지 */
+  --ok: #059669; --ok-soft: #ECFDF5; --ok-text: #065F46;
+  --info: #0284C7; --info-soft: #F0F9FF;
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 24px; --r-pill: 999px;
+  --sh-1: 0 1px 2px rgba(16, 24, 40, .06); --sh-2: 0 4px 12px rgba(16, 24, 40, .08); --sh-hover: 0 10px 24px rgba(16, 24, 40, .12);
+  --t-fast: 120ms; --t-base: 200ms; --t-slow: 320ms; --ease: cubic-bezier(.2, .8, .2, 1);
+  --sidebar-w: 240px; --sidebar-w-collapsed: 56px; --header-h: 56px; --content-max: 1440px; --gutter: 24px;
+  --font: -apple-system, BlinkMacSystemFont, "Pretendard Variable", Pretendard, "Segoe UI", Roboto, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Noto Sans Mono CJK KR", monospace;
+  /* 계약 밖 보조 토큰 — 정보 글자색 · 종류별 색(실행 · 파일 · 통신 · 조회: 차트 · 배지). 라이트 값은 기존 화면 색 그대로(조회 #fb923c 는 계약 §1) */
+  --info-text: #075985;
+  --k-exec: #8b5cf6; --k-exec-soft: #F5F3FF; --k-exec-text: #6D28D9;
+  --k-open: #38bdf8; --k-open-soft: #F0F9FF; --k-open-text: #0369A1;
+  --k-connect: #14b8a6; --k-connect-soft: #F0FDFA; --k-connect-text: #0F766E;
+  --k-dns: #fb923c;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #0F1115; --surface: #171A21; --surface-2: #1F232B; --surface-3: #272C36; --border: #2A2F3A; --border-strong: #3A4150;
+  --text: #E6E8EE; --text-2: #AEB4C2; --text-3: #7E8696; --text-inverse: #0F1115;
+  --accent: #6D7CFF; --accent-hover: #8591FF; --accent-soft: #1E2342; --accent-text: #C7CCFF;
+  --danger: #FB7185; --danger-soft: #3B1520; --danger-text: #FECDD3;
+  --warn: #FBBF24; --warn-soft: #3A2A08; --warn-text: #FDE68A;
+  --ok: #34D399; --ok-soft: #0B2E22; --ok-text: #A7F3D0;
+  --info: #38BDF8; --info-soft: #0C2A3A;
+  --sh-1: 0 1px 2px rgba(0, 0, 0, .4); --sh-2: 0 4px 12px rgba(0, 0, 0, .45); --sh-hover: 0 10px 24px rgba(0, 0, 0, .55);
+  color-scheme: dark;
+  --info-text: #BAE6FD;
+  --k-exec: #A78BFA; --k-exec-soft: #2A2246; --k-exec-text: #DDD6FE;
+  --k-open: #7DD3FC; --k-open-soft: #0C2A3A; --k-open-text: #BAE6FD;
+  --k-connect: #5EEAD4; --k-connect-soft: #0B2E2A; --k-connect-text: #99F6E4;
+  --k-dns: #FDBA74;
 }
 
-html,
-body,
-#root {
-  height: 100%;
+/* Tailwind 유틸리티가 토큰을 쓰게 한다. 의미 이름(bg-surface · text-text-2 · border-border …)을 더하고,
+   기존 팔레트 이름(slate · indigo · red · amber · emerald · sky · violet · teal · white)은 토큰으로 다시 매핑해
+   문구 · 선택자 · 동작은 그대로 두고 색만 바뀐다(중간 단계는 color-mix). 다크 모드는 토큰이 바뀌면서 따라온다 */
+@theme inline {
+  --font-sans: var(--font);
+  --font-mono: var(--mono);
+  --color-bg: var(--bg); --color-surface: var(--surface); --color-surface-2: var(--surface-2); --color-surface-3: var(--surface-3);
+  --color-border: var(--border); --color-border-strong: var(--border-strong);
+  --color-text: var(--text); --color-text-2: var(--text-2); --color-text-3: var(--text-3); --color-text-inverse: var(--text-inverse);
+  --color-accent: var(--accent); --color-accent-hover: var(--accent-hover); --color-accent-soft: var(--accent-soft); --color-accent-text: var(--accent-text);
+  --color-danger: var(--danger); --color-danger-soft: var(--danger-soft); --color-danger-text: var(--danger-text);
+  --color-warn: var(--warn); --color-warn-soft: var(--warn-soft); --color-warn-text: var(--warn-text);
+  --color-ok: var(--ok); --color-ok-soft: var(--ok-soft); --color-ok-text: var(--ok-text);
+  --color-info: var(--info); --color-info-soft: var(--info-soft); --color-info-text: var(--info-text);
+
+  --color-white: var(--surface);
+  --color-slate-50: var(--surface-2); --color-slate-100: var(--surface-3); --color-slate-200: var(--border); --color-slate-300: var(--border-strong);
+  --color-slate-400: var(--text-3); --color-slate-500: var(--text-3); --color-slate-600: var(--text-2); --color-slate-700: var(--text-2);
+  --color-slate-800: var(--text); --color-slate-900: var(--text);
+
+  --color-indigo-50: var(--accent-soft); --color-indigo-100: color-mix(in oklab, var(--accent) 14%, var(--surface));
+  --color-indigo-200: color-mix(in oklab, var(--accent) 30%, var(--surface)); --color-indigo-300: color-mix(in oklab, var(--accent) 45%, var(--surface));
+  --color-indigo-400: color-mix(in oklab, var(--accent) 70%, var(--surface)); --color-indigo-500: var(--accent); --color-indigo-600: var(--accent);
+  --color-indigo-700: var(--accent-hover); --color-indigo-800: var(--accent-text); --color-indigo-900: var(--accent-text);
+
+  --color-red-50: var(--danger-soft); --color-red-100: color-mix(in oklab, var(--danger) 14%, var(--surface));
+  --color-red-200: color-mix(in oklab, var(--danger) 30%, var(--surface)); --color-red-300: color-mix(in oklab, var(--danger) 45%, var(--surface));
+  --color-red-400: color-mix(in oklab, var(--danger) 70%, var(--surface)); --color-red-500: var(--danger); --color-red-600: var(--danger);
+  --color-red-700: var(--danger-text); --color-red-800: var(--danger-text); --color-red-900: var(--danger-text);
+
+  --color-amber-50: var(--warn-soft); --color-amber-100: color-mix(in oklab, var(--warn) 16%, var(--surface));
+  --color-amber-200: color-mix(in oklab, var(--warn) 32%, var(--surface)); --color-amber-300: color-mix(in oklab, var(--warn) 48%, var(--surface));
+  --color-amber-400: color-mix(in oklab, var(--warn) 72%, var(--surface)); --color-amber-500: var(--warn); --color-amber-600: var(--warn);
+  --color-amber-700: var(--warn-text); --color-amber-800: var(--warn-text); --color-amber-900: var(--warn-text);
+
+  --color-emerald-50: var(--ok-soft); --color-emerald-100: color-mix(in oklab, var(--ok) 16%, var(--surface));
+  --color-emerald-200: color-mix(in oklab, var(--ok) 32%, var(--surface)); --color-emerald-300: color-mix(in oklab, var(--ok) 48%, var(--surface));
+  --color-emerald-400: color-mix(in oklab, var(--ok) 72%, var(--surface)); --color-emerald-500: var(--ok); --color-emerald-600: var(--ok);
+  --color-emerald-700: var(--ok-text); --color-emerald-800: var(--ok-text); --color-emerald-900: var(--ok-text);
+
+  --color-sky-50: var(--info-soft); --color-sky-100: color-mix(in oklab, var(--info) 16%, var(--surface));
+  --color-sky-200: color-mix(in oklab, var(--info) 32%, var(--surface)); --color-sky-300: color-mix(in oklab, var(--info) 48%, var(--surface));
+  --color-sky-400: color-mix(in oklab, var(--info) 72%, var(--surface)); --color-sky-500: var(--info); --color-sky-600: var(--info);
+  --color-sky-700: var(--info-text); --color-sky-800: var(--info-text); --color-sky-900: var(--info-text);
+  --color-blue-50: var(--info-soft); --color-blue-100: color-mix(in oklab, var(--info) 16%, var(--surface)); --color-blue-600: var(--info); --color-blue-700: var(--info-text);
+
+  --color-violet-50: var(--k-exec-soft); --color-violet-100: var(--k-exec-soft); --color-violet-500: var(--k-exec); --color-violet-600: var(--k-exec);
+  --color-violet-700: var(--k-exec-text); --color-violet-800: var(--k-exec-text);
+  --color-teal-50: var(--k-connect-soft); --color-teal-100: var(--k-connect-soft); --color-teal-500: var(--k-connect); --color-teal-600: var(--k-connect);
+  --color-teal-700: var(--k-connect-text); --color-teal-800: var(--k-connect-text);
 }
 
-body {
-  @apply bg-slate-100 text-slate-900 antialiased;
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* 포커스 링 전역(접근성) — 2px accent, 안쪽 accent-soft */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* 표(Linear 식): 머리 12px/600 text-3, 선 1px border, 행 hover surface-2 */
+  main thead th {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-3);
+  }
+  main tbody tr:hover {
+    background: var(--surface-2);
+  }
+}
+
+@layer components {
+  /* 카드(Pinterest 식): surface · r-lg · sh-1, 누를 수 있으면 hover 에 sh-hover + 2px 들림 */
+  .sg-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-1);
+  }
+  .sg-card-hover {
+    transition: transform var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
+  }
+  .sg-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--sh-hover);
+  }
+  /* 버튼: 높이 36px · r-md · 포커스 링 2px accent-soft+accent */
+  .sg-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    height: 36px;
+    padding: 0 0.875rem;
+    border-radius: var(--r-md);
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease);
+  }
+  .sg-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 0;
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  .sg-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .sg-btn-primary {
+    background: var(--accent);
+    color: var(--text-inverse);
+  }
+  .sg-btn-primary:not(:disabled):hover {
+    background: var(--accent-hover);
+  }
+  .sg-btn-secondary {
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .sg-btn-secondary:not(:disabled):hover {
+    background: var(--surface-3);
+  }
+  .sg-btn-danger {
+    background: var(--danger);
+    color: var(--text-inverse);
+  }
+  .sg-btn-danger:not(:disabled):hover {
+    background: var(--danger-text);
+  }
+  /* 코드 · 로그 칸 — 어두운 배경 대신 surface-3(다크에서도 자연스럽게) */
+  .sg-code {
+    background: var(--surface-3);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+  }
+  /* 스켈레톤: surface-2 위 1.2s 반짝임 */
+  .sg-skeleton {
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+    background-size: 200% 100%;
+    border-radius: var(--r-sm);
+    animation: sg-shimmer 1.2s linear infinite;
+  }
+  /* 배너: soft 배경 + 왼쪽 4px 색 띠(--banner-color) */
+  .sg-banner {
+    border-left: 4px solid var(--banner-color, var(--accent));
+  }
+  /* 시트: 오른쪽 480px · sh-2 · 들어올 때 translateX(16px)→0 + 불투명도 */
+  .sg-sheet {
+    box-shadow: var(--sh-2);
+    animation: sg-sheet-in var(--t-base) var(--ease) both;
+  }
+  /* 화면 전환: fade + 4px 상승(transform 대신 margin — 고정 위치 자식의 기준을 바꾸지 않게) */
+  .sg-screen {
+    animation: sg-enter var(--t-base) var(--ease);
+  }
+  /* 새 위반 행: danger-soft → 투명 1.2s */
+  .sg-flash {
+    animation: sg-flash 1.2s var(--ease);
+  }
+  /* 단계 레일 활성 점 맥동 링 */
+  .sg-pulse-ring {
+    animation: sg-pulse 1.2s var(--ease) infinite;
+  }
+  /* 모바일 서랍 사이드바 */
+  .sg-drawer {
+    animation: sg-drawer-in var(--t-base) var(--ease) both;
+  }
+}
+
+@keyframes sg-enter {
+  from {
+    opacity: 0;
+    margin-top: 4px;
+  }
+  to {
+    opacity: 1;
+    margin-top: 0;
+  }
+}
+@keyframes sg-flash {
+  from {
+    background-color: var(--danger-soft);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@keyframes sg-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@keyframes sg-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sg-drawer-in {
+  from {
+    transform: translateX(-16px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes sg-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+/* 움직임 줄이기: 전부 끔 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 768 미만: 표는 overflow-x:auto 컨테이너 안에서 최소 폭 640 */
+@media (max-width: 767px) {
+  main table {
+    min-width: 640px;
+  }
+}
+
+/* React Flow(토폴로지) 조작 버튼 — 토큰 */
+.react-flow__controls button {
+  background: var(--surface);
+  color: var(--text);
+  fill: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.react-flow__controls button:hover {
+  background: var(--surface-2);
+}
+.react-flow__attribution {
+  background: transparent;
+  color: var(--text-3);
 }
 
 /* 숫자·시각은 고정폭 숫자 */
 .num {
   font-variant-numeric: tabular-nums;
+}
+
+/* 인쇄(10/30 건 보고서 §5) — 셸은 숨기고 본문만, 스크롤 칸은 펼친다 */
+@media print {
+  aside[data-part='sidebar'],
+  header[data-part='header'],
+  [data-banner],
+  [data-part='assistant-fab'],
+  [data-part='assistant'],
+  [data-part='sidebar-dim'],
+  [role='status'][aria-label='알림'],
+  .print\:hidden {
+    display: none !important;
+  }
+  html,
+  body,
+  #root,
+  main,
+  [data-part='report-scroll'] {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  body {
+    background: #fff !important;
+    color: #111827 !important;
+  }
 }

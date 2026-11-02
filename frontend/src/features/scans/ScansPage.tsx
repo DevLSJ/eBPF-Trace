@@ -98,7 +98,7 @@ export function ScansPage() {
     <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] gap-4">
       <div className="flex min-h-0 flex-col gap-4">
         <ScanForm canWrite={canWrite} onStarted={() => { select(''); list.reload(); }} />
-        <Panel title="검사 기록" className="min-h-0 flex-1" actions={list.data?.length ? <FilterChips label="결과" options={vOptions} value={vf} onChange={(v) => setQ('verdict', v)} /> : undefined}>
+        <Panel title="검사 기록" testId="scans" className="min-h-0 flex-1" actions={list.data?.length ? <FilterChips label="결과" options={vOptions} value={vf} onChange={(v) => setQ('verdict', v)} /> : undefined}>
           <div className="flex h-full flex-col">
           <AppliedFilters items={[!!vf && { key: 'verdict', label: `결과: ${VERDICT[vf]?.[0] ?? vf}`, clear: () => setQ('verdict', '') }]} onClearAll={() => setQ('verdict', '')} />
           {failing ? (
@@ -117,7 +117,7 @@ export function ScansPage() {
             <div className="min-h-0 flex-1 overflow-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-slate-50 text-left text-xs text-slate-500">
-                  <tr>{['시작', '대상', '결과', '위험 점수', '위협', '취약점'].map((t) => <th key={t} className={`px-3 py-2 font-medium ${t === '대상' ? 'w-[38%]' : ''}`}>{t}</th>)}</tr>
+                  <tr>{['시작', '대상', '결과', '위험 점수', '위협', '취약점'].map((t) => <th key={t} className={`px-3 py-2 font-semibold ${t === '대상' ? 'w-[38%]' : ''}`}>{t}</th>)}</tr>
                 </thead>
                 <tbody>
                   {rows.map((s) => (
@@ -234,7 +234,7 @@ function ScanSheet({ id, canWrite, done, onClose }: { id: string; canWrite: bool
   useEffect(() => { if (done) reload(); }, [done, reload]);
   const s = r.data;
   return (
-    <Sheet kind="scan" title={s?.target.label ?? '공급망 검사'} onClose={onClose} className="w-[560px]">
+    <Sheet kind="scan" title={s?.target.label ?? '공급망 검사'} onClose={onClose} width={560}>
       {!s ? (r.error ? <LoadError error={r.error} what="검사" /> : <Empty>불러오는 중…</Empty>) : <ScanDetail s={s} canWrite={canWrite} />}
     </Sheet>
   );
@@ -246,8 +246,17 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
   const [focus, setFocus] = useState('');
   const [askBlock, setAskBlock] = useState(false);
   const findings = s.findings ?? [];
-  const threats = findings.filter((f) => f.category === 'threat');
-  const caps = findings.filter((f) => f.category === 'capability');
+  // 테스트 코드 탐지(11/02)는 위협 · 기능과 따로 — 위험 점수 · 판정 · 위협 수에 넣지 않는다
+  const threats = findings.filter((f) => f.category === 'threat' && !f.test);
+  const caps = findings.filter((f) => f.category === 'capability' && !f.test);
+  const tests = findings.filter((f) => f.test);
+  // 11/02: 패키지 검사는 자기 버전(direct) 취약점과 OSV-Scanner 가 푼 의존성(간접) 취약점을 나눠 말한다(목업 UI.scanVerdictText 와 같은 문구)
+  const vulnText = () => {
+    const own = (s.vulns ?? []).filter((v) => v.direct).reduce((n, v) => n + v.count, 0);
+    const dep = (s.vulns ?? []).filter((v) => !v.direct).reduce((n, v) => n + v.count, 0);
+    if (s.target.kind === 'package' && own) return `이 버전에 알려진 취약점이 ${fmtNum(own)}건${dep ? ` · 의존성에 ${fmtNum(dep)}건` : ''} 있습니다. 고쳐진 버전으로 올리세요.`;
+    return `의존성에 알려진 취약점이 ${fmtNum(own + dep || s.vulnCount)}건 있습니다. 고쳐진 버전으로 올리세요.`;
+  };
   const vulns = s.vulns ?? [];
   const t = s.target;
   const cmd = t.kind === 'package' ? `sg-install ${t.manager} ${t.name}${t.version ? (t.manager === 'pip' ? '==' : '@') + t.version : ''}` : '';
@@ -264,11 +273,14 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
     const loc = `${f.file}:${f.line}`;
     return (
       <li key={`${f.rule}:${loc}`}>
-        <button type="button" data-finding="" data-category={f.category} data-loc={loc} onClick={() => setFocus(loc)}
-          className={`grid w-full grid-cols-[minmax(0,12rem)_minmax(0,1fr)] gap-x-2 rounded-md border border-l-4 px-2.5 py-1.5 text-left text-xs hover:bg-slate-50 ${f.category === 'threat' ? 'border-l-red-500' : 'border-l-amber-400'} ${focus === loc ? 'bg-slate-50' : ''}`}>
+        <button type="button" data-finding="" data-category={f.category} data-test={f.test ? 'true' : undefined} data-loc={loc} onClick={() => setFocus(loc)}
+          className={`grid w-full grid-cols-[minmax(0,12rem)_minmax(0,1fr)] gap-x-2 rounded-md border border-l-4 px-2.5 py-1.5 text-left text-xs hover:bg-slate-50 ${f.test ? 'border-l-slate-300' : f.category === 'threat' ? 'border-l-red-500' : 'border-l-amber-400'} ${focus === loc ? 'bg-slate-50' : ''}`}>
           <span className="truncate font-mono" title={loc}>{loc}</span>
           <b className="font-medium text-slate-800" title={f.message}>{RULE_KO[f.rule] ?? f.message}</b>
-          <span className="col-start-2 font-mono text-slate-400">{f.rule}</span>
+          <span className="col-start-2 font-mono text-slate-400">
+            {f.rule}
+            {f.test && <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 font-sans text-[11px] text-slate-600">테스트 코드</span>}
+          </span>
         </button>
       </li>
     );
@@ -284,7 +296,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
           <p className="text-xs text-slate-700">
             {s.status === 'failed' ? `검사하지 못했습니다 — ${s.error}` : s.status === 'running' ? '검사 중입니다…'
               : s.verdict === 'malicious' ? `설치 단계에서 위험한 행동을 하는 코드가 ${threats.length}곳 있습니다. 설치하지 말고 차단 목록에 올리세요.`
-              : s.verdict === 'vulnerable' ? `의존성에 알려진 취약점이 ${fmtNum(s.vulnCount)}건 있습니다. 고쳐진 버전으로 올리세요.`
+              : s.verdict === 'vulnerable' ? vulnText()
               : '정적 검사에서 위험한 코드 · 알려진 취약점을 찾지 못했습니다. 설치 검사(eBPF)로 실제 행동도 확인할 수 있습니다.'}
           </p>
           {t.kind === 'repo' && t.url && (
@@ -333,16 +345,22 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
               <ul className="mt-1 grid gap-1">{caps.map(item)}</ul>
             </details>
           )}
+          {tests.length > 0 && (
+            <details data-part="tests">
+              <summary className="cursor-pointer text-xs text-slate-500">테스트 코드 {tests.length} — 위험 점수 · 판정에 넣지 않음</summary>
+              <ul className="mt-1 grid gap-1">{tests.map(item)}</ul>
+            </details>
+          )}
         </div>
       </Section>
       <Section title="코드 보기 — 빨강 = 위협 줄, 노랑 = 기능">
         <CodeView s={s} focus={focus} setFocus={setFocus} />
       </Section>
       {vulns.length > 0 && (
-        <Section title={`알려진 취약점 ${fmtNum(s.vulnCount)} — OSV-Scanner, 간접 의존성 포함`}>
+        <Section title={`알려진 취약점 ${fmtNum(s.vulnCount)} — OSV-Scanner, ${t.kind === 'package' ? '이 패키지 버전 · 의존성 포함' : '간접 의존성 포함'}`}>
           <table className="w-full text-xs" data-part="vulns">
             <thead className="text-left text-slate-500">
-              <tr>{['패키지', '버전', '의존', '건수', '최고', 'ID'].map((x) => <th key={x} className="py-1 font-medium">{x}</th>)}</tr>
+              <tr>{['패키지', '버전', '의존', '건수', '최고', 'ID'].map((x) => <th key={x} className="py-1 font-semibold">{x}</th>)}</tr>
             </thead>
             <tbody>
               {vulns.map((v) => (

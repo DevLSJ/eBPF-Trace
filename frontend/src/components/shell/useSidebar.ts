@@ -4,34 +4,52 @@ import { dialogOpen, loadJSON, saveJSON, typingTarget } from '../../lib/shell';
 // E. 사이드바 접기(10/20 확정) — 목업 shared/shell-plus.js collapser.
 // 넓은 화면: 누르면 접기/펼치기, 이 브라우저(localStorage)에 기억.
 // 1100px 이하: 기본 접힘. 펼친 상태는 그 화면 동안만(저장하지 않고, 화면을 옮기거나 폭이 바뀌면 다시 접힘). `[` 단축키
+// 768px 미만(10/30 계약 §7): 사이드바는 서랍 — 머리의 메뉴 버튼으로 열고(배경 dim), Esc · 이동 · 배경 누름으로 닫힌다
 export const SIDEBAR_KEY = 'supplyguard.sidebar';
 const NARROW = '(max-width: 1100px)';
+const MOBILE = '(max-width: 767px)';
 
-const narrowNow = () => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(NARROW).matches;
+const matches = (q: string) => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(q).matches;
+const narrowNow = () => matches(NARROW);
 
 export function useSidebar(pathname: string) {
   const [narrow, setNarrow] = useState(narrowNow);
+  const [mobile, setMobile] = useState(() => matches(MOBILE));
   const [pref, setPref] = useState<string>(() => loadJSON(SIDEBAR_KEY, 'expanded'));
   const [narrowOpen, setNarrowOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [prevPath, setPrevPath] = useState(pathname);
   if (pathname !== prevPath) {
     setPrevPath(pathname);
     setNarrowOpen(false);
+    setMobileOpen(false);
   }
 
   useEffect(() => {
     const m = window.matchMedia(NARROW);
+    const mm = window.matchMedia(MOBILE);
     const on = () => {
       setNarrow(m.matches);
+      setMobile(mm.matches);
       setNarrowOpen(false);
+      setMobileOpen(false);
     };
     m.addEventListener('change', on);
-    return () => m.removeEventListener('change', on);
+    mm.addEventListener('change', on);
+    return () => {
+      m.removeEventListener('change', on);
+      mm.removeEventListener('change', on);
+    };
   }, []);
 
-  const collapsed = narrow ? !narrowOpen : pref === 'collapsed';
+  // 서랍은 늘 펼친 모양
+  const collapsed = mobile ? false : narrow ? !narrowOpen : pref === 'collapsed';
 
   const toggle = useCallback(() => {
+    if (mobile) {
+      setMobileOpen((o) => !o);
+      return;
+    }
     if (narrow) {
       setNarrowOpen((o) => !o);
       return;
@@ -39,7 +57,9 @@ export function useSidebar(pathname: string) {
     const next = pref === 'collapsed' ? 'expanded' : 'collapsed';
     saveJSON(SIDEBAR_KEY, next);
     setPref(next);
-  }, [narrow, pref]);
+  }, [mobile, narrow, pref]);
+  const openMobile = useCallback(() => setMobileOpen(true), []);
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -51,5 +71,5 @@ export function useSidebar(pathname: string) {
     return () => document.removeEventListener('keydown', onKey);
   }, [toggle]);
 
-  return { collapsed, narrow, toggle };
+  return { collapsed, narrow, mobile, mobileOpen, toggle, openMobile, closeMobile };
 }

@@ -113,11 +113,11 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
             }
           }}
           className={`w-full rounded-md border py-1.5 pr-7 pl-8 text-sm focus:outline-none ${
-            collapsed ? 'border-slate-300 bg-white text-slate-900 shadow-lg' : 'border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-500 focus:border-indigo-400'
+            collapsed ? 'border-border-strong bg-surface text-text shadow-[var(--sh-2)]' : 'border-border bg-surface-2 text-text placeholder:text-text-3 focus:border-accent'
           }`}
         />
         {!q && (
-          <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border border-slate-600 px-1 text-[10px] text-slate-400" aria-hidden>
+          <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border border-border-strong px-1 text-[10px] text-text-3" aria-hidden>
             /
           </kbd>
         )}
@@ -169,7 +169,7 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
       }}
     >
       {collapsed && (
-        <button type="button" onClick={focus} aria-label="검색 (/)" title="검색 (/)" className="grid size-9 place-items-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white">
+        <button type="button" onClick={focus} aria-label="검색 (/)" title="검색 (/)" className="grid size-9 place-items-center rounded-md text-text-3 hover:bg-surface-2 hover:text-text">
           <Search className="size-4" aria-hidden />
         </button>
       )}

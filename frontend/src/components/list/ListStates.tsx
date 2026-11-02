@@ -11,9 +11,9 @@ export function Skeleton({ rows = 6 }: { rows?: number }) {
     <div className="grid gap-2.5 p-4" data-part="skeleton" aria-busy="true" aria-label="불러오는 중">
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="flex items-center gap-3">
-          <i className="h-3 animate-pulse rounded bg-slate-200" style={{ width: `${18 + (i % 3) * 6}%` }} />
-          <i className="h-3 animate-pulse rounded bg-slate-100" style={{ width: `${30 + ((i * 7) % 4) * 8}%` }} />
-          <i className="h-3 w-[12%] animate-pulse rounded bg-slate-100" />
+          <i className="sg-skeleton h-3" style={{ width: `${18 + (i % 3) * 6}%` }} />
+          <i className="sg-skeleton h-3" style={{ width: `${30 + ((i * 7) % 4) * 8}%` }} />
+          <i className="sg-skeleton h-3 w-[12%]" />
         </div>
       ))}
     </div>

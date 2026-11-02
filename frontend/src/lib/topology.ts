@@ -21,6 +21,8 @@ export interface TopoNode extends TopoStats {
   type: NodeType;
   label: string;
   container: string;
+  // 말단 노드의 이벤트 종류(10/30): file → open, dest → connect | dns(질의 이름 노드)
+  kind?: Kind;
 }
 
 export interface TopoEdge extends TopoStats {
@@ -56,14 +58,21 @@ export class TopologyStore {
     this.link(c.id, p.id, 'exec', now, v);
     if (e.kind === 'open' && e.path) {
       const f = this.touch(`f:${e.containerName}:${e.path}`, 'file', e.path, e.containerName, now, v);
+      f.kind = 'open';
       this.link(p.id, f.id, 'open', now, v);
     } else if (e.kind === 'connect') {
       // 목적지 노드는 IP:포트 단위로 모으고, 도메인을 알면 라벨을 "host:port" 로 보인다
       const key = `${e.dstIp}:${e.dstPort}`;
       const dst = e.dstHost ? `${e.dstHost}:${e.dstPort}` : key;
       const d = this.touch(`d:${e.containerName}:${key}`, 'dest', dst, e.containerName, now, v);
+      d.kind = 'connect';
       if (e.dstHost) d.label = dst;
       this.link(p.id, d.id, 'connect', now, v);
+    } else if (e.kind === 'dns' && e.dstHost) {
+      // 도메인 조회(10/30): 질의 이름 단위의 목적지 노드 — 연결 전 유출 · 터널링이 체인 3단계에 보인다
+      const d = this.touch(`q:${e.containerName}:${e.dstHost}`, 'dest', e.dstHost, e.containerName, now, v);
+      d.kind = 'dns';
+      this.link(p.id, d.id, 'dns', now, v);
     }
   }
 
@@ -159,7 +168,7 @@ export interface Chain {
   steps: ChainStep[];
 }
 
-const KIND_ORDER: Record<Kind, number> = { exec: 1, open: 2, connect: 3 };
+const KIND_ORDER: Record<Kind, number> = { exec: 1, open: 2, dns: 3, connect: 4 }; // dns 는 통신 단계에서 connect 앞(10/30)
 
 const BLOCKED_IMAGE = 'blocked-image';
 
@@ -187,6 +196,7 @@ export function attackChains(nodes: TopoNode[]): Chain[] {
       }
       if (n.type === 'file' && n.byKind.open) steps.push(step('open', n));
       if (n.type === 'dest' && n.byKind.connect) steps.push(step('connect', n));
+      if (n.type === 'dest' && n.byKind.dns) steps.push(step('dns', n));
     }
     if (!steps.length) continue;
     steps.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || severity[b.level] - severity[a.level] || a.at - b.at);

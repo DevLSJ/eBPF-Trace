@@ -62,7 +62,7 @@ export function computeNotices(x: NoticeInput): Notice[] {
     out.push({ id: 'proposals', sig: drafts.map((p) => p.id).join(','), tone: 'warn', title: `적용하지 않은 제안 ${drafts.length}건`, text: '정책에서 미리보기 후 적용하거나 버리세요', to: `/policies?proposal=${encodeURIComponent(drafts[0].id)}` });
   if (x.down) out.push({ id: 'conn', sig: 'down', tone: 'danger', title: '실시간 연결 끊김', text: '다시 연결하는 중 — 끊긴 동안의 이벤트는 다시 붙으면 채웁니다', to: '/events' });
   if (x.info?.dnsResolve === 'off')
-    out.push({ id: 'dns', sig: 'off', tone: 'warn', title: '도메인 판단 꺼짐', text: 'trace_dns 가 뜨지 않아 도메인 기준 규칙이 통과 처리됩니다', to: '/settings' });
+    out.push({ id: 'dns', sig: 'off', tone: 'warn', title: '도메인 판단 꺼짐', text: 'trace_dns 가 뜨지 않아 도메인 기준 규칙과 DNS 질의 규칙(kind: dns)이 통과 처리됩니다', to: '/settings' });
   if (x.enforceKill === false)
     out.push({ id: 'dryrun', sig: 'off', tone: 'warn', title: '격리 꺼짐 (dry-run)', text: '「즉시 격리」 정책도 알림만 보냅니다 — 서버 설정 ENFORCE_KILL', to: '/settings' });
   const n = x.info?.notify;
@@ -144,7 +144,8 @@ export function searchIndex(index: SearchItem[], query: string, per = 6): Search
 // ── D. 끊긴 구간 채우기 — 같은 이벤트(시각 · 컨테이너 · 종류 · 상세 · pid)는 한 번만 ──
 export function verdictKey(v: Verdict) {
   const e = v.event;
-  const detail = e.args ?? e.path ?? (e.dstIp ? `${e.dstIp}:${e.dstPort ?? ''}` : '');
+  // dns(10/30)는 질의 이름 · 유형으로 구분한다(네임서버 IP:53 은 모두 같다)
+  const detail = e.kind === 'dns' ? `${e.dstHost ?? ''}/${e.qtype ?? ''}` : (e.args ?? e.path ?? (e.dstIp ? `${e.dstIp}:${e.dstPort ?? ''}` : ''));
   return `${e.timestamp}|${e.containerId || e.containerName}|${e.kind}|${detail}|${e.pid}`;
 }
 // recent(최신 먼저)에서 이미 가진 것(have)을 빼고, 가진 것 중 가장 오래된 것보다 새 것만 — 오래된 기록을 다시 끌어오지 않는다

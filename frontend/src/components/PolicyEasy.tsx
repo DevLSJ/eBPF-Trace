@@ -8,6 +8,7 @@ import {
   ID_PATTERN,
   KIND_TEXT,
   listOf,
+  NUM_FIELDS,
   SANDBOX_SCOPE,
   scopeOf,
   TYPE_LABEL,
@@ -60,12 +61,25 @@ export function PolicyEasy({
       <Step id="what" n={1} title="무엇을 감시할까요?">
         <Radios name="easy-kind" value={d.kind} options={Object.entries(KIND_TEXT) as [Kind, [string, string]][]} onPick={(v) => onChange({ ...d, kind: v })} />
       </Step>
-      <Step id="values" n={2} title={d.kind === 'open' ? '어떤 파일인가요?' : d.kind === 'exec' ? '어떤 프로그램 · 명령인가요?' : '어디로 가는 연결인가요?'}>
+      <Step id="values" n={2} title={d.kind === 'open' ? '어떤 파일인가요?' : d.kind === 'exec' ? '어떤 프로그램 · 명령인가요?' : d.kind === 'dns' ? '어떤 도메인 · 질의인가요?' : '어디로 가는 연결인가요?'}>
         <ChipGroup groupKey="block" def={g.block} draft={d} onChange={onChange} fresh={null} />
         {g.allow ? (
           <ChipGroup groupKey="allow" def={g.allow} draft={d} onChange={onChange} fresh={fresh} />
         ) : (
           <p className="text-xs text-slate-500">실행 정책에는 예외 목록이 없습니다 — 예외가 필요하면 ④ 에서 적용할 컨테이너를 좁히세요.</p>
+        )}
+        {d.kind === 'dns' && (
+          // 10/30: 유출 의심 길이 상한 2개(계약 §1 「숫자 칸」)
+          <div className="grid grid-cols-2 gap-3" data-part="dns-limits">
+            {NUM_FIELDS.map(({ field, label, max, hint }) => (
+              <label key={field} className="grid gap-1">
+                <span className="font-medium text-slate-700">
+                  {label} <small className="text-xs font-normal text-slate-400">{hint}</small>
+                </span>
+                <input className={inputCls} type="number" min={1} max={max} inputMode="numeric" data-field={field} value={d[field]} placeholder="비우면 보지 않음" onChange={(e) => onChange({ ...d, [field]: e.target.value })} />
+              </label>
+            ))}
+          </div>
         )}
       </Step>
       <Step id="action" n={3} title="걸리면 어떻게 할까요?">
@@ -119,7 +133,7 @@ function Step({ id, n, title, children }: { id: string; n: number; title: string
 
 function Radios<T extends string>({ name, value, options, onPick }: { name: string; value: T; options: [T, [string, string]][]; onPick: (v: T) => void }) {
   return (
-    <div className="grid grid-cols-3 gap-2" role="radiogroup">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-2" role="radiogroup">
       {options.map(([v, [label, sub]]) => (
         <label key={v} className={`flex cursor-pointer gap-2 rounded-lg border px-3 py-2.5 ${value === v ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:border-slate-300'}`}>
           <input type="radio" name={name} value={v} checked={value === v} onChange={() => onPick(v)} className="mt-0.5 accent-indigo-600" />
@@ -158,10 +172,11 @@ function ChipGroup({
       return;
     }
     const f = def.fields[c.type]!;
+    const val = c.value ?? v; // 질의 유형은 대문자로 저장(10/30)
     const xs = listOf(d, f);
     setErr('');
     setText('');
-    if (!xs.includes(v)) onChange(withList(d, f, [...xs, v]));
+    if (!xs.includes(val)) onChange(withList(d, f, [...xs, val]));
   };
   const sugg = def.suggest.filter((s) => !chips.some((c) => c.value === s));
   return (
