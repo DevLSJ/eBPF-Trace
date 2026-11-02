@@ -21,6 +21,19 @@ type Enforcer interface {
 	Kill(ctx context.Context, containerID string) error
 }
 
+// Times: 격리 타임라인(10/30)에 들어가는 단계별 시각 — 해당 없으면 0 값.
+// EvidenceStartedAt · EvidenceDoneAt 는 before-kill 훅의 시작 · 끝(예산을 넘기면 예산이 다한 시점), KilledAt 은 Docker kill 응답 시각(성공했을 때만)
+type Times struct {
+	EvidenceStartedAt time.Time
+	EvidenceDoneAt    time.Time
+	KilledAt          time.Time
+}
+
+// Timed: 단계별 시각을 돌려주는 격리 수단(Docker). pipeline 은 이 인터페이스가 있으면 KillTimed 를, 없으면 Kill 을 부른다
+type Timed interface {
+	KillTimed(ctx context.Context, containerID string) (Times, error)
+}
+
 var containerIDPattern = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
 
 // Docker: Engine API(`POST /containers/{id}/kill`)를 직접 호출한다.
@@ -62,37 +75,49 @@ func NewDocker(dockerHost string) (*Docker, error) {
 
 // Kill: SIGKILL로 컨테이너 강제 종료
 func (d *Docker) Kill(ctx context.Context, containerID string) error {
+	_, err := d.KillTimed(ctx, containerID)
+	return err
+}
+
+// KillTimed: Kill 과 같되 단계별 시각(증거 훅 시작 · 끝, kill 응답)을 함께 돌려준다 — 격리 타임라인(10/30).
+// 동작은 Kill 과 똑같다: 잘못된 id 는 요청 없이 거절, 훅은 예산 안에서만 기다리고, 그 다음 kill 요청을 보낸다
+func (d *Docker) KillTimed(ctx context.Context, containerID string) (Times, error) {
+	var ts Times
 	if !containerIDPattern.MatchString(containerID) {
-		return fmt.Errorf("invalid container id %q", containerID)
+		return ts, fmt.Errorf("invalid container id %q", containerID)
 	}
 	if d.BeforeKill != nil {
+		ts.EvidenceStartedAt = time.Now().UTC()
 		d.runBeforeKill(ctx, containerID)
+		ts.EvidenceDoneAt = time.Now().UTC()
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		d.base+"/containers/"+containerID+"/kill?signal=SIGKILL", nil)
 	if err != nil {
-		return err
+		return ts, err
 	}
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("docker kill: %w", err)
+		return ts, fmt.Errorf("docker kill: %w", err)
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusNoContent:
-		return nil
+		ts.KilledAt = time.Now().UTC()
+		return ts, nil
 	case http.StatusConflict:
-		return ErrNotRunning
+		return ts, ErrNotRunning
 	case http.StatusNotFound:
-		return ErrNotFound
+		return ts, ErrNotFound
 	}
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-	return fmt.Errorf("docker kill: %s: %s", resp.Status, strings.TrimSpace(string(b)))
+	return ts, fmt.Errorf("docker kill: %s: %s", resp.Status, strings.TrimSpace(string(b)))
 }
 
 // runBeforeKill: 훅을 별도 고루틴에서 돌리고 끝나거나 예산이 다할 때까지만 기다린다.
 // 훅이 ctx 를 무시해도 kill 은 beforeKillBudget 뒤에 나간다. 패닉은 여기서 받는다.
 func (d *Docker) runBeforeKill(ctx context.Context, containerID string) {
+	hook := d.BeforeKill // 고루틴 밖에서 읽는다 — 예산을 넘겨 아직 도는 훅과 훅 교체가 경쟁하지 않게
 	hctx, cancel := context.WithTimeout(ctx, beforeKillBudget)
 	done := make(chan struct{})
 	go func() {
@@ -103,7 +128,7 @@ func (d *Docker) runBeforeKill(ctx context.Context, containerID string) {
 				slog.Error("before-kill hook panicked", "id", containerID, "panic", r)
 			}
 		}()
-		d.BeforeKill(hctx, containerID)
+		hook(hctx, containerID)
 	}()
 	select {
 	case <-done:
