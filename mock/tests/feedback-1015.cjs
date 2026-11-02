@@ -129,7 +129,7 @@ const TITLES = { '/': '대시보드', '/installs': '설치 검사', '/events': '
     ok(txt.includes('위반 없음'), '위반 없음 문구 없음');
     ok(await pg.locator('.sheet [data-activity="hosts"] li').count() >= 1, '접속 도메인 없음');
     ok(await pg.locator('.sheet [data-activity="programs"] li').count() >= 1, '실행 프로그램 없음');
-    ok(await pg.locator('.sheet [data-activity="kinds"] [data-kind]').count() === 3, '종류별 횟수 3칸 아님');
+    ok(await pg.locator('.sheet [data-activity="kinds"] [data-kind]').count() === 4, '종류별 횟수 4칸 아님'); // 10/30: 실행 · 파일 · 통신 + 조회(dns)
   });
   await T('4 설치 검사: 새로고침해도 시트 유지(URL 상태)', async () => {
     await go(pg, '/installs?status=isolated');

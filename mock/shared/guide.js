@@ -12,7 +12,7 @@
   // 규칙별 후속 조치 문구 사전 — 같은 묶음(group)이면 한 줄로 합친다
   const FOLLOW = [
     { group: 'secrets', rules: ['sensitive-files', 'sandbox-secrets'], text: '노출됐을 수 있는 키 · 토큰 교체, 같은 볼륨을 쓰는 컨테이너 확인' },
-    { group: 'egress', rules: ['reverse-shell-ports', 'runtime-direct-ip', 'sandbox-egress', 'egress-allowlist'], text: '목적지 IP · 도메인을 차단 목록에 올리기, 같은 이미지를 쓰는 다른 컨테이너 확인' },
+    { group: 'egress', rules: ['reverse-shell-ports', 'runtime-direct-ip', 'sandbox-egress', 'egress-allowlist', 'runtime-dns-exfil', 'sandbox-dns'], text: '목적지 IP · 도메인을 차단 목록에 올리기, 같은 이미지를 쓰는 다른 컨테이너 확인' }, // dns 규칙도 egress 묶음 [10/30]
     { group: 'download', rules: ['no-shell-download', 'pipe-to-shell'], text: '설치 스크립트 출처 확인, 패키지 버전 고정 · 차단' },
     { group: 'blocked-image', rules: ['blocked-image'], text: '차단된 이미지가 다시 기동된 경로(배포 파이프라인 · 이미지 태그) 확인' },
     { group: 'hosts', rules: ['blocklist-hosts'], text: '차단 도메인으로 나간 프로세스와 그 이미지 확인' },
@@ -131,6 +131,11 @@
   let tab = 'guide', opener = null, lastSig = '';
   const guideEl = h('div', { class: 'guide', 'data-part': 'guide', role: 'tabpanel', id: 'assist-guide', 'aria-labelledby': 'assist-tab-guide' });
   const chatEl = h('div', { class: 'assist-chat', role: 'tabpanel', id: 'assist-chat', 'aria-labelledby': 'assist-tab-chat', hidden: true }, U.chat ? U.chat.el : h('p', { class: 'muted' }, 'AI 도우미를 불러오지 못했습니다.'));
+  // AI 꺼짐(/api/info chat=false — 서버에 OLLAMA_URL 없음) 안내 [11/02 결정: 탭은 보이고 이유를 알린다]
+  const chatOff = h('div', { class: 'assist-chat-off', 'data-part': 'chat-off', role: 'note' },
+    h('b', null, 'AI 도우미가 꺼져 있습니다'),
+    h('p', { class: 'small muted' }, '서버에 Ollama(OLLAMA_URL)를 연결하면 켜집니다. 대응 가이드 탭은 그대로 쓸 수 있습니다.'));
+  const chatIsOff = () => !!(U.state.info && U.state.info.chat === false);
   const tabBtn = (id, label) => h('button', { type: 'button', role: 'tab', id: `assist-tab-${id}`, 'data-tab': id, 'aria-selected': String(tab === id), 'aria-controls': `assist-${id}`, class: 'assist-tab', onclick: () => show(id) }, label);
   const tabs = h('div', { class: 'assist-tabs', role: 'tablist', 'aria-label': '도우미' }, tabBtn('guide', '대응 가이드'), tabBtn('chat', 'AI 도우미'));
   const panel = h('section', { class: 'assist-panel', 'data-part': 'assistant', role: 'dialog', 'aria-label': 'SupplyGuard 도우미', hidden: true },
@@ -143,7 +148,7 @@
     tab = id;
     for (const b of tabs.querySelectorAll('[role="tab"]')) b.setAttribute('aria-selected', String(b.dataset.tab === id));
     guideEl.hidden = id !== 'guide'; chatEl.hidden = id !== 'chat';
-    if (id === 'chat' && U.chat) U.chat.shown(); else draw(true);
+    if (id === 'chat') { const off = chatIsOff(); replace(chatEl, off ? chatOff : (U.chat ? U.chat.el : h('p', { class: 'muted' }, 'AI 도우미를 불러오지 못했습니다.'))); if (!off && U.chat) U.chat.shown(); } else draw(true);
   }
   function open(id) {
     if (panel.hidden) opener = document.activeElement;

@@ -71,7 +71,7 @@
 
 | 소스 | 피드·통계 | 정책 | 감사 로그 | 데모 제어 |
 | --- | --- | --- | --- | --- |
-| **내장 시뮬레이션** (기본) | 백엔드 mock 소스와 같은 컨테이너 3개(`web-api`·`worker`·`pkg-reqeusts`)가 100ms 마다 정상 이벤트를 낸다. 공격 시나리오 1→2→3 은 **지금 실행**으로만(자동 주기 기본 끔 — 데모는 「판정 대기 0」에서 시작). `shared/data.js` 의 `evaluate()` 가 기본 정책 7개 + 시스템 규칙 `blocklist-hosts` 를 백엔드 엔진과 같은 순서로 평가 | 메모리(모의 서버가 건 · 제안 · 차단 목록 · 변경 이력도 들고 있음) | 시드 고정 약 90건(24h 런타임 경고 + 어제 격리된 설치 2건) + 실시간 위반이 쌓인다 | 전부 동작. **지금 실행**은 격리 중이던 컨테이너를 먼저 재기동(차단 이미지면 기동 즉시 격리)하고 일시정지도 해제한 뒤 바로 흘린다 |
+| **내장 시뮬레이션** (기본) | 백엔드 mock 소스와 같은 컨테이너 3개(`web-api`·`worker`·`pkg-reqeusts`)가 100ms 마다 정상 이벤트를 낸다. 공격 시나리오 1→2→3 은 **지금 실행**으로만(자동 주기 기본 끔 — 데모는 「판정 대기 0」에서 시작). `shared/data.js` 의 `evaluate()` 가 기본 정책 10개(10/30 dns 2개 포함) + 시스템 규칙 `blocklist-hosts` 를 백엔드 엔진과 같은 순서로 평가 | 메모리(모의 서버가 건 · 제안 · 차단 목록 · 변경 이력도 들고 있음) | 시드 고정 약 90건(24h 런타임 경고 + 어제 격리된 설치 2건) + 실시간 위반이 쌓인다 | 전부 동작. **지금 실행**은 격리 중이던 컨테이너를 먼저 재기동(차단 이미지면 기동 즉시 격리)하고 일시정지도 해제한 뒤 바로 흘린다 |
 | **실제 백엔드** | `GET /api/events/recent`·`/api/stats` 로 채우고 `/ws/events` 로 실시간 수신 (1s→10s 백오프 재연결) | `GET/POST/PUT/DELETE /api/policies` (쿠키 세션) | `GET /api/audit` (id 커서) | 격리 모드·공격 실행은 백엔드 설정을 따르므로 안내만 뜬다 |
 
 실제 모드는 다른 출처에서 REST 를 부르므로 백엔드 `ALLOWED_ORIGINS` 에 이 페이지의 출처(`http://127.0.0.1:8766`, 파일로 열었으면 `null`)가 있어야 한다.
@@ -116,17 +116,18 @@
 
 | 파일 | 역할 |
 | --- | --- |
-| `index.html` | 진입점 — 스크립트를 순서대로 읽는다(data → app → ui-kit → auth → shell-plus → policy-easy → screens → settings → chat → guide) |
+| `index.html` | 진입점 — 스크립트를 순서대로 읽는다(theme → data → app → ui-kit → auth → shell-plus → policy-easy → screens → demo → report → settings → chat → guide) |
 | `shared/settings.js` | 「설정」 화면 [10/20 결정 2] — 탭 서버 설정(`U.policyEasy.serverSettings()` 를 화면 안 칸으로) · 계정(`U.auth.accountsView`) · 라이선스 · 인증 감사 |
 | `shared/ui-kit.js` | 공통 부품 2차 [10/20] — `modal`(포커스 트랩 · Esc · 미저장 보호) · `confirmDialog`(대상 · 함께 일어나는 일 · 사유 · 되돌리기) · `skeleton` · `errorState`(다시 시도) · `emptyState`(아이콘) · `filterChips`(모두 해제) · `rowKeys`(Enter/Space) · `downloadCSV` · `keyBoxes`(4칸 붙여넣기 분배) · `fakeQR` · `can()`(관리자인가) |
 | `shared/auth.js` | 로그인 단계(로그인 → 비밀번호 변경 → 라이선스 → OTP 등록/입력 · 복구 코드) · 모의 인증 서버(계약 그대로) · 실제 백엔드 클라이언트(쿠키) · 상단 라이선스 칩(30일 이하 노랑 · 만료 빨강, `licenseTone`) · 계정 메뉴 · 계정 탭(`accountsView`) · 모의 인증 감사 기록(`authAudit`) [10/20] |
 | `shared/shell-plus.js` | 셸 2차 [10/20] — 알림 센터(상단 종, 서버 상태 알림은 `#/settings`) · 사이드바 통합 검색(`/`, 설정 항목 포함) · 사이드바 접기(56px, 1100px 이하 자동 · 펼침은 그 화면 동안만, `[`) |
 | `shared/data.js` | 컨테이너·공격 시나리오·기본 정책 + 시스템 규칙 `blocklist-hosts` · 규칙 평가 · 시드 고정 감사 로그 · 설치 세션 시드 10건(데모 대본용 — 오늘은 통과 · 실패 · 미확인뿐, 어제 격리 2건은 악성 판정 · 적용됨) · 데모 설치 3종(정상 · 악성 · 경고) · 세션 집계(`statusOf` · `addToSession`) · 패키지 이름 정규화(`pkgName` · `pkgKey` · `ECOSYSTEM`) (`window.MOCK`) |
 | `shared/app.js` | 셸 · 해시 라우터 · 공통 컴포넌트(배지·패널·가상 스크롤 피드·막대 차트·토폴로지 SVG·토스트·확정 버튼·스위치) · **판정 흐름 공통 부품**(`attackChain` 공격 체인 · `decisionBar` 판정 버튼 · `previewView` 미리보기 표 · `decisionBadge`) · 시뮬레이션(소스+파이프라인+통계, 감사 로그 저장 · 런타임 건) · **모의 서버 `srv`**(건 · 판정 · 제안 · 미리보기 · 적용 · 버림 · 차단 목록 · 변경 이력 · 설치 전 거부) · 실제 백엔드 클라이언트(REST+WS) · 화면용 데이터 API(`UI.api` — 계약 이름 그대로, OSV 직접 조회 포함) · 안내 · 데모 제어 (`window.UI`) |
-| `shared/screens.js` | 화면 7개 (`UI.screens['/']` … `['/audit']`), 탭 하나 = 질문 하나. React 에 모두 있다 |
+| `shared/screens.js` | 화면 7개 (`UI.screens['/']` … `['/audit']` — 설정은 `settings.js`, 보고서는 `report.js`, 앱 전체 9개), 탭 하나 = 질문 하나. React 에 모두 있다 |
 | `shared/chat.js` · `shared/guide.js` | 우측 하단 「도우미」 — `guide.js` 가 버튼 하나(🛡) · 패널 · 탭 2개(대응 가이드 · AI 도우미)와 대응 가이드(건별 5단계 · 구축 순서)를 맡고, `chat.js` 는 AI 도우미 탭 본문(`UI.chat.el`)만 만든다 [10/20] |
 | `tests/feedback-MMDD.cjs` · `tests/goals-MMDD.cjs` | 피드백 · 목표 묶음별 회귀(Playwright 직접 호출). 판정은 N/N 완전 일치 + 콘솔 오류 0. OSV 는 `page.route` 로 응답 고정 |
-| `shared/styles.css` | Tailwind slate/indigo 토큰을 CSS 변수로 옮긴 스타일. 페이지 고정·본문만 스크롤 |
+| `shared/styles.css` | 계약 §7 디자인 토큰(`:root` · `[data-theme="dark"]`) · 공통 부품 · 모션(reduced-motion 이면 끔) · 768px 미만 서랍 · 인쇄. 페이지 고정·본문만 스크롤 [10/30] |
+| `shared/theme.js` · `shared/demo.js` · `shared/report.js` | 테마(첫 그리기 전 `data-theme`, `supplyguard.theme`) · 시연 패널 + 상태 신호등 · 건 보고서 1장(`#/report`) [10/30] |
 
 ## 렌더 확인 (2026-09-29)
 
@@ -224,7 +225,7 @@ AI 도우미(2026-10-16, 확정 · React 반영 — 전 화면 우측 하단, `s
 - 검증: `node tests/guide-1020.cjs` 12/12(수정 전 0/11) · 기존 회귀 6개 `feedback-1015` 31/31 · `goals-1015` 46/46 · `decisions-1016` 11/11 · `policy-1016` 7/7 · `overview-1016` 8/8 · `scan-1016` 9/9 · 콘솔 오류 0 · 스크린샷 `screenshots/guide-1020-{case,setup,dns-off}.png`
 
 2026-10-20 2차 시안(확정 · React 반영 — W10, 참고 제품 remastered2 패턴을 이 목업 방식으로 다시 만듦):
-- **A 로그인 · 역할 · 계정** — 아이디 · 비밀번호 → (첫 로그인) 비밀번호 변경(10자 이상 · 아이디와 다름 · 확인 일치 — **10/20 결정 변경: 5자**) → (라이선스 없음 + 관리자) 라이선스 4칸(붙여넣으면 나눠 들어감, 숫자 16자리 = 1년 평가판) → OTP 등록(QR · 수동 키 → 6자리 확인 → 복구 코드 10개 1회 표시 · 「저장했습니다」 체크 뒤 「시작하기」) 또는 OTP 입력(「복구 코드로 로그인」 전환). 실패 문구는 아이디가 있든 없든 같고, 5번 틀리면 5분 잠금. 조회자는 라이선스가 없으면 로그인 단계에서 403 문구. 상단에 라이선스 칩(「평가판 · N일 남음」, 14일 이하 노랑 — **10/20 결정: 30일 이하 노랑 · 만료 빨강**) · 계정 메뉴(내 정보 · 비밀번호 변경 · 로그아웃). **조회자는 쓰기 버튼을 그리지 않는다**(판정 · 적용 · 버림 · 해제 · 새 정책 · YAML · 검사 시작 · 차단 목록에 올리기 · 테스트 발송 · 관리자 토큰 칸 · 계정 탭). 조회자 정책 보기는 요약 + YAML 읽기 전용. 정책 화면 「계정」 탭(관리자): 목록 · 추가(임시 비밀번호 1회 표시) · 역할 변경 · 비활성 · 비밀번호 초기화 · OTP 초기화, 마지막 관리자 · 자기 자신에는 강등 · 비활성 버튼을 그리지 않고 안내. 처리자 이름은 로그인한 계정(`UI.actor()`, 관리자 표시 이름 「보안 담당자」 유지)
+- **A 로그인 · 역할 · 계정** — 아이디 · 비밀번호 → (첫 로그인) 비밀번호 변경(10자 이상 · 아이디와 다름 · 확인 일치 — **10/20 결정 변경: 5자**) → (라이선스 없음 + 관리자) 라이선스 4칸(붙여넣으면 나눠 들어감, 숫자 16자리 = 1년 평가판) → OTP 등록(QR · 수동 키 → 6자리 확인 → 복구 코드 10개 1회 표시 · 「저장했습니다」 체크 뒤 「시작하기」) 또는 OTP 입력(「복구 코드로 로그인」 전환). 실패 문구는 아이디가 있든 없든 같고, 5번 틀리면 5분 잠금. 조회자는 라이선스가 없으면 로그인 단계에서 403 문구. 상단에 라이선스 칩(「평가판 · N일 남음」, 14일 이하 노랑 — **10/20 결정: 30일 이하 노랑 · 만료 빨강**) · 계정 메뉴(내 정보 · 비밀번호 변경 · 로그아웃). **조회자는 쓰기 버튼을 그리지 않는다**(판정 · 적용 · 버림 · 해제 · 새 정책 · YAML · 검사 시작 · 차단 목록에 올리기 · 테스트 발송 · 관리자 토큰 칸 · 계정 탭). 조회자 정책 보기는 요약 + YAML 읽기 전용. 「설정」 화면 「계정」 탭(관리자 — 10/20 결정 2 로 정책 화면에서 옮김): 목록 · 추가(임시 비밀번호 1회 표시) · 역할 변경 · 비활성 · 비밀번호 초기화 · OTP 초기화, 마지막 관리자 · 자기 자신에는 강등 · 비활성 버튼을 그리지 않고 안내. 처리자 이름은 로그인한 계정(`UI.actor()`, 관리자 표시 이름 「보안 담당자」 유지)
 - **B 확인 대화상자** — 「악성 확정」 · 「오탐」 · 제안 「적용」 · 「버림」 · 차단 목록 「해제」 · 정책 「삭제」 · 「전체 교체」가 두 번 누르기 대신 대화상자: 대상 · 함께 일어나는 일(모의 서버가 계산 — 예: 차단 목록 +2 (패키지 1 · 도메인 1), 같은 이미지 컨테이너 N개 다음 시작 때 격리, 과거 위반 N건 탐지 결과 바뀜) · 사유(선택, 판정은 건 메모 · 적용 · 해제는 변경 이력 `reason`) · 되돌리기 안내. 포커스 트랩 · Esc 취소 · 사유를 쓴 뒤 닫으면 「버리고 닫기 / 계속 쓰기」. 설치 시트의 메모 칸은 대화상자의 사유로 옮겼다
 - **C 알림 센터** — 상단 종: 판정 대기 · 적용하지 않은 제안 · 실시간 연결 끊김 · 도메인 판단 꺼짐 · 격리 꺼짐(dry-run) · 알림 발송 실패 · 새 위반을 데이터로 계산. 읽음은 「알림 → 그때의 서명」(localStorage `supplyguard.notices.read`, 건이 늘면 다시 안 읽음) · 모두 읽음 · 누르면 그 화면(서버 상태 알림은 `#/settings`)
 - **D 목록 정리**(이벤트 · 감사 로그 · 설치 검사 · 공급망 검사) — 첫 로드 스켈레톤 · 오류 + 「다시 시도」(30초마다 자동 재시도 — 10/20 결정 4) · 아이콘 빈 상태 · 적용된 필터 칩 + 모두 해제(필터는 주소에 남음 — 감사 로그도 kind · action · rule · since · until → 10/21b 에 주소에서 뺌) · 공급망 검사 결과 필터 · 감사 로그 CSV 내보내기(기간 필수, 지금 필터 그대로, BOM) · 모든 행 Tab + Enter/Space · 실시간 연결이 끊기면 상단 붉은 배너, 다시 붙으면 「끊긴 동안 N건을 채웠습니다」(10초 뒤 닫힘). 끊김 · 복구 토스트는 배너로 바꿨다
@@ -265,6 +266,17 @@ AI 도우미(2026-10-16, 확정 · React 반영 — 전 화면 우측 하단, `s
 - **옛 주소** — 해시의 필터 키는 `takeQuery`(app.js mount)가 한 번 읽어 초기값으로 쓰고 `history.replaceState` 로 지운다. `view=history` → `changes`
 - 검증: `url-1021` 12/12 · 기존 10묶음 N/N(live 는 SKIP) · 콘솔 오류 0. 주소로 필터를 넣던 기존 검사는 `tests/nav-state.cjs` 로 상태를 넘겨 연다(`// 10/21b`)
 
+2026-10-30 반영 기록(확정 — 공통 계약을 React · 백엔드와 같은 값으로, React 가 기준):
+- **DNS 질의 규칙(`kind: dns`)** — 모의 엔진이 계약 순서(금지 도메인 → 허용 도메인 → 금지 질의 유형 → 라벨 길이 → 이름 길이 → 허용 목록 밖, 점 없는 이름 · `*.arpa` · `*.local` · `*.internal` 제외)와 사유 문구 그대로 평가. 기본 규칙 `runtime-dns-exfil`(alert) · `sandbox-dns`(kill, dryRun). 종류 배지 `dns`「도메인 조회」 · 짧은 라벨 「조회」 · 템플릿 「DNS 유출 패턴 차단」 · 데모 제어 「DNS 유출 질의 지금 실행」. 기존 `attack` · `malicious` 시드는 그대로
+- **시연 패널** — 대시보드 맨 위 카드(관리자 + `info.demo` 일 때만, `?demo=off` 로 숨김) · 시나리오 6개 · 단계 레일 6단계 · 첫 위반에 설치 시트 자동 열림 · 결과 한 줄 + 「다시 실행」. 시뮬은 모의 서버가 `Run` 을 흉내, live 는 `GET /api/demo` · `POST /api/demo/run`
+- **격리 타임라인** — 설치 시트 결과 칸 · 토폴로지 판정 카드 · 보고서 · 시연 ⑤ 에 가로 막대(탐지→판정 · 증거 · 격리 · 알림, ms), 종합에 「격리 지연 중앙값」
+- **상태 신호등 · 건 보고서** — 대시보드 머리 알약 5개(가젯 · 도메인 판단 · 자동 격리 · 알림 · 라이선스, 누르면 설정) · `#/report?case=` · `#/report?install=`(진입 3곳, 인쇄 · Markdown 복사)
+- **디자인 토큰(10/15 「테마 유지」 결정 변경)** — 카드 · 그리드 · 모션은 Pinterest 식, 표 · 필터 · 사이드바 · 설정은 Linear/Vercel 식, 빨강은 위험에만 · 강조 indigo. 외부 CSS · 웹폰트 없음. 문구 · 선택자 · URL · 동작은 그대로
+- **다크 · 768px 미만** — 계정 메뉴 「테마」(시스템 · 라이트 · 다크, `localStorage supplyguard.theme`, 시뮬 `?theme=dark`) · 768 미만은 서랍 사이드바 · 1열 · 전체 화면 시트 · 표만 가로 스크롤
+- **11/02 React 와 나란히 비교한 뒤 확정** — 신호등은 React 문구(「가젯 · 모의 이벤트」 · 「알림 · 채널 N」 · 「라이선스 · N일 남음」, 768 미만에서도 이름을 숨기지 않고 두 줄로 접힘) · 시연 카드는 React 배치(「시나리오」 선택 옆 설명, 버튼은 줄 오른쪽 끝 「시연 시작 → 실행 중… → 다시 실행」, 결과는 색 글자 한 줄, 번호 점 레일) · 768 미만 종합 숫자 칸은 **2열**(계약 「1열」의 예외)
+- **11/02 남은 질문 10개는 지금 구현 유지** — dns 규칙 오탐 예외는 안내만(`exceptHosts` 없음) · `blocklist-hosts` 는 dns 질의에 적용 안 함 · udp 데모 53번 비컨 유지 · 시연 종료 코드 거부 0 / 시간 초과 124 / 실패 −1 · `SG_PIP_IMAGE` 는 `.env.example` 설명만 · 신호등은 본문 첫 줄 · 공급망 검사 시트 560 · 시연 결과 문구 그대로 · 라이트 사이드바 흰색 · 라이선스 알약은 `/api/auth/me` 의 license(React 현재 구현)
+- 검증(11/02): `dns-1030` 8/8 · `demo-1030` 8/8 · `theme-1030` 6/6 · 기존 11묶음 N/N(feedback-1015 31 · goals-1015 46 · decisions-1016 11 · policy-1016 7 · overview-1016 8 · scan-1016 9 · guide-1020 12 · feedback-1020b 28 · feedback-1020c 17 · align-1021 14 · url-1021 12) · 콘솔 오류 0. 기존 검사는 기대값만 고침(`// 10/30` — 종류 `dns` · 판정 대기 위 신호등 · 시연 카드 · 격리 지연 칸 · 계정 메뉴 「테마」). 카운트업 중간값을 읽던 `overview-1016` 2번은 reduced-motion 으로 연다(`// 11/02`). React 맞춤으로 `demo-1030` · `theme-1030` 기대값을 고침(`// 11/02`, 수정 전 5건 실패 확인). 스크린샷 `screenshots/1030-*.png`
+
 설치 세션 · 인증 API 계약 메모(10/20):
 - 설치 세션(CLI, `SANDBOX_TOKEN` — 인증 미들웨어의 Bypass): `POST /api/installs` · `PUT /api/installs/{id}/finish` · `POST /api/installs/refused` · `GET /api/blocklist/check`. 화면 쪽 `GET /api/installs*` 는 로그인 세션(조회자도 읽기). 끝 보고가 없으면 컨테이너 종료 10분 뒤 「결과 미확인」(변경 없음)
 - 인증: `shared/auth.js` 머리 주석 — 단계 `need_password → need_license → need_otp_enroll | need_otp → active`, 오류 `{error, state?}`. 조회자의 쓰기는 403 「조회자는 읽기만 할 수 있습니다」(미리보기 두 개 `POST /api/proposals/{id}/preview` · `POST /api/policies/preview` 는 조회자도 허용). 계정: `GET/POST /api/users`(임시 비밀번호는 생성 응답에서 한 번) · `PATCH /api/users/{id} {role?, disabled?, displayName?}`(마지막 관리자 409, 자기 비활성 400) · `POST …/reset-password → {tempPassword}` · `POST …/reset-otp → 204`. 라이선스 `GET /api/license`(없으면 404)
@@ -273,4 +285,4 @@ AI 도우미(2026-10-16, 확정 · React 반영 — 전 화면 우측 하단, `s
 - AI 도우미: 목업은 live 모드에서도 `/api/chat` 을 부르지 않는다(모의 답만). 대화 기록은 `{role, text}` 모양 — 실제 계약 `history:[{role, text}]` 와 같다
 
 회귀 실행: `make mock`(:8766) → `cd mock && PLAYWRIGHT=<playwright 패키지 경로> node tests/feedback-1015.cjs` (`VERBOSE=1` · `ONLY=정규식` · `BASE=주소`). 13번(실제 백엔드)은 `API=<백엔드 주소>` 의 백엔드가 떠 있을 때만 돈다(로그인은 `tests/live-login.cjs`).
-목표 회귀: `node tests/goals-1015.cjs` · 3차 `node tests/decisions-1016.cjs` · 정책 `node tests/policy-1016.cjs` · 종합 `node tests/overview-1016.cjs` · 공급망 `node tests/scan-1016.cjs` · 도우미 `node tests/guide-1020.cjs` · 2차 시안 `node tests/feedback-1020b.cjs` · 10/20 결정 `node tests/feedback-1020c.cjs` · 10/21 React 맞춤 `node tests/align-1021.cjs` · 10/21b URL 필터 제거 `node tests/url-1021.cjs` (같은 옵션 + `SHOTS=1` 데모 대본 스크린샷 · `REAL_OSV=1` OSV 실조회 1건). 12번 실제 백엔드 시나리오는 `make backend` 가 떠 있을 때만 돈다.
+목표 회귀: `node tests/goals-1015.cjs` · 3차 `node tests/decisions-1016.cjs` · 정책 `node tests/policy-1016.cjs` · 종합 `node tests/overview-1016.cjs` · 공급망 `node tests/scan-1016.cjs` · 도우미 `node tests/guide-1020.cjs` · 2차 시안 `node tests/feedback-1020b.cjs` · 10/20 결정 `node tests/feedback-1020c.cjs` · 10/21 React 맞춤 `node tests/align-1021.cjs` · 10/21b URL 필터 제거 `node tests/url-1021.cjs` · 10/30 `node tests/dns-1030.cjs` · `node tests/demo-1030.cjs` · `node tests/theme-1030.cjs` (같은 옵션 + `SHOTS=1` 데모 대본 스크린샷 · `REAL_OSV=1` OSV 실조회 1건). 12번 실제 백엔드 시나리오는 `make backend` 가 떠 있을 때만 돈다.

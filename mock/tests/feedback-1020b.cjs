@@ -94,7 +94,7 @@ const W = { timeout: 3000 };
     ok(/평가판 · \d+일 남음/.test(lic), `라이선스 ${lic}`);
     await pg.click('[data-part="account"]');
     const items = await pg.$$eval('[data-part="account-menu"] [data-menu]', (els) => els.map((e) => e.dataset.menu));
-    ok(JSON.stringify(items) === JSON.stringify(['profile', 'password', 'logout']), `메뉴 ${JSON.stringify(items)}`);
+    ok(JSON.stringify(items) === JSON.stringify(['profile', 'password', 'theme', 'logout']), `메뉴 ${JSON.stringify(items)}`); // 10/30: 「테마」 항목
     await pg.click('[data-menu="logout"]');
     await pg.waitForSelector('[data-part="auth"][data-step="login"]', W);
     await pg.close();

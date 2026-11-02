@@ -26,6 +26,9 @@
   const classifyPath = (v) => (v.startsWith('/') ? { type: 'path' } : { error: '/ 로 시작하는 전체 경로로 써 주세요(예: /root/.ssh/)' });
   const classifyExec = (v) => (/[\s|;&>]/.test(v) ? { type: 'args' } : /^[\w.+-]{1,64}$/.test(v) ? { type: 'prog' } : { error: '프로그램 이름(예: curl)이나 명령에 들어갈 글자(예: | sh)로 써 주세요' });
   const classifyName = (v) => (/^[\w.*?\[\]:/-]+$/.test(v) ? { type: 'name' } : { error: '컨테이너 이름이나 이미지 패턴으로 써 주세요(예: pkg-*)' });
+  // DNS 질의 [10/30]: 도메인(점이 있는 이름) 또는 질의 유형(영문 1~10자 — TXT · ALL · AAAA …, 대문자로 저장)
+  const classifyDns = (v) => (HOST.test(v) ? { type: 'host' } : /^[a-z]{1,10}$/i.test(v) ? { type: 'qtype' } : { error: '도메인(예: attacker.test) 또는 질의 유형(예: TXT)으로 써 주세요' });
+  const classifyHost = (v) => (HOST.test(v) ? { type: 'host' } : { error: '도메인으로 써 주세요(예: pypi.org)' });
 
   // 칩 그룹 정의: 종류별로 「막을 값」(block) · 「허용 · 예외」(allow). type → 저장 필드
   const GROUPS = {
@@ -40,9 +43,15 @@
       block: { label: '항상 막을 곳', hint: '포트 · IP나 대역 · 도메인. 허용 목록과 상관없이 위반', classify: classifyConnect, fields: { port: 'denyPorts', cidr: 'denyCidrs', host: 'denyHosts' }, suggest: ['4444', '1337', '31337'] },
       allow: { label: '허용할 곳', hint: '하나라도 넣으면 여기 없는 곳으로 가는 연결은 모두 위반', classify: classifyConnect, fields: { port: 'allowPorts', cidr: 'allowCidrs', host: 'allowHosts' }, suggest: ['443', '80', '53', '10.0.0.0/8', 'pypi.org', 'registry.npmjs.org'] },
     },
+    // DNS 질의 [10/30 계약 §1 라벨 표] — 막을 그룹(도메인 · 질의 유형) · 허용 그룹(도메인) + 숫자 칸(라벨 · 이름 길이 상한)
+    dns: {
+      block: { label: '막을 도메인 · 질의 유형', hint: '도메인(예: attacker.test) 또는 질의 유형(TXT) — 허용 목록과 상관없이 위반', classify: classifyDns, fields: { host: 'denyHosts', qtype: 'denyQtypes' }, suggest: ['TXT', 'ALL', 'attacker.test'] },
+      allow: { label: '허용할 도메인', hint: '하나라도 넣으면 여기 없는 도메인 질의는 모두 위반 — 점 없는 이름 · *.arpa 는 제외', classify: classifyHost, fields: { host: 'allowHosts' }, suggest: ['pypi.org', 'pythonhosted.org', 'registry.npmjs.org', 'github.com'] },
+    },
   };
-  const TYPE_LABEL = { port: '포트', cidr: '대역', host: '도메인', path: '경로', prog: '프로그램', args: '명령', name: '이름' };
-  const KIND_TEXT = { open: ['파일 열기', '어떤 파일 · 폴더를 여는지 봅니다'], exec: ['프로그램 실행', '어떤 프로그램 · 명령을 실행하는지 봅니다'], connect: ['외부 통신', '어디로 연결하는지 봅니다'] };
+  const TYPE_LABEL = { port: '포트', cidr: '대역', host: '도메인', path: '경로', prog: '프로그램', args: '명령', name: '이름', qtype: '질의 유형' };
+  const KIND_TEXT = { open: ['파일 열기', '어떤 파일 · 폴더를 여는지 봅니다'], exec: ['프로그램 실행', '어떤 프로그램 · 명령을 실행하는지 봅니다'], connect: ['외부 통신', '어디로 연결하는지 봅니다'], dns: ['도메인 조회', '어떤 도메인을 조회하는지 봅니다'] };
+  const NUM_TEXT = { maxLabelLength: ['라벨 길이 상한', '1~63 · 넘는 라벨은 유출 의심 (예: 40)'], maxNameLength: ['이름 길이 상한', '1~253 · 넘는 이름은 유출 의심 (예: 120)'] };
   const ACT_TEXT = { alert: ['알림만 보내기', '컨테이너는 그대로 두고 알립니다'], kill: ['즉시 격리', '컨테이너를 바로 멈춥니다'], dry: ['시험 운영', '격리 대상으로 표시만 하고 멈추지 않습니다 — 새 정책을 먼저 써 볼 때'] };
 
   const chipsOf = (d, g) => Object.entries(g.fields).flatMap(([type, f]) => listOf(d, f).map((value) => ({ type, value, field: f })));
@@ -61,6 +70,11 @@
     else if (d.kind === 'exec') {
       const p = block.filter((c) => c.type === 'prog').map((c) => c.value), a = block.filter((c) => c.type === 'args').map((c) => `「${c.value}」`);
       what = p.length || a.length ? [p.length ? `${p.join(', ')} 를 실행하거나` : '', a.length ? `${a.join(', ')} 가 든 명령을 실행하면` : ''].filter(Boolean).join(' ').replace(/하거나$/, '하면') : null;
+    } else if (d.kind === 'dns') {
+      const nums = d.nums || {}, hosts = block.filter((c) => c.type === 'host').map((c) => c.value), qt = block.filter((c) => c.type === 'qtype').map((c) => c.value.toUpperCase());
+      const parts = [hosts.length ? `${hosts.join(', ')} 을 조회하거나` : '', qt.length ? `${qt.join(', ')} 질의를 하거나` : '', nums.maxLabelLength ? `라벨이 ${nums.maxLabelLength}자를 넘거나` : '', nums.maxNameLength ? `이름이 ${nums.maxNameLength}자를 넘거나` : '',
+        allow.length ? `허용한 도메인(${allow.map((c) => c.value).join(', ')}) 밖을 조회하거나` : ''].filter(Boolean);
+      what = parts.length ? parts.join(' ').replace(/(하|넘)거나$/, '$1면') : null;
     } else {
       const parts = [block.length ? `${fmtConn(block)} 에 연결하${allow.length ? '거나' : '면'}` : '', allow.length ? `허용한 곳(${fmtConn(allow)}) 밖으로 연결하면` : ''].filter(Boolean);
       what = parts.length ? parts.join(', ') : null;
@@ -77,6 +91,7 @@
     { key: 'reverse-shell', title: '리버스 셸 포트 차단', desc: '공격자가 흔히 쓰는 포트로 연결하면 격리', rule: { id: 'block-reverse-shell', description: '리버스 셸 포트 차단', kind: 'connect', action: 'kill', denyPorts: [4444, 1337, 31337] } },
     { key: 'egress-allow', title: '허용한 곳만 통신', desc: '웹 · DNS 포트와 내부망이 아닌 연결을 알림', rule: { id: 'egress-allow', description: '허용한 곳만 통신', kind: 'connect', action: 'alert', allowPorts: [80, 443, 53], allowCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'] } },
     { key: 'install-registry', title: '설치 중엔 패키지 저장소만', desc: '설치 검사에서 pypi · npm · crates 밖으로 연결하면 격리', rule: { id: 'install-registry-only', description: '설치 중엔 패키지 저장소만', kind: 'connect', action: 'kill', containers: [SANDBOX_SCOPE], allowHosts: ['pypi.org', 'pythonhosted.org', 'registry.npmjs.org', 'crates.io', 'github.com'] } },
+    { key: 'dns-exfil', title: 'DNS 유출 패턴 차단', desc: '긴 라벨 · 긴 이름 · TXT 질의를 알림', rule: { id: 'dns-exfil', description: 'DNS 유출 패턴 차단', kind: 'dns', action: 'alert', maxLabelLength: 40, maxNameLength: 120, denyQtypes: ['TXT'] } }, // runtime-dns-exfil 값 [10/30]
     { key: 'blank', title: '빈 정책에서 시작', desc: '무엇을 · 어떤 값을 직접 고릅니다', rule: { id: 'new-policy', description: '', kind: 'open', action: 'alert' } },
   ];
   // 이미 있는 id 면 뒤에 -2, -3 …
@@ -86,17 +101,18 @@
   // ── 이벤트 · 감사 행에서 시작 ──
   // 막기: 그 행동을 막는 새 정책 / 허용: 걸린 정책에 가장 좁은 예외(오탐 제안과 같은 규칙 — 통신은 정책에 원래 허용 도메인이 있으면 도메인, 아니면 IP/32)
   function blockLink(e) {
-    const value = e.kind === 'open' ? e.path : e.kind === 'exec' ? e.comm : e.dstHost || e.dstIp;
+    const value = e.kind === 'open' ? e.path : e.kind === 'exec' ? e.comm : e.kind === 'dns' ? e.dstHost : e.dstHost || e.dstIp;
     return value ? { href: '#/policies?id=__new__', state: { intent: 'block', kind: e.kind, value } } : null; // 미리 채우기는 상태로 [10/21b]
   }
   function allowLink(ruleId, e) {
     const r = state.rules.find((x) => x.id === ruleId);
     if (!r || r.kind === 'exec' || ruleId === window.MOCK.SYSTEM_RULE) return null;
+    if (r.kind === 'dns') return e.dstHost && (r.allowHosts || []).length ? { href: `#/policies?id=${encodeURIComponent(ruleId)}`, state: { intent: 'allow', value: e.dstHost } } : null; // 허용 도메인이 있는 dns 규칙만 [10/30]
     const value = e.kind === 'open' ? e.path : e.dstHost && (r.allowHosts || []).length ? e.dstHost : `${e.dstIp}/32`;
     return value ? { href: `#/policies?id=${encodeURIComponent(ruleId)}`, state: { intent: 'allow', value } } : null;
   }
   function ruleFromBlock(kind, value) {
-    const base = { open: { id: 'block-file', denyPaths: [value] }, exec: { id: 'block-program', denyComms: [value] }, connect: { id: 'block-destination' } }[kind];
+    const base = { open: { id: 'block-file', denyPaths: [value] }, exec: { id: 'block-program', denyComms: [value] }, connect: { id: 'block-destination' }, dns: { id: 'block-domain-query', denyHosts: [value] } }[kind];
     const r = Object.assign({ description: `${value} 막기`, kind, action: 'kill' }, base, { id: uniqueId(base.id) });
     if (kind === 'connect') { const c = classifyConnect(value); r[c.type === 'host' ? 'denyHosts' : 'denyCidrs'] = [c.type === 'host' ? value : value.includes('/') ? value : `${value}/32`]; }
     return r;
@@ -148,8 +164,10 @@
     const idErr = h('p', { class: 'chip-error', hidden: /^[a-z0-9][a-z0-9-]*$/.test(d.id || '') }, '영문 소문자 · 숫자 · 하이픈(-)만 쓸 수 있습니다');
     return h('div', { class: 'easy' },
       step('what', '1', '무엇을 감시할까요?', radios('easy-kind', Object.entries(KIND_TEXT), d.kind, (v) => { d.kind = v; ctx.rerender(); })),
-      step('values', '2', d.kind === 'open' ? '어떤 파일인가요?' : d.kind === 'exec' ? '어떤 프로그램 · 명령인가요?' : '어디로 가는 연결인가요?',
-        chipGroup('block', g.block), g.allow ? chipGroup('allow', g.allow) : h('p', { class: 'small muted' }, '실행 정책에는 예외 목록이 없습니다 — 예외가 필요하면 ④ 에서 적용할 컨테이너를 좁히세요.')),
+      step('values', '2', d.kind === 'open' ? '어떤 파일인가요?' : d.kind === 'exec' ? '어떤 프로그램 · 명령인가요?' : d.kind === 'dns' ? '어떤 도메인 · 질의인가요?' : '어디로 가는 연결인가요?',
+        chipGroup('block', g.block), g.allow ? chipGroup('allow', g.allow) : h('p', { class: 'small muted' }, '실행 정책에는 예외 목록이 없습니다 — 예외가 필요하면 ④ 에서 적용할 컨테이너를 좁히세요.'),
+        d.kind === 'dns' ? h('div', { class: 'two easy-nums', 'data-part': 'dns-limits' }, Object.entries(NUM_TEXT).map(([f, [label, hint]]) => h('label', { class: 'field' }, h('span', null, h('b', null, label), h('small', { class: 'muted' }, ' ' + hint)),
+          h('input', { type: 'number', class: 'ctl num', 'data-field': f, min: 1, max: f === 'maxLabelLength' ? 63 : 253, placeholder: '비우면 조건 없음', value: (d.nums || {})[f] || '', oninput: (e) => { if (!d.nums) d.nums = {}; d.nums[f] = e.target.value; changed(); } })))) : null),
       step('action', '3', '걸리면 어떻게 할까요?', radios('easy-act', Object.entries(ACT_TEXT), actOf(d), (v) => { d.action = v === 'alert' ? 'alert' : 'kill'; d.dryRun = v === 'dry'; ctx.rerender(); }),
         state.info.enforceKill === false ? h('p', { class: 'note-box' }, '지금 서버의 자동 격리가 꺼져 있어 「즉시 격리」도 알림만 갑니다 — ', h('a', { href: '#/settings', class: 'link' }, '설정 › 서버 설정'), ' 참고') : null),
       step('scope', '4', '어디에 적용할까요?', radios('easy-scope', [['all', ['모든 컨테이너', '운영 중인 컨테이너와 설치 검사 모두']], ['sandbox', ['설치 검사에서만', '패키지를 시험 설치하는 감시 컨테이너']], ['some', ['지정한 컨테이너만', '이름이나 이미지 패턴으로 고릅니다']]], scope, (v) => {
@@ -192,7 +210,7 @@
         row('watch', '감시 범위', watch.length ? watch.join(', ') : '모든 컨테이너', 'WATCH_CONTAINERS', '이 범위의 컨테이너만 평가 · 격리합니다'),
         row('ignore', '제외', ignore.length ? ignore.join(', ') : '없음', 'IGNORE_CONTAINERS', 'SupplyGuard 자신처럼 보지 않을 컨테이너'),
         row('discovery', '컨테이너 발견 방식', disc === 'fanotify' ? 'fanotify — 시작 순간부터 추적' : disc === 'docker-events' ? 'docker-events' : '미확인', 'CONTAINER_DISCOVERY', disc === 'docker-events' ? (i.discoveryNote || '컨테이너 시작 직후 약 0.1초 안의 동작은 놓칠 수 있습니다') : disc === 'fanotify' ? '컨테이너 런타임을 커널에서 바로 봅니다' : '가젯이 아직 시작되지 않았거나 mock 소스입니다'),
-        row('dns', '도메인 판단', dns === 'off' ? h('span', { class: 'tone-warn' }, '꺼짐 — 도메인 규칙 통과') : dns === 'ok' ? '켜짐 (trace_dns)' : '미확인', '', dns === 'off' ? 'trace_dns 가 뜨지 않아 allowHosts · denyHosts · 차단 도메인이 통과 처리됩니다. IP · 포트 규칙만 동작합니다' : '같은 컨테이너의 DNS 응답으로 목적지 도메인을 알아냅니다. 도메인 없이 IP 로 바로 붙으면 「직접 IP 연결」로 봅니다'),
+        row('dns', '도메인 판단', dns === 'off' ? h('span', { class: 'tone-warn' }, '꺼짐 — 도메인 규칙 통과') : dns === 'ok' ? '켜짐 (trace_dns)' : '미확인', '', dns === 'off' ? 'trace_dns 가 뜨지 않아 allowHosts · denyHosts · 차단 도메인과 DNS 질의 규칙(kind: dns)이 통과 처리됩니다. IP · 포트 규칙만 동작합니다' : '같은 컨테이너의 DNS 응답으로 목적지 도메인을 알아냅니다. 도메인 없이 IP 로 바로 붙으면 「직접 IP 연결」로 봅니다'),
         notifyRow(i.notify),
         h('p', { class: 'small muted ss-how' }, '바꾸는 방법: 서버의 .env 에서 위 값을 고친 뒤 백엔드를 다시 시작하세요. 화면에서는 바꾸지 않습니다 — 범위를 잘못 넓히면 다른 컨테이너가 격리될 수 있습니다.'));
     }

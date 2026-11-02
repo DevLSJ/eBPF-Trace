@@ -51,9 +51,10 @@ const num = (s) => Number(String(s).replace(/[^\d]/g, ''));
 
   await T('2 숫자 칸 = API 값: 수집(종류별 합 = 전체) · 위반(격리 + 경고) · 격리한 컨테이너 · 설치 검사 · 판정', async () => {
     const pg = await newPage();
+    await pg.emulateMedia({ reducedMotion: 'reduce' }); // 11/02: 카운트업(600ms) 중간값을 읽지 않게 — 계약 §7 reduced-motion 이면 바로 쓴다
     await go(pg, '/');
     const s = await summary(pg, '24h');
-    ok(s.collected.total > 0 && s.collected.byKind.exec + s.collected.byKind.open + s.collected.byKind.connect === s.collected.total, `수집 ${JSON.stringify(s.collected.byKind)} / ${s.collected.total}`);
+    ok(s.collected.total > 0 && s.collected.byKind.exec + s.collected.byKind.open + s.collected.byKind.connect + (s.collected.byKind.dns || 0) === s.collected.total, `수집 ${JSON.stringify(s.collected.byKind)} / ${s.collected.total}`); // 10/30: 조회(dns)도 전체에 포함(계약 §1)
     ok(s.violations.killed + s.violations.alert + s.violations.held === s.violations.total, `위반 ${JSON.stringify(s.violations)}`);
     ok(await kpi(pg, 'collected') === s.collected.total, `수집 칸 ${await kpi(pg, 'collected')} / ${s.collected.total}`);
     ok(await kpi(pg, 'violations') === s.violations.total, '위반 칸');
@@ -71,7 +72,7 @@ const num = (s) => Number(String(s).replace(/[^\d]/g, ''));
     ok(await pg.locator(`${OV} [data-chart="collected"] [data-bucket]`).count() === 24, `수집 칸 ${await pg.locator(`${OV} [data-chart="collected"] [data-bucket]`).count()}`);
     ok(await pg.locator(`${OV} [data-chart="violations"] [data-bucket]`).count() === 24, '위반 칸');
     const kinds = await pg.$$eval(`${OV} [data-chart="collected"] rect[data-kind]`, (els) => [...new Set(els.map((e) => e.dataset.kind))].sort());
-    ok(JSON.stringify(kinds) === JSON.stringify(['connect', 'exec', 'open']), `종류 ${JSON.stringify(kinds)}`);
+    ok(JSON.stringify(kinds) === JSON.stringify(['connect', 'dns', 'exec', 'open']), `종류 ${JSON.stringify(kinds)}`); // 10/30: 조회(dns) 조각 추가
     const legend = await pg.textContent(`${OV} [data-chart="violations"]`);
     ok(legend.includes('격리') && legend.includes('경고'), '위반 범례');
     await pg.close();

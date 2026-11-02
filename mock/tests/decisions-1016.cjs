@@ -60,7 +60,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     const ov = await pg.$eval('[data-section="overview"]', (e) => e.getBoundingClientRect().top);
     ok(ov > pend.top + 60, `종합 ${ov} 는 판정 대기 아래여야 함`);
     const keys = await pg.$$eval('[data-section="overview"] [data-kpi]', (els) => els.map((e) => e.dataset.kpi));
-    ok(JSON.stringify(keys) === JSON.stringify(['collected', 'violations', 'isolated', 'installs', 'decided']), `종합 칸 ${JSON.stringify(keys)}`);
+    ok(JSON.stringify(keys) === JSON.stringify(['collected', 'violations', 'isolated', 'installs', 'decided', 'isolation']), `종합 칸 ${JSON.stringify(keys)}`); // 10/30: 격리 지연 중앙값 칸
     const rules = await pg.textContent('[data-case][data-source="install"] [data-rules]');
     ok(rules.includes('pipe-to-shell') && rules.includes('reverse-shell-ports'), `걸린 규칙 "${rules}"`);
     const badge = await pg.textContent('[data-nav-badge]');

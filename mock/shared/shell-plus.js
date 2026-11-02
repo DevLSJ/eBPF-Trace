@@ -131,11 +131,25 @@
     apply();
   }
 
+  // ── 768 미만: 사이드바 서랍 [10/30 계약 §7] — 메뉴 버튼(☰) · 배경 dim · Esc · 화면 이동 · 링크 클릭으로 닫힘 ──
+  function drawer(shell, btn) {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const dim = h('div', { class: 'drawer-dim', 'data-part': 'drawer-dim', hidden: true });
+    shell.append(dim);
+    const set = (open) => { shell.classList.toggle('drawer-open', open); dim.hidden = !open; btn.setAttribute('aria-expanded', String(open)); btn.setAttribute('aria-label', open ? '메뉴 닫기' : '메뉴 열기'); };
+    btn.addEventListener('click', () => set(!shell.classList.contains('drawer-open')));
+    dim.addEventListener('click', () => set(false));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && shell.classList.contains('drawer-open')) { set(false); btn.focus(); } });
+    window.addEventListener('hashchange', () => set(false));
+    shell.querySelector('.sidebar').addEventListener('click', (e) => { if (mq.matches && e.target.closest('a.nav-link, a.brand, .sr-item')) set(false); });
+    mq.addEventListener('change', () => { if (!mq.matches) set(false); });
+  }
   U.whenReady(() => {
     const sh = U.shellEl;
     bellCenter(sh.querySelector('[data-part="bell-wrap"]'));
     searchBox(sh.querySelector('[data-part="search"]'));
     collapser(sh, sh.querySelector('[data-action="collapse"]'));
+    drawer(sh, sh.querySelector('[data-action="menu"]'));
   });
   U.notices = notices;
 })();

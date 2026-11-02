@@ -300,12 +300,19 @@
   function headerEl() {
     const chip = h('span', { class: 'lic-chip', 'data-part': 'license-chip' });
     const btn = h('button', { type: 'button', class: 'btn btn-ghost btn-xs acct', 'data-part': 'account', 'aria-haspopup': 'menu', 'aria-expanded': 'false' });
+    const T = window.SG_THEME;
+    const themeBox = h('div', { class: 'theme-box', 'data-part': 'theme-box', role: 'radiogroup', 'aria-label': '테마', hidden: true }, ['system', 'light', 'dark'].map((k) => h('button', { type: 'button', role: 'radio', 'data-theme-pick': k, 'aria-checked': 'false', onclick: (e) => { e.stopPropagation(); if (T) T.set(k); syncTheme(); } }, T ? T.LABEL[k] : k)));
+    const syncTheme = () => { const pref = T ? T.get() : 'system'; for (const b of themeBox.querySelectorAll('[data-theme-pick]')) { const on = b.dataset.themePick === pref; b.setAttribute('aria-checked', String(on)); b.classList.toggle('on', on); } const cur = menu.querySelector('[data-part="theme-current"]'); if (cur) cur.textContent = T ? `${T.LABEL[pref]}${pref === 'system' ? ` (${T.resolved() === 'dark' ? '다크' : '라이트'})` : ''}` : ''; };
     const menu = h('div', { class: 'menu', 'data-part': 'account-menu', role: 'menu', hidden: true },
       h('button', { type: 'button', role: 'menuitem', 'data-menu': 'profile', onclick: () => { closeMenu(); profile(); } }, '내 정보'),
       h('button', { type: 'button', role: 'menuitem', 'data-menu': 'password', onclick: () => { closeMenu(); changePassword(); } }, '비밀번호 변경'),
+      // 테마 [10/30 계약 §7] — 시스템 · 라이트 · 다크, localStorage supplyguard.theme(theme.js)
+      h('button', { type: 'button', role: 'menuitem', 'data-menu': 'theme', 'aria-haspopup': 'true', 'aria-expanded': 'false', onclick: (e) => { e.stopPropagation(); themeBox.hidden = !themeBox.hidden; e.currentTarget.setAttribute('aria-expanded', String(!themeBox.hidden)); if (!themeBox.hidden) themeBox.querySelector('[aria-checked="true"]').focus(); } }, h('span', null, '테마'), h('span', { class: 'small muted', 'data-part': 'theme-current' }, '')),
+      themeBox,
       h('button', { type: 'button', role: 'menuitem', 'data-menu': 'logout', onclick: () => { closeMenu(); logout(); } }, '로그아웃'));
-    const closeMenu = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
-    btn.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute('aria-expanded', String(!menu.hidden)); if (!menu.hidden) menu.querySelector('button').focus(); });
+    const closeMenu = () => { menu.hidden = true; themeBox.hidden = true; const tb = menu.querySelector('[data-menu="theme"]'); if (tb) tb.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-expanded', 'false'); };
+    btn.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute('aria-expanded', String(!menu.hidden)); if (!menu.hidden) { syncTheme(); menu.querySelector('button').focus(); } });
+    document.addEventListener('sg:theme', syncTheme);
     document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) closeMenu(); });
     menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); btn.focus(); } });
     const root2 = h('span', { class: 'acct-wrap' }, chip, h('span', { class: 'menu-anchor' }, btn, menu));
@@ -314,7 +321,7 @@
       const l = a.license; chip.textContent = a.noAuth ? '인증 없음' : licenseText(l);
       chip.className = `lic-chip ${a.noAuth ? '' : licenseTone(l)}`; // 30일 이하 노랑 · 만료 빨강 [10/20 결정 3]
       chip.title = l ? `${l.keyMasked} · 만료 ${fmt.dateTime(l.expiresAt)}` : '';
-      btn.textContent = `👤 ${a.user.displayName} · ${ROLE_KO[a.user.role] || a.user.role} ▾`;
+      replace(btn, h('span', { class: 'acct-icon', 'aria-hidden': true }, '👤'), h('span', { class: 'acct-name' }, ` ${a.user.displayName} · ${ROLE_KO[a.user.role] || a.user.role} ▾`)); btn.setAttribute('aria-label', `${a.user.displayName} · ${ROLE_KO[a.user.role] || a.user.role} 계정 메뉴`); // 768 미만은 아이콘만 [10/30]
       menu.querySelector('[data-menu="password"]').hidden = !!a.noAuth; menu.querySelector('[data-menu="logout"]').hidden = !!a.noAuth;
     };
     return root2;

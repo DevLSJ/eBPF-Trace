@@ -77,8 +77,11 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
     ok((await pg.textContent('[data-section="pending"]')).includes('처리할 일 없음'), '「처리할 일 없음」 없음');
     const tops = await pg.$$eval('.dash > *', (els) => els.map((e) => [e.getAttribute('data-section') || e.querySelector('[data-section]')?.getAttribute('data-section'), e.getBoundingClientRect().top, e.getBoundingClientRect().left]));
     const pending = await pg.$eval('[data-section="pending"]', (el) => [el.getBoundingClientRect().top, el.getBoundingClientRect().left]);
-    const others = await pg.$$eval('.dash [data-section]:not([data-section="pending"]), .dash [data-card]', (els) => els.map((e) => e.getBoundingClientRect().top));
+    // 10/30: 판정 대기 위에는 상태 신호등 한 줄 · 시연 카드(관리자 · demo)만 — 그 밖(종합)은 아래(계약 §4 · §5)
+    const others = await pg.$$eval('.dash [data-section]:not([data-section="pending"]):not([data-section="demo"]), .dash [data-card]', (els) => els.map((e) => e.getBoundingClientRect().top));
     ok(others.every((t) => t >= pending[0] - 1), `판정 대기가 첫 줄이 아님 ${JSON.stringify(tops)}`);
+    const above = await pg.$$eval('.dash > *', (els) => els.map((e) => e.getAttribute('data-section') || e.getAttribute('data-part')));
+    ok(JSON.stringify(above.slice(0, 3)) === JSON.stringify(['signals', 'demo', 'pending']), `위 순서 ${JSON.stringify(above)}`); // 10/30
     await pg.close();
   });
   await T('1 대시보드: 오늘 요약 + 「감시 중」 분당 위반 막대 카드', async () => {
