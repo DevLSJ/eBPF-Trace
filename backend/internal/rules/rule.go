@@ -44,6 +44,12 @@ type Rule struct {
 	// "" = 옛 동작(allowHosts 가 있으면 fail-open) | allow = 통과 | alert · kill = 위반, 이 값이 규칙의 action 을 덮어쓴다.
 	// trace_dns 가 꺼져 있으면(DNSTraced=false) 판단할 수 없으므로 언제나 fail-open 이다. connect 규칙에서만 의미가 있다.
 	DirectIP string `yaml:"directIp,omitempty" json:"directIp,omitempty"`
+
+	// dns(10/30) — 질의 이름은 allowHosts · denyHosts(접미사 일치, connect 와 같은 함수)로, 질의 유형은 denyQtypes(대문자)로,
+	// 유출 패턴은 라벨 · 이름 길이 상한으로 본다. dns 규칙에서만 쓰고, dns 규칙에는 포트 · 대역 · directIp 를 쓰지 않는다.
+	DenyQtypes     []string `yaml:"denyQtypes,omitempty" json:"denyQtypes,omitempty"`
+	MaxNameLength  int      `yaml:"maxNameLength,omitempty" json:"maxNameLength,omitempty"`   // 1..253
+	MaxLabelLength int      `yaml:"maxLabelLength,omitempty" json:"maxLabelLength,omitempty"` // 1..63
 }
 
 // DirectIP 값
@@ -64,6 +70,15 @@ func HostMatches(pattern, host string) bool {
 
 var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
+// qtypePattern: denyQtypes 값 — IG 열거 그대로 대문자(A · AAAA · TXT · ALL …)
+var qtypePattern = regexp.MustCompile(`^[A-Z][A-Z0-9]{0,15}$`)
+
+// DNS 이름 길이 상한(RFC 1035): 이름 253자 · 라벨 63자
+const (
+	MaxDNSName  = 253
+	MaxDNSLabel = 63
+)
+
 // Validate: 저장 전에 규칙이 평가 가능한지 확인한다.
 func (r Rule) Validate() error {
 	var errs []error
@@ -71,7 +86,7 @@ func (r Rule) Validate() error {
 		errs = append(errs, fmt.Errorf("id %q: 소문자·숫자·하이픈 1~63자", r.ID))
 	}
 	if !r.Kind.Valid() {
-		errs = append(errs, fmt.Errorf("kind %q: exec | open | connect", r.Kind))
+		errs = append(errs, fmt.Errorf("kind %q: exec | open | connect | dns", r.Kind))
 	}
 	if !r.Action.Valid() {
 		errs = append(errs, fmt.Errorf("action %q: alert | kill", r.Action))
@@ -96,6 +111,25 @@ func (r Rule) Validate() error {
 	default:
 		errs = append(errs, fmt.Errorf("directIp %q: allow | alert | kill (또는 비움)", r.DirectIP))
 	}
+	for _, q := range r.DenyQtypes {
+		if !qtypePattern.MatchString(q) {
+			errs = append(errs, fmt.Errorf("denyQtypes %q: 대문자 질의 유형(A · AAAA · TXT · ALL …)", q))
+		}
+	}
+	if r.MaxNameLength < 0 || r.MaxNameLength > MaxDNSName {
+		errs = append(errs, fmt.Errorf("maxNameLength %d: 1~%d", r.MaxNameLength, MaxDNSName))
+	}
+	if r.MaxLabelLength < 0 || r.MaxLabelLength > MaxDNSLabel {
+		errs = append(errs, fmt.Errorf("maxLabelLength %d: 1~%d", r.MaxLabelLength, MaxDNSLabel))
+	}
+	dnsOnly := len(r.DenyQtypes) + r.MaxNameLength + r.MaxLabelLength
+	if r.Kind == model.KindDNS {
+		if len(r.AllowPorts)+len(r.AllowCIDRs)+len(r.DenyPorts)+len(r.DenyCIDRs) > 0 || r.DirectIP != "" {
+			errs = append(errs, fmt.Errorf("dns 규칙에는 포트 · 대역 · directIp 조건을 쓸 수 없음"))
+		}
+	} else if dnsOnly != 0 {
+		errs = append(errs, fmt.Errorf("denyQtypes · maxNameLength · maxLabelLength 는 dns 규칙에서만"))
+	}
 	var conds int
 	switch r.Kind {
 	case model.KindExec:
@@ -106,6 +140,14 @@ func (r Rule) Validate() error {
 		conds = len(r.AllowPorts) + len(r.AllowCIDRs) + len(r.DenyPorts) + len(r.DenyCIDRs) + len(r.AllowHosts) + len(r.DenyHosts)
 		if r.DirectIP != "" {
 			conds++ // 직접 IP 연결 처리 자체가 조건 하나
+		}
+	case model.KindDNS:
+		conds = len(r.AllowHosts) + len(r.DenyHosts) + len(r.DenyQtypes)
+		if r.MaxNameLength > 0 {
+			conds++
+		}
+		if r.MaxLabelLength > 0 {
+			conds++
 		}
 	}
 	if r.Kind.Valid() && conds == 0 {

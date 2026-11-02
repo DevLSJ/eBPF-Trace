@@ -2,6 +2,7 @@
 package rules
 
 import (
+	"fmt"
 	"net/netip"
 	"path"
 	"slices"
@@ -129,8 +130,69 @@ func (r compiled) match(ev model.Event) (string, model.Action, bool) {
 		return reason, "", ok
 	case model.KindConnect:
 		return r.matchConnect(ev)
+	case model.KindDNS:
+		reason, ok := r.matchDNS(ev)
+		return reason, "", ok
 	}
 	return "", "", false
+}
+
+// matchDNS(10/30): ① denyHosts → ② allowHosts(통과) → ③ denyQtypes → ④ 라벨 길이 → ⑤ 이름 길이 → ⑥ allowHosts 가 있는데 일치 안 함.
+// ⑥ 에서 점 없는 이름 · *.arpa · *.local · *.internal 은 뺀다. 포트 · 대역 · directIp 는 dns 에 적용하지 않는다.
+func (r compiled) matchDNS(ev model.Event) (string, bool) {
+	name := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(ev.DstHost), "."))
+	if name == "" {
+		return "", false
+	}
+	qtype := strings.ToUpper(strings.TrimSpace(ev.Qtype))
+	label := model.DNSDetail(name, qtype)
+	for _, h := range r.DenyHosts {
+		if HostMatches(h, name) {
+			return "금지 도메인 질의: " + label, true
+		}
+	}
+	for _, h := range r.AllowHosts {
+		if HostMatches(h, name) {
+			return "", false
+		}
+	}
+	if qtype != "" && slices.Contains(r.DenyQtypes, qtype) {
+		return "금지 질의 유형: " + qtype + " — " + name, true
+	}
+	if r.MaxLabelLength > 0 {
+		if n := longestLabel(name); n > r.MaxLabelLength {
+			return fmt.Sprintf("긴 DNS 라벨(유출 의심): %s (라벨 %d자 > %d)", name, n, r.MaxLabelLength), true
+		}
+	}
+	if r.MaxNameLength > 0 && len(name) > r.MaxNameLength {
+		return fmt.Sprintf("긴 DNS 이름(유출 의심): %s (%d자 > %d)", name, len(name), r.MaxNameLength), true
+	}
+	if len(r.AllowHosts) > 0 && !dnsAllowlistExempt(name) {
+		return "허용 목록 밖 도메인 질의: " + label, true
+	}
+	return "", false
+}
+
+// longestLabel: 점으로 나눈 라벨 중 가장 긴 것의 길이
+func longestLabel(name string) int {
+	n := 0
+	for _, l := range strings.Split(name, ".") {
+		n = max(n, len(l))
+	}
+	return n
+}
+
+// dnsAllowlistExempt: 허용 목록 밖 판정에서 빼는 이름 — 점 없는 단일 라벨(컨테이너 · 호스트 이름) · 역조회(*.arpa) · mDNS(*.local) · 사내(*.internal)
+func dnsAllowlistExempt(name string) bool {
+	if !strings.Contains(name, ".") {
+		return true
+	}
+	for _, s := range []string{".arpa", ".local", ".internal"} {
+		if strings.HasSuffix(name, s) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r compiled) matchExec(ev model.Event) (string, bool) {
