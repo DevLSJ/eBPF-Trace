@@ -140,6 +140,8 @@ if n == 0:
         unknown("위반 0건인데 판정이 %r 입니다" % status)
     print("\n[OK] 위반 없음 — 설치 %s (종료 코드 %d)" % (done, code)); sys.exit(0 if code == 0 else 1)
 def detail(e):
+    if e.get("kind") == "dns":  # DNS 질의(kind: dns) — "<도메인> (<질의 유형>)" (백엔드 Detail() · 화면 detailOf 와 같은 모양)
+        return "%s (%s)" % (e.get("dstHost", ""), e.get("qtype", ""))
     return e.get("args") or e.get("path") or ("%s:%s%s" % (e.get("dstIp"), e.get("dstPort"), " (%s)" % e["dstHost"] if e.get("dstHost") else ""))
 vs = r.get("violations") or []
 killed = status == "isolated" or any(v.get("enforced") for v in vs)

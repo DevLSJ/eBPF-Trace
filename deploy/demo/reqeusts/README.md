@@ -10,7 +10,8 @@
 | `revshell` | `203.0.113.7:4444` TCP 접속 시도 (리버스 셸 포트) |
 | `direct-ip` | DNS 조회 없이 `203.0.113.7:443` TCP 접속 (IP 직접 유출) |
 | `domain` | IANA 예약 도메인 `example.com:443` 접속 — 차단 목록에 올리면 `blocklist-hosts`, 올리기 전엔 정상 통과 |
-| `udp` | `203.0.113.7:53`·`:4444` UDP 데이터그램 2개 — 엔진이 TCP 만 보므로 **음성 대조군(미탐)** |
+| `dns-exfil` | 48자 hex 라벨 `….exfil.example` A 질의 + `data.exfil.example` TXT 질의 — 예약 TLD 라 NXDOMAIN, 데이터는 나가지 않음(런타임 `runtime-dns-exfil` 경고 · 샌드박스 `sandbox-dns` 격리 대상) |
+| `udp` | `203.0.113.7:53`·`:4444` UDP 데이터그램 2개 — 엔진은 TCP 와 DNS(53 · 5353)만 보므로 일반 UDP 는 **음성 대조군(미탐)** |
 
 시나리오는 `SG_DEMO_SCENARIOS`(쉼표 구분, 기본 `all`, 순서 유지)로 고른다. 각 시나리오는 시작 전에
 `[demo] <id> start` 를 찍는다.
@@ -22,7 +23,7 @@
 ```bash
 make sandbox-up                          # 가젯 소스 백엔드를 :8000 에 띄운다
 tools/sg-install pip ./deploy/demo/reqeusts
-# 특정 시나리오만: SG_DEMO_SCENARIOS=direct-ip,udp tools/sg-install pip ./deploy/demo/reqeusts
+# 특정 시나리오만: SG_DEMO_SCENARIOS=direct-ip,dns-exfil,udp tools/sg-install pip ./deploy/demo/reqeusts
 ```
 
 정책에 걸려 컨테이너가 SIGKILL 로 격리되고, `sg-install` 이 위반 목록을 출력하며 종료 코드 2 로 끝난다.

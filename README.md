@@ -1,12 +1,12 @@
 # SupplyGuard — eBPF 기반 오픈소스 공급망 공격 런타임 탐지 플랫폼
 
 캡스톤디자인 프로젝트. 정적 분석(SCA)이 놓치는 **런타임 악성 행위**를 커널 단에서 잡는다.
-오픈소스 패키지를 설치하거나 컨테이너에서 실행하는 순간 `execve`·`openat`·`connect` 를
+오픈소스 패키지를 설치하거나 컨테이너에서 실행하는 순간 `execve`·`openat`·`connect` 와 DNS 질의(`trace_dns`, `RESOLVE_DNS=true`)를
 [Inspektor Gadget](https://inspektor-gadget.io) 가젯(eBPF)으로 가로채, YAML 정책과 비교해
 위반이면 증거를 남기고 컨테이너를 **강제 종료(격리)** 한다. 결과는 WebSocket 으로 React 대시보드에 실시간 스트리밍된다.
 
 ```
-커널 syscall → IG 가젯(eBPF) → Go ingestion(컨테이너 발견 auto) → 규칙 평가
+커널 syscall → IG 가젯(eBPF: exec·open·connect + trace_dns) → Go ingestion(컨테이너 발견 auto) → 규칙 평가
    → (위반) 증거 수집(≤0.7초) → Docker kill + 웹훅/Slack 알림
    → Redis 버퍼 → WebSocket → React 대시보드 · PostgreSQL 감사 로그
 REST · WS 앞: 로그인(쿠키 세션 · 역할 · OTP) — CLI 는 Bearer ADMIN_TOKEN, sg-install 은 SANDBOX_TOKEN
@@ -21,7 +21,7 @@ REST · WS 앞: 로그인(쿠키 세션 · 역할 · OTP) — CLI 는 Bearer ADM
 | 목업 | 정적 HTML 대시보드 — 화면 · 흐름을 먼저 확정하는 곳(React 가 기준) | `mock/` |
 | 문서 | 개발 계획 · 결정 · 아키텍처 · API 계약 · 진행 기록 | Claude Docs (아래 「문서」) |
 
-화면: 대시보드(판정 대기 · eBPF 수집 종합) · 설치 검사 · 공급망 검사 · 이벤트 · 토폴로지 · 정책 · 감사 로그 · 설정(서버 · 계정 · 라이선스 · 인증 감사),
+화면: 대시보드(상태 신호등 · 시연 · 판정 대기 · eBPF 수집 종합) · 설치 검사 · 공급망 검사 · 이벤트 · 토폴로지 · 정책 · 감사 로그 · 설정(서버 · 계정 · 라이선스 · 인증 감사) · 건 보고서(`#/report`),
 우측 하단 도우미(대응 가이드 · AI 도우미).
 
 ## 빠른 시작 (로컬, 커널 없이)
@@ -46,8 +46,8 @@ make stack-down
 ## 설치 샌드박스 — 패키지를 감시 컨테이너에서 설치
 
 개발자 PC 에 오픈소스 패키지를 바로 깔지 않고, SupplyGuard 가 커널에서 감시하는 일회용 컨테이너 안에서 설치한다.
-설치 스크립트가 외부 스크립트를 실행하거나 자격 증명 파일을 읽거나 레지스트리·GitHub 밖으로 접속(도메인 조회 없는 IP 직접 연결 포함)하면
-설치가 끝나기 전에 격리된다.
+설치 스크립트가 외부 스크립트를 실행하거나 자격 증명 파일을 읽거나 레지스트리·GitHub 밖으로 접속(도메인 조회 없는 IP 직접 연결 포함)하거나
+허용 목록 밖 도메인을 DNS 로 질의하면(`kind: dns`) 설치가 끝나기 전에 격리된다.
 
 ```bash
 make sandbox-up                               # 가젯 백엔드 :8000 (WATCH_CONTAINERS=sg-install-*)
@@ -57,7 +57,8 @@ make sandbox-down
 ```
 
 종료 코드: 0 통과 · 1 설치 실패 · 2 위반 · 3 차단 목록이라 거부 · 4 결과 확인 불가(통과로 보지 않음) · 69 연결 실패 · 77 토큰 거부.
-데모 공격 시나리오(`deploy/demo/README.md`): `SCENARIO=all|shell|revshell|direct-ip|domain|udp bash deploy/demo/run-attacker.sh`.
+데모 공격 시나리오(`deploy/demo/README.md`): `SCENARIO=all|shell|revshell|direct-ip|domain|dns-exfil|udp bash deploy/demo/run-attacker.sh`.
+시연 패널: `DEMO_ENABLED=true`(`make dev` 는 켜져 있음, 운영은 끈다)면 관리자가 대시보드 「시연」 카드에서 같은 데모 패키지를 감시 컨테이너에 설치해 컨테이너 시작 → 위반 → 격리 → 판정 대기까지 단계 레일로 본다.
 
 ## 운영 배포 (EC2 · VM, 실제 eBPF)
 
@@ -94,6 +95,8 @@ CI/CD(`.github/workflows/ci-cd.yml`): PR/푸시마다 `go vet`·`go test -race`�
 | `runtime-direct-ip` | connect | alert | 도메인 조회 없이 공인 IP 로 바로 나가는 연결(`directIp`) |
 | `sandbox-egress` | connect | kill | (sg-install-* 만) 레지스트리·GitHub 외 도메인 + IP 직접 연결 |
 | `sandbox-secrets` | open | kill | (sg-install-* 만) `~/.ssh`·`~/.aws`·`.npmrc`·`.pypirc` 등 |
+| `runtime-dns-exfil` | dns | alert | DNS 질의로 데이터를 실어 보내는 패턴 — 라벨 40자 · 이름 120자 초과, `TXT` 질의 |
+| `sandbox-dns` | dns | kill(dryRun) | (sg-install-* 만) 레지스트리·GitHub 외 도메인 질의, 라벨 40자 초과 — sg-vm 실측 전까지 시험 운영 |
 
 ## API
 
@@ -110,11 +113,12 @@ CLI · 자동화는 `Authorization: Bearer $ADMIN_TOKEN`(관리자, 처리자 �
 | 공급망 검사 | `POST /api/scans`(패키지 · GitHub 주소(tree · commit · tag · 하위 경로) · 파일) · `GET /api/scans*` · `POST /api/scans/{id}/block` |
 | 인증 · 계정 | `/api/auth/{login,me,password,license,otp/enroll,otp/enroll/confirm,otp,logout}` · `GET/PUT /api/license` · `/api/users*` · `GET /api/auth/audit` |
 | 알림 · AI | `POST /api/notify/test` · `POST /api/chat`(SSE) |
+| 시연 · 보고서 | `GET /api/demo` · `POST /api/demo/run {scenario}`(`DEMO_ENABLED=true` 일 때만, 관리자) · 대시보드 `#/report?case=<id>` · `#/report?install=<id>`(건 보고서 1장 — 인쇄 · Markdown 복사) |
 
 ## 검증
 
 ```bash
-cd backend && go vet ./... && GOOS=linux go vet ./... && go test -race ./...
+cd backend && test -z "$(gofmt -l .)" && go vet ./... && GOOS=linux go vet ./... && go test -race ./...
 cd frontend && npm run lint && npm run build && npx playwright test
 ```
 
