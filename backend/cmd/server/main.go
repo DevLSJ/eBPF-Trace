@@ -18,6 +18,7 @@ import (
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/auth"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/chat"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/config"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/demo"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/dockerapi"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/enforcer"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/evidence"
@@ -123,10 +124,12 @@ func run() error {
 	var onInstallStart func(model.InstallSession)
 	var dnsTraced func() bool   // trace_dns 가 지금 돌고 있는지 (/api/info dnsResolve)
 	var discovery func() string // 실제로 쓰이는 컨테이너 발견 방식 (/api/info discovery, mock 은 nil)
+	var demoSim demo.Simulator  // mock 소스의 시연 재생(10/30). 가젯 소스는 nil → Docker 로 컨테이너를 띄운다
 	switch cfg.EventSource {
 	case "mock":
 		m := ingestion.NewMock()
 		source, enf, onInstallStart, dnsTraced = m, m, m.SimulateInstall, m.DNSTraced
+		demoSim = m
 	default:
 		g := &ingestion.Gadget{Kinds: cfg.Gadgets, ContainerName: cfg.ContainerName, Discovery: cfg.ContainerDiscovery, DockerHost: cfg.DockerHost, ResolveDNS: cfg.ResolveDNS}
 		source, dnsTraced, discovery = g, g.DNSTraced, g.ActiveDiscovery
@@ -174,6 +177,22 @@ func run() error {
 		return fmt.Errorf("review reload: %w", err)
 	}
 	go rv.Run(ctx)
+	// 시연 실행(10/30): DEMO_ENABLED=true 일 때만 — 가젯 소스는 Docker 로 sg-install-demo-* 컨테이너를, mock 은 모의 재생
+	var demoSvc *demo.Service
+	if cfg.DemoEnabled {
+		o := demo.Options{Review: rv, Image: cfg.DemoImage}
+		if demoSim != nil {
+			o.Simulator = demoSim
+		} else {
+			dc, err := dockerapi.New(cfg.DockerHost)
+			if err != nil {
+				return fmt.Errorf("demo: docker: %w", err)
+			}
+			o.Docker = dc
+		}
+		demoSvc = demo.New(o)
+		slog.Warn("DEMO_ENABLED=true: POST /api/demo/run can start sg-install-demo-* containers — demo only, keep it off in production")
+	}
 	agg := stats.New()
 	// 종합(10/16): 1분 단위 수집량을 10초마다 저장소에 더한다. 끝날 때 한 번 더
 	go flushCollected(ctx, agg, collected)
@@ -270,6 +289,7 @@ func run() error {
 		Evidence:             evStore,
 		PolicyFile:           cfg.PolicyFile,
 		Auth:                 authSvc,
+		Demo:                 demoSvc,
 		Info: api.Info{Source: cfg.EventSource, Gadgets: cfg.Gadgets, EnforceKill: cfg.EnforceKill,
 			GadgetVersion: ingestion.GadgetVersion, WatchContainers: cfg.WatchContainers, IgnoreContainers: cfg.IgnoreContainers},
 	}))
@@ -282,6 +302,15 @@ func run() error {
 	}
 	go func() {
 		<-ctx.Done()
+		// 시연 컨테이너를 먼저 멈추고 지운다(11/02) — srv.Shutdown 뒤에는 run 이 돌아가 저장소가 닫힌다.
+		// compose stop 의 기본 유예 10초 안에 끝나도록 8초
+		if demoSvc != nil {
+			dctx, dcancel := context.WithTimeout(context.Background(), 8*time.Second)
+			if err := demoSvc.Shutdown(dctx); err != nil {
+				slog.Warn("demo: shutdown did not finish", "err", err)
+			}
+			dcancel()
+		}
 		hub.Close()
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

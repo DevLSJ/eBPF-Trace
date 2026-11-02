@@ -19,6 +19,7 @@ import (
 
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/auth"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/chat"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/demo"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/notify"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/osv"
@@ -74,6 +75,8 @@ type Deps struct {
 	// Auth: 로그인(10/20). 있으면 /api/auth · /api/users · /api/license 를 열고, 화면 쓰기는 역할(admin)로 확인한다.
 	// 세션 확인 자체는 바깥에서 Secure(auth.Middleware)가 한다(/ws/events 포함). nil 이면 예전처럼 ADMIN_TOKEN 만
 	Auth *auth.Service
+	// Demo: 시연 실행(10/30, DEMO_ENABLED). nil 이면 /api/demo 경로 없음 · /api/info demo=false
+	Demo *demo.Service
 }
 
 // Info: 대시보드가 표시하는 런타임 설정
@@ -96,6 +99,8 @@ type Info struct {
 	DiscoveryNote string `json:"discoveryNote"`
 	// Notify: 외부 알림 채널 상태(호스트만 · 보낸/실패/버린 수). Deps.Notifier 가 없으면 생략
 	Notify *notify.Status `json:"notify,omitempty"`
+	// Demo: 시연 실행 API 가 열려 있는지(DEMO_ENABLED) — 화면이 관리자에게만 「시연」 카드를 보인다
+	Demo bool `json:"demo"`
 }
 
 // dockerEventsNote: docker-events 는 컨테이너 start 이벤트를 받은 뒤에 추적을 붙여, 그 전의 첫 동작을 놓친다(sg-vm 실측 10/20)
@@ -107,6 +112,7 @@ func Router(d Deps) http.Handler {
 	// 로그인이 켜져 있으면 늘 true (mock 이어도 쓰기는 관리자 계정만)
 	d.Info.AuthRequired = d.Auth != nil || !(d.AllowAnonymousWrites && d.AdminToken == "")
 	d.Info.Chat = d.Chat != nil
+	d.Info.Demo = d.Demo != nil
 	if d.Info.WatchContainers == nil {
 		d.Info.WatchContainers = []string{}
 	}
@@ -151,6 +157,9 @@ func Router(d Deps) http.Handler {
 	}
 	if d.Auth != nil {
 		RegisterAuth(mux, AuthDeps{Auth: d.Auth})
+	}
+	if d.Demo != nil {
+		h.routeDemo(mux)
 	}
 	return cors(d.AllowedOrigins, mux)
 }
@@ -300,7 +309,7 @@ func (h *handlers) audit(w http.ResponseWriter, r *http.Request) {
 		Container: q.Get("container"),
 	}
 	if aq.Kind != "" && !aq.Kind.Valid() {
-		writeErr(w, http.StatusBadRequest, "kind: exec | open | connect")
+		writeErr(w, http.StatusBadRequest, "kind: exec | open | connect | dns")
 		return
 	}
 	if aq.Action != "" && !aq.Action.Valid() {

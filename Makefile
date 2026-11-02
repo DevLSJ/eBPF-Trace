@@ -12,13 +12,13 @@ DEV_AUTH := AUTH_OTP_REQUIRED=false ADMIN_INITIAL_PASSWORD=$(DEV_ADMIN_PW)
 ## dev: 백엔드(mock, :8000) + Vite(:5173) 를 같이 띄운다. Ctrl-C 로 둘 다 종료.
 dev:
 	@trap 'kill 0' EXIT INT TERM; \
-	  (cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) go run ./cmd/server) & \
+	  (cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true DEMO_ENABLED=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) go run ./cmd/server) & \
 	  (cd frontend && npm run dev) & \
 	  wait
 
 ## backend: mock 소스 백엔드만 (목업 '실제 백엔드' 모드가 붙을 수 있게 CORS 출처 포함)
 backend:
-	cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) go run ./cmd/server
+	cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true DEMO_ENABLED=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) go run ./cmd/server
 
 frontend:
 	cd frontend && npm run dev

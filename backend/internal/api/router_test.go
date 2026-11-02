@@ -97,7 +97,7 @@ func TestPolicyLifecycle(t *testing.T) {
 func TestAuditQuery(t *testing.T) {
 	srv, _, mem := newServer(t, "", true)
 	for _, k := range []model.Kind{model.KindOpen, model.KindExec, model.KindOpen} {
-		_ = mem.SaveAudit(t.Context(), model.Verdict{Matched: true, Action: model.ActionAlert, Event: model.Event{Kind: k, ContainerName: "victim"}})
+		_, _ = mem.SaveAudit(t.Context(), model.Verdict{Matched: true, Action: model.ActionAlert, Event: model.Event{Kind: k, ContainerName: "victim"}})
 	}
 	r := do(t, "GET", srv.URL+"/api/audit?kind=open&container=vic", "", "")
 	var got []model.AuditEntry
