@@ -123,7 +123,7 @@ func addNote(p *model.Proposal, n string) {
 	}
 }
 
-// maliciousChanges: 설치 건 = 패키지 차단, 런타임 건 = 이미지 차단. 둘 다 위반 통신의 도메인 차단.
+// maliciousChanges: 설치 건 = 패키지 차단, 런타임 건 = 이미지 차단. 둘 다 위반 통신 · 위반 DNS 질의(10/30)의 도메인 차단.
 // IP 만 있고 도메인이 없는 통신은 도메인 차단을 만들지 않는다.
 func (s *Service) maliciousChanges(c *model.CaseRecord, p *model.Proposal) {
 	switch c.Case.Source {
@@ -157,7 +157,7 @@ func (s *Service) maliciousChanges(c *model.CaseRecord, p *model.Proposal) {
 	cur := s.o.Engine.Rules()
 	for _, v := range c.Evidence {
 		e := v.Event
-		if e.Kind != model.KindConnect {
+		if e.Kind != model.KindConnect && !e.IsDNSQuery() {
 			continue
 		}
 		host := strings.ToLower(strings.TrimSuffix(e.DstHost, "."))
@@ -217,7 +217,12 @@ func (s *Service) falsePositiveChanges(c *model.CaseRecord, p *model.Proposal) {
 			i := slices.IndexFunc(work, func(r rules.Rule) bool { return r.ID == v.RuleID })
 			field, value, ok := narrowestException(work[i].Kind, ev.Event, hadHosts[v.RuleID])
 			if !ok {
-				addNote(p, fmt.Sprintf("실행 규칙 %s 은 자동 예외를 만들지 않습니다 — 정책 탭에서 직접 수정하세요", v.RuleID))
+				if work[i].Kind == model.KindDNS {
+					// allowHosts 가 없는 dns 규칙에 allowHosts 를 넣으면 그 밖의 모든 질의가 「허용 목록 밖」 위반이 된다 — 자동으로 만들지 않는다(10/30)
+					addNote(p, fmt.Sprintf("dns 규칙 %s 은 허용 목록이 없어 자동 예외를 만들지 않습니다(allowHosts 를 넣으면 그 밖의 도메인 질의가 모두 위반이 됩니다) — 정책 탭에서 직접 수정하세요", v.RuleID))
+				} else {
+					addNote(p, fmt.Sprintf("실행 규칙 %s 은 자동 예외를 만들지 않습니다 — 정책 탭에서 직접 수정하세요", v.RuleID))
+				}
 				break
 			}
 			trial := slices.Clone(work)
@@ -233,12 +238,17 @@ func (s *Service) falsePositiveChanges(c *model.CaseRecord, p *model.Proposal) {
 }
 
 // narrowestException: 파일 → allowPaths 경로,
-// 통신 → 규칙에 원래 allowHosts 가 있고 도메인을 알면 allowHosts, 그 밖은 allowCidrs IP/32(/128)
+// 통신 → 규칙에 원래 allowHosts 가 있고 도메인을 알면 allowHosts, 그 밖은 allowCidrs IP/32(/128),
+// DNS 질의(10/30) → 규칙에 원래 allowHosts 가 있을 때만 질의 이름을 allowHosts 에 더한다(접미사 일치라 하위 이름도 통과)
 func narrowestException(kind model.Kind, e model.Event, ruleHasHosts bool) (field, value string, ok bool) {
 	switch kind {
 	case model.KindOpen:
 		if e.Path != "" {
 			return "allowPaths", e.Path, true
+		}
+	case model.KindDNS:
+		if h := strings.ToLower(strings.TrimSuffix(e.DstHost, ".")); ruleHasHosts && h != "" && rules.ValidHost(h) {
+			return "allowHosts", h, true
 		}
 	case model.KindConnect:
 		if h := strings.ToLower(strings.TrimSuffix(e.DstHost, ".")); ruleHasHosts && h != "" && rules.ValidHost(h) {

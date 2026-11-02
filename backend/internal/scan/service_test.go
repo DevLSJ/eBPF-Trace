@@ -22,7 +22,7 @@ func (fakeRunner) Run(context.Context, dockerapi.RunSpec) ([]byte, int, error) {
 }
 
 type fakeBlocker struct {
-	mu   sync.Mutex
+	mu      sync.Mutex
 	got     [][]model.ScanPackage
 	reasons []string
 	fail    error

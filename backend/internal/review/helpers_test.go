@@ -99,7 +99,7 @@ func (e *env) observe(t *testing.T, ev model.Event) model.Verdict {
 	}
 	e.svc.Observe(&v)
 	if v.Matched {
-		if err := e.store.SaveAudit(t.Context(), v); err != nil {
+		if _, err := e.store.SaveAudit(t.Context(), v); err != nil {
 			t.Fatal(err)
 		}
 	}

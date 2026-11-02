@@ -25,9 +25,17 @@ func (m *Memory) AddCollected(_ context.Context, ms []model.MinuteCount) error {
 		c.Exec += x.Exec
 		c.Open += x.Open
 		c.Connect += x.Connect
+		c.DNS += x.DNS
 		m.collected[k] = c
 	}
-	cut := time.Now().Add(-collectedKeep).Unix() / 60
+	// 보관 컷은 저장된 가장 최근 분 기준(벽시계 아님) — 고정 날짜 픽스처 · 재생 데이터도 같은 규칙으로 정리된다 (10/30)
+	var newest int64
+	for k := range m.collected {
+		if k > newest {
+			newest = k
+		}
+	}
+	cut := newest - int64(collectedKeep/time.Minute)
 	for k := range m.collected {
 		if k < cut {
 			delete(m.collected, k)
@@ -51,9 +59,9 @@ func (m *Memory) CollectedRange(_ context.Context, from, to time.Time) ([]model.
 
 func (p *Postgres) AddCollected(ctx context.Context, ms []model.MinuteCount) error {
 	for _, x := range ms {
-		_, err := p.pool.Exec(ctx, `INSERT INTO collected_minutes (minute, exec, open, connect) VALUES ($1, $2, $3, $4)
-ON CONFLICT (minute) DO UPDATE SET exec = collected_minutes.exec + EXCLUDED.exec, open = collected_minutes.open + EXCLUDED.open, connect = collected_minutes.connect + EXCLUDED.connect`,
-			x.Minute.UTC().Truncate(time.Minute), x.Exec, x.Open, x.Connect)
+		_, err := p.pool.Exec(ctx, `INSERT INTO collected_minutes (minute, exec, open, connect, dns) VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (minute) DO UPDATE SET exec = collected_minutes.exec + EXCLUDED.exec, open = collected_minutes.open + EXCLUDED.open, connect = collected_minutes.connect + EXCLUDED.connect, dns = collected_minutes.dns + EXCLUDED.dns`,
+			x.Minute.UTC().Truncate(time.Minute), x.Exec, x.Open, x.Connect, x.DNS)
 		if err != nil {
 			return err
 		}
@@ -62,7 +70,7 @@ ON CONFLICT (minute) DO UPDATE SET exec = collected_minutes.exec + EXCLUDED.exec
 }
 
 func (p *Postgres) CollectedRange(ctx context.Context, from, to time.Time) ([]model.MinuteCount, error) {
-	rows, err := p.pool.Query(ctx, `SELECT minute, exec, open, connect FROM collected_minutes WHERE minute >= $1 AND minute < $2 ORDER BY minute`, from.UTC(), to.UTC())
+	rows, err := p.pool.Query(ctx, `SELECT minute, exec, open, connect, dns FROM collected_minutes WHERE minute >= $1 AND minute < $2 ORDER BY minute`, from.UTC(), to.UTC())
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +78,7 @@ func (p *Postgres) CollectedRange(ctx context.Context, from, to time.Time) ([]mo
 	out := []model.MinuteCount{}
 	for rows.Next() {
 		var c model.MinuteCount
-		if err := rows.Scan(&c.Minute, &c.Exec, &c.Open, &c.Connect); err != nil {
+		if err := rows.Scan(&c.Minute, &c.Exec, &c.Open, &c.Connect, &c.DNS); err != nil {
 			return nil, err
 		}
 		c.Minute = c.Minute.UTC()

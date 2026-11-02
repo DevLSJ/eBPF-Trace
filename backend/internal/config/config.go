@@ -61,6 +61,10 @@ type Config struct {
 	// AI 도우미(10/20): OLLAMA_URL 이 비면 챗봇 비활성(라우트 없음). 모델은 로컬 Ollama — 데이터가 서버 밖으로 나가지 않는다
 	OllamaURL, OllamaModel, OllamaKeepAlive string
 
+	// 시연 실행(10/30): DEMO_ENABLED=true 면 /api/demo 가 열린다(시연 전용 — 운영은 끈다). DemoImage 는 시연 컨테이너 이미지(SG_PIP_IMAGE, sg-install 과 같은 변수)
+	DemoEnabled bool
+	DemoImage   string
+
 	// NormalEventRate: 정상 판정 이벤트를 WebSocket으로 보내는 초당 상한 (위반은 항상 전송)
 	NormalEventRate int
 	EventBuffer     int
@@ -92,6 +96,7 @@ func Load() (Config, error) {
 		OllamaURL:          env("OLLAMA_URL", ""),
 		OllamaModel:        env("OLLAMA_MODEL", "qwen2.5:3b"),
 		OllamaKeepAlive:    env("OLLAMA_KEEP_ALIVE", "30m"),
+		DemoImage:          env("SG_PIP_IMAGE", "python:3.12-slim"),
 		AllowedOrigins:     list(env("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")),
 		// 로그인(10/20). 비밀번호 · 키 형식 검사는 쓰는 쪽(auth.SeedAdmin · main 의 validateAuthSecret)이 한다
 		AdminUser:            env("ADMIN_USER", "admin"),
@@ -109,6 +114,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if c.ResolveDNS, err = boolEnv("RESOLVE_DNS", true); err != nil {
+		return c, err
+	}
+	if c.DemoEnabled, err = boolEnv("DEMO_ENABLED", false); err != nil {
 		return c, err
 	}
 	if c.NormalEventRate, err = intEnv("NORMAL_EVENT_RATE", 50); err != nil {
@@ -130,6 +138,10 @@ func Load() (Config, error) {
 
 	for _, g := range list(env("GADGETS", "exec,open,connect")) {
 		k := model.Kind(g)
+		if k == model.KindDNS {
+			// trace_dns 는 connect 의 보조 가젯이자 dns 질의 규칙의 소스 — 가젯 목록이 아니라 RESOLVE_DNS 로 켠다(10/30)
+			return c, fmt.Errorf("GADGETS: dns 는 가젯 목록에 넣지 않는다 — trace_dns 는 RESOLVE_DNS=true 로 켠다")
+		}
 		if !k.Valid() {
 			return c, fmt.Errorf("GADGETS: unknown kind %q (exec, open, connect)", g)
 		}

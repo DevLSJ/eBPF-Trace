@@ -67,7 +67,7 @@ func newSecuredHarness(t *testing.T, o securedOpts) *harness {
 					ImageName: s.Image, Comm: "python3", DstIP: "203.0.113.7", DstPort: 8081, DstHost: "cdn.reqeusts-update.test"})
 				v.Enforced = true
 				svc.Observe(&v)
-				_ = mem.SaveAudit(r.Context(), v)
+				_, _ = mem.SaveAudit(r.Context(), v)
 			}
 		}
 		secured.ServeHTTP(w, r)

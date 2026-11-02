@@ -16,6 +16,8 @@ type StartInput struct {
 	Packages  []string `json:"packages"`
 	Container string   `json:"container"`
 	Image     string   `json:"image"`
+	// Demo: 시연 실행(10/30)이 만든 세션 — 서버 안에서만 정한다(API 본문으로는 못 넣는다)
+	Demo bool `json:"-"`
 }
 
 // RefusedInput: POST /api/installs/refused
@@ -23,6 +25,7 @@ type RefusedInput struct {
 	Manager  string   `json:"manager"`
 	Packages []string `json:"packages"`
 	Value    string   `json:"value"`
+	Demo     bool     `json:"-"`
 }
 
 const maxPackages = 50
@@ -43,7 +46,7 @@ func newSession(id, manager string, packages []string, now time.Time) model.Inst
 	return model.InstallSession{
 		ID: id, Manager: manager, Packages: slices.Clone(packages), StartedAt: now, Status: model.InstallRunning,
 		Violations: []model.ViolationCount{},
-		Activity: model.Activity{Kinds: map[model.Kind]int{model.KindExec: 0, model.KindOpen: 0, model.KindConnect: 0},
+		Activity: model.Activity{Kinds: map[model.Kind]int{model.KindExec: 0, model.KindOpen: 0, model.KindConnect: 0, model.KindDNS: 0},
 			Hosts: []model.HostActivity{}, Programs: []model.ProgramActivity{}},
 	}
 }
@@ -65,7 +68,7 @@ func (s *Service) StartInstall(ctx context.Context, in StartInput) (model.Instal
 		return model.InstallSession{}, conflict("이미 보고된 컨테이너: %s", in.Container)
 	}
 	x := newSession(s.nextID("ins"), in.Manager, in.Packages, s.o.Now())
-	x.Container, x.Image = in.Container, in.Image
+	x.Container, x.Image, x.Demo = in.Container, in.Image, in.Demo
 	if err := s.commitLocked(ctx, store.ReviewCommit{Installs: []model.InstallSession{x}}); err != nil {
 		s.releaseID("ins")
 		unlock()
@@ -117,7 +120,7 @@ func (s *Service) RefusedInstall(ctx context.Context, in RefusedInput) (model.In
 	defer unlock()
 	now := s.o.Now()
 	x := newSession(s.nextID("ins"), in.Manager, in.Packages, now)
-	x.Status, x.FinishedAt = model.InstallRefused, &now
+	x.Status, x.FinishedAt, x.Demo = model.InstallRefused, &now, in.Demo
 	x.RefusedBy = &model.BlockRef{List: model.ListPackages, Value: in.Value}
 	if err := s.commitLocked(ctx, store.ReviewCommit{Installs: []model.InstallSession{x}}); err != nil {
 		s.releaseID("ins")
@@ -328,9 +331,34 @@ func addToCase(c *model.CaseRecord, v model.Verdict) {
 	c.Evidence = addViolation(c.Evidence, v, maxEvidence)
 }
 
+// AuditSaved: 파이프라인이 판정을 감사 로그에 저장한 뒤 부른다(실제 kill 이 있는 판정만). 그 컨테이너의 설치 세션과 묶인 건에
+// 첫 격리 isolation{auditId, timeline} 을 남긴다(10/30). 이미 있으면 그대로 — 첫 kill 판정이 기준. 차단 이미지 격리는 옛 건에 붙이지 않는다
+func (s *Service) AuditSaved(v model.Verdict, auditID int64) {
+	if v.Timeline == nil || v.Timeline.KilledAt == nil {
+		return
+	}
+	iso := func() *model.Isolation { return &model.Isolation{AuditID: auditID, Timeline: *v.Timeline.Clone()} }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if id, ok := s.byContainer[v.Event.ContainerName]; ok {
+		if x := s.installs[id]; x.Isolation == nil {
+			x.Isolation = iso()
+			s.dirtyInstalls[id] = true
+		}
+	}
+	if v.CaseID != nil && v.RuleID != model.RuleBlockedImage {
+		if c, ok := s.cases[*v.CaseID]; ok && c.Case.Isolation == nil {
+			c.Case.Isolation = iso()
+			s.dirtyCases[c.Case.ID] = true
+		}
+	}
+}
+
 // addViolation: 같은 규칙 · 종류 · 상세는 count 만 올린다. 더 센 판정이 오면 그 판정으로 바꾼다.
+// 타임라인은 사본으로 둔다 — 파이프라인이 알림 시각을 뒤에 채우는 원본과 공유하지 않는다
 func addViolation(xs []model.ViolationCount, v model.Verdict, limit int) []model.ViolationCount {
 	v.CaseID, v.Install = nil, nil
+	v.Timeline = v.Timeline.Clone()
 	for i := range xs {
 		x := &xs[i]
 		if x.RuleID == v.RuleID && x.Event.Kind == v.Event.Kind && x.Event.Detail() == v.Event.Detail() {

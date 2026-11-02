@@ -30,7 +30,8 @@ type AuditQuery struct {
 }
 
 type AuditStore interface {
-	SaveAudit(ctx context.Context, v model.Verdict) error
+	// SaveAudit: 위반 판정 한 건을 남기고 그 행 id 를 돌려준다 (설치 세션 · 건의 격리 타임라인이 auditId 로 가리킨다, 10/30)
+	SaveAudit(ctx context.Context, v model.Verdict) (int64, error)
 	QueryAudit(ctx context.Context, q AuditQuery) ([]model.AuditEntry, error)
 }
 

@@ -136,6 +136,19 @@ func (s *Service) Reload(ctx context.Context) error {
 	return nil
 }
 
+// RecordChange: 정책 · 차단 목록을 바꾸지 않는 작업의 변경 이력 한 줄(시연 실행 demo_run, 10/30). 처리자는 요청자
+func (s *Service) RecordChange(ctx context.Context, kind model.ChangeKind, summary string) error {
+	unlock := s.lockWrite()
+	defer unlock()
+	chg := model.Change{ID: s.nextID("chg"), At: s.o.Now(), By: s.actor(ctx), Kind: kind, Summary: summary}
+	if err := s.commitLocked(ctx, store.ReviewCommit{Changes: []model.Change{chg}}); err != nil {
+		s.releaseID("chg")
+		return err
+	}
+	s.changes = append(s.changes, chg)
+	return nil
+}
+
 // PolicyWrite: 정책 API 의 쓰기(write)를 제안 적용과 같은 잠금 안에서 하고, 엔진 리로드 후 변경 이력을 남긴다.
 func (s *Service) PolicyWrite(ctx context.Context, kind model.ChangeKind, summary string, write func(context.Context) error) error {
 	unlock := s.lockWrite()

@@ -51,8 +51,11 @@ CREATE TABLE IF NOT EXISTS collected_minutes (
 	minute  timestamptz PRIMARY KEY,
 	exec    bigint NOT NULL DEFAULT 0,
 	open    bigint NOT NULL DEFAULT 0,
-	connect bigint NOT NULL DEFAULT 0
+	connect bigint NOT NULL DEFAULT 0,
+	dns     bigint NOT NULL DEFAULT 0
 );
+ALTER TABLE collected_minutes ADD COLUMN IF NOT EXISTS dns bigint NOT NULL DEFAULT 0;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS timeline jsonb;
 `
 
 func NewPostgres(ctx context.Context, url string) (*Postgres, error) {
@@ -134,19 +137,27 @@ func (p *Postgres) ReplacePolicies(ctx context.Context, rs []rules.Rule) error {
 	})
 }
 
-func (p *Postgres) SaveAudit(ctx context.Context, v model.Verdict) error {
+func (p *Postgres) SaveAudit(ctx context.Context, v model.Verdict) (int64, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return err
+		return 0, err
+	}
+	// timeline 열(10/30): verdict jsonb 안에도 있지만 격리 지연 조회용으로 따로 둔다. 없으면 NULL
+	var tl []byte
+	if v.Timeline != nil {
+		if tl, err = json.Marshal(v.Timeline); err != nil {
+			return 0, err
+		}
 	}
 	e := v.Event
-	_, err = p.pool.Exec(ctx, `
+	var id int64
+	err = p.pool.QueryRow(ctx, `
 		INSERT INTO audit_log (ts, kind, action, rule_id, dry_run, enforced,
-			container_id, container_name, image_name, comm, pid, detail, reason, verdict)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+			container_id, container_name, image_name, comm, pid, detail, reason, verdict, timeline)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
 		e.Timestamp, e.Kind, v.Action, v.RuleID, v.DryRun, v.Enforced,
-		e.ContainerID, e.ContainerName, e.ImageName, e.Comm, int64(e.Pid), e.Detail(), v.Reason, b)
-	return err
+		e.ContainerID, e.ContainerName, e.ImageName, e.Comm, int64(e.Pid), e.Detail(), v.Reason, b, tl).Scan(&id)
+	return id, err
 }
 
 func (p *Postgres) QueryAudit(ctx context.Context, q AuditQuery) ([]model.AuditEntry, error) {

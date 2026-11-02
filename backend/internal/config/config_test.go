@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -84,5 +85,39 @@ func TestAuthSettings(t *testing.T) {
 	t.Setenv("AUTH_OTP_REQUIRED", "maybe")
 	if _, err := Load(); err == nil {
 		t.Fatal("AUTH_OTP_REQUIRED=maybe must be rejected")
+	}
+}
+
+// 시연 실행(10/30): 기본 꺼짐, 이미지는 sg-install 과 같은 SG_PIP_IMAGE
+func TestDemoEnabled(t *testing.T) {
+	c, err := Load()
+	if err != nil || c.DemoEnabled || c.DemoImage != "python:3.12-slim" {
+		t.Fatalf("defaults: %v %q %v", c.DemoEnabled, c.DemoImage, err)
+	}
+	t.Setenv("DEMO_ENABLED", "true")
+	t.Setenv("SG_PIP_IMAGE", "python:3.13-slim")
+	if c, err = Load(); err != nil || !c.DemoEnabled || c.DemoImage != "python:3.13-slim" {
+		t.Fatalf("set: %v %q %v", c.DemoEnabled, c.DemoImage, err)
+	}
+	t.Setenv("DEMO_ENABLED", "sometimes")
+	if _, err := Load(); err == nil {
+		t.Fatal("DEMO_ENABLED=sometimes must be rejected")
+	}
+}
+
+// GADGETS 에 dns 를 넣으면 설정 오류 — trace_dns 는 RESOLVE_DNS=true 로 켠다(10/30). 나머지 모르는 값도 거부
+func TestGadgetsDNSNotAllowed(t *testing.T) {
+	t.Setenv("GADGETS", "exec,open,connect,dns")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "RESOLVE_DNS=true") {
+		t.Fatalf("GADGETS=dns must be rejected with a RESOLVE_DNS hint, got %v", err)
+	}
+	t.Setenv("GADGETS", "exec,read")
+	if _, err := Load(); err == nil {
+		t.Fatal("unknown gadget kind must be rejected")
+	}
+	t.Setenv("GADGETS", "exec,open,connect")
+	if c, err := Load(); err != nil || len(c.Gadgets) != 3 {
+		t.Fatalf("%+v %v", c.Gadgets, err)
 	}
 }

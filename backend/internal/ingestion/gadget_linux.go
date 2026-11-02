@@ -228,8 +228,14 @@ func (g *Gadget) subscribe(d datasource.DataSource, k model.Kind, out chan<- mod
 	fnameF := d.GetField("fname")      // open
 	dstAddrF := d.GetField("dst.addr") // connect (l4endpoint → addr/port)
 	dstPortF := d.GetField("dst.port") // connect
-	nameF := d.GetField("name")        // dns
+	nameF := d.GetField("name")        // dns: 질의 · 응답의 이름
 	addrsF := d.GetField("addresses")  // dns (응답에만, 콤마 구분)
+	qrF := d.GetField("qr")            // dns: Q(질의) · R(응답) — 문자열 열거
+	qrRawF := d.GetField("qr_raw")     // dns: 0 · 1 (문자열 열거가 없을 때 대비)
+	qtypeF := d.GetField("qtype")      // dns: A · AAAA · TXT … (10/30)
+	qtypeRawF := d.GetField("qtype_raw")
+	pktTypeF := d.GetField("pkt_type") // dns: OUTGOING(컨테이너가 보낸 패킷) · HOST(받은 패킷)
+	pktTypeRawF := d.GetField("pkt_type_raw")
 	if commF == nil || cIDF == nil {
 		return fmt.Errorf("datasource %q: proc.comm/runtime.containerId 필드 없음", d.Name())
 	}
@@ -269,12 +275,31 @@ func (g *Gadget) subscribe(d datasource.DataSource, k model.Kind, out chan<- mod
 			}
 			ev.DNSTraced = g.dnsTraced.Load()
 		case model.KindDNS:
-			addrs := str(addrsF, data)
-			if addrs == "" {
-				return nil // 질의 패킷: 배울 것이 없다
+			if !dnsIsQuery(str(qrF, data), str(qrRawF, data)) {
+				// 응답: 리졸버 학습용 내부 이벤트 (A · AAAA 주소가 없는 응답은 배울 것이 없다)
+				addrs := str(addrsF, data)
+				if addrs == "" {
+					return nil
+				}
+				ev.DNSName = str(nameF, data)
+				ev.DNSAddrs = strings.Split(addrs, ",")
+				break
 			}
-			ev.DNSName = str(nameF, data)
-			ev.DNSAddrs = strings.Split(addrs, ",")
+			// 질의(10/30): 정책 평가 대상. 컨테이너가 보낸 패킷(OUTGOING)만 — 루프백 네임서버(127.0.0.11)로 가는 질의는
+			// 송신 · 수신 양쪽에서 보여 중복되므로 받은 쪽(HOST)은 버린다
+			if !dnsOutgoing(str(pktTypeF, data), str(pktTypeRawF, data)) {
+				return nil
+			}
+			name := dnsQueryName(str(nameF, data))
+			if name == "" {
+				return nil
+			}
+			ev.DstHost = name
+			ev.Qtype = dnsQtype(str(qtypeF, data), str(qtypeRawF, data))
+			ev.DstIP = str(dstAddrF, data)
+			if dstPortF != nil {
+				ev.DstPort, _ = dstPortF.Uint16(data)
+			}
 		}
 		if !send(out, ev) {
 			g.dropped.Add(1)

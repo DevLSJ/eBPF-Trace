@@ -27,6 +27,8 @@ type Reviewer interface {
 	Observe(v *model.Verdict)
 	ContainerStarted(ev model.Event) (blockedImage string, blocked bool)
 	ContainerExited(ev model.Event)
+	// AuditSaved: 위반 판정이 감사 로그에 저장된 뒤(행 id 와 함께) — 실제 kill 이 있는 판정만 부른다(격리 타임라인, 10/30)
+	AuditSaved(v model.Verdict, auditID int64)
 }
 
 type Options struct {
@@ -140,9 +142,15 @@ func (p *Pipeline) Handle(ctx context.Context, ev model.Event) {
 		ev.Timestamp = time.Now().UTC()
 	}
 	if ev.Kind == model.KindDNS {
-		// DNS 응답은 정책 평가·피드 대상이 아니다. 목적지 도메인 캐시만 채운다 (제외 컨테이너도 포함해 배운다).
-		p.resolver.Learn(ev.ContainerID, ev.DNSName, ev.DNSAddrs, ev.Timestamp)
-		return
+		if ev.DNSName != "" {
+			// DNS 응답은 정책 평가·피드 대상이 아니다. 목적지 도메인 캐시만 채운다 (제외 컨테이너도 포함해 배운다).
+			p.resolver.Learn(ev.ContainerID, ev.DNSName, ev.DNSAddrs, ev.Timestamp)
+			return
+		}
+		if ev.DstHost == "" {
+			return // 질의 이름도 응답도 없는 dns 이벤트 — 모양이 맞지 않는다
+		}
+		// DNS 질의(10/30)는 아래로 흘러 kind: dns 규칙으로 평가한다 (DNS 유예 없음)
 	}
 	if ev.ContainerID == "" || p.Ignored(ev.ContainerName) {
 		return // 호스트 프로세스 또는 보호 대상
@@ -179,10 +187,31 @@ func (p *Pipeline) Handle(ctx context.Context, ev model.Event) {
 // evaluate: 규칙 평가 → (kill) 격리 → 전송. p.mu 를 쥔 채 부른다.
 func (p *Pipeline) evaluate(ctx context.Context, ev model.Event) {
 	v := p.engine.Evaluate(ev)
+	if v.Matched {
+		// 격리 타임라인(10/30): 탐지 = 이벤트 시각(소스), 판정 = 지금. 증거 · kill · 알림 시각은 뒤 단계가 채운다
+		v.Timeline = &model.Timeline{DetectedAt: ev.Timestamp.UTC(), MatchedAt: time.Now().UTC()}
+	}
 	if v.Matched && v.Action == model.ActionKill && !v.DryRun {
 		p.enforce(ctx, &v)
 	}
 	p.emit(v)
+}
+
+// notifierQueues: 알림이 실제로 큐에 들어가는지(채널이 있는지). Enabled 를 모르는 구현은 들어간다고 본다
+func notifierQueues(n notify.Notifier) bool {
+	if e, ok := n.(interface{ Enabled() bool }); ok {
+		return e.Enabled()
+	}
+	return true
+}
+
+// stamp: 격리 수단이 준 시각 — 0 이면 키 생략
+func stamp(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	u := t.UTC()
+	return &u
 }
 
 // emit: 건 묶기 → 통계 → WebSocket · 저장
@@ -194,6 +223,9 @@ func (p *Pipeline) emit(v model.Verdict) {
 	if p.notifier != nil {
 		if m, ok := notify.FromVerdict(v); ok {
 			p.notifier.Notify(context.Background(), m)
+			if v.Timeline != nil && notifierQueues(p.notifier) {
+				v.Timeline.NotifiedAt = stamp(time.Now()) // 큐 투입 시각(발송 완료 아님)
+			}
 		}
 	}
 	p.stats.Observe(v)
@@ -228,6 +260,7 @@ func (p *Pipeline) lifecycle(ctx context.Context, ev model.Event) {
 			ImageName: ev.ImageName, Comm: "container-start", Args: "container start " + image,
 		},
 		Matched: true, RuleID: model.RuleBlockedImage, Action: model.ActionKill, Reason: "차단된 이미지: " + image,
+		Timeline: &model.Timeline{DetectedAt: ev.Timestamp.UTC(), MatchedAt: time.Now().UTC()},
 	}
 	p.enforce(ctx, &v)
 	p.emit(v)
@@ -245,7 +278,17 @@ func (p *Pipeline) enforce(ctx context.Context, v *model.Verdict) {
 	}
 	kctx, cancel := context.WithTimeout(ctx, killTimeout)
 	defer cancel()
-	err := p.enforcer.Kill(kctx, id)
+	// 격리 타임라인(10/30): Docker 는 단계별 시각(증거 훅 · kill 응답)을 준다. 시각이 없는 격리 수단(mock)은 성공 시각을 kill 시각으로 쓴다
+	var times enforcer.Times
+	var err error
+	if te, ok := p.enforcer.(enforcer.Timed); ok {
+		times, err = te.KillTimed(kctx, id)
+	} else if err = p.enforcer.Kill(kctx, id); err == nil {
+		times.KilledAt = time.Now().UTC()
+	}
+	if v.Timeline != nil {
+		v.Timeline.EvidenceStartedAt, v.Timeline.EvidenceDoneAt, v.Timeline.KilledAt = stamp(times.EvidenceStartedAt), stamp(times.EvidenceDoneAt), stamp(times.KilledAt)
+	}
 	switch {
 	case err == nil:
 		v.Enforced = true
@@ -287,8 +330,12 @@ func (p *Pipeline) persistLoop() {
 			slog.Warn("buffer push", "err", err)
 		}
 		if v.Matched {
-			if err := p.audit.SaveAudit(ctx, v); err != nil {
+			id, err := p.audit.SaveAudit(ctx, v)
+			switch {
+			case err != nil:
 				slog.Error("audit save", "err", err)
+			case p.review != nil && v.Timeline != nil && v.Timeline.KilledAt != nil:
+				p.review.AuditSaved(v, id) // 설치 세션 · 건의 isolation{auditId, timeline}
 			}
 		}
 		cancel()

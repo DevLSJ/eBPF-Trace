@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"slices"
 	"time"
 
@@ -49,6 +50,7 @@ type Kinds struct {
 	Exec    int64 `json:"exec"`
 	Open    int64 `json:"open"`
 	Connect int64 `json:"connect"`
+	DNS     int64 `json:"dns"` // DNS 질의(10/30) — 화면은 옛 백엔드 호환으로 선택 값으로 읽는다
 }
 
 type Point struct {
@@ -56,6 +58,7 @@ type Point struct {
 	Exec    int64     `json:"exec"`
 	Open    int64     `json:"open"`
 	Connect int64     `json:"connect"`
+	DNS     int64     `json:"dns"`
 	Killed  int64     `json:"killed"` // 격리됨 · 격리 대상
 	Alert   int64     `json:"alert"`
 }
@@ -65,6 +68,14 @@ type Top struct {
 	Container string      `json:"container,omitempty"`
 	Count     int64       `json:"count"`
 	Level     model.Level `json:"level"`
+}
+
+// Isolation: 격리 지연(10/30) — 범위 안에서 killedAt 이 있는 감사 로그 행의 killedAt − detectedAt(ms). 없으면 count 0 · 나머지 null
+type Isolation struct {
+	Count    int    `json:"count"`
+	MedianMs *int64 `json:"medianMs"`
+	P95Ms    *int64 `json:"p95Ms"`
+	MaxMs    *int64 `json:"maxMs"`
 }
 
 type Summary struct {
@@ -82,10 +93,11 @@ type Summary struct {
 		Alert  int64 `json:"alert"`
 		Held   int64 `json:"held"`
 	} `json:"violations"`
-	IsolatedContainers int     `json:"isolatedContainers"`
-	Series             []Point `json:"series"`
-	TopRules           []Top   `json:"topRules"`
-	TopContainers      []Top   `json:"topContainers"`
+	IsolatedContainers int       `json:"isolatedContainers"`
+	Isolation          Isolation `json:"isolation"`
+	Series             []Point   `json:"series"`
+	TopRules           []Top     `json:"topRules"`
+	TopContainers      []Top     `json:"topContainers"`
 	Installs           struct {
 		Total    int `json:"total"`
 		Passed   int `json:"passed"`
@@ -144,12 +156,14 @@ func (s *Service) Build(ctx context.Context, rng string) (Summary, error) {
 			p.Exec += m.Exec
 			p.Open += m.Open
 			p.Connect += m.Connect
+			p.DNS += m.DNS
 		}
 		out.Collected.ByKind.Exec += m.Exec
 		out.Collected.ByKind.Open += m.Open
 		out.Collected.ByKind.Connect += m.Connect
+		out.Collected.ByKind.DNS += m.DNS
 	}
-	out.Collected.Total = out.Collected.ByKind.Exec + out.Collected.ByKind.Open + out.Collected.ByKind.Connect
+	out.Collected.Total = out.Collected.ByKind.Exec + out.Collected.ByKind.Open + out.Collected.ByKind.Connect + out.Collected.ByKind.DNS
 
 	if err := s.violations(ctx, &out, from, end, slot); err != nil {
 		return Summary{}, err
@@ -178,6 +192,7 @@ func (s *Service) violations(ctx context.Context, out *Summary, from, end time.T
 	}
 	q := store.AuditQuery{Since: from, Until: end, Limit: store.MaxAuditLimit}
 	scanned := 0
+	var isolationMs []int64
 	for scanned < auditScan {
 		rows, err := s.audit.QueryAudit(ctx, q)
 		if err != nil {
@@ -203,6 +218,11 @@ func (s *Service) violations(ctx context.Context, out *Summary, from, end time.T
 					p.Alert++
 				}
 			}
+			if a.Timeline != nil {
+				if ms, ok := a.Timeline.IsolationMs(); ok {
+					isolationMs = append(isolationMs, ms)
+				}
+			}
 			if a.RuleID != "" {
 				bump(byRule, a.RuleID, l)
 			}
@@ -221,6 +241,7 @@ func (s *Service) violations(ctx context.Context, out *Summary, from, end time.T
 		slog.Warn("summary: audit scan capped", "rows", scanned)
 	}
 	out.IsolatedContainers = len(isolated)
+	out.Isolation = isolationStats(isolationMs)
 	top := func(m map[string]*acc, rule bool) []Top {
 		xs := make([]Top, 0, len(m))
 		for k, a := range m {
@@ -239,6 +260,22 @@ func (s *Service) violations(ctx context.Context, out *Summary, from, end time.T
 	}
 	out.TopRules, out.TopContainers = top(byRule, true), top(byCtr, false)
 	return nil
+}
+
+// isolationStats: 중앙값(짝수면 가운데 둘의 평균) · p95(nearest-rank) · 최대
+func isolationStats(ms []int64) Isolation {
+	n := len(ms)
+	if n == 0 {
+		return Isolation{}
+	}
+	slices.Sort(ms)
+	median := ms[n/2]
+	if n%2 == 0 {
+		median = (ms[n/2-1] + ms[n/2]) / 2
+	}
+	p95 := ms[min(n-1, max(0, int(math.Ceil(0.95*float64(n)))-1))]
+	mx := ms[n-1]
+	return Isolation{Count: n, MedianMs: &median, P95Ms: &p95, MaxMs: &mx}
 }
 
 func (s *Service) reviewParts(out *Summary, from time.Time) {

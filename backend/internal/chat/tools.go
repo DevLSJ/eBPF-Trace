@@ -20,7 +20,7 @@ import (
 var (
 	levelText  = map[model.Level]string{model.LevelKilled: "격리됨", model.LevelHeld: "격리 대상(컨테이너 살아 있음)", model.LevelAlert: "경고", model.LevelNormal: "정상"}
 	sourceText = map[model.CaseSource]string{model.CaseInstall: "설치 검사", model.CaseRuntime: "런타임", model.CaseScan: "공급망 검사"}
-	kindText   = map[model.Kind]string{model.KindExec: "실행", model.KindOpen: "파일 열기", model.KindConnect: "연결"}
+	kindText   = map[model.Kind]string{model.KindExec: "실행", model.KindOpen: "파일 열기", model.KindConnect: "연결", model.KindDNS: "도메인 조회"}
 	verdictTxt = map[string]string{"malicious": "악성 의심", "vulnerable": "취약점 있음", "clean": "위협 없음"}
 	rangeText  = map[string]string{"1h": "1시간", "24h": "24시간", "7d": "7일"}
 )
@@ -511,11 +511,17 @@ func (s *Service) policy(ctx context.Context, f *Facts, id string) ([]Link, erro
 	}{
 		{"막는 프로그램", r.DenyComms}, {"막는 명령 인자", r.DenyArgs}, {"막는 경로", r.DenyPaths}, {"예외 경로", r.AllowPaths},
 		{"허용 포트", ports(r.AllowPorts)}, {"허용 대역", r.AllowCIDRs}, {"막는 포트", ports(r.DenyPorts)}, {"막는 대역", r.DenyCIDRs},
-		{"허용 도메인", r.AllowHosts}, {"막는 도메인", r.DenyHosts},
+		{"허용 도메인", r.AllowHosts}, {"막는 도메인", r.DenyHosts}, {"막는 질의 유형", r.DenyQtypes},
 	} {
 		if len(fld.vs) > 0 {
 			f.Sentences = append(f.Sentences, fld.name+": "+quoteList(fld.vs)+".")
 		}
+	}
+	if r.MaxLabelLength > 0 {
+		f.Sentences = append(f.Sentences, fmt.Sprintf("DNS 라벨 길이 상한: %d자.", r.MaxLabelLength))
+	}
+	if r.MaxNameLength > 0 {
+		f.Sentences = append(f.Sentences, fmt.Sprintf("DNS 이름 길이 상한: %d자.", r.MaxNameLength))
 	}
 	if r.DirectIP != "" {
 		f.Sentences = append(f.Sentences, "도메인 조회 없이 IP 로 바로 붙는 연결은 "+map[string]string{"allow": "통과", "alert": "경고", "kill": "격리"}[r.DirectIP]+" 처리합니다.")

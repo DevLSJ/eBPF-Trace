@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -245,4 +246,13 @@ func TestDNSGraceAfterRunStops(t *testing.T) {
 	if n := len(hub.snapshot()); n != 0 {
 		t.Fatalf("late timer after shutdown must be dropped, got %d verdicts", n)
 	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

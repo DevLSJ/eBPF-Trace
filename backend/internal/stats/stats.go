@@ -23,6 +23,7 @@ type bucket struct {
 	sec        int64
 	exec, open int
 	connect    int
+	dns        int
 	violations int
 }
 
@@ -31,6 +32,7 @@ type TrendPoint struct {
 	Exec       int       `json:"exec"`
 	Open       int       `json:"open"`
 	Connect    int       `json:"connect"`
+	DNS        int       `json:"dns"` // DNS 질의(10/30)
 	Violations int       `json:"violations"`
 }
 
@@ -117,6 +119,9 @@ func (a *Aggregator) Observe(v model.Verdict) {
 	case model.KindConnect:
 		b.connect++
 		m.Connect++
+	case model.KindDNS:
+		b.dns++
+		m.DNS++
 	}
 	a.total++
 	if !v.Matched {
@@ -187,12 +192,13 @@ func (a *Aggregator) Snapshot() Snapshot {
 			p.Exec += b.exec
 			p.Open += b.open
 			p.Connect += b.connect
+			p.DNS += b.dns
 			p.Violations += b.violations
 			if sec > nowSec-60 {
-				s.EventsLastMinute += b.exec + b.open + b.connect
+				s.EventsLastMinute += b.exec + b.open + b.connect + b.dns
 			}
 			if sec == nowSec-1 {
-				s.EventsPerSec = b.exec + b.open + b.connect
+				s.EventsPerSec = b.exec + b.open + b.connect + b.dns
 			}
 		}
 		s.Trend = append(s.Trend, p)

@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
@@ -12,9 +13,26 @@ type fakeReviewer struct {
 	blocked  map[string]bool
 	observed []model.Verdict
 	exited   []string
+	mu       sync.Mutex
+	audited  []savedVerdict
+}
+
+type savedVerdict struct {
+	v  model.Verdict
+	id int64
 }
 
 func (f *fakeReviewer) Observe(v *model.Verdict) { f.observed = append(f.observed, *v) }
+func (f *fakeReviewer) AuditSaved(v model.Verdict, id int64) {
+	f.mu.Lock()
+	f.audited = append(f.audited, savedVerdict{v: v, id: id})
+	f.mu.Unlock()
+}
+func (f *fakeReviewer) saved() []savedVerdict {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]savedVerdict(nil), f.audited...)
+}
 func (f *fakeReviewer) ContainerStarted(ev model.Event) (string, bool) {
 	if f.blocked[ev.ImageName] {
 		return ev.ImageName, true

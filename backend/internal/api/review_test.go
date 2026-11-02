@@ -50,7 +50,7 @@ func (s *reviewServer) observe(t *testing.T, ev model.Event) model.Verdict {
 	}
 	s.svc.Observe(&v)
 	if v.Matched {
-		_ = s.mem.SaveAudit(t.Context(), v)
+		_, _ = s.mem.SaveAudit(t.Context(), v)
 	}
 	return v
 }

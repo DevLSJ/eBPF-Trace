@@ -67,15 +67,17 @@ func (m *Memory) ReplacePolicies(_ context.Context, rs []rules.Rule) error {
 	return nil
 }
 
-func (m *Memory) SaveAudit(_ context.Context, v model.Verdict) error {
+func (m *Memory) SaveAudit(_ context.Context, v model.Verdict) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.audit = append(m.audit, model.AuditEntry{ID: m.nextID, Verdict: v})
+	v.Timeline = v.Timeline.Clone() // 저장 뒤 호출자가 타임라인을 더 채워도 기록은 그대로
+	id := m.nextID
+	m.audit = append(m.audit, model.AuditEntry{ID: id, Verdict: v})
 	m.nextID++
 	if len(m.audit) > memoryAuditCap {
 		m.audit = m.audit[len(m.audit)-memoryAuditCap:]
 	}
-	return nil
+	return id, nil
 }
 
 func (m *Memory) QueryAudit(_ context.Context, q AuditQuery) ([]model.AuditEntry, error) {
