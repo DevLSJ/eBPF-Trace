@@ -27,6 +27,12 @@ const (
 
 var httpc = &http.Client{}
 
+// 레지스트리 주소 — 테스트는 가짜 서버로 바꾼다
+var (
+	pypiBase = "https://pypi.org"
+	npmBase  = "https://registry.npmjs.org"
+)
+
 func get(ctx context.Context, u string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -50,14 +56,15 @@ func get(ctx context.Context, u string) (*http.Response, error) {
 
 var errNotFound = errors.New("찾을 수 없음")
 
-// fetchPackage: PyPI · npm 레지스트리에서 pip · npm 이 실제로 설치하는 파일을 내려받아 푼다 — pip 은 wheel 우선, 없으면 sdist(설치 때 setup.py 가 돈다)
+// fetchPackage: PyPI · npm 레지스트리에서 패키지를 내려받아 푼다 — pip 은 sdist 우선(11/02 결정: setup.py 같은 설치 스크립트까지 본다.
+// 휠이 있으면 pip 은 휠을 깔아 setup.py 를 실행하지 않지만, 소스 · 설치 훅을 함께 보는 쪽이 공급망 검사에 맞다), sdist 가 없으면 wheel. npm 은 tarball(설치 스크립트 포함)
 func fetchPackage(ctx context.Context, manager, name, version, dst string) (string, error) {
 	var archive, resolved string
 	switch manager {
 	case "pip":
-		u := "https://pypi.org/pypi/" + url.PathEscape(name) + "/json"
+		u := pypiBase + "/pypi/" + url.PathEscape(name) + "/json"
 		if version != "" {
-			u = "https://pypi.org/pypi/" + url.PathEscape(name) + "/" + url.PathEscape(version) + "/json"
+			u = pypiBase + "/pypi/" + url.PathEscape(name) + "/" + url.PathEscape(version) + "/json"
 		}
 		res, err := get(ctx, u)
 		if err != nil {
@@ -79,7 +86,7 @@ func fetchPackage(ctx context.Context, manager, name, version, dst string) (stri
 			return "", err
 		}
 		resolved = meta.Info.Version
-		for _, want := range []string{"bdist_wheel", "sdist"} {
+		for _, want := range []string{"sdist", "bdist_wheel"} {
 			for _, x := range meta.URLs {
 				if x.PackageType == want && archive == "" {
 					archive = x.URL
@@ -91,7 +98,7 @@ func fetchPackage(ctx context.Context, manager, name, version, dst string) (stri
 		if tag == "" {
 			tag = "latest"
 		}
-		res, err := get(ctx, "https://registry.npmjs.org/"+strings.ReplaceAll(url.PathEscape(name), "%40", "@")+"/"+url.PathEscape(tag))
+		res, err := get(ctx, npmBase+"/"+strings.ReplaceAll(url.PathEscape(name), "%40", "@")+"/"+url.PathEscape(tag))
 		if err != nil {
 			if errors.Is(err, errNotFound) {
 				return "", fmt.Errorf("npm 에 %s%s 이(가) 없습니다", name, ver(version, "@"))
@@ -282,4 +289,74 @@ func writeFile(dst, name string, r io.Reader, limit int64) error {
 		return errors.New("파일이 너무 큽니다")
 	}
 	return nil
+}
+
+// lockfile: 패키지 검사에서 자기 이름 · 버전을 OSV-Scanner 에 넘길 잠금 파일(11/02)
+type lockfile struct {
+	name    string
+	content []byte
+}
+
+// ownLockfile: pip 은 requirements.txt(name==version), npm 은 package-lock.json v3(node_modules/<name>) — OSV-Scanner 가 읽는 가장 작은 모양
+func ownLockfile(manager, name, version string) lockfile {
+	if manager == "npm" {
+		b, _ := json.MarshalIndent(map[string]any{
+			"name": "supplyguard-scan", "lockfileVersion": 3, "requires": true,
+			"packages": map[string]any{"": map[string]string{"name": "supplyguard-scan"}, "node_modules/" + name: map[string]string{"version": version}},
+		}, "", "  ")
+		return lockfile{name: "package-lock.json", content: b}
+	}
+	return lockfile{name: "requirements.txt", content: []byte(name + "==" + version + "\n")}
+}
+
+// isTestPath: 테스트 코드 — 경로 중 tests · test · __tests__ 폴더, 또는 test_*.py · *_test.py · *.test.* · *.spec.*(js · ts 계열).
+// 위험 점수에서 뺀다(11/02): 정상 패키지의 테스트는 /etc/passwd · 네트워크 호출을 일부러 넣어 오탐을 만든다
+func isTestPath(p string) bool {
+	segs := strings.Split(strings.ToLower(filepath.ToSlash(p)), "/")
+	for _, d := range segs[:len(segs)-1] {
+		if d == "tests" || d == "test" || d == "__tests__" {
+			return true
+		}
+	}
+	base := segs[len(segs)-1]
+	if strings.HasSuffix(base, ".py") && (strings.HasPrefix(base, "test_") || strings.HasSuffix(base, "_test.py")) {
+		return true
+	}
+	for _, k := range []string{".test.", ".spec."} {
+		if strings.Index(base, k) > 0 {
+			switch path.Ext(base) {
+			case ".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// splitTests: src 아래 테스트 코드를 dst 로 같은 상대 경로째 옮기고 옮긴 수를 돌려준다 — GuardDog 본체 실행이 테스트를 보지 않게
+func splitTests(src, dst string) (int, error) {
+	var moved []string
+	err := filepath.WalkDir(src, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel(src, p)
+		if isTestPath(rel) {
+			moved = append(moved, rel)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	for _, rel := range moved {
+		to := filepath.Join(dst, rel)
+		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+			return 0, err
+		}
+		if err := os.Rename(filepath.Join(src, rel), to); err != nil {
+			return 0, err
+		}
+	}
+	return len(moved), nil
 }

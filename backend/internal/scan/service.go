@@ -144,6 +144,18 @@ func (s *Service) Start(ctx context.Context, in Input) (string, error) {
 		return "", bad("kind 는 package | repo | file")
 	}
 
+	// 검사를 띄울 수 없는 환경이면 기록을 만들기 전에 503 으로 원인을 알린다(11/02 — 전엔 「서버 오류」 500)
+	if err := os.MkdirAll(s.o.Dir, 0o755); err != nil {
+		return "", &Error{503, fmt.Sprintf("검사 작업 폴더를 만들 수 없습니다(SCAN_DIR=%s) — 백엔드의 검사 작업 볼륨을 확인하세요", s.o.Dir)}
+	}
+	if p, ok := s.o.Docker.(interface{ Ping(context.Context) error }); ok {
+		pctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		err := p.Ping(pctx)
+		cancel()
+		if err != nil {
+			return "", &Error{503, "검사기 컨테이너를 띄울 수 없습니다 — Docker 에 연결되지 않습니다"}
+		}
+	}
 	s.mu.Lock()
 	s.seq++
 	id := fmt.Sprintf("scan-%04d", s.seq)
@@ -213,6 +225,9 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 			sc.Target.Version = v // 받은 최신 버전을 남긴다(라벨은 입력 그대로)
 			s.mu.Unlock()
 		}
+		if t.Version == "" {
+			t.Version = v
+		}
 	case "repo":
 		ref, err := ParseGitHubURL(t.URL)
 		if err != nil {
@@ -233,12 +248,19 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 	s.mu.Unlock()
 
 	depsOnly := t.Kind == "file" && depPat.MatchString(t.FileName)
+	work := filepath.Dir(src)
+	testsDir := filepath.Join(work, "tests")
 	var findings []model.ScanFinding
 	var risk *model.ScanRisk
 	if !depsOnly {
 		eco := "pypi"
 		if t.Manager == "npm" || exists(src, "package.json") {
 			eco = "npm"
+		}
+		// 테스트 코드는 따로 떼어(11/02) 본체만으로 위험 점수 · 판정을 내고, 테스트는 한 번 더 돌려 목록에만 「테스트 코드」로 붙인다
+		nTests, err := splitTests(src, testsDir)
+		if err != nil {
+			return fmt.Errorf("테스트 코드 분리: %w", err)
 		}
 		out, _, err := s.o.Docker.Run(ctx, s.spec(sc.ID, "guarddog", s.o.GuardDogImage, false, eco, "scan", "/work/"+rel, "--output-format", "json"))
 		if err != nil {
@@ -247,9 +269,44 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 		if findings, risk, err = parseGuardDog(out, "/work/"+rel); err != nil {
 			return err
 		}
+		if nTests > 0 {
+			trel := sc.ID + "/tests"
+			out, _, err := s.o.Docker.Run(ctx, s.spec(sc.ID, "guarddog-tests", s.o.GuardDogImage, false, eco, "scan", "/work/"+trel, "--output-format", "json"))
+			if err != nil {
+				return fmt.Errorf("GuardDog(테스트 코드): %w", err)
+			}
+			tf, _, err := parseGuardDog(out, "/work/"+trel)
+			if err != nil {
+				return err
+			}
+			for i := range tf {
+				tf[i].Test = true
+			}
+			findings = append(findings, tf...)
+		}
 	}
 	var vulns []model.ScanVuln
 	var pkgs []model.ScanPackage
+	if t.Kind == "package" && t.Version != "" {
+		// 패키지 자기 이름 · 버전의 알려진 취약점(11/02) — 잠금 파일을 src 밖(osv/)에 만들어 OSV-Scanner 로 조회한다
+		lf := ownLockfile(t.Manager, t.Name, t.Version)
+		if err := os.MkdirAll(filepath.Join(work, "osv"), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(work, "osv", lf.name), lf.content, 0o644); err != nil {
+			return err
+		}
+		lock := "/work/" + sc.ID + "/osv/" + lf.name
+		out, code, err := s.o.Docker.Run(ctx, s.spec(sc.ID, "osv", s.o.OSVImage, true, "scan", "source", "--lockfile", lock, "--format", "json"))
+		if err != nil {
+			return fmt.Errorf("OSV-Scanner: %w", err)
+		}
+		if code == 0 || code == 1 {
+			if vulns, _, err = parseOSV(out, "/work/"+sc.ID+"/osv", map[string]bool{strings.ToLower(t.Name): true}); err != nil {
+				return err
+			}
+		}
+	}
 	if depsOnly || t.Kind != "package" {
 		args := []string{"scan", "source", "-r", "/work/" + rel, "--format", "json"}
 		var direct map[string]bool
@@ -275,8 +332,12 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 		if f.Category != "threat" || files[f.File] != "" || len(files) >= 20 {
 			continue
 		}
-		p := filepath.Join(src, filepath.FromSlash(f.File))
-		if !strings.HasPrefix(p, src+string(os.PathSeparator)) {
+		root := src
+		if f.Test {
+			root = testsDir
+		}
+		p := filepath.Join(root, filepath.FromSlash(f.File))
+		if !strings.HasPrefix(p, root+string(os.PathSeparator)) {
 			continue
 		}
 		if b, err := os.ReadFile(p); err == nil && len(b) <= 256<<10 {
@@ -290,9 +351,11 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 	if sc.Packages == nil {
 		sc.Packages = []model.ScanPackage{}
 	}
-	sc.Threats, sc.Capabilities, sc.VulnCount, sc.VulnMax = 0, 0, 0, nil
+	sc.Threats, sc.Capabilities, sc.TestFindings, sc.VulnCount, sc.VulnMax = 0, 0, 0, 0, nil
 	for _, f := range findings {
-		if f.Category == "threat" {
+		if f.Test {
+			sc.TestFindings++
+		} else if f.Category == "threat" {
 			sc.Threats++
 		} else {
 			sc.Capabilities++

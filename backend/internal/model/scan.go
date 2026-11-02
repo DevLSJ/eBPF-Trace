@@ -37,6 +37,8 @@ type ScanFinding struct {
 	File     string `json:"file"`
 	Line     int    `json:"line"`
 	Match    string `json:"match"`
+	// Test: 테스트 코드(tests/ · test_*.py 등)에서 나온 탐지 — 위험 점수 · 판정 · 위협 수에 넣지 않는다(11/02)
+	Test bool `json:"test,omitempty"`
 }
 
 type ScanVuln struct {
@@ -79,6 +81,7 @@ type Scan struct {
 	// 목록용 집계
 	Threats      int      `json:"threats"`
 	Capabilities int      `json:"capabilities"`
+	TestFindings int      `json:"testFindings"` // 테스트 코드 탐지 수(점수 제외, 11/02)
 	VulnCount    int      `json:"vulnCount"`
 	VulnMax      *float64 `json:"vulnMax"`
 }
