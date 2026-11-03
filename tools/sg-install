@@ -46,7 +46,7 @@ jget() { python3 -c 'import json,sys; v=json.loads(sys.argv[1]).get(sys.argv[2])
 urlenc() { python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
 
 name="sg-install-$mgr-$(date +%s)-$RANDOM"
-mounts=(); pkgs=()
+mounts=(); pkgs=(); envs=()
 for p in "$@"; do
   if [[ -d $p ]]; then
     abs=$(cd "$p" && pwd); base=$(basename "$abs")
@@ -58,7 +58,10 @@ done
 
 case $mgr in
   pip)   image=${SG_PIP_IMAGE:-python:3.12-slim};  cmd=(pip install --no-cache-dir --progress-bar off "${pkgs[@]}") ;;
-  npm)   image=${SG_NPM_IMAGE:-node:22-alpine};    cmd=(sh -c 'cd /work && npm init -y >/dev/null && npm install --no-fund --no-audit "$@"' -- "${pkgs[@]}") ;;
+  npm)   image=${SG_NPM_IMAGE:-node:22-alpine};    cmd=(sh -c 'cd /work && npm init -y >/dev/null && npm install --no-fund --no-audit "$@"' -- "${pkgs[@]}")
+          # npm 은 실행마다 자기 사용자 설정 /root/.npmrc 를 열어 sandbox-secrets 에 걸렸다(11/03 sg-vm 실측) —
+          # 사용자 설정을 끄면 .npmrc 를 여는 것은 설치 스크립트뿐이라 규칙은 그대로 탐지한다
+          envs=(-e NPM_CONFIG_USERCONFIG=/dev/null) ;;
   cargo) image=${SG_CARGO_IMAGE:-rust:1-slim};     cmd=(cargo install "${pkgs[@]}") ;;
   *) echo "지원: pip | npm | cargo (받은 값: $mgr)" >&2; exit 64 ;;
 esac
@@ -101,7 +104,7 @@ fi
 echo "▶ $mgr install ${pkgs[*]}"
 echo "  컨테이너 $name ($image) — SupplyGuard 감시 중${session:+ · 세션 $session}"
 set +e
-docker run --name "$name" --label supplyguard.sandbox=1 -w /work --pull missing ${mounts[@]+"${mounts[@]}"} "$image" "${cmd[@]}" 2>&1 | sed 's/^/  | /'
+docker run --name "$name" --label supplyguard.sandbox=1 -w /work --pull missing ${mounts[@]+"${mounts[@]}"} ${envs[@]+"${envs[@]}"} "$image" "${cmd[@]}" 2>&1 | sed 's/^/  | /'
 code=${PIPESTATUS[0]}
 set -e
 
