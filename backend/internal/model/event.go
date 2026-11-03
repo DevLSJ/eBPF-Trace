@@ -196,6 +196,9 @@ type Verdict struct {
 	Install *InstallRef `json:"install"`
 	// Timeline: 격리 타임라인(10/30) — matched 판정에만. 옛 기록에는 없다
 	Timeline *Timeline `json:"timeline,omitempty"`
+	// Sequence: 이 이벤트로 완성된 연쇄 규칙(kind: sequence, 11/03). 연쇄가 판정을 이겼으면 RuleID 도 연쇄 규칙이고,
+	// 단일 규칙이 이겼으면(같거나 더 강함) 주석으로만 남는다. 연쇄가 없으면 키 생략.
+	Sequence *SequenceHit `json:"sequence,omitempty"`
 }
 
 // AuditEntry: 저장된 위반 판정 (PostgreSQL audit_log)
