@@ -185,8 +185,9 @@ func (p *Pipeline) Handle(ctx context.Context, ev model.Event) {
 }
 
 // evaluate: 규칙 평가 → (kill) 격리 → 전송. p.mu 를 쥔 채 부른다.
+// Observe = 상태 없는 단일 규칙 평가 + 연쇄 규칙(kind: sequence, 11/03) 진행. 판정은 이벤트마다 1건이다.
 func (p *Pipeline) evaluate(ctx context.Context, ev model.Event) {
-	v := p.engine.Evaluate(ev)
+	v := p.engine.Observe(ev)
 	if v.Matched {
 		// 격리 타임라인(10/30): 탐지 = 이벤트 시각(소스), 판정 = 지금. 증거 · kill · 알림 시각은 뒤 단계가 채운다
 		v.Timeline = &model.Timeline{DetectedAt: ev.Timestamp.UTC(), MatchedAt: time.Now().UTC()}
@@ -242,6 +243,9 @@ func (p *Pipeline) emit(v model.Verdict) {
 
 // lifecycle: 컨테이너 시작 · 종료 (관찰 범위 안의 컨테이너만 — Ignored 는 Handle 에서 이미 걸렀다)
 func (p *Pipeline) lifecycle(ctx context.Context, ev model.Event) {
+	if ev.Kind == model.KindExit {
+		p.engine.Forget(ev.ContainerID) // 끝난 컨테이너의 연쇄 상태 — 설치 세션 추적(review)과 무관하게 버린다
+	}
 	if p.review == nil {
 		return
 	}
@@ -293,10 +297,12 @@ func (p *Pipeline) enforce(ctx context.Context, v *model.Verdict) {
 	case err == nil:
 		v.Enforced = true
 		p.killed[id] = time.Now()
+		p.engine.Forget(id) // 격리한 컨테이너의 연쇄 상태를 버린다
 		p.stats.Killed(id, v.Event.ContainerName)
 		slog.Warn("container killed", "container", v.Event.ContainerName, "id", id, "rule", v.RuleID, "reason", v.Reason)
 	case errors.Is(err, enforcer.ErrNotRunning), errors.Is(err, enforcer.ErrNotFound):
 		p.killed[id] = time.Now()
+		p.engine.Forget(id) // 이미 멈춘 컨테이너 — 연쇄 상태도 버린다
 		v.EnforceError = err.Error()
 	default:
 		v.EnforceError = err.Error()
