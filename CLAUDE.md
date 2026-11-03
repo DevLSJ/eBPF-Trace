@@ -14,11 +14,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **마감 2026-11-13(발표)** [2026-10-30 확정]. 범위를 줄일 때는 오탐률 하네스 → 보고서 · 신호등 → 디자인 토큰 → DNS 조건 일부 순서로 뺀다.
 
-작업 우선순위 [2026-11-02 갱신]:
-1. (11/02 구현 · sg-vm 반영, 미커밋) 공급망 검사 보완 · AI 꺼짐 안내 — 남은 것: GuardDog 임계 결정(아래 미확정), 커밋
-2. GitHub 공개 — 공개 전 이력 점검(첫 커밋의 실제 공인 IP 치환), 원격 생성 뒤 CI 첫 실행 확인
-3. EC2 첫 배포
-4. 인기 패키지 오탐률 하네스(`tools/sg-bench`) · 인증 감사 30일 보관(위반 · 분 단위 집계 보관 기간도 이때 정한다)
+작업 우선순위 [2026-11-02 라운드 계획 승인 — 11일에 맞춘 축소안]:
+1. ✅ 11/02 작업 커밋(C1~C10) · 공급망 검사 판정 3단계 + 오탐률 하네스 `tools/sg-bench`(11/03)
+2. 종합 판정 — `sg-install` 세션 시작 때 서버가 같은 패키지의 정적 검사를 자동 시작, 설치 화면 한 건에 런타임 + 정적 결과(목업 → React → 백엔드 → sg-vm)
+3. GitHub 공개 — 공개 전 이력 점검(첫 커밋의 실제 공인 IP 치환), 원격 생성 뒤 CI 첫 실행 확인
+4. 연쇄 규칙 `kind: sequence` — 같은 컨테이너에서 10초 안 exec curl/wget → connect → open 민감 경로, 기본 규칙 1개 **kill · dryRun 시작**(Tier 1)
+5. 시연 — `sandbox-dns` dryRun 해제(sg-vm 실측 뒤) · 시연 패널 런타임 감시 모드 · 연쇄 시나리오
+6. EC2 첫 배포 — 11/03 `sg-ec2` 준비 · 가젯 실측 완료, 스택 반영 중
+7. UI 패스 — 로그인 · 대시보드 · 공통 부품만, 21st.dev · uiverse · Magic UI · React Bits 패턴을 **CSS · 토큰으로 재구현**(의존성 추가 없음, 요소 · 문구 늘리지 않음)
+8. 리허설. **발표 뒤**: 위반 · 분 집계 · 인증 감사 보관 기간(30일)
 
 ## 아키텍처 [2026-09-29 확정 · 2026-10-20 갱신]
 
@@ -34,10 +38,10 @@ AI 도우미: 백엔드 → Ollama qwen2.5:3b(선택, 읽기 전용 조회 → �
 ```
 
 - **백엔드**: Go 1.26 · Inspektor Gadget v0.56.1을 Go 패키지로 프로세스 안에서 실행(Cgo 없음). 가젯 데이터 오퍼레이터는 `operators.GetDataOperators()` 전체를 쓰고 LocalManager만 직접 만든 컬렉션으로 교체한다 — 일부만 넣으면 trace_dns가 CO-RE 오류로 안 뜬다
-- **컨테이너 발견**: `CONTAINER_DISCOVERY=auto`(기본) — fanotify(runc 훅)를 먼저 시도하고 안 되면(Docker Desktop) docker-events. docker-events는 컨테이너 시작 직후 약 0.1초 안의 동작을 놓친다(sg-vm 실측)
+- **컨테이너 발견**: `CONTAINER_DISCOVERY=auto`(기본) — fanotify(runc 훅)를 먼저 시도하고 안 되면(Docker Desktop) docker-events. docker-events는 컨테이너 시작 순간의 동작을 놓친다(11/03 sg-vm · sg-ec2 실측: 시작 0초 0/10, 0.05초부터 10/10)
 - **프론트**: React 18 · TS · Vite 7 · Tailwind 4 · React Flow · Recharts · qrcode(로컬 번들)
 - **저장**: PostgreSQL 17 · Redis 7(이벤트 버퍼). 정상 이벤트는 하나씩 저장하지 않고 분 단위 개수만(`collected_minutes`), 감사 로그는 위반만. 증거만 7일 정리(11/02 sg-vm 실측: 이벤트 12.7만 건 뒤 DB 8.9MB)
-- **배포**: Docker Compose(nginx 80 → backend :8000 · frontend :80 · PG · Redis · 선택 Caddy · 선택 `ollama`(`--profile ai`, 4GB)) · 레지스트리 Docker Hub · EC2 단일 호스트(기존 `ebpf-trace-app` 대체)
+- **배포**: Docker Compose(nginx 80 → backend :8000 · frontend :80 · PG · Redis · 선택 Caddy · 선택 `ollama`(`--profile ai`, 4GB)) · 레지스트리 Docker Hub(`sg-ec2` 는 SSH 로 이미지 전송) · EC2 단일 호스트(`sg-ec2`, 11/03 새 계정)
 - **격리 책임**: IG는 탐지만, kill은 백엔드가 Docker API로
 - **도메인 미확인 연결은 fail-open** — 단, trace_dns가 켜져 있는데 도메인 조회 없이 공인 IP로 붙으면 규칙의 `directIp`로 판정
 - **커밋하지 않는 것**: `.env` · 키 · `claude-portable/`(개인 작업 틀) · `.claude/worktrees/`
@@ -63,6 +67,7 @@ tools/     sg-install
 | `make stack-up` / `stack-down` | 전체 스택 컨테이너(mock 소스, `.env` 에 `ADMIN_INITIAL_PASSWORD` 필요) |
 | `make sandbox-up` / `sandbox-down` | 실제 가젯 백엔드, `WATCH_CONTAINERS=sg-install-*`, 실행마다 `AUTH_SECRET_KEY` 새로 생성 · OTP 켬 |
 | `cd backend && GOOS=linux go vet ./...` | 리눅스 전용 코드 검사 |
+| `ADMIN_TOKEN=… tools/sg-bench [-a API] [-l 목록] [-o 결과]` | 공급망 검사 오탐률 하네스 — 인기 패키지 20개 + 취약 버전을 실제 백엔드로 검사, 인기 패키지가 「악성」이면 실패. sg-vm 에서는 `-t ~/sg/.tokens` |
 
 **주의**: 맥에서 실제 가젯 소스 + `ENFORCE_KILL`을 쓸 때는 반드시 `WATCH_CONTAINERS=sg-install-*`. 범위 없이 돌려 minikube 컨테이너가 두 번 죽은 적이 있다.
 
@@ -72,7 +77,10 @@ tools/     sg-install
   - 전체 스택 상시 실행: `~/sg/stack`, compose 프로젝트 `supplyguard`, http://192.168.64.2. 로그인 켜짐(10/20) · 발견 auto → fanotify · `ENFORCE_KILL=true` · 전체 감시 · `ollama` 프로필 켬
   - 반영: 소스를 tar 로 옮겨 VM 에서 빌드(`docker compose … build`) → 이전 이미지에 롤백 태그 → `up -d` → health 확인 → 실패 시 롤백 태그로 복구. 롤백 태그 · `.env` 백업 위치는 메모리
   - `.env` · `~/sg/.tokens` 는 600, 값은 출력하지 않는다
-- **`sg-ec2`** — 운영 EC2(Ubuntu 22.04, t3.medium). 별칭 등록 보류 [2026-10-15] — 배포 단계에서 키 파일을 정해 추가. 경로 `/home/ubuntu/supplyguard*` 안에서만. 메모리가 작아 `ollama` 프로필은 끄고 운영
+- **`sg-ec2`** — 시험 · 시연용 EC2 [2026-11-03]. **새 AWS 계정**(기존 계정 · `ebpf-trace-app` 과 무관) · 스톡홀름 리전 · t4g.small(arm64, 2GB) · **Ubuntu 22.04**(커널 6.8) · 8GB gp3 · 파일 시스템 없음 · 고정 주소는 탄력적 IP. 별칭 `sg-ec2`(전용 키, 주소는 `~/.ssh/config` 에만). 경로 `/home/ubuntu/supplyguard*` 안에서만. `ollama` 프로필은 끈다
+  - **sudo 는 Claude 가 직접 실행한다**(이 서버만, 전역 규칙의 예외 — Docker 설치 · 설정 · 스왑 · 패키지 업데이트). 새 계정의 AWS 콘솔 · CLI 권한은 Claude 에게 없어 콘솔 설정은 사용자에게 요청
+  - 이미지는 Mac 에서 arm64 로 빌드해 `docker save | ssh sg-ec2 docker load` 로 옮긴다(EC2 에서 빌드하지 않는다 · Docker Hub 안 씀). Docker 는 overlay2 저장 · 로그 10MB×3 · journald 100MB, cargo 이미지는 상주시키지 않는다
+  - **Ubuntu 26.04(커널 7.0)는 쓰지 않는다** — IG v0.56.1 가젯 이벤트가 발견 방식과 상관없이 약 절반 빠졌다(11/03 실측: 26.04 fanotify 14/40 · 22.04 fanotify 40/40 · docker-events 는 컨테이너 시작 순간 동작만 놓쳐 30/40)
 - 반영은 `deploy/deploy.sh`의 백업 → 반영 → 확인 → 실패 시 복구만
 
 ### 목업 (`mock/`) [2026-10-15 확정 · 2026-11-02 갱신]
@@ -100,6 +108,7 @@ tools/     sg-install
 - **인증**: `/health` 를 뺀 모든 화면 · API · WebSocket 은 로그인 뒤. 쓰기는 관리자 역할(조회자는 읽기 · 미리보기 · 챗봇만). `ADMIN_TOKEN` 은 CLI · 자동화용 Bearer(처리자 「cli」). `SANDBOX_TOKEN` 은 sg-install 보고만(mock 은 비어도 허용). 비밀번호 5자 이상 · 아이디와 다름, 5번 틀리면 5분 잠금. `AUTH_SECRET_KEY` 는 가젯 모드에서 필수(32자 이상)
 - 감사 처리자는 로그인 계정의 표시 이름. 적용 · 버림 · 차단 해제의 사유는 변경 이력에 남는다
 - 데모 패키지 `deploy/demo/reqeusts`는 무해 시뮬(TEST-NET 주소 · 예약 도메인만). 실제 악성 코드를 넣지 않는다
+- 공급망 검사 판정(11/03, `scan/verdict.go`): **악성** = GuardDog 점수 ≥ 5 **그리고** 설치 시점 규칙(`threat-setup-*` · `npm-preinstall-script` · `network-exfil*` · `dns-exfil` · `reverse-shell` · `download-exec` · `self-propagation`) 1개 이상 · **취약** = 알려진 취약점 · **주의** = 점수 ≥ 5 인데 런타임 휴리스틱 규칙만 · 그 외 정상. 우선순위 악성 > 취약 > 주의 > 정상. 테스트 코드 탐지는 어디에도 넣지 않는다. `threat-process-hooks` 는 정상 setup.py 에도 흔해 설치 시점 규칙에서 뺐다
 
 ## 개발 프로세스
 
@@ -129,7 +138,8 @@ tools/     sg-install
 
 ## 미확정 (TBD)
 
-- `sg-ec2` 키 파일 경로(배포 단계에서)
+- ~~`sg-ec2` 키 파일 경로~~ → 11/03 전용 키 · 별칭 등록(서버 항목)
+- 커널 7.0(Ubuntu 26.04) 가젯 이벤트 유실 원인 · `CONTAINER_DISCOVERY=auto` 보완(fanotify 누락 시 경고 + docker-events 보충) — 발표 뒤 재검토 [2026-11-03]
 - `claude-portable/` gitignore 여부
-- GuardDog 위험 점수 임계 5 — 11/02 sg-vm 실측(테스트 코드 제외 · sdist): 인기 패키지 20개 중 4개가 5 이상(pyyaml 8.8 · numpy 7.3 · django 6.7 · django 2.2.0 5.9, 본체 코드의 __import__ · 환경 변수 읽기 등). 데모 악성 8.6. 임계 · 판정 방식 결정 필요
+- ~~GuardDog 위험 점수 임계~~ → 11/03 판정 3단계로 확정(도메인 규칙). 임계 5 는 그대로, 「악성」은 설치 시점 규칙이 걸릴 때만
 - 위반 기록 · 분 단위 집계 보관 기간(인증 감사 30일 구현 때 함께)
