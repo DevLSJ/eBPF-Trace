@@ -41,6 +41,15 @@ const requestsScan: Scan = {
   threats: 0, capabilities: 0, testFindings: 0, vulnCount: 4, vulnMax: 9.1,
 };
 
+// 11/03 판정 3단계(sg-vm 실측 pyyaml 6.0.3): 점수 8.8 인데 런타임 휴리스틱 규칙(동적 로딩)만 → 「주의」, 설치 시점 위협 0
+const pyyamlScan: Scan = {
+  ...base, id: 'scan-0014',
+  target: { kind: 'package', manager: 'pip', name: 'pyyaml', version: '6.0.3', label: 'pip pyyaml' },
+  verdict: 'caution', risk: { score: 8.8, label: 'high_risk' }, vulns: [], packages: [],
+  findings: [531, 551, 563].map((line) => ({ rule: 'threat-runtime-dynamic-loader', category: 'threat' as const, message: 'Detects dynamic code loading', file: 'lib/yaml/constructor.py', line, match: '__import__(name)' })),
+  threats: 3, capabilities: 0, testFindings: 0, installThreats: 0, vulnCount: 0, vulnMax: null,
+};
+
 async function scansApi(page: Page, scans: Scan[]) {
   await page.route(/\/api\/scans(\/|$|\?)/, (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^\/api/, '');
@@ -82,5 +91,18 @@ test.describe('공급망 검사 보완(11/02)', () => {
     await page.goto('/scans?id=scan-0013');
     await expect(page.locator('[data-part="verdict"]')).toContainText('의존성에 알려진 취약점이 4건 있습니다');
     await expect(page.locator('[data-part="verdict"]')).not.toContainText('이 버전에');
+  });
+
+  test('점수가 높아도 런타임 휴리스틱 규칙만이면 「주의」 — 결과 필터에도 있다(11/03)', async ({ page, backend }) => {
+    void backend;
+    await scansApi(page, [pyyamlScan, djangoScan]);
+    await page.goto('/scans?id=scan-0014');
+    const v = page.locator('[data-part="verdict"]');
+    await expect(v.locator('span').first()).toHaveText('주의');
+    await expect(v).toContainText('설치 단계의 위험한 행동은 없고');
+    await expect(v).toContainText('3곳');
+    await expect(v).not.toContainText('차단 목록에 올리세요');
+    await page.getByRole('button', { name: /^주의/ }).click();
+    await expect(page.locator('tr[data-scan]')).toHaveCount(1);
   });
 });

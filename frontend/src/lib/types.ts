@@ -492,7 +492,8 @@ export interface Scan {
   startedAt: string;
   finishedAt: string | null;
   error?: string;
-  verdict?: 'malicious' | 'vulnerable' | 'clean';
+  verdict?: 'malicious' | 'vulnerable' | 'caution' | 'clean'; // caution(11/03): 점수 ≥ 5 인데 런타임 휴리스틱 규칙만
+  installThreats?: number; // 설치 시점 규칙(setup-* · exfil · preinstall …)에 걸린 위협 수 — 악성 판정의 근거
   risk: { score: number; label: string } | null;
   engines: { name: string; version: string }[] | null;
   findings?: ScanFinding[] | null;

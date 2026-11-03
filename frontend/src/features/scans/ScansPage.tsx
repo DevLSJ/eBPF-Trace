@@ -22,6 +22,7 @@ import { ScanPackages } from './ScanPackages';
 const VERDICT: Record<string, [string, string]> = {
   malicious: ['악성 의심', 'bg-red-100 text-red-700'],
   vulnerable: ['취약점 있음', 'bg-amber-100 text-amber-800'],
+  caution: ['주의', 'bg-amber-100 text-amber-800'], // 11/03 판정 3단계: 점수 ≥ 5 인데 설치 시점 규칙 없음(런타임 휴리스틱만)
   clean: ['위협 없음', 'bg-emerald-50 text-emerald-700'],
 };
 const RISK: Record<string, string> = { high_risk: '높음', medium_risk: '보통', low_risk: '낮음', no_risks_detected: '없음' };
@@ -60,7 +61,7 @@ function repoUrlError(raw: string): string {
   return '';
 }
 
-type VerdictFilter = '' | 'malicious' | 'vulnerable' | 'clean';
+type VerdictFilter = '' | 'malicious' | 'vulnerable' | 'caution' | 'clean';
 
 export function ScansPage() {
   const { isAdmin } = useAuth();
@@ -91,7 +92,7 @@ export function ScansPage() {
   const rows = (list.data ?? []).filter((x) => !vf || x.verdict === vf);
   const vOptions = [
     { value: '' as VerdictFilter, label: '전체', count: list.data?.length },
-    ...(['malicious', 'vulnerable', 'clean'] as const).map((k) => ({ value: k as VerdictFilter, label: VERDICT[k][0], count: list.data?.filter((x) => x.verdict === k).length })),
+    ...(['malicious', 'vulnerable', 'caution', 'clean'] as const).map((k) => ({ value: k as VerdictFilter, label: VERDICT[k][0], count: list.data?.filter((x) => x.verdict === k).length })),
   ];
 
   return (
@@ -288,15 +289,16 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
   return (
     <div className="text-sm">
       <Section title="결과">
-        <div className={`grid gap-2 rounded-lg border p-3 ${s.verdict === 'malicious' ? 'border-red-200 bg-red-50' : s.verdict === 'vulnerable' ? 'border-amber-200 bg-amber-50' : 'border-slate-200'}`} data-part="verdict">
+        <div className={`grid gap-2 rounded-lg border p-3 ${s.verdict === 'malicious' ? 'border-red-200 bg-red-50' : s.verdict === 'vulnerable' || s.verdict === 'caution' ? 'border-amber-200 bg-amber-50' : 'border-slate-200'}`} data-part="verdict">
           <div className="flex items-center gap-2">
             <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${vcls}`}>{vk}</span>
             {s.risk && <span className="text-xs">위험 점수 <b className="num">{s.risk.score.toFixed(1)}</b> / 10 · {RISK[s.risk.label] ?? s.risk.label}</span>}
           </div>
           <p className="text-xs text-slate-700">
             {s.status === 'failed' ? `검사하지 못했습니다 — ${s.error}` : s.status === 'running' ? '검사 중입니다…'
-              : s.verdict === 'malicious' ? `설치 단계에서 위험한 행동을 하는 코드가 ${threats.length}곳 있습니다. 설치하지 말고 차단 목록에 올리세요.`
+              : s.verdict === 'malicious' ? `설치 단계에서 위험한 행동을 하는 코드가 ${s.installThreats || threats.length}곳 있습니다. 설치하지 말고 차단 목록에 올리세요.`
               : s.verdict === 'vulnerable' ? vulnText()
+              : s.verdict === 'caution' ? `설치 단계의 위험한 행동은 없고, 실행 중 동작 규칙(동적 로딩 · 환경 변수 읽기 등)에 ${threats.length}곳 걸렸습니다. 정상 라이브러리에도 흔한 패턴이니 코드 보기로 확인하세요.`
               : '정적 검사에서 위험한 코드 · 알려진 취약점을 찾지 못했습니다. 설치 검사(eBPF)로 실제 행동도 확인할 수 있습니다.'}
           </p>
           {t.kind === 'repo' && t.url && (
