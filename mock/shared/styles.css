@@ -140,6 +140,7 @@ textarea.yaml { width: 100%; height: 100%; min-height: 320px; resize: none; }
 .badge-kind { width: 64px; padding: 2px 6px; text-align: center; font-family: var(--mono); font-weight: 400; }
 .badge-kind-exec { background: var(--k-exec-soft); color: var(--k-exec); } .badge-kind-open { background: var(--k-open-soft); color: var(--k-open); } .badge-kind-connect { background: var(--k-connect-soft); color: var(--k-connect); }
 .badge-kind-dns { background: var(--warn-soft); color: var(--warn); } /* dns 배지 amber [10/30 계약 §1] */
+.badge-kind-sequence { background: var(--accent-soft); color: var(--accent-text); } /* 연쇄 규칙 배지 indigo(강조) [11/04] */
 .badge-level-normal { background: var(--surface-2); color: var(--text-2); }
 .badge-level-alert { background: var(--warn-soft); color: var(--warn-text); }
 .badge-level-held { background: var(--danger-soft); color: var(--danger-text); box-shadow: inset 0 0 0 1px var(--danger-line); }
@@ -845,6 +846,7 @@ body { font-size: 14px; }
 .lic-chip { background: var(--ok-soft); color: var(--ok-text); } .lic-chip.warn { background: var(--warn-soft); color: var(--warn-text); }
 .mgr { background: var(--surface-2); color: var(--text-2); padding: 1px 8px; }
 .badge-kind-dns { background: var(--warn-soft); color: var(--warn); } .step-dns { background: var(--warn-soft); color: var(--warn); }
+.badge-kind-sequence { background: var(--accent-soft); color: var(--accent-text); }
 /* 버튼: 기본 accent · 보조 surface-2+border · 위험 danger. 높이 36(xs 28) · r-md · 포커스 링 2px accent-soft+accent */
 .btn { min-height: 36px; padding: 6px 14px; border-radius: var(--r-md); transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease), transform var(--t-fast) var(--ease); }
 .btn-xs { min-height: 28px; padding: 3px 10px; border-radius: var(--r-sm); }

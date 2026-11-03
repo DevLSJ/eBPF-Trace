@@ -194,9 +194,9 @@ const ED = '[data-view="rule-editor"]';
     const attackLen = await pg.evaluate(() => window.MOCK.attack.length);
     ok(attackLen === 6 && await pg.evaluate(() => window.MOCK.attack.every((a) => a.kind !== 'dns')), '기존 attack 시드가 바뀜');
     await pg.click('button:has-text("데모 제어")'); await pg.click('#demo [data-demo="attack-dns"]'); await pg.waitForTimeout(500);
-    const r = await pg.evaluate(() => ({ dns: UI.state.verdicts.filter((v) => v.event.kind === 'dns' && v.matched).map((v) => [v.ruleId, v.action, v.event.containerName]), cases: UI.state.cases.filter((c) => c.source === 'runtime').length, audit: UI.state.audit.filter((a) => a.event.kind === 'dns').length }));
+    const r = await pg.evaluate(() => ({ dns: UI.state.verdicts.filter((v) => v.event.kind === 'dns' && v.matched).map((v) => [v.ruleId, v.action, v.event.containerName]), cases: UI.state.cases.filter((c) => c.source === 'runtime' && c.state !== 'closed').length, audit: UI.state.audit.filter((a) => a.event.kind === 'dns').length }));
     ok(r.dns.length === 2 && r.dns.every(([id, act, c]) => id === 'runtime-dns-exfil' && act === 'alert' && c === 'pkg-reqeusts'), `dns 위반 ${JSON.stringify(r.dns)}`);
-    ok(r.cases === 0, '경고만으로 런타임 건이 열림');
+    ok(r.cases === 0, '경고만으로 런타임 건이 열림'); // 11/04: 종결된 시드 건(연쇄 규칙 예시)은 세지 않는다
     ok(r.audit === 2, `감사 ${r.audit}`);
     ok((await pg.textContent('#toasts')).includes('DNS 유출 질의 실행'), '토스트');
     // dns off

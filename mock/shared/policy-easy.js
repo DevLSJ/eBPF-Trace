@@ -106,7 +106,7 @@
   }
   function allowLink(ruleId, e) {
     const r = state.rules.find((x) => x.id === ruleId);
-    if (!r || r.kind === 'exec' || ruleId === window.MOCK.SYSTEM_RULE) return null;
+    if (!r || r.kind === 'exec' || r.kind === 'sequence' || ruleId === window.MOCK.SYSTEM_RULE) return null; // 연쇄 규칙은 예외 칸이 단계 안에 있어 「이 행동 허용」을 만들지 않는다 [11/04]
     if (r.kind === 'dns') return e.dstHost && (r.allowHosts || []).length ? { href: `#/policies?id=${encodeURIComponent(ruleId)}`, state: { intent: 'allow', value: e.dstHost } } : null; // 허용 도메인이 있는 dns 규칙만 [10/30]
     const value = e.kind === 'open' ? e.path : e.dstHost && (r.allowHosts || []).length ? e.dstHost : `${e.dstIp}/32`;
     return value ? { href: `#/policies?id=${encodeURIComponent(ruleId)}`, state: { intent: 'allow', value } } : null;

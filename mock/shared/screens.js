@@ -217,7 +217,7 @@
       U.api.osv(q).then((r) => {
         if (r.error) { replace(val, h('span', { class: 'tone-warn' }, '조회 실패')); sub.textContent = `${q.ecosystem} · ${q.name} · ${r.error} — 커널 관찰 결과는 그대로입니다${why}`; return; }
         replace(val, h('span', { class: r.vulns ? 'tone-warn' : 'tone-ok', 'data-osv-count': '' }, `알려진 취약점 ${fmt.num(r.vulns)}건`));
-        if (!sc && !r.vulns && nViol) note('정적 분석으로는 깨끗하지만, 설치 중 행동을 커널에서 보고 잡았습니다.'); // 옛 세션(scan 없음) — 지금 그대로
+        // 옛 세션(scan 없음)에는 문장을 두지 않는다 — React 와 같게(11/03 결정)
       });
     }
     return h('section', { class: 'sheet-section', 'data-part': 'osv' }, h('h3', null, '정적 분석 비교'), h('div', { class: 'cmp' }, left, kernel), verdictLine);
@@ -593,7 +593,7 @@
         const rc = !isInstall && (lvl === 'killed' || lvl === 'held') ? state.cases.find((c) => c.source === 'runtime' && c.container === name && c.state !== 'closed') : null;
         const ins = isInstall ? state.installs.find((x) => x.container === name) : null;
         detail.append(U.sheet({ kind: 'event', title: '이벤트 상세', onClose: () => pick(null), body: [
-          h('dl', { class: 'dl' }, h('dt', null, '탐지 결과'), h('dd', null, verdictBadge(v)), h('dt', null, '시각'), h('dd', { class: 'num' }, fmt.dateTime(v.event.timestamp)), h('dt', null, '컨테이너'), h('dd', null, name), h('dt', null, '이미지'), h('dd', { class: 'mono' }, v.event.imageName || '—'), h('dt', null, '사유'), h('dd', null, v.reason || '—'), v.enforceError ? [h('dt', null, '격리 오류'), h('dd', { class: 'tone-danger' }, v.enforceError)] : null, dns),
+          h('dl', { class: 'dl' }, h('dt', null, '탐지 결과'), h('dd', null, verdictBadge(v)), h('dt', null, '시각'), h('dd', { class: 'num' }, fmt.dateTime(v.event.timestamp)), h('dt', null, '컨테이너'), h('dd', null, name), h('dt', null, '이미지'), h('dd', { class: 'mono' }, v.event.imageName || '—'), h('dt', null, '사유'), h('dd', null, v.reason || '—'), seqRow(v), v.enforceError ? [h('dt', null, '격리 오류'), h('dd', { class: 'tone-danger' }, v.enforceError)] : null, dns),
           rc ? h('div', { class: 'card case-hint' }, h('div', { class: 'card-head' }, h('b', null, `건 ${rc.id}`), U.decisionBadge(rc.decision)), h('p', { class: 'small muted' }, rc.state === 'open' ? '이 컨테이너는 판정 대기입니다. 토폴로지에서 관계를 보고 판정하세요.' : '판정됨 — 정책에서 제안 적용 대기')) : null,
           ins ? h('div', { class: 'card case-hint' }, h('div', { class: 'card-head' }, h('b', null, '설치 검사 세션'), h('a', { ...U.to(`#/installs?id=${ins.id}`, { status: 'all' }), class: 'link small' }, `${ins.manager} ${pkgLabel(ins)} →`)), h('p', { class: 'small muted' }, '설치 검사 컨테이너는 토폴로지에 그리지 않습니다. 판정은 설치 검사에서 합니다.')) : null,
           policyStarts(v),
@@ -622,6 +622,15 @@
       return { update };
     },
   };
+
+  // 연쇄 [11/04] — 판정에 sequence(model.SequenceHit)가 붙어 있으면 한 행: 「규칙 X — exec wget(0.0초) → connect …(+2.1초) → open …(+2.4초)」.
+  //   exec 는 프로세스 이름, 나머지는 상세(백엔드 사유와 같다). 단일 규칙이 이겨 연쇄가 주석이면 끝에 「 · 판정은 <규칙>」
+  function seqRow(v) {
+    const sq = v.sequence; if (!sq || !(sq.steps || []).length) return null;
+    const t0 = Date.parse(sq.steps[0].timestamp);
+    const parts = sq.steps.map((x, i) => `${x.kind} ${x.kind === 'exec' && x.comm ? x.comm : x.detail}(${i ? '+' : ''}${((Date.parse(x.timestamp) - t0) / 1000).toFixed(1)}초)`);
+    return [h('dt', null, '연쇄'), h('dd', { class: 'mono small', 'data-part': 'sequence' }, `규칙 ${sq.ruleId} — ${parts.join(' → ')}${v.ruleId && v.ruleId !== sq.ruleId ? ` · 판정은 ${v.ruleId}` : ''}`)];
+  }
 
   // 도메인 조회 [10/20 I] — connect 의 dnsTraced: true 인데 도메인이 없고 공인 IP 면 「도메인 조회 없는 IP 직접 연결」, false 면 판단 불가(trace_dns 꺼짐)
   function dnsRow(e) {
@@ -745,12 +754,21 @@
     // DNS 질의 규칙(kind: dns) [10/30 계약 §1] — 고급 폼 라벨은 계약 그대로
     dns: [['allowHosts', '허용 도메인', '하나라도 넣으면 여기 없는 도메인 질의는 모두 위반 (점 없는 이름 · *.arpa · *.local · *.internal 은 제외)'], ['denyHosts', '금지 도메인', '허용 목록과 무관하게 항상 위반 (접미사 일치)'], ['denyQtypes', '금지 질의 유형', '대문자, 한 줄에 하나 (예: TXT, ALL)'], ['maxLabelLength', '라벨 길이 상한', '1~63 — 넘는 라벨은 유출 의심'], ['maxNameLength', '이름 길이 상한', '1~253 — 넘는 이름은 유출 의심']],
   };
-  // 최소 YAML — 규칙 스키마(스칼라·문자열/숫자 목록)만 다룬다
+  // 연쇄 규칙(kind: sequence) [11/04] — 검사 · 문구는 backend rules/rule.go validateSequence 와 같게. 편집은 「고급 · YAML」만
+  const SEQ_STEPS = [2, 5], SEQ_WINDOW = 60;
+  const COND_FIELDS = [...LIST_FIELDS.filter((f) => f !== 'containers'), ...NUM_FIELDS, 'directIp'];
+  const hasCond = (r) => COND_FIELDS.some((f) => r[f] !== undefined && r[f] !== '' && r[f] !== null && !(Array.isArray(r[f]) && !r[f].length));
+  const seqSummary = (r) => `${r.disabled ? '[꺼짐] ' : ''}연쇄 ${(r.steps || []).length}단계 · ${r.windowSeconds}초 안 · ${r.action === 'kill' ? (r.dryRun ? '시험(격리 대상)' : '격리') : '알림'}`;
+  const SEQ_NO_PREVIEW = '연쇄 규칙은 미리보기를 할 수 없습니다 — 감사 로그에는 위반만 저장돼 연쇄의 앞 단계(정상 실행 · 연결)가 남아 있지 않습니다. 시험 운영(dryRun)으로 저장해 실제 판정을 지켜본 뒤 격리로 바꾸세요';
+  const SEQ_KILL_WARN = '시험 운영(dryRun) 없이 격리(kill)로 저장합니다 — 오탐이면 정상 컨테이너가 바로 종료됩니다. 먼저 dryRun: true 로 지켜보기를 권합니다';
+  // 최소 YAML — 규칙 스키마(스칼라·문자열/숫자 목록, 연쇄 규칙의 steps = 규칙 객체 목록)만 다룬다
   const yq = (v) => (typeof v === 'number' || typeof v === 'boolean' ? String(v) : /^[A-Za-z0-9_./*?\[\]:-]+$/.test(v) && !/^[-?:]/.test(v) && !/:$/.test(v) ? v : JSON.stringify(v));
   function ruleToYaml(r, indent) {
     const pad = ' '.repeat(indent || 0); const lines = [];
-    for (const k of ['id', 'description', 'kind', 'action', 'directIp', ...NUM_FIELDS, 'dryRun', 'disabled']) if (r[k] !== undefined && r[k] !== '' && r[k] !== false) lines.push(`${pad}${k}: ${yq(r[k])}`);
+    for (const k of ['id', 'description', 'kind', 'action', 'directIp', ...NUM_FIELDS, 'dryRun', 'disabled', 'windowSeconds']) if (r[k] !== undefined && r[k] !== '' && r[k] !== false) lines.push(`${pad}${k}: ${yq(r[k])}`);
     for (const k of LIST_FIELDS) if (r[k] && r[k].length) { lines.push(`${pad}${k}:`); for (const x of r[k]) lines.push(`${pad}  - ${yq(x)}`); }
+    // 연쇄 단계 [11/04]: 「- kind: …」 아래에 그 단계의 조건
+    if (Array.isArray(r.steps) && r.steps.length) { lines.push(`${pad}steps:`); for (const st of r.steps) { const sub = ruleToYaml(st, (indent || 0) + 4).split('\n'); sub[0] = `${pad}  - ${sub[0].trimStart()}`; lines.push(...sub); } }
     return lines.join('\n');
   }
   const rulesToYaml = (rs) => '# SupplyGuard 정책 — PUT /api/policies 로 전체 교체\nrules:\n' + rs.map((r) => ruleToYaml(r, 4).replace(/^ {4}/, '  - ')).join('\n\n') + '\n';
@@ -788,8 +806,27 @@
   function validateRule(r, existing) {
     if (!r || typeof r !== 'object') throw new Error('YAML 최상위는 규칙 객체여야 함');
     if (!/^[a-z0-9][a-z0-9-]*$/.test(r.id || '')) throw new Error('id 는 소문자·숫자·하이픈');
-    if (!KINDS.includes(r.kind)) throw new Error('kind 는 exec | open | connect | dns');
+    if (!KINDS.includes(r.kind) && r.kind !== 'sequence') throw new Error('kind 는 exec | open | connect | dns | sequence');
     if (!['alert', 'kill'].includes(r.action)) throw new Error('action 은 alert | kill');
+    if (r.kind === 'sequence') return validateSequence(r);
+    if (r.steps !== undefined || r.windowSeconds !== undefined) throw new Error('steps · windowSeconds 는 sequence 규칙에서만');
+    return validateConditions(r);
+  }
+  // 연쇄 규칙 [11/04]: 단계 2~5개 · 창 1~60초 · 최상위 조건 금지 · 단계는 kind(이벤트 kind 4개) + 조건만 · 단계 조건은 단일 규칙과 같은 검사
+  function validateSequence(r) {
+    const n = Array.isArray(r.steps) ? r.steps.length : 0;
+    if (n < SEQ_STEPS[0] || n > SEQ_STEPS[1]) throw new Error(`steps: 단계 ${SEQ_STEPS[0]}~${SEQ_STEPS[1]}개 (지금 ${n}개)`);
+    if (!(Number.isInteger(r.windowSeconds) && r.windowSeconds >= 1 && r.windowSeconds <= SEQ_WINDOW)) throw new Error(`windowSeconds ${r.windowSeconds === undefined ? 0 : r.windowSeconds}: 1~${SEQ_WINDOW}`);
+    if (hasCond(r)) throw new Error('sequence 규칙 최상위에는 조건을 쓸 수 없음 — 조건은 steps 에');
+    r.steps.forEach((st, i) => {
+      if (!st || typeof st !== 'object' || !KINDS.includes(st.kind)) throw new Error(`steps[${i}]: kind ${JSON.stringify(st && st.kind)}: exec | open | connect | dns`);
+      if (['id', 'description', 'action', 'dryRun', 'disabled', 'containers', 'steps', 'windowSeconds'].some((f) => st[f] !== undefined)) throw new Error(`steps[${i}]: 단계에는 kind 와 조건만 — id · description · action · dryRun · disabled · containers · steps · windowSeconds 는 쓸 수 없음`);
+      if (!hasCond(st)) throw new Error(`steps[${i}]: ${st.kind} 규칙에 조건이 없음`);
+      try { validateConditions(st); } catch (e) { throw new Error(`steps[${i}]: ${e.message}`); }
+    });
+    return r;
+  }
+  function validateConditions(r) {
     for (const f of PORT_FIELDS) if (r[f] && r[f].some((p) => !Number.isInteger(p) || p < 1 || p > 65535)) throw new Error(`${f}: 1~65535 정수만`);
     if (r.directIp !== undefined && !['allow', 'alert', 'kill'].includes(r.directIp)) throw new Error('directIp 는 allow | alert | kill (또는 비움)');
     if (r.directIp && r.kind !== 'connect') throw new Error('directIp 는 connect 규칙에서만 씁니다');
@@ -849,21 +886,33 @@
       function mergeDefault(cur, def) {
         const r = JSON.parse(JSON.stringify(cur));
         for (const [k, v] of Object.entries(def)) {
+          // 연쇄 단계 [11/04]: 순서 · 개수가 뜻이라 단계를 붙이지 않는다 — 단계 수 · kind 가 같을 때만 단계마다 빠진 값을 더한다
+          if (k === 'steps') { if (Array.isArray(r.steps) && Array.isArray(v) && r.steps.length === v.length && v.every((x, i) => r.steps[i].kind === x.kind)) r.steps = r.steps.map((x, i) => mergeDefault(x, v[i])); continue; }
           if (Array.isArray(v)) { const have = new Set(r[k] || []); const add = v.filter((x) => !have.has(x)); if (add.length) r[k] = [...(r[k] || []), ...add]; }
           else if (r[k] === undefined || r[k] === '') r[k] = v;
         }
         return r;
       }
-      function diffText(cur, def) {
+      function diffParts(cur, def, pre) {
         const out = [];
         for (const k of new Set([...Object.keys(cur), ...Object.keys(def)])) {
           if (['description', 'disabled', 'dryRun'].includes(k)) continue;
           const a = cur[k], b = def[k];
           if (JSON.stringify(a) === JSON.stringify(b)) continue;
-          if (Array.isArray(b)) { const add = b.filter((x) => !(a || []).includes(x)); if (add.length) out.push(`${k} +${add.join(', ')}`); }
-          else if (a === undefined) out.push(`${k}: (없음) → ${b}`);
-          else if (b !== undefined) out.push(`${k}: ${a} (지금 값 유지, 기본은 ${b})`);
+          if (k === 'steps') { // 연쇄 단계 [11/04]: 단계마다 비교(mergeDefault 와 같은 조건), 모양이 다르면 지금 단계 유지
+            const sa = a || [], sb = b || [];
+            if (sa.length === sb.length && sb.every((x, i) => sa[i].kind === x.kind)) sb.forEach((x, i) => out.push(...diffParts(sa[i], x, `${pre}steps[${i}].`)));
+            else out.push(`${pre}steps: 지금 단계 유지 (기본은 ${sb.map((x) => x.kind).join(' → ')})`);
+            continue;
+          }
+          if (Array.isArray(b)) { const add = b.filter((x) => !(a || []).includes(x)); if (add.length) out.push(`${pre}${k} +${add.join(', ')}`); }
+          else if (a === undefined) out.push(`${pre}${k}: (없음) → ${b}`);
+          else if (b !== undefined) out.push(`${pre}${k}: ${a} (지금 값 유지, 기본은 ${b})`);
         }
+        return out;
+      }
+      function diffText(cur, def) {
+        const out = diffParts(cur, def, '');
         return out.length ? out.join(' · ') : '지금 규칙에만 있는 값이 있습니다(그대로 둡니다)';
       }
       function drawDefaults() {
@@ -964,7 +1013,7 @@
         for (const f of LIST_FIELDS) d.lists[f] = (r[f] || []).join('\n');
         for (const f of NUM_FIELDS) d.nums[f] = r[f] || '';
         return h('div', { class: 'grow scroll pad', 'data-readonly-rule': r.id }, h('div', { class: 'sheet-body flat' },
-          h('p', { class: 'summary-bar' }, U.policyEasy.summarize(d)),
+          h('p', { class: 'summary-bar' }, r.kind === 'sequence' ? seqSummary(r) : U.policyEasy.summarize(d)),
           h('p', { class: 'small muted' }, '조회자는 정책을 볼 수만 있습니다. 바꾸려면 관리자에게 요청하세요.'),
           h('pre', { class: 'json' }, ruleToYaml(r, 0))));
       }
@@ -1059,7 +1108,8 @@
       // opts.fresh: 이벤트 · 감사 행 「이 행동 허용」으로 새로 더한 예외 값(강조)
       function ruleEditor(rule, isNew, opts) {
         const o = opts || {};
-        let mode = 'easy', draft = toDraft(rule), yamlText = '', error = '', saved = false, check = null;
+        const isSeq = rule.kind === 'sequence'; // 연쇄 규칙 [11/04]: 쉬운 설정 · 폼에는 단계가 없어 YAML 만, 처음 YAML 은 규칙 그대로(steps · windowSeconds 포함)
+        let mode = isSeq ? 'yaml' : 'easy', draft = toDraft(rule), yamlText = isSeq ? ruleToYaml(rule) : '', error = '', saved = false, check = null;
         const root = h('div', { class: 'col', 'data-view': 'rule-editor' });
         const sumEl = h('div', { class: 'summary-bar', 'data-summary': '' });
         const ctx = { isNew, fresh: o.fresh ? new Set([`${o.freshField}:${o.fresh}`]) : null, onChange: () => { saved = false; error = ''; sumEl.textContent = U.policyEasy.summarize(draft); }, rerender: () => { saved = false; error = ''; render(); } };
@@ -1079,7 +1129,7 @@
           return r;
         }
         const current = () => { if (mode !== 'yaml') return validateRule(toRule(draft)); const p = parseYaml(yamlText); if (!isNew && p && p.id !== rule.id) throw new Error('기존 정책의 id는 바꿀 수 없음'); return validateRule(p); };
-        const MODES = [['easy', '쉬운 설정'], ['form', '고급 · 폼'], ['yaml', '고급 · YAML']];
+        const MODES = isSeq ? [['yaml', '고급 · YAML']] : [['easy', '쉬운 설정'], ['form', '고급 · 폼'], ['yaml', '고급 · YAML']];
         function render() {
           if (check) { renderCheck(); return; }
           const effective = draft.action === 'kill' && draft.dryRun ? 'kill → 알림만 (dry-run)' : draft.action;
@@ -1117,7 +1167,7 @@
           if (next === mode) return; error = '';
           try {
             if (next === 'yaml') yamlText = ruleToYaml(toRule(draft));
-            else if (mode === 'yaml') { const p = parseYaml(yamlText); validateRule(p); if (!isNew && p.id !== rule.id) throw new Error('기존 정책의 id는 바꿀 수 없음 — 새 정책으로 만드세요'); draft = toDraft(p); }
+            else if (mode === 'yaml') { const p = parseYaml(yamlText); if (p && p.kind === 'sequence') throw new Error('연쇄 규칙(sequence)은 「고급 · YAML」로만 편집합니다 — 쉬운 설정 · 폼에는 단계가 없습니다'); validateRule(p); if (!isNew && p.id !== rule.id) throw new Error('기존 정책의 id는 바꿀 수 없음 — 새 정책으로 만드세요'); draft = toDraft(p); }
             mode = next;
           } catch (e) { error = e.message; }
           render();
@@ -1130,17 +1180,21 @@
           catch (e) { error = e.message; render(); return; }
           check = { rule: r, preview: null };
           render();
+          if (r.kind === 'sequence') return; // 연쇄 규칙: 감사 로그 재평가 없음(안내만) [11/04]
           U.api.previewRule(r).then((pv) => { if (check && check.rule === r) { check.preview = pv; render(); } }).catch((e) => { if (check && check.rule === r) { check.preview = { error: e.message }; render(); } });
         }
         const LV = { normal: '통과', alert: '알림', held: '격리 대상', killed: '격리' };
         const LV_TO = { normal: '통과로', alert: '알림으로', held: '격리 대상으로', killed: '격리로' };
         function renderCheck() {
           const { rule: r, preview: pv } = check;
+          const seq = r.kind === 'sequence';
           const groups = pv && !pv.error ? Object.entries(pv.changed.reduce((m, x) => { const k = `${x.before}>${x.after}`; m[k] = (m[k] || 0) + 1; return m; }, {})) : [];
           replace(root, h('div', { class: 'grow scroll pad' }, h('section', { class: 'save-check', 'data-part': 'save-check' },
             h('h3', null, '저장 전 확인'),
-            h('p', { class: 'summary-bar', 'data-summary': '' }, U.policyEasy.summarize(toDraft(r))),
-            !pv ? h('p', { class: 'muted' }, '최근 감사 로그로 미리 계산하는 중…')
+            h('p', { class: 'summary-bar', 'data-summary': '' }, seq ? seqSummary(r) : U.policyEasy.summarize(toDraft(r))),
+            // 연쇄 규칙 [11/04]: 미리보기 불가 안내 + dryRun 없는 kill 이면 경고 한 줄
+            seq ? [h('p', { class: 'note-box', 'data-part': 'seq-no-preview' }, SEQ_NO_PREVIEW), r.action === 'kill' && !r.dryRun ? h('p', { class: 'small tone-danger', 'data-part': 'seq-kill-warn' }, SEQ_KILL_WARN) : null]
+            : !pv ? h('p', { class: 'muted' }, '최근 감사 로그로 미리 계산하는 중…')
               : pv.error ? h('p', { class: 'small tone-warn' }, `미리보기를 계산하지 못했습니다 — ${pv.error}. 저장은 할 수 있습니다.`)
                 : [h('p', { 'data-preview-count': '' }, `최근 감사 로그 ${fmt.num(pv.evaluated)}건을 이 정책으로 다시 평가 — 결과가 바뀌는 과거 위반 `, h('b', { class: 'num' }, `${pv.changed.length}건`)),
                   groups.length ? h('ul', { class: 'check-groups' }, groups.map(([k, n]) => { const [b, a] = k.split('>'); return h('li', null, `${LV[b]}에서 ${LV_TO[a]} 바뀜 `, h('b', { class: 'num' }, `${n}건`)); }))
@@ -1305,6 +1359,7 @@
             h('dt', null, '판정'), h('dd', null, decisionCell(a), c && c.decidedAt ? h('span', { class: 'small muted num' }, `  ${c.decidedBy} · ${fmt.dateTime(c.decidedAt)}`) : null, c ? h('span', { class: 'small muted' }, `  (건 ${c.id})`) : null),
             h('dt', null, '시각'), h('dd', { class: 'num' }, fmt.dateTime(a.event.timestamp)),
             h('dt', null, '사유'), h('dd', null, a.reason || '—'),
+            seqRow(a),
             a.enforceError ? [h('dt', null, '격리 오류'), h('dd', { class: 'tone-danger' }, a.enforceError)] : null,
             h('dt', null, '컨테이너'), h('dd', { class: 'mono' }, a.event.containerName),
             h('dt', null, '컨테이너 ID'), h('dd', { class: 'mono' }, fmt.shortId(a.event.containerId)),

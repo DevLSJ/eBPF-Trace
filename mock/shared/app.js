@@ -47,8 +47,9 @@
   };
 
   const KINDS = ['exec', 'open', 'connect', 'dns']; // dns [10/30 계약 §1] — 질의만, 상세 「<이름> (<질의 유형>)」
-  const KIND_LONG = { exec: '실행', open: '파일', connect: '통신', dns: '도메인 조회' }; // 긴 이름(필터 · 배지 제목)
-  const KIND_SHORT = { exec: '실행', open: '파일', connect: '통신', dns: '조회' }; // 짧은 라벨(정책 목록 · 타일 · 종합)
+  // sequence [11/04]: 규칙에만 있는 kind(연쇄 규칙) — 이벤트 kind 가 아니라 KINDS(필터 · 이벤트 검증)에는 넣지 않는다
+  const KIND_LONG = { exec: '실행', open: '파일', connect: '통신', dns: '도메인 조회', sequence: '연쇄' }; // 긴 이름(필터 · 배지 제목)
+  const KIND_SHORT = { exec: '실행', open: '파일', connect: '통신', dns: '조회', sequence: '연쇄' }; // 짧은 라벨(정책 목록 · 타일 · 종합)
   const LEVEL_LABEL = { normal: '정상', alert: '경고', held: '격리 대상', killed: '격리됨' };
   const INSTALL_STATUS = { isolated: '격리', warned: '경고', passed: '통과', failed: '설치 실패', unknown: '결과 미확인', running: '진행 중', refused: '설치 전 거부' };
   // 용어 [10/15 목표]: 엔진이 내리는 것은 「탐지 결과」(LEVEL_LABEL), 사람이 내리는 것은 「판정」(DECISION_LABEL)
@@ -521,6 +522,8 @@
       const hadHosts = new Set(work.filter((r) => (r.allowHosts || []).length).map((r) => r.id));
       for (const a of rows) {
         if (a.ruleId === 'blocked-image') { note('이미지 차단은 예외가 아니라 차단 목록에서 해제합니다'); continue; }
+        // 연쇄 규칙 [11/04 — 백엔드 review/cases.go 와 같은 문구]: 상태 없는 재평가로는 다시 맞히지 못해 빈 제안이 된다 — 안내만
+        if ((work.find((r) => r.id === a.ruleId) || {}).kind === 'sequence') { note(`연쇄 규칙 ${a.ruleId} 은 자동 예외를 만들지 않습니다 — 정책 탭에서 직접 수정하세요`); continue; }
         for (let i = 0; i <= work.length; i++) {
           const v = M.evaluate(work, a.event); if (!v.matched) break;
           if (v.ruleId === M.SYSTEM_RULE) { note(`도메인 ${a.event.dstHost} 은 차단 목록에 있습니다 — 차단 목록에서 해제하세요`); break; }
@@ -579,9 +582,12 @@
     },
     reevaluate(rules) {
       const changed = [];
+      const lv = (v, prev) => (!v.matched ? 'normal' : v.action !== 'kill' ? 'alert' : v.dryRun || prev === 'held' ? 'held' : 'killed');
       for (const a of state.audit) {
-        const before = levelOf(a); const v = M.evaluate(rules, a.event);
-        const after = !v.matched ? 'normal' : v.action !== 'kill' ? 'alert' : v.dryRun || before === 'held' ? 'held' : 'killed';
+        // 연쇄가 이긴 행 [11/04]: 상태 없는 평가로는 지금 규칙으로도 다시 맞지 않는다 — 백엔드처럼 지금 · 다음 규칙을 둘 다 다시 평가해 비교(저장된 탐지 결과와 비교하지 않음)
+        const seqRow = a.sequence && a.ruleId === a.sequence.ruleId;
+        const before = seqRow ? lv(M.evaluate(state.rules, a.event)) : levelOf(a); const v = M.evaluate(rules, a.event);
+        const after = lv(v, before);
         if (after !== before) changed.push({ auditId: a.id, before, after, container: a.event.containerName, ruleId: a.ruleId });
       }
       const blocking = (l) => l === 'killed' || l === 'held';
@@ -831,7 +837,9 @@
     },
     // ── 새 기본 규칙 [10/20 F] — GET /api/policies/defaults: 기본 정책 파일(M.defaultRules)과 지금 규칙 비교. 설명 · 꺼짐 · dryRun 은 사용자 값이라 비교하지 않는다 ──
     policyDefaults() {
-      const norm = (r) => { const x = clone(r); delete x.description; delete x.disabled; delete x.dryRun; return JSON.stringify(Object.keys(x).sort().reduce((o, k) => { o[k] = x[k]; return o; }, {})); };
+      // 키 정렬은 안쪽 객체까지 [11/04 — 연쇄 규칙 steps 의 단계 객체가 YAML 왕복으로 키 순서가 바뀌어도 같게]
+      const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys) : v && typeof v === 'object' ? Object.keys(v).sort().reduce((o, k) => { o[k] = sortKeys(v[k]); return o; }, {}) : v);
+      const norm = (r) => { const x = clone(r); delete x.description; delete x.disabled; delete x.dryRun; return JSON.stringify(sortKeys(x)); };
       const cur = new Map(state.rules.map((r) => [r.id, r]));
       const missing = [], differs = [];
       for (const d of M.defaultRules) { const c = cur.get(d.id); if (!c) missing.push(clone(d)); else if (norm(c) !== norm(d)) differs.push({ id: d.id, default: clone(d), current: clone(c) }); }
@@ -911,6 +919,16 @@
     const { proposal } = srv.decide(c.id, { decision: s.seedDecided.decision, note: '' }, t);
     srv.apply(proposal.id, t + 60000);
   });
+  // 시드: 연쇄 규칙 예시 행 [11/04 결정] — 실제 백엔드처럼 런타임 격리 대상 → 건 → 「악성」 판정 · 종결된 과거 건으로 묶는다.
+  //   제안 · 차단 목록 · 변경 이력은 만들지 않는다(다른 시드 값이 그대로이게)
+  {
+    const a = state.audit.find((x) => x.sequence && !x.caseId);
+    if (a) {
+      const at = Date.parse(a.event.timestamp), c = srv.touchRuntimeCase(a.event, a, at, false);
+      a.caseId = c.id;
+      Object.assign(c, { state: 'closed', decision: 'malicious', decidedAt: iso(at + 7 * 60000), decidedBy: '보안 담당자', closedAt: iso(at + 8 * 60000) });
+    }
+  }
 
   // ── 화면이 쓰는 데이터 API — sim 은 모의 서버(srv), live 는 REST (frontend/src/lib/api.ts 와 같은 계약) ──
   // 계약: Claude Docs 「SupplyGuard 개발 문서」 › 「API 계약」 탭(엔드포인트 표). 이름 · 모양을 그대로 따른다 [10/15 목표]

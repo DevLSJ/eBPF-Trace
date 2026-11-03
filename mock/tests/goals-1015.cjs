@@ -321,15 +321,16 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
   });
 
   // ---------------- 6. 런타임 건 ----------------
+  // 11/04: 연쇄 규칙 시드 행에 종결된 과거 런타임 건이 붙어서, 이 시험에서 새로 열린(종결 아닌) 건만 센다
   await T('6 런타임: 격리 → 건 1개, 다시 격리돼도 같은 건(위반 수만 증가)', async () => {
     const pg = await newPage();
     await go(pg, '/');
     await pg.evaluate(() => UI.runAttackNow());
     await pg.waitForTimeout(300);
-    const a = await pg.evaluate(async () => UI.api.cases({ source: 'runtime' }));
+    const a = await pg.evaluate(async () => (await UI.api.cases({ source: 'runtime' })).filter((c) => c.state !== 'closed'));
     await pg.evaluate(() => UI.runAttackNow());
     await pg.waitForTimeout(300);
-    const b = await pg.evaluate(async () => UI.api.cases({ source: 'runtime' }));
+    const b = await pg.evaluate(async () => (await UI.api.cases({ source: 'runtime' })).filter((c) => c.state !== 'closed'));
     ok(a.length === 1 && b.length === 1 && a[0].id === b[0].id, `건 ${a.length} → ${b.length}`);
     ok(b[0].violations > a[0].violations, `위반 수 ${a[0].violations} → ${b[0].violations}`);
     ok(b[0].state === 'open' && b[0].decision === 'pending' && !b[0].package, `건 모양 ${JSON.stringify(b[0])}`);
@@ -342,7 +343,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
     await pg.waitForTimeout(200);
     const lv = await pg.evaluate(() => UI.levelOf(UI.state.audit[0]));
     ok(lv === 'alert', `주입 이벤트 ${lv}`);
-    ok((await pg.evaluate(async () => UI.api.cases({ source: 'runtime' }))).length === 0, '경고로 건이 열림');
+    ok((await pg.evaluate(async () => (await UI.api.cases({ source: 'runtime' })).filter((c) => c.state !== 'closed'))).length === 0, '경고로 건이 열림');
     await pg.close();
   });
 
