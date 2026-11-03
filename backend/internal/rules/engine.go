@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
 )
@@ -17,12 +18,18 @@ type compiled struct {
 	Rule
 	allow []netip.Prefix
 	deny  []netip.Prefix
+	steps []compiled // sequence 규칙의 단계(11/03) — 단일 규칙과 같은 match 를 쓴다
 }
 
 // Engine: 정책을 원자적으로 교체(리로드)할 수 있는 평가기. 동시 호출 안전.
+// 연쇄 규칙 상태(seq*)는 seqMu 가 지킨다. 둘 다 쥘 때는 mu → seqMu 순서로만 잡는다.
 type Engine struct {
 	mu    sync.RWMutex
 	rules []compiled
+
+	seqMu    sync.Mutex
+	seq      map[string]*seqContainer // 컨테이너 ID → 진행 중인 연쇄
+	seqSwept time.Time                // 마지막 만료 정리(이벤트 시각)
 }
 
 func New(rules []Rule) *Engine {
@@ -31,26 +38,37 @@ func New(rules []Rule) *Engine {
 	return e
 }
 
-// Replace: 정책 저장 후 엔진 리로드. 호출 전에 Validate를 통과한 규칙만 넘긴다.
+// Replace: 정책 저장 후 엔진 리로드. 호출 전에 Validate를 통과한 규칙만 넘긴다. 진행 중인 연쇄 상태는 모두 버린다.
 func (e *Engine) Replace(rules []Rule) {
 	cs := make([]compiled, 0, len(rules))
 	for _, r := range rules {
-		c := compiled{Rule: r}
-		for _, s := range r.AllowCIDRs {
-			if p, err := parsePrefix(s); err == nil {
-				c.allow = append(c.allow, p)
-			}
-		}
-		for _, s := range r.DenyCIDRs {
-			if p, err := parsePrefix(s); err == nil {
-				c.deny = append(c.deny, p)
-			}
-		}
-		cs = append(cs, c)
+		cs = append(cs, compile(r))
 	}
 	e.mu.Lock()
 	e.rules = cs
+	e.seqMu.Lock() // 잠금 순서 mu → seqMu
+	e.seq, e.seqSwept = nil, time.Time{}
+	e.seqMu.Unlock()
 	e.mu.Unlock()
+}
+
+// compile: 대역 문자열을 미리 파싱한다. sequence 규칙은 단계마다 같은 일을 한다.
+func compile(r Rule) compiled {
+	c := compiled{Rule: r}
+	for _, s := range r.AllowCIDRs {
+		if p, err := parsePrefix(s); err == nil {
+			c.allow = append(c.allow, p)
+		}
+	}
+	for _, s := range r.DenyCIDRs {
+		if p, err := parsePrefix(s); err == nil {
+			c.deny = append(c.deny, p)
+		}
+	}
+	for _, st := range r.Steps {
+		c.steps = append(c.steps, compile(st))
+	}
+	return c
 }
 
 func (e *Engine) Rules() []Rule {
