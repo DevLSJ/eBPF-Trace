@@ -47,6 +47,15 @@ type Options struct {
 	Blocker       Blocker
 	// GitHub: 저장소 tarball 을 받는 codeload 주소. 비면 https://codeload.github.com (테스트는 가짜 서버)
 	GitHub string
+	// PyPI · NPM: 레지스트리 주소. 비면 https://pypi.org · https://registry.npmjs.org (테스트는 가짜 서버)
+	PyPI, NPM string
+	// 자원(11/04): 동시 실행 상한(SCAN_CONCURRENCY, 기본 1 — 수동 검사에도) · 자동 검사의 대기 상한(SCAN_QUEUE, 기본 4 — 넘으면 busy) ·
+	// 검사기 컨테이너 메모리 · CPU(SCAN_MEMORY_MB 기본 1024 · SCAN_CPUS 기본 2)
+	Concurrency, Queue int
+	MemoryMB           int64
+	CPUs               float64
+	// Timeout: 슬롯을 잡은 뒤 검사 한 건의 상한(기본 8분) · QueueWait: 슬롯 대기 상한(기본 10분, 넘으면 failed). 테스트는 짧게
+	Timeout, QueueWait time.Duration
 }
 
 const keep = 30 * 24 * time.Hour
@@ -58,9 +67,56 @@ type Service struct {
 	seq     int
 	engOnce sync.Once
 	engines []model.ScanEngine
+	// slots: 동시 실행 자리(SCAN_CONCURRENCY). active: 시작해 아직 끝나지 않은 검사 수(실행 중 + 자리 대기) — 자동 검사의 busy 판단
+	slots  chan struct{}
+	active int
+	// autoMu: 자동 검사의 「합류 · 재사용 확인 → 시작」을 한 번에 — 같은 패키지 두 세션이 동시에 와도 검사는 하나
+	autoMu sync.Mutex
 }
 
-func New(o Options) *Service { return &Service{o: o} }
+// 자원 기본값(11/04) — 메모리 · CPU 는 지금까지의 하드코딩 값 그대로
+const (
+	defaultConcurrency = 1
+	defaultQueue       = 4
+	defaultMemoryMB    = 1024
+	defaultCPUs        = 2
+	defaultTimeout     = 8 * time.Minute
+	defaultQueueWait   = 10 * time.Minute
+)
+
+func New(o Options) *Service {
+	if o.Concurrency <= 0 {
+		o.Concurrency = defaultConcurrency
+	}
+	if o.Queue <= 0 {
+		o.Queue = defaultQueue
+	}
+	if o.MemoryMB <= 0 {
+		o.MemoryMB = defaultMemoryMB
+	}
+	if o.CPUs <= 0 {
+		o.CPUs = defaultCPUs
+	}
+	if o.Timeout <= 0 {
+		o.Timeout = defaultTimeout
+	}
+	if o.QueueWait <= 0 {
+		o.QueueWait = defaultQueueWait
+	}
+	return &Service{o: o, slots: make(chan struct{}, o.Concurrency)}
+}
+
+// registries: 비어 있으면 기본 주소(테스트가 바꾼 전역 값 포함)
+func (s *Service) registries() registries {
+	r := registries{s.o.PyPI, s.o.NPM}
+	if r.pypi == "" {
+		r.pypi = pypiBase
+	}
+	if r.npm == "" {
+		r.npm = npmBase
+	}
+	return r
+}
 
 // Error: 입력 오류(400) · 크기 초과(413)
 type Error struct {
@@ -88,6 +144,9 @@ func (s *Service) Load(ctx context.Context) error {
 		if x.Status == "running" {
 			x.Status, x.Error = "failed", "서버가 다시 시작돼 검사가 끊겼습니다"
 		}
+		if x.Trigger == "" {
+			x.Trigger = model.ScanManual // 11/04 이전 기록은 모두 수동 검사
+		}
 		s.scans = append(s.scans, &x)
 		var n int
 		if _, err := fmt.Sscanf(x.ID, "scan-%d", &n); err == nil && n > s.seq {
@@ -111,8 +170,21 @@ var (
 	filePat = regexp.MustCompile(`(?i)\.(tar\.gz|tgz|whl|zip|py|js|mjs|cjs)$`)
 )
 
-// Start: 입력을 확인하고(파일은 여기서 받아 둔다) 검사를 뒤에서 돌린다
+// Start: 입력을 확인하고(파일은 여기서 받아 둔다) 검사를 뒤에서 돌린다 — 공급망 검사 화면 · API(trigger manual)
 func (s *Service) Start(ctx context.Context, in Input) (string, error) {
+	return s.start(ctx, in, startOpts{})
+}
+
+// startOpts: 자동 검사(11/04) — 시작한 설치 세션 · 라벨(최신으로 받는 것은 입력 이름만) · 대기 상한 적용
+type startOpts struct {
+	installID, label string
+	auto             bool
+}
+
+// errBusy: 실행 + 대기가 SCAN_CONCURRENCY + SCAN_QUEUE 에 찼다(자동 검사만)
+var errBusy = errors.New("검사 대기열이 가득 찼습니다")
+
+func (s *Service) start(ctx context.Context, in Input, o startOpts) (string, error) {
 	t := model.ScanTarget{Kind: in.Kind}
 	switch in.Kind {
 	case "package":
@@ -125,6 +197,9 @@ func (s *Service) Start(ctx context.Context, in Input) (string, error) {
 		}
 		sep := map[string]string{"pip": "==", "npm": "@"}[in.Manager]
 		t.Manager, t.Name, t.Version, t.Label = in.Manager, name, v, in.Manager+" "+name+ver(v, sep)
+		if o.label != "" {
+			t.Label = o.label
+		}
 	case "repo":
 		ref, err := ParseGitHubURL(in.URL)
 		if err != nil {
@@ -157,11 +232,17 @@ func (s *Service) Start(ctx context.Context, in Input) (string, error) {
 		}
 	}
 	s.mu.Lock()
+	if o.auto && s.active >= s.o.Concurrency+s.o.Queue {
+		s.mu.Unlock()
+		return "", errBusy
+	}
 	s.seq++
+	s.active++
 	id := fmt.Sprintf("scan-%04d", s.seq)
 	s.mu.Unlock()
 	src := filepath.Join(s.o.Dir, id, "src")
 	if err := os.MkdirAll(src, 0o755); err != nil {
+		s.leave()
 		return "", err
 	}
 	if in.Kind == "file" {
@@ -173,6 +254,7 @@ func (s *Service) Start(ctx context.Context, in Input) (string, error) {
 		}
 		if err != nil {
 			_ = os.RemoveAll(filepath.Join(s.o.Dir, id))
+			s.leave()
 			var se *Error
 			if errors.As(err, &se) {
 				return "", err
@@ -183,7 +265,11 @@ func (s *Service) Start(ctx context.Context, in Input) (string, error) {
 			t.Size = fi.Size()
 		}
 	}
-	sc := &model.Scan{ID: id, Target: t, Status: "running", StartedAt: time.Now().UTC(), Findings: []model.ScanFinding{}, Vulns: []model.ScanVuln{}, Packages: []model.ScanPackage{}, Files: map[string]string{}}
+	sc := &model.Scan{ID: id, Target: t, Status: "running", StartedAt: time.Now().UTC(), Findings: []model.ScanFinding{}, Vulns: []model.ScanVuln{}, Packages: []model.ScanPackage{}, Files: map[string]string{},
+		Trigger: model.ScanManual}
+	if o.auto {
+		sc.Trigger, sc.InstallID = model.ScanInstall, &o.installID
+	}
 	s.mu.Lock()
 	s.scans = slices.Insert(s.scans, 0, sc)
 	s.mu.Unlock()
@@ -192,13 +278,25 @@ func (s *Service) Start(ctx context.Context, in Input) (string, error) {
 	return id, nil
 }
 
+func (s *Service) leave() {
+	s.mu.Lock()
+	s.active--
+	s.mu.Unlock()
+}
+
+// run: 동시 실행 자리를 기다렸다가(QueueWait 까지, 그동안 running) 검사한다. 타임아웃(8분)은 자리를 잡은 뒤부터 센다
 func (s *Service) run(sc *model.Scan) {
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
-	defer cancel()
 	work := filepath.Join(s.o.Dir, sc.ID)
 	defer os.RemoveAll(work) // 원본은 남기지 않는다
-	err := s.scan(ctx, sc, filepath.Join(work, "src"))
+	err := s.acquire()
+	if err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), s.o.Timeout)
+		err = s.scan(ctx, sc, filepath.Join(work, "src"))
+		cancel()
+		<-s.slots
+	}
 	s.mu.Lock()
+	s.active--
 	now := time.Now().UTC()
 	sc.FinishedAt = &now
 	if err != nil {
@@ -212,11 +310,38 @@ func (s *Service) run(sc *model.Scan) {
 	s.save(sc)
 }
 
+func (s *Service) acquire() error {
+	select {
+	case s.slots <- struct{}{}:
+		return nil
+	default:
+	}
+	tm := time.NewTimer(s.o.QueueWait)
+	defer tm.Stop()
+	select {
+	case s.slots <- struct{}{}:
+		return nil
+	case <-tm.C:
+		wait := s.o.QueueWait.String()
+		if s.o.QueueWait >= time.Minute && s.o.QueueWait%time.Minute == 0 {
+			wait = fmt.Sprintf("%d분", int(s.o.QueueWait.Minutes()))
+		}
+		return fmt.Errorf("검사 대기 시간 초과 — %s 동안 앞선 검사가 끝나지 않았습니다(동시 실행 SCAN_CONCURRENCY=%d)", wait, s.o.Concurrency)
+	}
+}
+
+// oom: 검사기 종료 코드 137 — 메모리 한도(SCAN_MEMORY_MB)에 걸려 죽었다
+func (s *Service) oom(engine string) error {
+	return fmt.Errorf("검사기 메모리 부족(%s, 종료 코드 137) — SCAN_MEMORY_MB(지금 %d)를 늘리거나 더 작은 대상으로 검사하세요", engine, s.o.MemoryMB)
+}
+
+const exitOOM = 137
+
 func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 	t := sc.Target
 	switch t.Kind {
 	case "package":
-		v, err := fetchPackage(ctx, t.Manager, t.Name, t.Version, src)
+		v, err := fetchPackageFrom(ctx, s.registries(), t.Manager, t.Name, t.Version, src)
 		if err != nil {
 			return err
 		}
@@ -262,18 +387,24 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 		if err != nil {
 			return fmt.Errorf("테스트 코드 분리: %w", err)
 		}
-		out, _, err := s.o.Docker.Run(ctx, s.spec(sc.ID, "guarddog", s.o.GuardDogImage, false, eco, "scan", "/work/"+rel, "--output-format", "json"))
+		out, code, err := s.o.Docker.Run(ctx, s.spec(sc.ID, "guarddog", s.o.GuardDogImage, false, eco, "scan", "/work/"+rel, "--output-format", "json"))
 		if err != nil {
 			return fmt.Errorf("GuardDog: %w", err)
+		}
+		if code == exitOOM {
+			return s.oom("GuardDog")
 		}
 		if findings, risk, err = parseGuardDog(out, "/work/"+rel); err != nil {
 			return err
 		}
 		if nTests > 0 {
 			trel := sc.ID + "/tests"
-			out, _, err := s.o.Docker.Run(ctx, s.spec(sc.ID, "guarddog-tests", s.o.GuardDogImage, false, eco, "scan", "/work/"+trel, "--output-format", "json"))
+			out, code, err := s.o.Docker.Run(ctx, s.spec(sc.ID, "guarddog-tests", s.o.GuardDogImage, false, eco, "scan", "/work/"+trel, "--output-format", "json"))
 			if err != nil {
 				return fmt.Errorf("GuardDog(테스트 코드): %w", err)
+			}
+			if code == exitOOM {
+				return s.oom("GuardDog")
 			}
 			tf, _, err := parseGuardDog(out, "/work/"+trel)
 			if err != nil {
@@ -301,6 +432,9 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 		if err != nil {
 			return fmt.Errorf("OSV-Scanner: %w", err)
 		}
+		if code == exitOOM {
+			return s.oom("OSV-Scanner")
+		}
 		if code == 0 || code == 1 {
 			if vulns, _, err = parseOSV(out, "/work/"+sc.ID+"/osv", map[string]bool{strings.ToLower(t.Name): true}); err != nil {
 				return err
@@ -319,6 +453,9 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 		out, code, err := s.o.Docker.Run(ctx, s.spec(sc.ID, "osv", s.o.OSVImage, true, args...))
 		if err != nil {
 			return fmt.Errorf("OSV-Scanner: %w", err)
+		}
+		if code == exitOOM {
+			return s.oom("OSV-Scanner")
 		}
 		if code == 0 || code == 1 { // 1 = 취약점 있음, 128 = 검사할 의존성 파일 없음
 			if vulns, pkgs, err = parseOSV(out, "/work/"+rel, direct); err != nil {
@@ -392,10 +529,10 @@ func exists(dir, name string) bool {
 	return err == nil || len(m) > 0
 }
 
-// spec: 검사기 컨테이너 — 작업 볼륨 읽기 전용, 권한 없음, 1GB · 2코어. GuardDog 는 네트워크 없이, OSV 는 취약점 DB 조회에 네트워크
+// spec: 검사기 컨테이너 — 작업 볼륨 읽기 전용, 권한 없음, SCAN_MEMORY_MB · SCAN_CPUS(기본 1GB · 2코어). GuardDog 는 네트워크 없이, OSV 는 취약점 DB 조회에 네트워크
 func (s *Service) spec(id, engine, image string, network bool, args ...string) dockerapi.RunSpec {
 	return dockerapi.RunSpec{Name: "supplyguard-scan-" + id + "-" + engine, Image: image, Cmd: args, Volume: s.o.Volume, Target: "/work",
-		Network: network, MemoryMB: 1024, CPUs: 2, Labels: map[string]string{"supplyguard.scan": id}}
+		Network: network, MemoryMB: s.o.MemoryMB, CPUs: s.o.CPUs, Labels: map[string]string{"supplyguard.scan": id}}
 }
 
 // engineList: 검사기 버전(처음 한 번 --version 으로 읽는다)

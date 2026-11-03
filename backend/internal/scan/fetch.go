@@ -56,22 +56,47 @@ func get(ctx context.Context, u string) (*http.Response, error) {
 
 var errNotFound = errors.New("찾을 수 없음")
 
+// registries: PyPI · npm 주소(Options.PyPI · NPM, 비면 기본 — 테스트는 가짜 서버)
+type registries struct{ pypi, npm string }
+
+func defaultRegistries() registries { return registries{pypiBase, npmBase} }
+
 // fetchPackage: PyPI · npm 레지스트리에서 패키지를 내려받아 푼다 — pip 은 sdist 우선(11/02 결정: setup.py 같은 설치 스크립트까지 본다.
 // 휠이 있으면 pip 은 휠을 깔아 setup.py 를 실행하지 않지만, 소스 · 설치 훅을 함께 보는 쪽이 공급망 검사에 맞다), sdist 가 없으면 wheel. npm 은 tarball(설치 스크립트 포함)
 func fetchPackage(ctx context.Context, manager, name, version, dst string) (string, error) {
-	var archive, resolved string
+	return fetchPackageFrom(ctx, defaultRegistries(), manager, name, version, dst)
+}
+
+func fetchPackageFrom(ctx context.Context, reg registries, manager, name, version, dst string) (string, error) {
+	resolved, archive, err := packageMeta(ctx, reg, manager, name, version)
+	if err != nil {
+		return "", err
+	}
+	if archive == "" {
+		return "", fmt.Errorf("%s 의 내려받을 파일이 없습니다", name)
+	}
+	res, err := get(ctx, archive)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	return resolved, extract(path.Base(archive), io.LimitReader(res.Body, maxDownload+1), dst)
+}
+
+// packageMeta: 레지스트리 메타데이터 — 받을 버전(version 이 비면 최신)과 내려받을 파일 주소. 자동 검사(11/04)는 최신 버전만 먼저 알아낸다
+func packageMeta(ctx context.Context, reg registries, manager, name, version string) (resolved, archive string, err error) {
 	switch manager {
 	case "pip":
-		u := pypiBase + "/pypi/" + url.PathEscape(name) + "/json"
+		u := reg.pypi + "/pypi/" + url.PathEscape(name) + "/json"
 		if version != "" {
-			u = pypiBase + "/pypi/" + url.PathEscape(name) + "/" + url.PathEscape(version) + "/json"
+			u = reg.pypi + "/pypi/" + url.PathEscape(name) + "/" + url.PathEscape(version) + "/json"
 		}
 		res, err := get(ctx, u)
 		if err != nil {
 			if errors.Is(err, errNotFound) {
-				return "", fmt.Errorf("PyPI 에 %s%s 이(가) 없습니다", name, ver(version, "=="))
+				return "", "", fmt.Errorf("PyPI 에 %s%s 이(가) 없습니다", name, ver(version, "=="))
 			}
-			return "", err
+			return "", "", err
 		}
 		var meta struct {
 			Info struct{ Version string } `json:"info"`
@@ -83,7 +108,7 @@ func fetchPackage(ctx context.Context, manager, name, version, dst string) (stri
 		err = json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(&meta)
 		res.Body.Close()
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		resolved = meta.Info.Version
 		for _, want := range []string{"sdist", "bdist_wheel"} {
@@ -98,12 +123,12 @@ func fetchPackage(ctx context.Context, manager, name, version, dst string) (stri
 		if tag == "" {
 			tag = "latest"
 		}
-		res, err := get(ctx, npmBase+"/"+strings.ReplaceAll(url.PathEscape(name), "%40", "@")+"/"+url.PathEscape(tag))
+		res, err := get(ctx, reg.npm+"/"+strings.ReplaceAll(url.PathEscape(name), "%40", "@")+"/"+url.PathEscape(tag))
 		if err != nil {
 			if errors.Is(err, errNotFound) {
-				return "", fmt.Errorf("npm 에 %s%s 이(가) 없습니다", name, ver(version, "@"))
+				return "", "", fmt.Errorf("npm 에 %s%s 이(가) 없습니다", name, ver(version, "@"))
 			}
-			return "", err
+			return "", "", err
 		}
 		var meta struct {
 			Version string `json:"version"`
@@ -114,19 +139,11 @@ func fetchPackage(ctx context.Context, manager, name, version, dst string) (stri
 		err = json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(&meta)
 		res.Body.Close()
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		resolved, archive = meta.Version, meta.Dist.Tarball
 	}
-	if archive == "" {
-		return "", fmt.Errorf("%s 의 내려받을 파일이 없습니다", name)
-	}
-	res, err := get(ctx, archive)
-	if err != nil {
-		return "", err
-	}
-	defer res.Body.Close()
-	return resolved, extract(path.Base(archive), io.LimitReader(res.Body, maxDownload+1), dst)
+	return resolved, archive, nil
 }
 
 // fetchRepo: GitHub tarball(codeload, base 는 기본 codeload 주소 또는 테스트 서버) — ref 가 비면 HEAD.
