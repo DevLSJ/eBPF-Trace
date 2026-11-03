@@ -323,4 +323,6 @@ AI 도우미(2026-10-16, 확정 · React 반영 — 전 화면 우측 하단, `s
 11/03 sandbox-dns dryRun 해제(sg-vm 실측 — 정상 설치 27건(pip 18 · npm 9) 새 오탐 0, 유출 질의 시나리오 탐지. puppeteer 는 원래부터 sandbox-egress 로 격리 — 브라우저 다운로드 도메인이 허용 목록 밖):
 - 목업 기본 규칙도 `default.yaml` 과 같게 `sandbox-dns` dryRun 을 뺐다. 그 결정을 단정하던 `dns-1030` ①④⑥ · ② · ⑦(격리 대상 → 격리됨, 결과 경고 → 격리) · `demo-1030` ③(dns-exfil 시연 → 격리, 위반 1건 · 종료 코드 137) 기대값을 바꿨다(`// 11/04`)
 
+11/03 조회자 화면 React 맞춤 — 조회자가 일반 규칙을 열어도 편집기 + 저장 전 확인 요약 · 「저장은 관리자만 할 수 있습니다」(10/20 A 의 읽기 전용 화면 `readOnlyRule` 삭제). `feedback-1020c` 1번 기대값을 바꿈(`// 11/04 React 맞춤`, 수정 전 실패 확인)
+
 목표 회귀: `node tests/goals-1015.cjs` · 3차 `node tests/decisions-1016.cjs` · 정책 `node tests/policy-1016.cjs` · 종합 `node tests/overview-1016.cjs` · 공급망 `node tests/scan-1016.cjs` · 도우미 `node tests/guide-1020.cjs` · 2차 시안 `node tests/feedback-1020b.cjs` · 10/20 결정 `node tests/feedback-1020c.cjs` · 10/21 React 맞춤 `node tests/align-1021.cjs` · 10/21b URL 필터 제거 `node tests/url-1021.cjs` · 10/30 `node tests/dns-1030.cjs` · `node tests/demo-1030.cjs` · `node tests/theme-1030.cjs` · 11/02 `node tests/scan-1102.cjs` · 11/04 종합 판정 `node tests/combined-1104.cjs` (같은 옵션 + `SHOTS=1` 데모 대본 스크린샷 · `REAL_OSV=1` OSV 실조회 1건) · 11/04 연쇄 규칙 `node tests/sequence-1104.cjs`(`SHOTS=1` → `screenshots/1104-seq-*.png`). 12번 실제 백엔드 시나리오는 `make backend` 가 떠 있을 때만 돈다.

@@ -983,9 +983,8 @@
         if (proposalId) { const p = allProps.find((x) => x.id === proposalId); editorTitle.textContent = p ? `제안 · ${p.decision === 'malicious' ? '악성' : '오탐'} ${caseLabel(cases.find((x) => x.id === p.caseId)) || p.caseId}` : '제안'; editor.append(p ? proposalView(p) : empty(propErr ? propErr.message : '제안을 찾을 수 없음')); return; }
         const cur = state.rules.find((r) => r.id === selected);
         if (cur && isSystem(cur.id)) { editorTitle.textContent = `시스템 규칙 · ${cur.id}`; editor.append(systemRuleView(cur)); return; }
-        // 조회자: 편집기 대신 읽기 전용(요약 · YAML) — 저장 · 삭제 버튼이 없다 [10/20 A]
-        // 연쇄 규칙은 React 처럼 편집기(「고급 · YAML」 하나) + 저장 전 확인 요약 · 「저장은 관리자만 할 수 있습니다」 [11/04 React 맞춤]
-        if (!U.can()) { editorTitle.textContent = cur ? `정책 · ${cur.id}` : '정책'; editor.append(!cur ? empty('왼쪽에서 정책을 고르세요') : cur.kind === 'sequence' ? ruleEditor(cur, false) : readOnlyRule(cur)); return; }
+        // 조회자: React 처럼 편집기 + 저장 전 확인 요약 · 「저장은 관리자만 할 수 있습니다」(저장 · 삭제 버튼 없음) [11/04 React 맞춤 — 10/20 A 의 읽기 전용 화면 대신]
+        if (!U.can()) { editorTitle.textContent = cur ? `정책 · ${cur.id}` : '정책'; editor.append(!cur ? empty('왼쪽에서 정책을 고르세요') : ruleEditor(cur, false)); return; }
         if (selected === '__yaml__') { editorTitle.textContent = '전체 정책 YAML'; editor.append(bulkYaml()); return; }
         // 새 기본 규칙 「미리보기 후 추가」 [10/20 F] — 바로 「저장 전 확인」으로 연다
         if (pendingDefault && (selected === '__default__' || selected === pendingDefault.id)) {
@@ -1015,15 +1014,6 @@
             h('span', { class: 'tpl-kind' }, U.policyEasy.KIND_TEXT[t.rule.kind][0]), h('b', null, t.title), h('small', { class: 'muted' }, t.desc)))));
       }
       // 조회자용 정책 보기 [10/20 A]
-      function readOnlyRule(r) {
-        const d = { id: r.id, description: r.description || '', kind: r.kind, action: r.action, dryRun: !!r.dryRun, disabled: !!r.disabled, lists: {}, nums: {} };
-        for (const f of LIST_FIELDS) d.lists[f] = (r[f] || []).join('\n');
-        for (const f of NUM_FIELDS) d.nums[f] = r[f] || '';
-        return h('div', { class: 'grow scroll pad', 'data-readonly-rule': r.id }, h('div', { class: 'sheet-body flat' },
-          h('p', { class: 'summary-bar' }, U.policyEasy.summarize(d)),
-          h('p', { class: 'small muted' }, '조회자는 정책을 볼 수만 있습니다. 바꾸려면 관리자에게 요청하세요.'),
-          h('pre', { class: 'json' }, ruleToYaml(r, 0))));
-      }
       // 제안 상세 — 근거(판정) → 변경 내용 · 안내(notes) → 미리보기(열면 자동, U.previewView) → 적용 / 버림 [3차 React 모습]
       function proposalView(p) {
         const c = cases.find((x) => x.id === p.caseId);

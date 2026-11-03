@@ -71,7 +71,13 @@ const W = { timeout: 3000 };
     const p2 = await newPage();
     await go(p2, '/policies?id=sensitive-files', '', 'viewer');
     ok(await p2.locator('input[aria-label="관리자 토큰"]').count() === 0, '조회자에게 토큰 칸');
-    ok(await p2.locator('button[aria-label="저장 전 확인"], #page button:has-text("새 정책")').count() === 0, '조회자에게 쓰기 버튼');
+    // 11/04 React 맞춤: 조회자도 편집기 + 저장 전 확인(요약)을 보고, 저장 버튼 대신 「저장은 관리자만 할 수 있습니다」
+    ok(await p2.locator('#page button:has-text("새 정책")').count() === 0, '조회자에게 새 정책 버튼');
+    const chk = p2.locator(`${ED} button[aria-label="저장 전 확인"]`);
+    ok(await chk.count() === 1, '조회자 편집기에 저장 전 확인 없음');
+    await chk.click(); await p2.waitForTimeout(300);
+    ok(await p2.locator('button[aria-label="저장 후 적용"]').count() === 0, '조회자에게 저장 버튼');
+    ok((await p2.textContent('#page')).includes('저장은 관리자만 할 수 있습니다'), '「저장은 관리자만」 안내 없음');
     await p2.close();
   });
 
