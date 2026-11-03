@@ -5,7 +5,7 @@
    ④ 고급 · YAML 왕복(kind: dns · denyQtypes · maxLabelLength) · dns 에 connect 전용 필드는 거부
    ⑤ 이벤트: dns 배지(amber) · 상세 「<이름> (<질의 유형>)」 · 종류 필터 dns(도메인 조회) · 시트에 「도메인 조회」 줄 없음
    ⑥ 데모 제어 「DNS 유출 질의 지금 실행」 → runtime-dns-exfil 경고 2건 / ?dns=off 면 질의 자체가 없음
-   ⑦ 설치 dnsExfil → 시트 활동 요약 「조회」 타일 · 공격 체인 「3 통신」 · sandbox-dns 격리 대상(dryRun)
+   ⑦ 설치 dnsExfil → 시트 활동 요약 「조회」 타일 · 공격 체인 「3 통신」 · sandbox-dns 격리(11/03 dryRun 해제)
    ⑧ 종합: 수집한 이벤트 「조회 N」 · 차트 조각 dns · 감사 로그 kind=dns 필터 · 설정 도메인 판단 off 문구 · 대응 가이드 egress 묶음
    실행: (mock/ 에서) python3 -m http.server 8767 --bind 127.0.0.1 → BASE=http://127.0.0.1:8767 PLAYWRIGHT=<playwright 경로> node tests/dns-1030.cjs   (VERBOSE=1 · ONLY) */
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
@@ -47,7 +47,7 @@ const ED = '[data-view="rule-editor"]';
         allowPass: only(M.rules, E('files.pythonhosted.org', 'A')), // ② allowHosts 통과(sandbox-dns), runtime-dns-exfil 도 조건 없음
         allowPassTxt: only(M.rules, E('pypi.org', 'TXT')), // ② sandbox-dns 는 통과, ③ runtime-dns-exfil TXT 는 경고
         qtype: only(user, E('data.example.net', 'ALL', 'web-api')), // ③ denyQtypes(ALL) — 런타임 컨테이너
-        label: only(M.rules, E(M.DNS_EXFIL_NAME, 'A')), // ④ 라벨 48 > 40 (sandbox-dns dry kill 이 runtime-dns-exfil alert 보다 강함)
+        label: only(M.rules, E(M.DNS_EXFIL_NAME, 'A')), // ④ 라벨 48 > 40 (sandbox-dns kill 이 runtime-dns-exfil alert 보다 강함)
         labelRuntime: only(M.rules, E(M.DNS_EXFIL_NAME, 'A', 'web-api')), // ④ 런타임: runtime-dns-exfil 경고
         name: only(M.rules, E(long, 'A', 'web-api')), // ⑤ 이름 135 > 120
         outside: only(M.rules, E('data.exfil.example', 'TXT')), // ⑥ 허용 목록 밖(sandbox-dns) > ③ TXT(runtime)
@@ -59,17 +59,17 @@ const ED = '[data-view="rule-editor"]';
     ok(r.allowPass === 'pass', `② ${r.allowPass}`);
     ok(r.allowPassTxt === 'runtime-dns-exfil|alert|runtime-dns-exfil: 금지 질의 유형: TXT — pypi.org', `②③ ${r.allowPassTxt}`);
     ok(r.qtype === 'block-c2-dns|kill|block-c2-dns: 금지 질의 유형: ALL — data.example.net', `③ ${r.qtype}`);
-    ok(r.label === `sandbox-dns|kill(dry)|sandbox-dns: 긴 DNS 라벨(유출 의심): ${'deadbeef'.repeat(6)}.exfil.example (라벨 48자 > 40)`, `④ ${r.label}`);
+    ok(r.label === `sandbox-dns|kill|sandbox-dns: 긴 DNS 라벨(유출 의심): ${'deadbeef'.repeat(6)}.exfil.example (라벨 48자 > 40)`, `④ ${r.label}`);
     ok(r.labelRuntime === `runtime-dns-exfil|alert|runtime-dns-exfil: 긴 DNS 라벨(유출 의심): ${'deadbeef'.repeat(6)}.exfil.example (라벨 48자 > 40)`, `④ 런타임 ${r.labelRuntime}`);
     ok(/^runtime-dns-exfil\|alert\|runtime-dns-exfil: 긴 DNS 이름\(유출 의심\): a{30}\.b{30}\.c{30}\.d{30}\.example\.com \(135자 > 120\)$/.test(r.name), `⑤ ${r.name}`);
-    ok(r.outside === 'sandbox-dns|kill(dry)|sandbox-dns: 허용 목록 밖 도메인 질의: data.exfil.example (TXT)', `⑥ ${r.outside}`);
+    ok(r.outside === 'sandbox-dns|kill|sandbox-dns: 허용 목록 밖 도메인 질의: data.exfil.example (TXT)', `⑥ ${r.outside}`);
     ok(r.noDot === 'pass' && r.arpa === 'pass' && r.local === 'pass', `⑥ 제외 ${r.noDot} ${r.arpa} ${r.local}`);
     ok(r.runtimeOutside === 'pass', `런타임 통과 ${r.runtimeOutside}`);
     await pg.close();
   });
 
   // ② 기본 규칙 2개 · 목록 라벨 · 새 기본 규칙 모의 값 유지
-  await T('② 기본 규칙 runtime-dns-exfil(alert · 40 · 120 · TXT) · sandbox-dns(kill dryRun · sg-install-* · 허용 10개 · 40) + 정책 목록 라벨 「조회」 + defaults missing/differs 그대로', async () => {
+  await T('② 기본 규칙 runtime-dns-exfil(alert · 40 · 120 · TXT) · sandbox-dns(kill · sg-install-* · 허용 10개 · 40 — 11/03 dryRun 해제) + 정책 목록 라벨 「조회」 + defaults missing/differs 그대로', async () => {
     const pg = await newPage();
     await go(pg, '/policies');
     const r = await pg.evaluate(async () => {
@@ -78,7 +78,7 @@ const ED = '[data-view="rule-editor"]';
       return { a, b, missing: d.missing.map((x) => x.id), differs: d.differs.map((x) => x.id), ids: R.map((x) => x.id) };
     });
     ok(r.a && r.a.kind === 'dns' && r.a.action === 'alert' && r.a.maxLabelLength === 40 && r.a.maxNameLength === 120 && JSON.stringify(r.a.denyQtypes) === '["TXT"]', `runtime-dns-exfil ${JSON.stringify(r.a)}`);
-    ok(r.b && r.b.kind === 'dns' && r.b.action === 'kill' && r.b.dryRun === true && JSON.stringify(r.b.containers) === '["sg-install-*"]' && r.b.allowHosts.length === 10 && r.b.allowHosts.includes('static.crates.io') && r.b.maxLabelLength === 40 && !r.b.maxNameLength, `sandbox-dns ${JSON.stringify(r.b)}`);
+    ok(r.b && r.b.kind === 'dns' && r.b.action === 'kill' && !r.b.dryRun && JSON.stringify(r.b.containers) === '["sg-install-*"]' && r.b.allowHosts.length === 10 && r.b.allowHosts.includes('static.crates.io') && r.b.maxLabelLength === 40 && !r.b.maxNameLength, `sandbox-dns ${JSON.stringify(r.b)}`);
     ok(JSON.stringify(r.missing) === '["runtime-direct-ip"]' && JSON.stringify(r.differs) === '["sandbox-egress"]', `defaults ${JSON.stringify([r.missing, r.differs])}`);
     ok(r.ids.indexOf('runtime-dns-exfil') < r.ids.indexOf('blocklist-hosts'), '시스템 규칙은 끝');
     const labels = await pg.$$eval('[data-section="rules"] .rule-row', (els) => els.map((e) => [e.querySelector('.rule-name small').textContent, e.querySelector('.badge-kind').textContent]));
@@ -211,7 +211,7 @@ const ED = '[data-view="rule-editor"]';
   });
 
   // ⑦ 설치 dnsExfil
-  await T('⑦ 설치 dnsExfil(SG_DEMO_SCENARIOS=dns-exfil): 시트 활동 요약 타일 4개(「조회」 2) · 공격 체인 「3 통신」 2단계 · sandbox-dns 격리 대상(dryRun) → 결과 경고 · 판정 대기 건', async () => {
+  await T('⑦ 설치 dnsExfil(SG_DEMO_SCENARIOS=dns-exfil): 시트 활동 요약 타일 4개(「조회」 2) · 공격 체인 「3 통신」 2단계 · sandbox-dns 격리(11/03 dryRun 해제) → 결과 격리 · 판정 대기 건', async () => {
     const pg = await newPage();
     await go(pg, '/installs');
     ok(await pg.locator('#demo [data-demo="install-dns-exfil"]').count() === 1, '데모 제어 버튼 없음');
@@ -222,9 +222,9 @@ const ED = '[data-view="rule-editor"]';
     const tiles = await pg.$$eval('.sheet [data-activity="kinds"] [data-kind]', (els) => els.map((e) => [e.dataset.kind, e.querySelector('span').textContent, e.querySelector('b').textContent]));
     ok(tiles.length === 4 && JSON.stringify(tiles[3]) === JSON.stringify(['dns', '조회', '2']), `타일 ${JSON.stringify(tiles)}`);
     const steps = await pg.$$eval('.sheet [data-part="attack-chain"] .chain-step', (els) => els.map((e) => [e.querySelector('.step-no').textContent, e.querySelector('.step-no').className, e.querySelector('.step-label').title, e.querySelector('.badge-level').textContent]));
-    ok(steps.length === 2 && steps.every((s) => s[0] === '3 통신' && /step-dns/.test(s[1]) && s[3] === '격리 대상'), `체인 ${JSON.stringify(steps)}`);
+    ok(steps.length === 2 && steps.every((s) => s[0] === '3 통신' && /step-dns/.test(s[1]) && s[3] === '격리됨'), `체인 ${JSON.stringify(steps)}`);
     ok(steps.some((s) => s[2] === 'data.exfil.example (TXT)'), '체인 상세');
-    ok(await pg.$eval('.sheet [data-part="result"] [data-status]', (e) => e.dataset.status) === 'warned', '결과 경고(dryRun) 아님');
+    ok(await pg.$eval('.sheet [data-part="result"] [data-status]', (e) => e.dataset.status) === 'isolated', '결과 격리 아님'); // 11/04: sandbox-dns dryRun 해제(11/03 sg-vm 실측)
     ok(await pg.locator('.sheet [data-part="decision"] button:has-text("악성 확정")').count() === 1, '판정 버튼 없음');
     ok(await pg.locator('[data-table="installs"] tbody tr[data-id].needs-action').count() >= 1, '판정 대기 표시');
     await pg.close();

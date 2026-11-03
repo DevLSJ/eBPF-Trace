@@ -50,7 +50,7 @@
     { kind: 'connect', comm: 'sh', dstIp: '203.0.113.7', dstPort: 4444, dstHost: 'cdn.reqeusts-update.test' },
   ];
   // DNS 유출 질의 시나리오 [10/30 계약 §2 · §6] — 기존 attack 시드와 따로 둔다(데모 제어 「DNS 유출 질의 지금 실행」 · 설치 dnsExfil · 시연 dns-exfil).
-  //   48자 hex 라벨을 예약 TLD(.example) 아래로 A 질의 + data.exfil.example TXT 질의. 런타임은 runtime-dns-exfil 경고 ×2, 설치 샌드박스는 sandbox-dns 격리 대상(dryRun)
+  //   48자 hex 라벨을 예약 TLD(.example) 아래로 A 질의 + data.exfil.example TXT 질의. 런타임은 runtime-dns-exfil 경고 ×2, 설치 샌드박스는 sandbox-dns 격리(11/03 dryRun 해제)
   const DNS_EXFIL_NAME = 'deadbeef'.repeat(6) + '.exfil.example';
   const dnsExfil = [
     { kind: 'dns', comm: 'python3', dstHost: DNS_EXFIL_NAME, qtype: 'A', dstIp: '127.0.0.11', dstPort: 53 },
@@ -78,7 +78,7 @@
     // DNS 질의 규칙(kind: dns) [10/30 계약 §1] — 질의만 판정(응답은 리졸버 캐시). 기본 정책 default.yaml 끝의 두 규칙과 같은 값
     { id: 'runtime-dns-exfil', description: 'DNS 질의로 데이터를 실어 보내는 패턴(긴 라벨 · 긴 이름 · TXT 질의). 런타임은 경고만', kind: 'dns', action: 'alert',
       maxLabelLength: 40, maxNameLength: 120, denyQtypes: ['TXT'] },
-    { id: 'sandbox-dns', description: '설치 샌드박스는 패키지 레지스트리·GitHub 외 도메인 질의 자체를 격리 (연결 전 유출 · DNS 터널링 차단). sg-vm 실측 전까지 시험 운영', kind: 'dns', action: 'kill', dryRun: true, containers: ['sg-install-*'],
+    { id: 'sandbox-dns', description: '설치 샌드박스는 패키지 레지스트리·GitHub 외 도메인 질의 자체를 격리 (연결 전 유출 · DNS 터널링 차단). 11/03 sg-vm 실측(정상 설치 27건 새 오탐 0) 뒤 격리로 전환', kind: 'dns', action: 'kill', containers: ['sg-install-*'],
       allowHosts: ['pypi.org', 'pythonhosted.org', 'registry.npmjs.org', 'registry.yarnpkg.com', 'crates.io', 'static.crates.io', 'github.com', 'githubusercontent.com', 'deb.debian.org', 'dl-cdn.alpinelinux.org'],
       maxLabelLength: 40 },
     // 연쇄 규칙(kind: sequence) [11/04] — default.yaml 끝(sandbox-dns 뒤)과 같은 값. 단계는 kind + 조건만.

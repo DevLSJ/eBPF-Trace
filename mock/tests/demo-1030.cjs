@@ -98,7 +98,7 @@ const SECTIONS = ['summary', 'timeline', 'violations', 'evidence', 'decision', '
   });
 
   // ③ 모의 API
-  await T('③ 모의 API: GET /api/demo 모양 · POST 400(scenario 문구) · 409(실행 중) · 차단 목록이면 refused + 안내 · 변경 이력 demo_run 「시연 실행: <scenario>」 · dns-exfil 은 격리 대상(경고)', async () => {
+  await T('③ 모의 API: GET /api/demo 모양 · POST 400(scenario 문구) · 409(실행 중) · 차단 목록이면 refused + 안내 · 변경 이력 demo_run 「시연 실행: <scenario>」 · dns-exfil 은 격리(11/03 sandbox-dns dryRun 해제)', async () => {
     const pg = await newPage();
     await go(pg, '/');
     const d = await pg.evaluate(() => UI.api.demo());
@@ -111,7 +111,7 @@ const SECTIONS = ['summary', 'timeline', 'violations', 'evidence', 'decision', '
     ok(e409 && e409[0] === 409 && e409[1].includes('시연이 이미 실행 중입니다') && e409[2], `409 ${JSON.stringify(e409)}`);
     await pg.waitForFunction(() => !UI.srv.demo.running, null, W); // Playwright 의 waitForFunction 은 Promise 를 기다리지 않는다 — 모의 서버 상태를 바로 본다
     const after = await pg.evaluate(async () => { const x = await UI.api.demo(); const s = await UI.api.install(x.last.installId); return { status: x.last.status, exit: x.last.exitCode, session: s.status, viol: s.violations.map((v) => [v.ruleId, v.dryRun]), chg: (await UI.api.changes({ limit: 20 })).filter((c) => c.kind === 'demo_run').map((c) => c.summary) }; });
-    ok(after.status === 'finished' && after.exit === 0 && after.session === 'warned' && after.viol.length === 2 && after.viol.every(([r, dry]) => r === 'sandbox-dns' && dry === true), `dns-exfil ${JSON.stringify(after)}`);
+    ok(after.status === 'finished' && after.exit === 137 && after.session === 'isolated' && after.viol.length === 1 && after.viol.every(([r, dry]) => r === 'sandbox-dns' && !dry), `dns-exfil ${JSON.stringify(after)}`); // 11/04: sandbox-dns dryRun 해제 — 첫 질의에서 격리
     ok(after.chg.includes('시연 실행: dns-exfil'), `변경 이력 ${JSON.stringify(after.chg)}`);
     // 차단 목록 → refused
     const s = await runMalicious(pg);
