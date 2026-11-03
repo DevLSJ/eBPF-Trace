@@ -1027,6 +1027,8 @@
     listRules: () => (state.source === 'live' ? fetchJSON('/api/policies').then((rs) => { state.rules = rs || []; return state.rules; }) : Promise.resolve(state.rules)),
     saveRule: (r) => (state.source === 'live' ? fetchJSON('/api/policies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r) }) : Promise.resolve().then(() => {
       if (r.id === M.SYSTEM_RULE) throw httpErr(403, '차단 목록에서 관리하는 시스템 규칙 — 직접 편집할 수 없습니다');
+      // 연쇄 규칙 검사(백엔드 rules.Rule.Validate V2~V8 · V5) — 문구는 screens.js sequenceErrors 한 곳(UI.srv.ruleErrors), 오류는 모두 줄바꿈으로 422 [11/04 React 맞춤]
+      const bad = srv.ruleErrors ? srv.ruleErrors(r) : []; if (bad.length) throw httpErr(422, bad.join('\n'));
       const i = state.rules.findIndex((x) => x.id === r.id); if (i >= 0) state.rules[i] = r; else state.rules.splice(Math.max(0, state.rules.findIndex((x) => x.id === M.SYSTEM_RULE)), 0, r);
       srv.recordChange('policy_edit', `정책 ${r.id} 저장`); return r;
     })),

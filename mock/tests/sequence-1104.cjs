@@ -3,14 +3,14 @@
    ② 정책 목록: 배지 「연쇄」(badge-kind-sequence) · 대응 「시험」
    ③ 편집: 연쇄 규칙은 「고급 · YAML」만(쉬운 설정 · 폼 탭 없음), 처음 YAML 에 windowSeconds · steps 그대로
    ④ 저장 전 확인: 「연쇄 3단계 · 10초 안 · 시험(격리 대상)」 + 미리보기 불가 안내(감사 로그 재평가 없음) · dryRun 없이 kill 이면 경고 한 줄 · 저장 뒤 단계 그대로
-   ⑤ 검증: 단계 1개 · windowSeconds 0 · 단계에 action · 최상위 조건 · 단계 kind sequence 는 저장 전 확인에서 거절 / 단일 규칙 YAML 에 kind: sequence 를 쓰고 다른 탭으로 가면 거절
+   ⑤ 검증: 단계 1개 · windowSeconds 0 · 단계에 action · 최상위 조건 · 단계 kind sequence 는 저장 전 확인을 그대로 열고 「저장 후 적용」에서 모의 서버 422 문구를 아래 줄에 보임 / 단일 규칙 YAML 에 kind: sequence 를 쓰고 다른 탭으로 가면 거절 (11/04 React 맞춤)
    ⑥ 전체 YAML 왕복: steps 가 들여쓰기 그대로 나오고 「전체 교체」 뒤에도 3단계
    ⑦ 새 기본 규칙: 연쇄 규칙이 없으면 「새 기본 규칙」에 보이고 「미리보기 후 추가」 → YAML 편집 + 연쇄 저장 전 확인
    ⑧ 바뀐 기본 규칙: 단계 값이 빠졌으면 그 단계에만 더하고(steps 중복 없음), 안내 문구에 [object Object] 없음
    ⑨ 감사 상세: 시드 1행(sequence) — 「연쇄」 행 「규칙 X — exec wget(0.0초) → connect …(+2.1초) → open …(+2.4초)」 · 「이 행동 허용」 없음
    ⑩ 이벤트 상세: sequence 가 붙은 판정이면 같은 「연쇄」 행 / 없는 판정에는 없음
    ⑪ 모의 서버: 연쇄 건 「오탐」 → 자동 예외 없이 안내(백엔드 C6 와 같은 문구) · 다른 정책의 저장 전 미리보기가 연쇄 행을 「통과로 바뀜」으로 세지 않음
-   ⑫ 조회자: 연쇄 규칙 읽기 전용 보기(요약 · YAML)
+   ⑫ 조회자: 연쇄 규칙도 편집기와 같은 모습 — YAML 탭 하나 · 저장 전 확인 요약 · 「저장은 관리자만 할 수 있습니다」(저장 · 삭제 버튼 없음) (11/04 React 맞춤)
    ⑬ 다크 · 375px: 목록 배지 · 저장 전 확인이 깨지지 않음(가로 스크롤 없음)
    실행: (mock/ 에서) python3 -m http.server 8769 --bind 127.0.0.1 → BASE=http://127.0.0.1:8769/index.html PLAYWRIGHT=<playwright 경로> node tests/sequence-1104.cjs  (VERBOSE=1 · ONLY=정규식 · SHOTS=1 → screenshots/1104-seq-*.png) */
 const fs = require('fs');
@@ -139,26 +139,33 @@ const SEQ_LINE = `규칙 ${SEQ} — exec wget(0.0초) → connect 203.0.113.7:80
   });
 
   // ⑤ 검증
-  await T('⑤ 검증: 단계 1개 · windowSeconds 0 · 단계에 action · 최상위 조건 · 단계 kind sequence 거절 / 단일 규칙 YAML 에 kind: sequence → 다른 탭 전환 거절', async () => {
+  await T('⑤ 검증: 단계 1개 · windowSeconds 0 · 단계에 action · 최상위 조건 · 단계 kind sequence → 저장 전 확인은 열리고 저장에서 422 문구 / 단일 규칙 YAML 에 kind: sequence → 다른 탭 전환 거절', async () => { // 11/04 React 맞춤
     const pg = await newPage();
     await openSeq(pg);
     const orig = await pg.inputValue(YAML_TA);
-    const cases = [
-      ['단계 1개', (y) => y.split('  - kind: connect')[0].trimEnd(), /steps: 단계 2~5개 \(지금 1개\)/],
-      ['창 0', (y) => y.replace('windowSeconds: 10', 'windowSeconds: 0'), /windowSeconds 0: 1~60/],
-      ['창 없음', (y) => y.replace('windowSeconds: 10\n', ''), /windowSeconds/],
-      ['단계에 action', (y) => y.replace('  - kind: exec', '  - kind: exec\n    action: kill'), /steps\[0\]: 단계에는 kind 와 조건만/],
-      ['최상위 조건', (y) => y.replace('windowSeconds: 10', 'windowSeconds: 10\ndenyComms:\n  - nc'), /sequence 규칙 최상위에는 조건을 쓸 수 없음/],
-      ['중첩 sequence', (y) => y.replace('  - kind: open', '  - kind: sequence'), /steps\[2\]: kind "sequence": exec \| open \| connect \| dns/],
-      ['빈 단계', (y) => y.replace(/  - kind: connect\n    allowCidrs:\n(      - .*\n)+/, '  - kind: connect\n'), /steps\[1\]: connect 규칙에 조건이 없음/],
+    const before = await pg.evaluate((id) => JSON.stringify(UI.state.rules.find((x) => x.id === id)), SEQ); // 11/04 React 맞춤
+    const cases = [ // 11/04 React 맞춤 — 백엔드 rules.Rule.Validate(V2~V8) 422 문구, 화면은 「422 · 문구」
+      ['단계 1개', (y) => y.split('  - kind: connect')[0].trimEnd(), /422 · steps: 단계 2~5개 \(지금 1개\)/],
+      ['창 0', (y) => y.replace('windowSeconds: 10', 'windowSeconds: 0'), /422 · windowSeconds 0: 1~60/],
+      ['창 없음', (y) => y.replace('windowSeconds: 10\n', ''), /422 · windowSeconds 0: 1~60/], // 11/04 React 맞춤
+      ['단계에 action', (y) => y.replace('  - kind: exec', '  - kind: exec\n    action: kill'), /422 · steps\[0\]: 단계에는 kind 와 조건만/],
+      ['최상위 조건', (y) => y.replace('windowSeconds: 10', 'windowSeconds: 10\ndenyComms:\n  - nc'), /422 · sequence 규칙 최상위에는 조건을 쓸 수 없음 — 조건은 steps 에/],
+      ['중첩 sequence', (y) => y.replace('  - kind: open', '  - kind: sequence'), /422 · steps\[2\]: kind "sequence": exec \| open \| connect \| dns/],
+      ['빈 단계', (y) => y.replace(/  - kind: connect\n    allowCidrs:\n(      - .*\n)+/, '  - kind: connect\n'), /422 · steps\[1\]: connect 규칙에 조건이 없음/],
     ];
     for (const [name, fn, re] of cases) {
-      await pg.fill(YAML_TA, fn(orig));
+      const y = fn(orig);
+      ok(y !== orig, `${name}: YAML 이 바뀌지 않음`); // 11/04 React 맞춤
+      await pg.fill(YAML_TA, y);
       await checkNow(pg);
-      ok(await pg.locator('[data-part="save-check"]').count() === 0, `${name}: 저장 전 확인이 열림`);
+      if (await pg.locator('[data-part="save-check"]').count() !== 1) throw new Error(`${name}: 저장 전 확인이 열리지 않음 — 오류 「${await errText(pg)}」`); // 11/04 React 맞춤
+      await pg.click('[data-part="save-check"] [aria-label="저장 후 적용"]'); await pg.waitForTimeout(300); // 11/04 React 맞춤
+      ok(await pg.locator('[data-part="save-check"]').count() === 0, `${name}: 저장 거절 뒤에도 저장 전 확인이 남음`); // 11/04 React 맞춤
       const e = await errText(pg);
       ok(re.test(e), `${name}: 오류 「${e}」`);
+      ok(await pg.inputValue(YAML_TA) === y, `${name}: 고친 YAML 이 사라짐`); // 11/04 React 맞춤
     }
+    ok(await pg.evaluate((id) => JSON.stringify(UI.state.rules.find((x) => x.id === id)), SEQ) === before, '거절된 규칙이 저장됨'); // 11/04 React 맞춤
     // 단일 규칙: YAML 에서 kind: sequence 로 바꾸고 쉬운 설정으로 가면 거절(단계를 잃지 않게)
     await go(pg, '/policies?id=sensitive-files');
     await pg.waitForSelector(ED, W);
@@ -299,13 +306,22 @@ const SEQ_LINE = `규칙 ${SEQ} — exec wget(0.0초) → connect 203.0.113.7:80
   });
 
   // ⑫ 조회자
-  await T('⑫ 조회자: 연쇄 규칙 읽기 전용 — 요약 「연쇄 3단계 · 10초 안 · 시험(격리 대상)」 · YAML 에 steps', async () => {
+  await T('⑫ 조회자: 연쇄 규칙도 YAML 하나 · 저장 전 확인 요약 「연쇄 3단계 · 10초 안 · 시험(격리 대상)」 · 안내(저장 · 삭제 버튼 없음)', async () => { // 11/04 React 맞춤
     const pg = await newPage();
     await go(pg, `/policies?id=${SEQ}`, '', 'viewer');
-    await pg.waitForSelector(`[data-readonly-rule="${SEQ}"]`, W);
-    ok((await pg.textContent(`[data-readonly-rule="${SEQ}"] .summary-bar`)) === '연쇄 3단계 · 10초 안 · 시험(격리 대상)', '요약');
-    const y = await pg.textContent(`[data-readonly-rule="${SEQ}"] pre`);
+    await pg.waitForSelector(YAML_TA, W); // 11/04 React 맞춤
+    ok(await pg.locator(`[data-readonly-rule="${SEQ}"]`).count() === 0, '따로 그린 읽기 전용 보기가 남음'); // 11/04 React 맞춤
+    ok(await pg.locator(`${ED} [data-mode]`).count() === 1, `탭 ${await pg.locator(`${ED} [data-mode]`).count()}개`); // 11/04 React 맞춤
+    const y = await pg.inputValue(YAML_TA); // 11/04 React 맞춤
     ok(y.includes('steps:') && y.includes('  - kind: open') && y.includes('windowSeconds: 10'), `YAML ${y}`);
+    ok(await pg.locator(`${ED} button:has-text("삭제")`).count() === 0, '조회자에게 삭제 버튼'); // 11/04 React 맞춤
+    await checkNow(pg); // 11/04 React 맞춤
+    await pg.waitForSelector('[data-part="save-check"]', W); // 11/04 React 맞춤
+    ok((await pg.textContent('[data-part="save-check"] [data-summary]')) === '연쇄 3단계 · 10초 안 · 시험(격리 대상)', '요약'); // 11/04 React 맞춤
+    ok((await pg.textContent('[data-part="seq-no-preview"]')).trim() === NO_PREVIEW, '미리보기 불가 안내'); // 11/04 React 맞춤
+    ok(await pg.locator('[data-part="save-check"] [aria-label="저장 후 적용"]').count() === 0, '조회자에게 저장 버튼'); // 11/04 React 맞춤
+    ok((await pg.textContent('[data-part="save-check"]')).includes('저장은 관리자만 할 수 있습니다'), '「저장은 관리자만」 안내 없음'); // 11/04 React 맞춤
+    ok(await pg.locator(`${ED} button[disabled]`).count() === 0, '보이는데 못 누르는 버튼'); // 11/04 React 맞춤
     await pg.close();
   });
 

@@ -803,29 +803,35 @@
     if (i < lines.length) throw new Error(`YAML 들여쓰기 오류 (${i + 1}번째 항목 근처)`);
     return out;
   }
-  function validateRule(r, existing) {
+  // opts.atSave: 편집기 「저장 전 확인」 — 연쇄 검사(V2~V8)와 V5 는 건너뛰고 저장 때 모의 서버가 422 로 돌려준다(React 와 같은 흐름) [11/04 React 맞춤]
+  function validateRule(r, opts) {
     if (!r || typeof r !== 'object') throw new Error('YAML 최상위는 규칙 객체여야 함');
     if (!/^[a-z0-9][a-z0-9-]*$/.test(r.id || '')) throw new Error('id 는 소문자·숫자·하이픈');
     if (!KINDS.includes(r.kind) && r.kind !== 'sequence') throw new Error('kind 는 exec | open | connect | dns | sequence');
     if (!['alert', 'kill'].includes(r.action)) throw new Error('action 은 alert | kill');
-    if (r.kind === 'sequence') return validateSequence(r);
-    if (r.steps !== undefined || r.windowSeconds !== undefined) throw new Error('steps · windowSeconds 는 sequence 규칙에서만');
+    const atSave = !!(opts && opts.atSave);
+    if (r.kind === 'sequence') return atSave ? r : validateSequence(r);
+    if (!atSave) validateSequence(r); // V5: steps · windowSeconds 는 sequence 규칙에서만
     return validateConditions(r);
   }
-  // 연쇄 규칙 [11/04]: 단계 2~5개 · 창 1~60초 · 최상위 조건 금지 · 단계는 kind(이벤트 kind 4개) + 조건만 · 단계 조건은 단일 규칙과 같은 검사
-  function validateSequence(r) {
-    const n = Array.isArray(r.steps) ? r.steps.length : 0;
-    if (n < SEQ_STEPS[0] || n > SEQ_STEPS[1]) throw new Error(`steps: 단계 ${SEQ_STEPS[0]}~${SEQ_STEPS[1]}개 (지금 ${n}개)`);
-    if (!(Number.isInteger(r.windowSeconds) && r.windowSeconds >= 1 && r.windowSeconds <= SEQ_WINDOW)) throw new Error(`windowSeconds ${r.windowSeconds === undefined ? 0 : r.windowSeconds}: 1~${SEQ_WINDOW}`);
-    if (hasCond(r)) throw new Error('sequence 규칙 최상위에는 조건을 쓸 수 없음 — 조건은 steps 에');
-    r.steps.forEach((st, i) => {
-      if (!st || typeof st !== 'object' || !KINDS.includes(st.kind)) throw new Error(`steps[${i}]: kind ${JSON.stringify(st && st.kind)}: exec | open | connect | dns`);
-      if (['id', 'description', 'action', 'dryRun', 'disabled', 'containers', 'steps', 'windowSeconds'].some((f) => st[f] !== undefined)) throw new Error(`steps[${i}]: 단계에는 kind 와 조건만 — id · description · action · dryRun · disabled · containers · steps · windowSeconds 는 쓸 수 없음`);
-      if (!hasCond(st)) throw new Error(`steps[${i}]: ${st.kind} 규칙에 조건이 없음`);
-      try { validateConditions(st); } catch (e) { throw new Error(`steps[${i}]: ${e.message}`); }
+  // 연쇄 규칙 [11/04]: 단계 2~5개 · 창 1~60초 · 최상위 조건 금지 · 단계는 kind(이벤트 kind 4개) + 조건만 · 단계 조건은 단일 규칙과 같은 검사.
+  // 백엔드 rules.Rule.Validate 처럼 오류를 모두 모은다(errors.Join = 줄바꿈). 모의 서버 저장(app.js saveRule, U.srv.ruleErrors)의 422 와 전체 YAML 교체 · 탭 전환이 같은 목록을 쓴다 [11/04 React 맞춤]
+  function sequenceErrors(r) {
+    if (r.kind !== 'sequence') return r.steps !== undefined || r.windowSeconds !== undefined ? ['steps · windowSeconds 는 sequence 규칙에서만'] : [];
+    const errs = [], steps = Array.isArray(r.steps) ? r.steps : [];
+    if (steps.length < SEQ_STEPS[0] || steps.length > SEQ_STEPS[1]) errs.push(`steps: 단계 ${SEQ_STEPS[0]}~${SEQ_STEPS[1]}개 (지금 ${steps.length}개)`);
+    if (!(Number.isInteger(r.windowSeconds) && r.windowSeconds >= 1 && r.windowSeconds <= SEQ_WINDOW)) errs.push(`windowSeconds ${r.windowSeconds === undefined ? 0 : r.windowSeconds}: 1~${SEQ_WINDOW}`);
+    if (hasCond(r)) errs.push('sequence 규칙 최상위에는 조건을 쓸 수 없음 — 조건은 steps 에');
+    steps.forEach((st, i) => {
+      if (!st || typeof st !== 'object' || !KINDS.includes(st.kind)) { errs.push(`steps[${i}]: kind ${JSON.stringify((st && st.kind) || '')}: exec | open | connect | dns`); return; }
+      if (['id', 'description', 'action', 'dryRun', 'disabled', 'containers', 'steps', 'windowSeconds'].some((f) => st[f] !== undefined)) errs.push(`steps[${i}]: 단계에는 kind 와 조건만 — id · description · action · dryRun · disabled · containers · steps · windowSeconds 는 쓸 수 없음`);
+      if (!hasCond(st)) errs.push(`steps[${i}]: ${st.kind} 규칙에 조건이 없음`);
+      try { validateConditions(st); } catch (e) { errs.push(`steps[${i}]: ${e.message}`); }
     });
-    return r;
+    return errs;
   }
+  U.srv.ruleErrors = sequenceErrors;
+  function validateSequence(r) { const bad = sequenceErrors(r); if (bad.length) throw new Error(bad.join('\n')); return r; }
   function validateConditions(r) {
     for (const f of PORT_FIELDS) if (r[f] && r[f].some((p) => !Number.isInteger(p) || p < 1 || p > 65535)) throw new Error(`${f}: 1~65535 정수만`);
     if (r.directIp !== undefined && !['allow', 'alert', 'kill'].includes(r.directIp)) throw new Error('directIp 는 allow | alert | kill (또는 비움)');
@@ -978,7 +984,8 @@
         const cur = state.rules.find((r) => r.id === selected);
         if (cur && isSystem(cur.id)) { editorTitle.textContent = `시스템 규칙 · ${cur.id}`; editor.append(systemRuleView(cur)); return; }
         // 조회자: 편집기 대신 읽기 전용(요약 · YAML) — 저장 · 삭제 버튼이 없다 [10/20 A]
-        if (!U.can()) { editorTitle.textContent = cur ? `정책 · ${cur.id}` : '정책'; editor.append(cur ? readOnlyRule(cur) : empty('왼쪽에서 정책을 고르세요')); return; }
+        // 연쇄 규칙은 React 처럼 편집기(「고급 · YAML」 하나) + 저장 전 확인 요약 · 「저장은 관리자만 할 수 있습니다」 [11/04 React 맞춤]
+        if (!U.can()) { editorTitle.textContent = cur ? `정책 · ${cur.id}` : '정책'; editor.append(!cur ? empty('왼쪽에서 정책을 고르세요') : cur.kind === 'sequence' ? ruleEditor(cur, false) : readOnlyRule(cur)); return; }
         if (selected === '__yaml__') { editorTitle.textContent = '전체 정책 YAML'; editor.append(bulkYaml()); return; }
         // 새 기본 규칙 「미리보기 후 추가」 [10/20 F] — 바로 「저장 전 확인」으로 연다
         if (pendingDefault && (selected === '__default__' || selected === pendingDefault.id)) {
@@ -1013,7 +1020,7 @@
         for (const f of LIST_FIELDS) d.lists[f] = (r[f] || []).join('\n');
         for (const f of NUM_FIELDS) d.nums[f] = r[f] || '';
         return h('div', { class: 'grow scroll pad', 'data-readonly-rule': r.id }, h('div', { class: 'sheet-body flat' },
-          h('p', { class: 'summary-bar' }, r.kind === 'sequence' ? seqSummary(r) : U.policyEasy.summarize(d)),
+          h('p', { class: 'summary-bar' }, U.policyEasy.summarize(d)),
           h('p', { class: 'small muted' }, '조회자는 정책을 볼 수만 있습니다. 바꾸려면 관리자에게 요청하세요.'),
           h('pre', { class: 'json' }, ruleToYaml(r, 0))));
       }
@@ -1128,7 +1135,7 @@
           if (d.kind === 'dns') for (const f of NUM_FIELDS) { const v = String((d.nums || {})[f] == null ? '' : d.nums[f]).trim(); if (!v) continue; const n = Number(v); if (!Number.isInteger(n)) throw new Error(`${f}: 정수로 써 주세요`); r[f] = n; }
           return r;
         }
-        const current = () => { if (mode !== 'yaml') return validateRule(toRule(draft)); const p = parseYaml(yamlText); if (!isNew && p && p.id !== rule.id) throw new Error('기존 정책의 id는 바꿀 수 없음'); return validateRule(p); };
+        const current = () => { if (mode !== 'yaml') return validateRule(toRule(draft), { atSave: true }); const p = parseYaml(yamlText); if (!isNew && p && p.id !== rule.id) throw new Error('기존 정책의 id는 바꿀 수 없음'); return validateRule(p, { atSave: true }); }; // 연쇄 검사는 저장 때 서버 422 [11/04 React 맞춤]
         const MODES = isSeq ? [['yaml', '고급 · YAML']] : [['easy', '쉬운 설정'], ['form', '고급 · 폼'], ['yaml', '고급 · YAML']];
         function render() {
           if (check) { renderCheck(); return; }
@@ -1157,7 +1164,7 @@
             h('div', { class: 'foot' },
               mode === 'form' ? h('label', { class: 'row-inline', title: 'kill 정책을 알림만 보내도록 강제 (오탐 시 컨테이너 보호)' }, U.switchEl(draft.dryRun, (on) => upd({ dryRun: on })), ' dry-run') : null,
               error ? h('span', { class: 'grow small tone-danger', title: error }, error) : saved ? h('span', { class: 'grow small tone-ok' }, '저장 후 엔진에 적용됨') : h('span', { class: 'grow' }),
-              !isNew ? h('button', { type: 'button', class: 'btn btn-danger-ghost', disabled: !canWrite(), onclick: () => U.confirmDialog({ title: '정책 삭제', target: rule.id, okLabel: '삭제', reason: false,
+              !isNew && canWrite() ? h('button', { type: 'button', class: 'btn btn-danger-ghost', onclick: () => U.confirmDialog({ title: '정책 삭제', target: rule.id, okLabel: '삭제', reason: false,
                 effects: [`엔진에서 ${rule.id} 를 빼 바로 적용합니다 — 이 정책에 걸리던 행동은 더 이상 알림 · 격리되지 않습니다`, '과거 감사 기록은 그대로 남습니다', '변경 이력에 「정책 편집」으로 남습니다'],
                 undo: '「고급 · YAML」에서 지금 내용을 복사해 두면 새 정책으로 다시 만들 수 있습니다' })
                 .then((ok) => ok && U.api.deleteRule(rule.id).then(() => U.api.listRules()).then(() => { U.toast(`정책 ${rule.id} 삭제됨`, { tone: 'warn' }); select(''); loadDefaults(); }).catch((e) => { error = errText(e); render(); })) }, '🗑 삭제') : null,
@@ -1203,7 +1210,8 @@
                     h('tbody', null, pv.changed.slice(0, 20).map((x) => { const a = state.audit.find((y) => y.id === x.auditId); return h('tr', null, h('td', { class: 'num muted' }, x.auditId), h('td', { class: 'num nowrap' }, a ? fmt.dateTime(a.event.timestamp) : '—'), h('td', { class: 'trunc-cell' }, x.container), h('td', { class: 'nowrap' }, `${LV[x.before]} → `, h('b', null, LV[x.after]))); })))) : null],
             h('div', { class: 'row-actions' },
               h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => { check = null; render(); } }, '← 고치기'),
-              h('button', { type: 'button', class: 'btn btn-primary', 'aria-label': '저장 후 적용', disabled: !canWrite(), onclick: () => save(r) }, '저장 후 적용 ▶')))));
+              // 조회자는 저장 버튼 대신 안내(React SaveCheck 와 같게) [11/04 React 맞춤]
+              canWrite() ? h('button', { type: 'button', class: 'btn btn-primary', 'aria-label': '저장 후 적용', onclick: () => save(r) }, '저장 후 적용 ▶') : h('span', { class: 'small muted' }, '저장은 관리자만 할 수 있습니다')))));
         }
         function save(r) {
           U.api.saveRule(r).then((savedRule) => U.api.listRules().then(() => savedRule || r)).then((sr) => { draft = toDraft(sr); saved = true; check = null; ctx.fresh = null; pendingDefault = null; renderNav(); loadDefaults(); U.toast(`정책 ${sr.id} 저장 — 엔진에 바로 적용`, { tone: 'ok' }); if (isNew) select(sr.id); else render(); })
