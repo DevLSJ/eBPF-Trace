@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# sg-bench — 공급망 검사 오탐률 하네스(11/03). 인기 패키지 목록을 실제 백엔드(GuardDog + OSV-Scanner)로 검사해 표를 내고,
+# 인기 패키지가 「악성」이면 실패(종료 코드 1)한다. 판정 3단계(scan/verdict.go)의 근거 측정용 — sg-vm · EC2 에서 돈다.
+#
+#   사용: ADMIN_TOKEN=… tools/sg-bench [-a http://127.0.0.1/api] [-l 목록파일] [-t 토큰파일] [-o 결과파일]
+#     목록 파일: 한 줄에 「pip|npm 이름[==버전]」 또는 「file 경로」 · 「repo URL」. 빈 줄 · # 주석 무시. 없으면 아래 기본 20개
+#     토큰: 환경 변수 ADMIN_TOKEN, 없으면 -t 파일의 ADMIN_TOKEN= 줄(값은 출력하지 않는다)
+#     -x 이름  악성이어야 하는 대상(쉼표 구분, 기본 reqeusts) — 이것이 악성이 아니면 실패
+#   출력: 대상|버전|판정|점수|위협|설치 시점|테스트|취약점|최고|시간  + 요약 줄. 임시 파일은 결과 폴더(기본 ./.sg-bench) 안에서만.
+set -uo pipefail
+
+API=${API:-http://127.0.0.1/api}; LIST=; TOKEN_FILE=; OUT=; EXPECT_MAL=reqeusts; WORK=${SG_BENCH_DIR:-./.sg-bench}
+while getopts "a:l:t:o:x:" o; do case $o in a) API=$OPTARG;; l) LIST=$OPTARG;; t) TOKEN_FILE=$OPTARG;; o) OUT=$OPTARG;; x) EXPECT_MAL=$OPTARG;; *) exit 2;; esac; done
+T=${ADMIN_TOKEN:-}
+[[ -z $T && -n $TOKEN_FILE ]] && T=$(sed -n 's/^ADMIN_TOKEN=//p' "$TOKEN_FILE" | head -1)
+[[ -z $T ]] && { echo "ADMIN_TOKEN 이 없습니다 (환경 변수 또는 -t 파일)" >&2; exit 2; }
+command -v python3 >/dev/null || { echo "python3 필요" >&2; exit 2; }
+mkdir -p "$WORK"; R=$WORK/r.json
+
+default_list() { cat <<'EOF'
+# 인기 pip 15
+pip requests
+pip urllib3
+pip certifi
+pip idna
+pip charset-normalizer
+pip six
+pip python-dateutil
+pip pyyaml
+pip flask
+pip jinja2
+pip click
+pip packaging
+pip attrs
+pip django
+pip numpy
+# 인기 npm 5
+npm lodash
+npm express
+npm react
+npm axios
+npm chalk
+# 알려진 취약 버전(취약 판정 확인)
+pip django==2.2.0
+EOF
+}
+
+auth=(-H "Authorization: Bearer $T")
+start() { # kind args… → id 또는 빈 문자열
+  local out; out=$(curl -s "${auth[@]}" "$@") || true
+  python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("id",""))
+except Exception: print("")' <<<"$out"
+}
+wait_done() { # id → r.json 에 결과
+  local i; for i in $(seq 1 200); do
+    curl -s "${auth[@]}" "$API/scans/$1" > "$R"
+    [[ $(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("status",""))' "$R") == running ]] || return 0
+    sleep 3
+  done; return 1
+}
+row() { # 라벨 시간 → 표 한 줄 + 판정을 전역 V 에
+  python3 - "$R" "$1" "$2" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1])); r=d.get('risk') or {}
+sc=r.get('score'); sc='' if sc is None else f"{sc:.1f}"
+print('|'.join(map(str,[sys.argv[2], d['target'].get('version') or '', d.get('verdict') or d.get('status'), sc, d.get('threats',''), d.get('installThreats',''), d.get('testFindings',''), d.get('vulnCount',''), d.get('vulnMax') or '', sys.argv[3]+'s', (d.get('error') or '')[:60]])))
+PY
+}
+
+J='Content-Type: application/json'
+total=0; bad=0; fails=()
+emit() { echo "$1"; [[ -n $OUT ]] && echo "$1" >> "$OUT"; }
+[[ -n $OUT ]] && : > "$OUT"
+emit "대상|버전|판정|점수|위협|설치 시점|테스트|취약점|최고|시간|오류"
+while read -r kind rest; do
+  [[ -z $kind || $kind == \#* ]] && continue
+  label="$kind $rest"; t0=$(date +%s); id=
+  case $kind in
+    pip|npm|cargo)
+      name=${rest%%==*}; ver=; [[ $rest == *==* ]] && ver=${rest#*==}
+      if [[ $kind == npm && $rest == ?*@* ]]; then name=${rest%@*}; ver=${rest##*@}; fi
+      body=$(python3 -c 'import json,sys;print(json.dumps({"kind":"package","manager":sys.argv[1],"name":sys.argv[2],**({"version":sys.argv[3]} if sys.argv[3] else {})}))' "$kind" "$name" "$ver")
+      id=$(start -H "$J" -d "$body" "$API/scans");;
+    file) id=$(start -F "file=@$rest" "$API/scans"); label="file $(basename "$rest")";;
+    repo) id=$(start -H "$J" -d "{\"kind\":\"repo\",\"url\":\"$rest\"}" "$API/scans");;
+    *) emit "$label||알 수 없는 종류"; continue;;
+  esac
+  if [[ -z $id ]]; then emit "$label||시작 실패"; fails+=("$label 시작 실패"); continue; fi
+  wait_done "$id" || { emit "$label||시간 초과"; fails+=("$label 시간 초과"); continue; }
+  emit "$(row "$label" "$(( $(date +%s)-t0 ))")"
+  v=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("verdict",""))' "$R")
+  total=$((total+1))
+  base=${rest%%==*}; base=${base%@*}; base=$(basename "$base" .tar.gz)
+  if [[ ",$EXPECT_MAL," == *",$base,"* ]]; then
+    [[ $v == malicious ]] || { bad=$((bad+1)); fails+=("$label: 악성이어야 하는데 「$v」"); }
+  else
+    [[ $v == malicious ]] && { bad=$((bad+1)); fails+=("$label: 악성(오탐) — 인기 패키지"); }
+  fi
+done < <(if [[ -n $LIST ]]; then cat "$LIST"; else default_list; fi)
+rm -f "$R"
+emit ""
+emit "검사 $total건 · 어긋난 판정 $bad건$( ((${#fails[@]})) && printf ' — %s' "${fails[@]}")"
+(( bad == 0 && ${#fails[@]} == 0 )) || exit 1

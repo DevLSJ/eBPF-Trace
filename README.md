@@ -53,6 +53,7 @@ make stack-down
 make sandbox-up                               # 가젯 백엔드 :8000 (WATCH_CONTAINERS=sg-install-*)
 tools/sg-install pip requests                 # 정상 → [OK] 위반 없음 (종료 코드 0)
 tools/sg-install pip ./deploy/demo/reqeusts   # 타이포스쿼팅 데모(무해 시뮬) → 격리 + 위반 목록 (종료 코드 2)
+ADMIN_TOKEN=… tools/sg-bench                  # 공급망 검사 오탐률 하네스 — 인기 패키지 20개가 「악성」이면 실패
 make sandbox-down
 ```
 
