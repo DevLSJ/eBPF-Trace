@@ -16,10 +16,11 @@ import (
 
 // Rule: 정책 1건. 프론트 정책 편집기가 YAML/JSON 양쪽으로 다룬다.
 type Rule struct {
-	ID          string       `yaml:"id" json:"id"`
+	// ID · Action 은 규칙에 늘 있고(Validate), 연쇄 규칙의 단계(Steps)에만 없다 — omitempty 는 단계를 내보낼 때 빈 키를 빼려는 것
+	ID          string       `yaml:"id,omitempty" json:"id,omitempty"`
 	Description string       `yaml:"description,omitempty" json:"description,omitempty"`
 	Kind        model.Kind   `yaml:"kind" json:"kind"`
-	Action      model.Action `yaml:"action" json:"action"`
+	Action      model.Action `yaml:"action,omitempty" json:"action,omitempty"`
 	// DryRun: kill 정책이라도 종료하지 않고 알림만 (오탐 시 컨테이너 보호)
 	DryRun   bool `yaml:"dryRun,omitempty" json:"dryRun,omitempty"`
 	Disabled bool `yaml:"disabled,omitempty" json:"disabled,omitempty"`
@@ -50,6 +51,12 @@ type Rule struct {
 	DenyQtypes     []string `yaml:"denyQtypes,omitempty" json:"denyQtypes,omitempty"`
 	MaxNameLength  int      `yaml:"maxNameLength,omitempty" json:"maxNameLength,omitempty"`   // 1..253
 	MaxLabelLength int      `yaml:"maxLabelLength,omitempty" json:"maxLabelLength,omitempty"` // 1..63
+
+	// sequence(11/03) — 같은 컨테이너에서 windowSeconds 안에 Steps 가 순서대로 일어나면 걸린다(사이에 다른 이벤트 허용).
+	// 단계는 kind(exec · open · connect · dns) + 그 kind 의 조건 필드만 쓴다(단일 규칙과 같은 조건 문법 · 같은 매칭 함수).
+	// 최상위에는 조건 필드를 쓰지 않는다. sequence 가 아닌 규칙에는 둘 다 쓰지 않는다.
+	WindowSeconds int    `yaml:"windowSeconds,omitempty" json:"windowSeconds,omitempty"` // 1..60
+	Steps         []Rule `yaml:"steps,omitempty" json:"steps,omitempty"`
 }
 
 // DirectIP 값
@@ -79,14 +86,22 @@ const (
 	MaxDNSLabel = 63
 )
 
+// 연쇄 규칙 범위(11/03)
+const (
+	MinSequenceSteps  = 2
+	MaxSequenceSteps  = 5
+	MaxSequenceWindow = 60 // 초
+)
+
 // Validate: 저장 전에 규칙이 평가 가능한지 확인한다.
 func (r Rule) Validate() error {
 	var errs []error
 	if !idPattern.MatchString(r.ID) {
 		errs = append(errs, fmt.Errorf("id %q: 소문자·숫자·하이픈 1~63자", r.ID))
 	}
-	if !r.Kind.Valid() {
-		errs = append(errs, fmt.Errorf("kind %q: exec | open | connect | dns", r.Kind))
+	// V1: 규칙 kind 는 이벤트 kind 4개 + sequence
+	if !r.Kind.Valid() && r.Kind != model.KindSequence {
+		errs = append(errs, fmt.Errorf("kind %q: exec | open | connect | dns | sequence", r.Kind))
 	}
 	if !r.Action.Valid() {
 		errs = append(errs, fmt.Errorf("action %q: alert | kill", r.Action))
@@ -96,6 +111,61 @@ func (r Rule) Validate() error {
 			errs = append(errs, fmt.Errorf("containers %q: %w", g, err))
 		}
 	}
+	if r.Kind == model.KindSequence {
+		errs = append(errs, r.validateSequence()...)
+		return errors.Join(errs...)
+	}
+	// V5: steps · windowSeconds 는 sequence 규칙에서만
+	if len(r.Steps) > 0 || r.WindowSeconds != 0 {
+		errs = append(errs, fmt.Errorf("steps · windowSeconds 는 sequence 규칙에서만"))
+	}
+	errs = append(errs, r.validateConditions()...)
+	return errors.Join(errs...)
+}
+
+// validateSequence: 연쇄 규칙의 단계 수 · 창 · 최상위 조건 금지 · 각 단계(kind · 헤더 필드 금지 · 조건)를 본다.
+func (r Rule) validateSequence() []error {
+	var errs []error
+	// V2: 단계 2~5개
+	if n := len(r.Steps); n < MinSequenceSteps || n > MaxSequenceSteps {
+		errs = append(errs, fmt.Errorf("steps: 단계 %d~%d개 (지금 %d개)", MinSequenceSteps, MaxSequenceSteps, n))
+	}
+	// V3: 창 1~60초 필수
+	if r.WindowSeconds < 1 || r.WindowSeconds > MaxSequenceWindow {
+		errs = append(errs, fmt.Errorf("windowSeconds %d: 1~%d", r.WindowSeconds, MaxSequenceWindow))
+	}
+	// V4: 조건은 단계에만
+	if r.hasConditions() {
+		errs = append(errs, fmt.Errorf("sequence 규칙 최상위에는 조건을 쓸 수 없음 — 조건은 steps 에"))
+	}
+	for i, s := range r.Steps {
+		// V6: 단계 kind 는 이벤트 kind 4개만(중첩 sequence 금지)
+		if !s.Kind.Valid() {
+			errs = append(errs, fmt.Errorf("steps[%d]: kind %q: exec | open | connect | dns", i, s.Kind))
+			continue
+		}
+		// V7: 단계에는 kind 와 조건만
+		if s.ID != "" || s.Description != "" || s.Action != "" || s.DryRun || s.Disabled || len(s.Containers) > 0 || len(s.Steps) > 0 || s.WindowSeconds != 0 {
+			errs = append(errs, fmt.Errorf("steps[%d]: 단계에는 kind 와 조건만 — id · description · action · dryRun · disabled · containers · steps · windowSeconds 는 쓸 수 없음", i))
+		}
+		// V8: 조건은 단일 규칙과 같은 검사(형식 · 「조건이 없음」)
+		for _, err := range s.validateConditions() {
+			errs = append(errs, fmt.Errorf("steps[%d]: %w", i, err))
+		}
+	}
+	return errs
+}
+
+// hasConditions: 조건 필드(exec · open · connect · dns 어느 것이든)가 하나라도 있는지
+func (r Rule) hasConditions() bool {
+	return len(r.DenyComms)+len(r.DenyArgs)+len(r.DenyPaths)+len(r.AllowPaths)+
+		len(r.AllowPorts)+len(r.AllowCIDRs)+len(r.DenyPorts)+len(r.DenyCIDRs)+len(r.AllowHosts)+len(r.DenyHosts)+
+		len(r.DenyQtypes) > 0 || r.DirectIP != "" || r.MaxNameLength != 0 || r.MaxLabelLength != 0
+}
+
+// validateConditions: kind 별 조건 필드의 형식과 조건 유무 — 단일 규칙과 연쇄 규칙의 단계가 함께 쓴다.
+func (r Rule) validateConditions() []error {
+	var errs []error
 	for _, c := range append(append([]string{}, r.AllowCIDRs...), r.DenyCIDRs...) {
 		if _, err := parsePrefix(c); err != nil {
 			errs = append(errs, fmt.Errorf("cidr %q: %w", c, err))
@@ -153,7 +223,7 @@ func (r Rule) Validate() error {
 	if r.Kind.Valid() && conds == 0 {
 		errs = append(errs, fmt.Errorf("%s 규칙에 조건이 없음", r.Kind))
 	}
-	return errors.Join(errs...)
+	return errs
 }
 
 // parsePrefix: "10.0.0.0/8" 또는 단일 IP "1.2.3.4"를 받는다.
