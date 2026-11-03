@@ -283,6 +283,37 @@ export interface InstallSession {
   activity?: InstallActivity;
   // 격리 세션의 첫 kill 판정 타임라인(10/30) — 옛 백엔드는 없음
   isolation?: IsolationRef | null;
+  // 11/04 종합 판정: 세션 시작 때 서버가 시작한 같은 패키지(첫 패키지)의 정적 검사. 저장 필드(scanId · scanSkip)는 옛 세션 · 옛 백엔드에 없다
+  scanId?: string | null;
+  scanSkip?: InstallScanSkip | '';
+  // 읽을 때 계산한 정적 검사 요약 — 없으면(옛 세션 · 옛 백엔드) 목록 「—」 + 상세는 OSV 이름 조회 칸(하위 호환)
+  scan?: InstallScan;
+}
+
+// 공급망 검사 판정(11/03 3단계) — 공급망 검사 화면 · 설치 목록 「정적 검사」 열이 같은 배지(components/Badges ScanVerdictBadge)를 쓴다
+export type ScanVerdict = 'malicious' | 'vulnerable' | 'caution' | 'clean';
+export const SCAN_VERDICT_LABEL: Record<ScanVerdict, string> = {
+  malicious: '악성 의심',
+  vulnerable: '취약점 있음',
+  caution: '주의', // 점수 ≥ 5 인데 설치 시점 규칙 없음(런타임 휴리스틱만)
+  clean: '위협 없음',
+};
+
+// 11/04 종합 판정 — 자동 정적 검사를 건너뛴 이유: 로컬 패키지 · cargo · 대기열 가득 · 검사기 없음 · 이름 해석 실패
+export type InstallScanSkip = 'local' | 'unsupported' | 'busy' | 'off' | 'invalid';
+export interface InstallScan {
+  id: string; // 건너뜀이면 ''
+  status: 'running' | 'done' | 'failed' | 'skipped';
+  verdict?: ScanVerdict; // done 만
+  label: string; // 「pip requests」 — 공급망 검사 대상 라벨
+  version: string; // 받은 버전(Target.Version) — 범위 · 미지정은 최신
+  riskScore: number | null;
+  installThreats: number;
+  threats: number;
+  vulnCount: number;
+  error?: string;
+  skip?: InstallScanSkip | '';
+  reused?: boolean; // 그 검사를 시작한 세션이 이 세션이 아님(실행 중 합류 · 24시간 재사용)
 }
 
 export type Decision = 'pending' | 'malicious' | 'false_positive';

@@ -16,6 +16,8 @@ import { fmtDateTime, fmtNum, fmtTime, isToday } from '../../lib/format';
 import { duration, EXAMPLE_COMMAND, sessionLabel, violationTotal } from '../../lib/pkg';
 import { INSTALL_STATUS_LABEL, INSTALL_STATUSES, MANAGERS, type Case, type InstallSession } from '../../lib/types';
 import { InstallSheet } from './InstallSheet';
+import { StaticBadge } from './StaticBadge';
+import { isDangerRow } from './staticScan';
 
 // 결과 칩: 기본 「판정 대기」(목표 문서 완료 기준 ①), 그다음 전체 · 설치 결과별
 type StatusFilter = 'pending' | 'all' | (typeof INSTALL_STATUSES)[number];
@@ -123,7 +125,8 @@ export function InstallsPage() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs text-slate-500">
                   <tr>
-                    {['시작', '매니저', '패키지', '설치 결과', '판정', '위반', '걸린 시간'].map((h) => (
+                    {/* 11/04: 설치 결과 다음 「정적 검사」 · 시트가 열려 있으면 「걸린 시간」 열을 숨긴다(상세에 같은 값) */}
+                    {['시작', '매니저', '패키지', '설치 결과', '정적 검사', '판정', '위반', ...(id ? [] : ['걸린 시간'])].map((h) => (
                       <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">
                         {h}
                       </th>
@@ -132,7 +135,7 @@ export function InstallsPage() {
                 </thead>
                 <tbody>
                   {rows.map((s) => (
-                    <Row key={s.id} s={s} now={now} c={s.caseId ? caseOf.get(s.caseId) : undefined} selected={s.id === id} onOpen={() => set('id', s.id)} />
+                    <Row key={s.id} s={s} now={now} c={s.caseId ? caseOf.get(s.caseId) : undefined} selected={s.id === id} showDuration={!id} onOpen={() => set('id', s.id)} />
                   ))}
                 </tbody>
               </table>
@@ -146,13 +149,14 @@ export function InstallsPage() {
   );
 }
 
-function Row({ s, c, now, selected, onOpen }: { s: InstallSession; c: Case | undefined; now: number; selected: boolean; onOpen: () => void }) {
+function Row({ s, c, now, selected, showDuration, onOpen }: { s: InstallSession; c: Case | undefined; now: number; selected: boolean; showDuration: boolean; onOpen: () => void }) {
   const n = violationTotal(s);
-  const danger = s.status === 'isolated' || s.status === 'warned';
+  const danger = isDangerRow(s); // 11/04: 런타임 격리 · 경고 또는 정적 악성
   return (
     <tr
       {...rowKeys(onOpen)}
       data-install={s.id}
+      data-danger={danger || undefined}
       aria-selected={selected}
       onClick={onOpen}
       className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${
@@ -171,11 +175,16 @@ function Row({ s, c, now, selected, onOpen }: { s: InstallSession; c: Case | und
       <td className="px-3 py-2">
         <StatusBadge status={s.status} />
       </td>
+      <td className="px-3 py-2 whitespace-nowrap">
+        <StaticBadge s={s} />
+      </td>
       <td className="px-3 py-2">{c ? <DecisionBadge decision={c.decision} /> : <span className="text-xs text-slate-300">—</span>}</td>
       <td className={`num px-3 py-2 text-right whitespace-nowrap ${n ? 'font-semibold text-red-600' : 'text-slate-400'}`}>{n === undefined ? '—' : fmtNum(n)}</td>
-      <td className="num px-3 py-2 text-xs whitespace-nowrap text-slate-500">
-        {s.status === 'running' ? '진행 중' : s.status === 'refused' ? '—' : duration(s.startedAt, s.finishedAt ?? s.containerExitedAt)}
-      </td>
+      {showDuration && (
+        <td className="num px-3 py-2 text-xs whitespace-nowrap text-slate-500" data-col="duration">
+          {s.status === 'running' ? '진행 중' : s.status === 'refused' ? '—' : duration(s.startedAt, s.finishedAt ?? s.containerExitedAt)}
+        </td>
+      )}
     </tr>
   );
 }

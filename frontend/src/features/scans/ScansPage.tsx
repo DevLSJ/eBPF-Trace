@@ -14,17 +14,13 @@ import { useToast } from '../../hooks/toast-context';
 import { useInterval, useLoad } from '../../hooks/useLoad';
 import { api, errorText } from '../../lib/api';
 import { fmtDateTime, fmtNum } from '../../lib/format';
-import type { Scan, ScanFinding } from '../../lib/types';
+import { SCAN_VERDICT_LABEL, type Scan, type ScanFinding } from '../../lib/types';
+import { ScanVerdictBadge } from '../../components/Badges';
 import { ScanPackages } from './ScanPackages';
 
 // 공급망 검사(10/16, 목업 확정) — 「설치하기 전에, 이 패키지 · 저장소 · 파일에 위험한 코드나 알려진 취약점이 있나?」
 // 실제 오픈소스로 정적 검사: GuardDog(악성 코드 패턴 — 파일:줄) · OSV-Scanner(의존성의 알려진 취약점). 코드를 실행하지 않는다.
-const VERDICT: Record<string, [string, string]> = {
-  malicious: ['악성 의심', 'bg-red-100 text-red-700'],
-  vulnerable: ['취약점 있음', 'bg-amber-100 text-amber-800'],
-  caution: ['주의', 'bg-amber-100 text-amber-800'], // 11/03 판정 3단계: 점수 ≥ 5 인데 설치 시점 규칙 없음(런타임 휴리스틱만)
-  clean: ['위협 없음', 'bg-emerald-50 text-emerald-700'],
-};
+const VERDICT = SCAN_VERDICT_LABEL; // 판정 이름 · 배지는 components/Badges ScanVerdictBadge 와 공유(11/04 설치 목록 「정적 검사」 열)
 const RISK: Record<string, string> = { high_risk: '높음', medium_risk: '보통', low_risk: '낮음', no_risks_detected: '없음' };
 const MAX_UPLOAD = 50 * 1024 * 1024;
 // GuardDog 규칙 → 쉬운 설명(없으면 GuardDog 원문). 원문은 마우스를 올리면 보인다
@@ -92,7 +88,7 @@ export function ScansPage() {
   const rows = (list.data ?? []).filter((x) => !vf || x.verdict === vf);
   const vOptions = [
     { value: '' as VerdictFilter, label: '전체', count: list.data?.length },
-    ...(['malicious', 'vulnerable', 'caution', 'clean'] as const).map((k) => ({ value: k as VerdictFilter, label: VERDICT[k][0], count: list.data?.filter((x) => x.verdict === k).length })),
+    ...(['malicious', 'vulnerable', 'caution', 'clean'] as const).map((k) => ({ value: k as VerdictFilter, label: VERDICT[k], count: list.data?.filter((x) => x.verdict === k).length })),
   ];
 
   return (
@@ -101,7 +97,7 @@ export function ScansPage() {
         <ScanForm canWrite={canWrite} onStarted={() => { select(''); list.reload(); }} />
         <Panel title="검사 기록" testId="scans" className="min-h-0 flex-1" actions={list.data?.length ? <FilterChips label="결과" options={vOptions} value={vf} onChange={(v) => setQ('verdict', v)} /> : undefined}>
           <div className="flex h-full flex-col">
-          <AppliedFilters items={[!!vf && { key: 'verdict', label: `결과: ${VERDICT[vf]?.[0] ?? vf}`, clear: () => setQ('verdict', '') }]} onClearAll={() => setQ('verdict', '')} />
+          <AppliedFilters items={[!!vf && { key: 'verdict', label: `결과: ${(vf && VERDICT[vf]) || vf}`, clear: () => setQ('verdict', '') }]} onClearAll={() => setQ('verdict', '')} />
           {failing ? (
             <ListError error={list.error} what="공급망 검사" onRetry={list.reload} retrying={list.loading} />
           ) : !list.data ? (
@@ -145,10 +141,7 @@ export function ScansPage() {
 }
 
 function StatusBadge({ s }: { s: Scan }) {
-  if (s.status === 'running') return <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-700">검사 중…</span>;
-  if (s.status === 'failed') return <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600" title={s.error}>실패</span>;
-  const [ko, cls] = VERDICT[s.verdict ?? 'clean'];
-  return <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${cls}`}>{ko}</span>;
+  return <ScanVerdictBadge status={s.status} verdict={s.verdict} error={s.error} />;
 }
 
 function ScanForm({ canWrite, onStarted }: { canWrite: boolean; onStarted: () => void }) {
@@ -261,7 +254,6 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
   const vulns = s.vulns ?? [];
   const t = s.target;
   const cmd = t.kind === 'package' ? `sg-install ${t.manager} ${t.name}${t.version ? (t.manager === 'pip' ? '==' : '@') + t.version : ''}` : '';
-  const [vk, vcls] = s.status === 'failed' ? ['실패', 'bg-slate-100 text-slate-600'] : s.status === 'running' ? ['검사 중…', 'bg-indigo-50 text-indigo-700'] : VERDICT[s.verdict ?? 'clean'];
   const block = async (reason: string) => {
     try {
       const r = await api.scanBlock(s.id, reason);
@@ -291,7 +283,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
       <Section title="결과">
         <div className={`grid gap-2 rounded-lg border p-3 ${s.verdict === 'malicious' ? 'border-red-200 bg-red-50' : s.verdict === 'vulnerable' || s.verdict === 'caution' ? 'border-amber-200 bg-amber-50' : 'border-slate-200'}`} data-part="verdict">
           <div className="flex items-center gap-2">
-            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${vcls}`}>{vk}</span>
+            <ScanVerdictBadge status={s.status} verdict={s.verdict} className="font-medium" />
             {s.risk && <span className="text-xs">위험 점수 <b className="num">{s.risk.score.toFixed(1)}</b> / 10 · {RISK[s.risk.label] ?? s.risk.label}</span>}
           </div>
           <p className="text-xs text-slate-700">

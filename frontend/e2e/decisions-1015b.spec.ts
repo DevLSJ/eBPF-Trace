@@ -82,8 +82,9 @@ test.describe('계약 추가 (10/15)', () => {
   test('설치 목록은 violationCount 로 위반 수를 보인다(목록 응답에 violations 없음)', async ({ page, backend }) => {
     backend.listOmitsDetail = true;
     await page.goto('/installs?status=all');
-    await expect(page.locator('tr[data-install="ins-0012"] td').nth(5)).toHaveText('6');
-    await expect(page.locator('tr[data-install="ins-0011"] td').nth(5)).toHaveText('2');
+    // 11/04: 「설치 결과」 다음에 「정적 검사」 열이 들어와 위반 열이 한 칸 뒤로(5 → 6)
+    await expect(page.locator('tr[data-install="ins-0012"] td').nth(6)).toHaveText('6');
+    await expect(page.locator('tr[data-install="ins-0011"] td').nth(6)).toHaveText('2');
     expect(backend.requests.some((r) => r.path.startsWith('/installs?'))).toBe(true);
   });
 

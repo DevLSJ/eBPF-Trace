@@ -15,7 +15,9 @@ import { api } from '../../lib/api';
 import { fmtDateTime, fmtNum } from '../../lib/format';
 import { evidenceDest } from '../../lib/evidence';
 import { duration, ECOSYSTEM, installCommand, packageName, sessionLabel, violationTotal } from '../../lib/pkg';
-import type { InstallSession } from '../../lib/types';
+import type { InstallScan, InstallSession } from '../../lib/types';
+import { StaticBadge } from './StaticBadge';
+import { hasStaticCell, mismatchNote, skipText } from './staticScan';
 
 const LIST_LABEL = { packages: '패키지', images: '이미지', hosts: '도메인' } as const;
 
@@ -23,7 +25,8 @@ export function InstallSheet({ id, onClose, onChanged }: { id: string; onClose: 
   const load = useCallback(() => api.install(id), [id]);
   const detail = useLoad(load);
   const s = detail.data;
-  const running = s?.status === 'running';
+  // 11/04: 설치가 끝나도 자동 정적 검사가 실행 중이면 계속 2초마다 다시 부른다
+  const running = s?.status === 'running' || s?.scan?.status === 'running';
   const reload = detail.reload;
   const tick = useCallback(() => {
     if (running) reload();
@@ -135,45 +138,93 @@ function Summary({ s }: { s: InstallSession }) {
   );
 }
 
-// 정적 분석(OSV, 버전 무관) vs 커널 탐지 — 「SCA 가 못 잡는 행위를 커널이 잡는다」(M1)
+// 정적 vs 커널 탐지 — 「SCA 가 못 잡는 행위를 커널이 잡는다」(M1)
+//   11/04 종합 판정: 자동 정적 검사(scan)가 있으면 왼쪽 = 「정적 검사 · GuardDog + OSV」, 건너뜀 · 옛 세션이면 지금의 OSV 이름 조회 칸(건너뜀은 부제에 이유).
+//   엇갈릴 때만 빨간 한 줄. 768 미만은 두 칸을 한 열로
 function OsvCompare({ s }: { s: InstallSession }) {
+  const kernel = violationTotal(s) ?? 0;
+  const note = mismatchNote(s);
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-2 text-sm max-md:grid-cols-1">
+        {hasStaticCell(s.scan) ? <StaticCell s={s} sc={s.scan} /> : <OsvCell s={s} why={s.scan ? skipText(s) : ''} />}
+        <div className={`rounded-md border px-3 py-2 ${kernel ? 'border-red-200 bg-red-50' : 'border-slate-200'}`} data-testid="kernel-result" data-cell="kernel">
+          <div className="text-xs text-slate-500">커널 탐지 · eBPF</div>
+          <div>
+            <b className={`num text-lg ${kernel ? 'text-red-700' : 'text-slate-900'}`}>{fmtNum(kernel)}</b>
+            <span className="text-slate-600">건 위반 행위</span>
+          </div>
+          <div className="text-[11px] text-slate-400">설치 중 실제로 한 일</div>
+        </div>
+      </div>
+      {note && (
+        <p className="mt-2 text-xs font-medium text-red-600" data-part="cmp-note">
+          {note}
+        </p>
+      )}
+    </>
+  );
+}
+
+// 자동 정적 검사 결과(11/04) — 배지 · 위험 점수(악성만 빨강, 실행 중 · 실패면 숨김) · 대상 라벨 + 받은 버전 · 공급망 검사 링크
+function StaticCell({ s, sc }: { s: InstallSession; sc: InstallScan }) {
+  const done = sc.status === 'done';
+  const mal = done && sc.verdict === 'malicious';
+  return (
+    <div className="grid min-w-0 content-start gap-1 rounded-md border border-slate-200 px-3 py-2" data-testid="static-result" data-cell="static">
+      <div className="text-xs text-slate-500" data-part="static-head">
+        정적 검사 · GuardDog + OSV
+      </div>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <StaticBadge s={s} />
+        {done && sc.riskScore != null && (
+          <span className={`num text-xs ${mal ? 'font-semibold text-red-600' : 'text-slate-500'}`} data-part="risk">
+            위험 점수 {sc.riskScore.toFixed(1)} / 10
+          </span>
+        )}
+      </div>
+      <div className="text-[11px] break-words break-keep text-slate-400" data-part="static-target">
+        <span className="font-mono">{sc.label}</span>
+        {sc.version && ` · ${sc.version}`}
+        {sc.reused && ' · 24시간 안 검사 결과 재사용'}
+      </div>
+      {sc.id && (
+        <Link to={`/scans?id=${encodeURIComponent(sc.id)}`} className="justify-self-start text-xs text-indigo-700 hover:underline" data-action="scan-link">
+          공급망 검사에서 보기 →
+        </Link>
+      )}
+    </div>
+  );
+}
+
+// 정적 분석(OSV, 버전 무관) — 자동 정적 검사가 없거나(옛 세션) 건너뛰었을 때. why = 건너뛴 이유(부제 끝)
+function OsvCell({ s, why }: { s: InstallSession; why: string }) {
   const name = packageName(s.packages[0] ?? '');
   const eco = ECOSYSTEM[s.manager];
   const load = useCallback(() => api.osv(eco, name), [eco, name]);
   const osv = useLoad(load);
-  const kernel = violationTotal(s) ?? 0;
   const failed = !!osv.error || !!osv.data?.error;
-
   return (
-    <div className="grid grid-cols-2 gap-2 text-sm">
-      <div className="rounded-md border border-slate-200 px-3 py-2" data-testid="osv-result">
-        <div className="text-xs text-slate-500">
-          정적 분석 · OSV <span className="text-slate-400">(버전 무관)</span>
-        </div>
-        {failed ? (
-          <div className="font-semibold text-slate-500" data-osv="failed" title={osv.data?.error ?? undefined}>
-            조회 실패
-          </div>
-        ) : !osv.data ? (
-          <div className="text-slate-400">조회 중…</div>
-        ) : (
-          <div data-osv={osv.data.vulns}>
-            <b className="num text-lg text-slate-900">{fmtNum(osv.data.vulns)}</b>
-            <span className="text-slate-600">건 알려진 취약점</span>
-            {osv.data.ids.length > 0 && <div className="truncate font-mono text-[11px] text-slate-400">{osv.data.ids.slice(0, 3).join(', ')}</div>}
-          </div>
-        )}
-        <div className="truncate font-mono text-[11px] text-slate-400">
-          {eco} · {name}
-        </div>
+    <div className="min-w-0 rounded-md border border-slate-200 px-3 py-2" data-testid="osv-result" data-cell="osv">
+      <div className="text-xs text-slate-500">
+        정적 분석 · OSV <span className="text-slate-400">(버전 무관)</span>
       </div>
-      <div className={`rounded-md border px-3 py-2 ${kernel ? 'border-red-200 bg-red-50' : 'border-slate-200'}`} data-testid="kernel-result">
-        <div className="text-xs text-slate-500">커널 탐지 · eBPF</div>
-        <div>
-          <b className={`num text-lg ${kernel ? 'text-red-700' : 'text-slate-900'}`}>{fmtNum(kernel)}</b>
-          <span className="text-slate-600">건 위반 행위</span>
+      {failed ? (
+        <div className="font-semibold text-slate-500" data-osv="failed" title={osv.data?.error ?? undefined}>
+          조회 실패
         </div>
-        <div className="text-[11px] text-slate-400">설치 중 실제로 한 일</div>
+      ) : !osv.data ? (
+        <div className="text-slate-400">조회 중…</div>
+      ) : (
+        <div data-osv={osv.data.vulns}>
+          <b className="num text-lg text-slate-900">{fmtNum(osv.data.vulns)}</b>
+          <span className="text-slate-600">건 알려진 취약점</span>
+          {osv.data.ids.length > 0 && <div className="truncate font-mono text-[11px] text-slate-400">{osv.data.ids.slice(0, 3).join(', ')}</div>}
+        </div>
+      )}
+      <div className={`font-mono text-[11px] text-slate-400 ${why ? 'break-words break-keep' : 'truncate'}`}>
+        {eco} · {name}
+        {why && <span className="font-sans"> · {why}</span>}
       </div>
     </div>
   );

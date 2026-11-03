@@ -13,6 +13,7 @@ import type {
   Event,
   Evidence,
   Info,
+  InstallScan,
   InstallSession,
   InstallViolation,
   Level,
@@ -97,6 +98,10 @@ export function demoRun(scenario: DemoScenario, installId: string, unix = Math.f
 export const sseBody = (events: [string, unknown][]) =>
   ': start\n\n' + events.map(([e, d], i) => (i === 1 ? ': ping\n\n' : '') + `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join('');
 
+// 11/04 종합 판정: 설치 세션 응답의 scan(읽을 때 계산) — 계약 모양. 건너뜀은 id '' · status skipped
+export function installScan(o: Partial<InstallScan> & Pick<InstallScan, 'status' | 'label'>): InstallScan {
+  return { id: '', version: '', riskScore: null, installThreats: 0, threats: 0, vulnCount: 0, error: '', skip: '', reused: false, ...o };
+}
 const INSTALL_CTR = 'sg-install-pip-1792043525-24739';
 const PYIMG = 'python:3.12-slim';
 
@@ -204,11 +209,14 @@ export class MockBackend {
       ...extra,
     });
     this.installs = [
-      base('ins-0013', 'npm', ['left-pad'], 20, null, 'running'),
+      base('ins-0013', 'npm', ['left-pad'], 20, null, 'running', { scanId: 'scan-0103', scan: installScan({ id: 'scan-0103', status: 'running', label: 'npm left-pad', version: '1.3.0' }) }),
       base('ins-0012', 'pip', ['./reqeusts'], 612, 4, 'isolated', {
         container: INSTALL_CTR,
         exitCode: 137,
         caseId: 'case-0004',
+        scanId: null,
+        scanSkip: 'local', // 11/04: 로컬 패키지 — 정적 검사 건너뜀 → 지금의 OSV 칸(시연 대본 1:15)
+        scan: installScan({ status: 'skipped', label: 'pip ./reqeusts', skip: 'local' }),
         violations: reqViolations,
         activity: {
           kinds: { exec: 3, open: 2, connect: 5 },
@@ -224,11 +232,28 @@ export class MockBackend {
           ],
         },
       }),
-      base('ins-0011', 'npm', ['tiny-git-dep'], 905, 9, 'warned', { container: npmCtr, caseId: 'case-0003', violations: [gitViolation] }),
-      base('ins-0010', 'pip', ['requests'], 1000, 6, 'passed'),
-      base('ins-0009', 'cargo', ['ripgrep'], 1100, 30, 'passed'),
-      base('ins-0008', 'pip', ['flask'], 1200, null, 'unknown', { containerExitedAt: ago(now, 1190) }),
-      base('ins-0007', 'pip', ['numpy==1.21.0'], 1300, 12, 'failed', { exitCode: 1 }),
+      base('ins-0011', 'npm', ['tiny-git-dep'], 905, 9, 'warned', {
+        container: npmCtr,
+        caseId: 'case-0003',
+        violations: [gitViolation],
+        scanId: 'scan-0102',
+        scan: installScan({ id: 'scan-0102', status: 'done', verdict: 'clean', label: 'npm tiny-git-dep', version: '1.0.0', riskScore: 0 }), // 런타임 경고 + 정적 정상 → 엇갈림 한 줄
+      }),
+      base('ins-0010', 'pip', ['requests'], 1000, 6, 'passed', {
+        scanId: 'scan-0101',
+        scan: installScan({ id: 'scan-0101', status: 'done', verdict: 'clean', label: 'pip requests', version: '2.32.3', riskScore: 0, reused: true }), // 24시간 안 검사 재사용
+      }),
+      base('ins-0009', 'cargo', ['ripgrep'], 1100, 30, 'passed', { scanId: null, scanSkip: 'unsupported', scan: installScan({ status: 'skipped', label: 'cargo ripgrep', skip: 'unsupported' }) }),
+      base('ins-0008', 'pip', ['flask'], 1200, null, 'unknown', {
+        containerExitedAt: ago(now, 1190),
+        scanId: 'scan-0100',
+        scan: installScan({ id: 'scan-0100', status: 'failed', label: 'pip flask', version: '3.1.0', error: 'GuardDog 시간 초과(120초)' }),
+      }),
+      base('ins-0007', 'pip', ['numpy==1.21.0'], 1300, 12, 'failed', {
+        exitCode: 1,
+        scanId: 'scan-0099',
+        scan: installScan({ id: 'scan-0099', status: 'done', verdict: 'vulnerable', label: 'pip numpy==1.21.0', version: '1.21.0', riskScore: 1.5, vulnCount: 5 }),
+      }),
       base('ins-0006', 'pip', ['colourama'], 1500, 3, 'isolated', {
         exitCode: 137,
         caseId: 'case-0002',
@@ -317,6 +342,37 @@ export class MockBackend {
   }
   case(id: string) {
     return this.cases.find((c) => c.id === id)!;
+  }
+  // 11/04 종합 판정: 런타임 통과 + 정적 악성(정적만 악성이면 건을 열지 않는다 — caseId 없음)
+  staticMalicious(id = 'ins-0014') {
+    const now = Date.now();
+    const s: InstallSession = {
+      id, manager: 'pip', packages: ['reqeusts'], container: `sg-install-pip-${Math.floor(now / 1000)}-${id.slice(-4)}`, containerId: `${id}abcdef0123456789`, image: PYIMG,
+      startedAt: ago(now, 30), finishedAt: ago(now, 24), exitCode: 0, status: 'passed', caseId: null, refusedBy: null, violations: [],
+      activity: { kinds: { exec: 1, open: 9, connect: 2 }, hosts: [{ host: 'pypi.org', ip: '151.101.0.223', port: 443, count: 2, level: 'normal' }], programs: [{ comm: 'pip', args: 'pip install reqeusts', count: 1, level: 'normal' }] },
+      scanId: 'scan-0104',
+      scan: installScan({ id: 'scan-0104', status: 'done', verdict: 'malicious', label: 'pip reqeusts', version: '1.0.2', riskScore: 8.6, installThreats: 2, threats: 3 }),
+    };
+    this.installs.unshift(s);
+    return s;
+  }
+  // 11/04: 정적 검사만 실행 중인 끝난 세션(런타임 통과) → finishScan 으로 done 전환 — 상세 2초 폴링 조건(running || scan.status==='running')
+  scanRunning(id = 'ins-0015') {
+    const now = Date.now();
+    const s: InstallSession = {
+      id, manager: 'pip', packages: ['pyyaml'], container: `sg-install-pip-${Math.floor(now / 1000)}-${id.slice(-4)}`, containerId: `${id}abcdef0123456789`, image: PYIMG,
+      startedAt: ago(now, 12), finishedAt: ago(now, 6), exitCode: 0, status: 'passed', caseId: null, refusedBy: null, violations: [],
+      activity: { kinds: { exec: 1, open: 9, connect: 2 }, hosts: [{ host: 'pypi.org', ip: '151.101.0.223', port: 443, count: 2, level: 'normal' }], programs: [{ comm: 'pip', args: 'pip install pyyaml', count: 1, level: 'normal' }] },
+      scanId: 'scan-0105',
+      scan: installScan({ id: 'scan-0105', status: 'running', label: 'pip pyyaml', version: '6.0.3' }),
+    };
+    this.installs.unshift(s);
+    return s;
+  }
+  finishScan(id: string, patch: Partial<InstallScan> = { verdict: 'clean', riskScore: 0 }) {
+    const s = this.installs.find((x) => x.id === id)!;
+    s.scan = { ...s.scan!, status: 'done', ...patch };
+    return s;
   }
   // 10/30: dns 규칙 2개 + dns 이벤트(런타임 경고 2 · 설치 ins-0012 의 sandbox-dns 격리 대상 1) + 활동 요약 「조회」 + 수집량 dns
   enableDns() {
