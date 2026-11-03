@@ -37,7 +37,7 @@
     if (/검사|scan|패키지/.test(q)) {
       const sc = state.scans[0];
       if (!sc) return { text: '아직 공급망 검사가 없습니다. 공급망 검사 화면에서 패키지 이름 · 저장소 주소 · 파일로 시작하세요.', links: [['공급망 검사', '#/scans']] };
-      return { text: `가장 최근 검사는 ${sc.target.label} 입니다. ${sc.status !== 'done' ? '아직 검사 중입니다.' : `결과는 ${({ malicious: '악성 의심', vulnerable: '취약점 있음', clean: '위협 없음' })[sc.verdict]}${sc.risk ? `(위험 점수 ${sc.risk.score.toFixed(1)})` : ''}, 위협 ${sc.findings.filter((f) => f.category === 'threat').length}곳입니다.`} 위협 줄은 코드 보기에서 빨갛게 보입니다.`,
+      return { text: `가장 최근 검사는 ${sc.target.label} 입니다. ${sc.status !== 'done' ? '아직 검사 중입니다.' : `결과는 ${({ malicious: '악성 의심', vulnerable: '취약점 있음', caution: '주의', clean: '위협 없음' })[sc.verdict]}${sc.risk ? `(위험 점수 ${sc.risk.score.toFixed(1)})` : ''}, 위협 ${sc.findings.filter((f) => f.category === 'threat').length}곳입니다.`} 위협 줄은 코드 보기에서 빨갛게 보입니다.`,
         links: [['검사 결과 보기', `#/scans?id=${sc.id}`]] };
     }
     const PAGES = { '/': '대시보드는 지금 처리할 일(판정 대기)과 eBPF 수집 종합을 보여 줍니다.', '/installs': '설치 검사는 sg-install 로 감시 컨테이너에서 패키지를 실제 설치해 보며 eBPF 로 행동을 관찰한 결과입니다.',

@@ -277,6 +277,19 @@ AI 도우미(2026-10-16, 확정 · React 반영 — 전 화면 우측 하단, `s
 - **11/02 남은 질문 10개는 지금 구현 유지** — dns 규칙 오탐 예외는 안내만(`exceptHosts` 없음) · `blocklist-hosts` 는 dns 질의에 적용 안 함 · udp 데모 53번 비컨 유지 · 시연 종료 코드 거부 0 / 시간 초과 124 / 실패 −1 · `SG_PIP_IMAGE` 는 `.env.example` 설명만 · 신호등은 본문 첫 줄 · 공급망 검사 시트 560 · 시연 결과 문구 그대로 · 라이트 사이드바 흰색 · 라이선스 알약은 `/api/auth/me` 의 license(React 현재 구현)
 - 검증(11/02): `dns-1030` 8/8 · `demo-1030` 8/8 · `theme-1030` 6/6 · 기존 11묶음 N/N(feedback-1015 31 · goals-1015 46 · decisions-1016 11 · policy-1016 7 · overview-1016 8 · scan-1016 9 · guide-1020 12 · feedback-1020b 28 · feedback-1020c 17 · align-1021 14 · url-1021 12) · 콘솔 오류 0. 기존 검사는 기대값만 고침(`// 10/30` — 종류 `dns` · 판정 대기 위 신호등 · 시연 카드 · 격리 지연 칸 · 계정 메뉴 「테마」). 카운트업 중간값을 읽던 `overview-1016` 2번은 reduced-motion 으로 연다(`// 11/02`). React 맞춤으로 `demo-1030` · `theme-1030` 기대값을 고침(`// 11/02`, 수정 전 5건 실패 확인). 스크린샷 `screenshots/1030-*.png`
 
+2026-11-02 반영 기록(확정 — 공급망 검사 보완 · AI 꺼짐 안내, React 와 같은 값):
+- **공급망 검사** — PyPI 는 sdist 우선(설치 스크립트까지 본다) · 패키지 이름 검사도 자기 이름 · 버전을 OSV-Scanner 로(잠금 파일을 만들어 넘김, 간접 의존성도 풀린다) · 테스트 코드(tests/ · test/ · __tests__/ · test_*.py · *_test.py · *.test.* · *.spec.*)는 따로 돌려 위험 점수 · 판정 · 위협 수에서 빼고 「테스트 코드 N — 위험 점수 · 판정에 넣지 않음」 묶음으로 · 판정 문구는 자기 버전(「이 버전에 … · 의존성에 …」)과 의존성(「의존성에 …」)을 나눈다 · 작업 폴더를 못 만들거나 Docker 에 닿지 않으면 503 안내(전엔 「서버 오류」)
+- **AI 도우미 꺼짐** — 탭은 보이고 안내 「AI 도우미가 꺼져 있습니다 — 서버에 Ollama(OLLAMA_URL)를 연결하면 켜집니다」(시뮬 `?ai=off`)
+- **목업 결함 수정** — 빈 이벤트 목록을 처음 그린 뒤 들어온 위반이 하이라이트되지 않던 것(feed draw 의 firstDraw, React 는 원래 정상)
+- 실측(sg-vm): 인기 패키지 20 · requests sdist 파일 · 데모 악성 · django 2.2.0 — 결과와 남은 질문(GuardDog 임계 5)은 CLAUDE.md 미확정
+- 검증: `scan-1102` 3/3(수정 전 0/3) · 기존 14묶음 N/N · 콘솔 오류 0. 시간에 기대던 `theme-1030` 검사 4곳을 조건 대기로 바꿈(`// 11/02`)
+
+11/03 반영(라운드 계획 1단계 — 공급망 검사 판정 3단계, 목업 먼저 → React · 백엔드):
+- **판정 3단계** — 「악성 의심」은 GuardDog 점수 ≥ 5 **그리고** 설치 시점 규칙(`threat-setup-*` · `npm-preinstall-script` · `network-exfil*` · `dns-exfil` · `reverse-shell` · `download-exec` · `self-propagation`) 1개 이상일 때만. 점수 ≥ 5 인데 실행 중 동작 규칙(동적 로딩 · 환경 변수 읽기 · 난독화)만이면 새 판정 **「주의」**(배지 warn, 빨간 행 표시 없음, 결과 필터에 추가). 우선순위 악성 > 취약 > 주의 > 정상. 근거: 11/02 sg-vm 실측에서 pyyaml 8.8 · numpy 7.3 · django 6.7 이 전부 런타임 규칙만으로 「악성」(오탐)
+- 문구 — 주의: 「설치 단계의 위험한 행동은 없고, 실행 중 동작 규칙(동적 로딩 · 환경 변수 읽기 등)에 N곳 걸렸습니다. 정상 라이브러리에도 흔한 패턴이니 코드 보기로 확인하세요.」 · 악성 문구의 N은 설치 시점 위협 수(`installThreats`)
+- 모의 서버 `scanFinish` 의 판정식을 백엔드 `scan/verdict.go` 와 같게 바꿨다(이전 목업은 위협 1개만 있어도 악성 — 백엔드와 달랐음). 픽스처 `pip pyyaml`(8.8, 동적 로딩 3곳) 추가
+- 검증: `scan-1102` 4/4(4번 신규) · React e2e `scans-1102` 4/4(신규 1) · 백엔드 `TestVerdictThreeTier`(실측 23건 표) · `TestRuntimeOnlyHighScoreIsCaution`(수정 전 2건 실패 확인)
+
 설치 세션 · 인증 API 계약 메모(10/20):
 - 설치 세션(CLI, `SANDBOX_TOKEN` — 인증 미들웨어의 Bypass): `POST /api/installs` · `PUT /api/installs/{id}/finish` · `POST /api/installs/refused` · `GET /api/blocklist/check`. 화면 쪽 `GET /api/installs*` 는 로그인 세션(조회자도 읽기). 끝 보고가 없으면 컨테이너 종료 10분 뒤 「결과 미확인」(변경 없음)
 - 인증: `shared/auth.js` 머리 주석 — 단계 `need_password → need_license → need_otp_enroll | need_otp → active`, 오류 `{error, state?}`. 조회자의 쓰기는 403 「조회자는 읽기만 할 수 있습니다」(미리보기 두 개 `POST /api/proposals/{id}/preview` · `POST /api/policies/preview` 는 조회자도 허용). 계정: `GET/POST /api/users`(임시 비밀번호는 생성 응답에서 한 번) · `PATCH /api/users/{id} {role?, disabled?, displayName?}`(마지막 관리자 409, 자기 비활성 400) · `POST …/reset-password → {tempPassword}` · `POST …/reset-otp → 204`. 라이선스 `GET /api/license`(없으면 404)
@@ -285,4 +298,4 @@ AI 도우미(2026-10-16, 확정 · React 반영 — 전 화면 우측 하단, `s
 - AI 도우미: 목업은 live 모드에서도 `/api/chat` 을 부르지 않는다(모의 답만). 대화 기록은 `{role, text}` 모양 — 실제 계약 `history:[{role, text}]` 와 같다
 
 회귀 실행: `make mock`(:8766) → `cd mock && PLAYWRIGHT=<playwright 패키지 경로> node tests/feedback-1015.cjs` (`VERBOSE=1` · `ONLY=정규식` · `BASE=주소`). 13번(실제 백엔드)은 `API=<백엔드 주소>` 의 백엔드가 떠 있을 때만 돈다(로그인은 `tests/live-login.cjs`).
-목표 회귀: `node tests/goals-1015.cjs` · 3차 `node tests/decisions-1016.cjs` · 정책 `node tests/policy-1016.cjs` · 종합 `node tests/overview-1016.cjs` · 공급망 `node tests/scan-1016.cjs` · 도우미 `node tests/guide-1020.cjs` · 2차 시안 `node tests/feedback-1020b.cjs` · 10/20 결정 `node tests/feedback-1020c.cjs` · 10/21 React 맞춤 `node tests/align-1021.cjs` · 10/21b URL 필터 제거 `node tests/url-1021.cjs` · 10/30 `node tests/dns-1030.cjs` · `node tests/demo-1030.cjs` · `node tests/theme-1030.cjs` (같은 옵션 + `SHOTS=1` 데모 대본 스크린샷 · `REAL_OSV=1` OSV 실조회 1건). 12번 실제 백엔드 시나리오는 `make backend` 가 떠 있을 때만 돈다.
+목표 회귀: `node tests/goals-1015.cjs` · 3차 `node tests/decisions-1016.cjs` · 정책 `node tests/policy-1016.cjs` · 종합 `node tests/overview-1016.cjs` · 공급망 `node tests/scan-1016.cjs` · 도우미 `node tests/guide-1020.cjs` · 2차 시안 `node tests/feedback-1020b.cjs` · 10/20 결정 `node tests/feedback-1020c.cjs` · 10/21 React 맞춤 `node tests/align-1021.cjs` · 10/21b URL 필터 제거 `node tests/url-1021.cjs` · 10/30 `node tests/dns-1030.cjs` · `node tests/demo-1030.cjs` · `node tests/theme-1030.cjs` · 11/02 `node tests/scan-1102.cjs` (같은 옵션 + `SHOTS=1` 데모 대본 스크린샷 · `REAL_OSV=1` OSV 실조회 1건). 12번 실제 백엔드 시나리오는 `make backend` 가 떠 있을 때만 돈다.

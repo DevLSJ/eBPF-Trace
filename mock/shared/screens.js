@@ -316,7 +316,7 @@
   // ── 공급망 검사 — 「설치하기 전에, 이 패키지 · 저장소 · 파일에 위험한 코드나 알려진 취약점이 있나?」 [10/16] ──
   // 실제 오픈소스로 정적 검사: GuardDog(악성 코드 패턴 — 파일:줄) · OSV-Scanner(의존성의 알려진 취약점). 코드를 실행하지 않는다.
   // 결과에서 「설치 검사로 실제 설치해 보기」(eBPF 동적 검사)와 「차단 목록에 올리기」(판정 → 제안)로 잇는다
-  const SCAN_VERDICT = { malicious: ['악성 의심', 'danger'], vulnerable: ['취약점 있음', 'warn'], clean: ['위협 없음', 'ok'] };
+  const SCAN_VERDICT = { malicious: ['악성 의심', 'danger'], vulnerable: ['취약점 있음', 'warn'], caution: ['주의', 'warn'], clean: ['위협 없음', 'ok'] }; // caution: 11/03 판정 3단계 — 점수는 높은데 런타임 휴리스틱 규칙만
   const RISK_LABEL = { high_risk: '높음', medium_risk: '보통', low_risk: '낮음', no_risks_detected: '없음' };
   const MAX_UPLOAD = 50 * 1024 * 1024;
   const sevTone = (s) => (Number(s) >= 9 ? 'danger' : Number(s) >= 7 ? 'high' : Number(s) >= 4 ? 'warn' : 'low');
@@ -466,7 +466,8 @@
       // 판정 문구(11/02): 패키지 검사는 자기 버전(direct) 취약점과 OSV-Scanner 가 푼 의존성(간접) 취약점을 나눠 말한다
       U.scanVerdictText = (d, threatN) => {
         if (d.status !== 'done') return '검사 중입니다…';
-        if (d.verdict === 'malicious') return `설치 단계에서 위험한 행동을 하는 코드가 ${threatN}곳 있습니다. 설치하지 말고 차단 목록에 올리세요.`;
+        if (d.verdict === 'malicious') return `설치 단계에서 위험한 행동을 하는 코드가 ${d.installThreats || threatN}곳 있습니다. 설치하지 말고 차단 목록에 올리세요.`;
+        if (d.verdict === 'caution') return `설치 단계의 위험한 행동은 없고, 실행 중 동작 규칙(동적 로딩 · 환경 변수 읽기 등)에 ${threatN}곳 걸렸습니다. 정상 라이브러리에도 흔한 패턴이니 코드 보기로 확인하세요.`;
         if (d.verdict === 'vulnerable') {
           const own = d.vulns.filter((v) => v.direct).reduce((n, v) => n + v.count, 0), dep = d.vulns.filter((v) => !v.direct).reduce((n, v) => n + v.count, 0);
           if (d.target.kind === 'package' && own) return `이 버전에 알려진 취약점이 ${own}건${dep ? ` · 의존성에 ${dep}건` : ''} 있습니다. 고쳐진 버전으로 올리세요.`;

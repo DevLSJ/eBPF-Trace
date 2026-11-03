@@ -624,13 +624,16 @@
       if (own) sc.vulns = own.map((v) => Object.assign({}, v));
       const tests = t.kind === 'repo' && F.tests[`repo:${t.name.toLowerCase()}`];
       if (tests) sc.findings = sc.findings.concat(tests.map((f) => Object.assign({ test: true }, f)));
-      const threats = sc.findings.filter((f) => f.category === 'threat' && !f.test).length;
-      sc.verdict = threats || (sc.risk && sc.risk.score >= 5) ? 'malicious' : sc.vulns.length ? 'vulnerable' : 'clean';
+      // 판정(11/03 결정, 백엔드 scan/verdict.go 와 같다): 악성 = 점수 ≥ 5 그리고 설치 시점 규칙 1개 이상 · 취약 = 알려진 취약점 · 주의 = 점수 ≥ 5 인데 런타임 휴리스틱 규칙만 · 그 외 정상
+      const body = sc.findings.filter((f) => f.category === 'threat' && !f.test);
+      sc.installThreats = body.filter((f) => M.isInstallTimeRule(f.rule)).length;
+      const risky = sc.risk && sc.risk.score >= 5;
+      sc.verdict = risky && sc.installThreats ? 'malicious' : sc.vulns.length ? 'vulnerable' : risky ? 'caution' : 'clean';
       sc.status = 'done'; sc.finishedAt = iso();
     },
     scanView(sc, full) {
       const v = clone(sc);
-      Object.assign(v, { threats: sc.findings.filter((f) => f.category === 'threat' && !f.test).length, capabilities: sc.findings.filter((f) => f.category === 'capability' && !f.test).length, testFindings: sc.findings.filter((f) => f.test).length, vulnCount: sc.vulns.reduce((n, x) => n + x.count, 0), vulnMax: sc.vulns.reduce((m, x) => Math.max(m, Number(x.maxSeverity)), 0) || null });
+      Object.assign(v, { installThreats: sc.installThreats || 0, threats: sc.findings.filter((f) => f.category === 'threat' && !f.test).length, capabilities: sc.findings.filter((f) => f.category === 'capability' && !f.test).length, testFindings: sc.findings.filter((f) => f.test).length, vulnCount: sc.vulns.reduce((n, x) => n + x.count, 0), vulnMax: sc.vulns.reduce((m, x) => Math.max(m, Number(x.maxSeverity)), 0) || null });
       if (!full) { delete v.findings; delete v.files; delete v.vulns; delete v.packages; }
       else if (!v.packages) v.packages = [];
       return v;

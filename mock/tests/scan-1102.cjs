@@ -2,7 +2,8 @@
    1 테스트 코드 탐지는 「테스트 코드 N — 위험 점수 · 판정에 넣지 않음」 묶음으로 따로, 위협 수 · 판정에 들지 않는다(저장소 psf/requests: tests/test_requests.py /etc/passwd)
    2 패키지 이름 검사도 자기 버전의 알려진 취약점(pip django 2.2.0 → 75건 · 9.8) — 판정 문구 「이 버전에 …」 · 표 제목 「이 패키지 버전」
    3 AI 도우미가 꺼져 있으면(?ai=off) 탭은 보이고 안내 문구(OLLAMA_URL), 켜져 있으면 그대로 대화
-   4 1440 · 콘솔 오류 0
+   4 판정 3단계(11/03): 점수 ≥ 5 인데 런타임 휴리스틱 규칙만(pip pyyaml 8.8) → 「주의」 · 설치 시점 규칙(pip reqeusts 8.6) → 「악성 의심」 · 결과 필터에 「주의」
+   5 1440 · 콘솔 오류 0
    실행: BASE=http://127.0.0.1:8767 PLAYWRIGHT=<playwright 경로> node tests/scan-1102.cjs */
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:8766/index.html';
@@ -78,6 +79,35 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     await p2.click('.assist-panel [role="tab"]:has-text("AI 도우미")'); await p2.waitForTimeout(200);
     ok(await p2.locator('.assist-panel [data-part="chat-off"]').count() === 0, '켜졌는데 꺼짐 안내');
     await p2.close(); await pg.close();
+  });
+
+  await T('4 판정 3단계: 런타임 휴리스틱만 8.8 → 주의, 설치 시점 규칙 8.6 → 악성 의심', async () => {
+    const pg = await newPage();
+    await go(pg, '/scans');
+    const scanPkg = async (name) => {
+      await pg.click(`${F} [data-input="package"]`);
+      await pg.selectOption(`${F} select[data-field="manager"]`, 'pip');
+      await pg.fill(`${F} input[data-field="name"]`, name);
+      await pg.click(`${F} button[aria-label="검사 시작"]`);
+      return waitScan(pg);
+    };
+    const id1 = await scanPkg('pyyaml');
+    const v1 = await pg.evaluate(async (sid) => { const d = await UI.api.scan(sid); return [d.verdict, d.risk.score, d.threats, d.installThreats]; }, id1);
+    ok(JSON.stringify(v1) === JSON.stringify(['caution', 8.8, 3, 0]), `pyyaml ${JSON.stringify(v1)}`);
+    ok((await pg.textContent(`${S} [data-part="verdict"] .badge`)).trim() === '주의', '주의 배지');
+    const txt = await pg.textContent(`${S} [data-part="verdict"] p`);
+    ok(txt.includes('설치 단계의 위험한 행동은 없고') && txt.includes('3곳'), `주의 문구 "${txt}"`);
+    ok(!(await pg.$eval(`tr[data-scan="${id1}"]`, (e) => e.classList.contains('needs-action'))), '주의 행은 빨간 표시 없음');
+    const id2 = await scanPkg('reqeusts');
+    const v2 = await pg.evaluate(async (sid) => { const d = await UI.api.scan(sid); return [d.verdict, d.installThreats]; }, id2);
+    ok(JSON.stringify(v2) === JSON.stringify(['malicious', 2]), `reqeusts ${JSON.stringify(v2)}`);
+    ok((await pg.textContent(`${S} [data-part="verdict"] p`)).includes('2곳'), '악성 문구는 설치 시점 위협 수');
+    const chips = await pg.$$eval('[data-verdict]', (els) => els.map((e) => e.textContent.trim()));
+    ok(chips.includes('주의'), `결과 필터 ${JSON.stringify(chips)}`);
+    await pg.click('[data-verdict="caution"]'); await pg.waitForTimeout(200);
+    const rows = await pg.$$eval('tr[data-scan]', (els) => els.map((e) => e.dataset.scan));
+    ok(rows.length === 1 && rows[0] === id1, `주의 필터 ${JSON.stringify(rows)}`);
+    await pg.close();
   });
 
   await br.close();

