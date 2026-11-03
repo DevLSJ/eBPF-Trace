@@ -364,6 +364,8 @@
   };
   scanFixtures.osv['repo:requests'] = [{ package: 'urllib3', version: '1.26.5', ecosystem: 'PyPI', direct: false, count: 3, maxSeverity: '8.1', ids: ['GHSA-34jh-p97f-mpxf', 'GHSA-g4mx-q9vg-27p4'] },
     { package: 'idna', version: '2.10', ecosystem: 'PyPI', direct: false, count: 1, maxSeverity: '6.2', ids: ['GHSA-jjg7-2v4v-x38h'] }];
+  // 11/04 종합 판정: 설치 세션의 자동 정적 검사가 범위 · 미지정 버전일 때 받는 최신 버전(Target.Version) — 목업 고정값, 없으면 1.0.0
+  scanFixtures.latest = { 'pip:requests': '2.32.3', 'pip:pyyaml': '6.0.3', 'pip:reqeusts': '1.0.2', 'pip:flask': '3.1.0', 'pip:numpy': '2.1.3', 'npm:lodash': '4.17.21', 'npm:axios': '1.7.9', 'npm:express': '4.21.2', 'npm:tiny-git-dep': '1.0.0' };
   // 증거(kill 직전, GET /api/evidence?container=) — 로그 마지막 줄 · docker diff · docker top. 설치 감시 컨테이너는 금방 멈춰 docker top 이 빠진다(partial)
   const evidenceTemplate = {
     install: (label) => ({ logs: [`Collecting ${label.split(' ').slice(1).join(' ')}`, '  Processing /pkg/reqeusts', '  Preparing metadata (setup.py): started', "[demo] typosquatted package 'reqeusts' post-install (harmless simulation)", '[demo] opened /etc/shadow (SupplyGuard should flag this)'].join('\n'),

@@ -168,29 +168,59 @@
   const STATUS_CHIPS = [['pending', '판정 대기'], ['all', '전체'], ['isolated', '격리'], ['warned', '경고'], ['refused', '설치 전 거부'], ['passed', '통과'], ['failed', '설치 실패'], ['unknown', '결과 미확인'], ['running', '진행 중']];
   const MANAGERS = [['', '전체'], ['pip', 'pip'], ['npm', 'npm'], ['cargo', 'cargo']];
   const KIND_NAME = { exec: '실행', open: '파일', connect: '통신', dns: '조회' }; // 활동 요약 타일 [10/30 dns 「조회」]
+  const SCAN_VERDICT = { malicious: ['악성 의심', 'danger'], vulnerable: ['취약점 있음', 'warn'], caution: ['주의', 'warn'], clean: ['위협 없음', 'ok'] }; // caution: 11/03 판정 3단계 — 점수는 높은데 런타임 휴리스틱 규칙만
+  // 11/04 종합 판정 — 설치 세션의 자동 정적 검사(scan) 배지 · 건너뛴 이유. 공급망 검사 화면의 판정 배지 그대로, 건너뜀 · 옛 세션은 회색 「—」
+  const SCAN_SKIP = { local: () => '로컬 패키지라 정적 검사 건너뜀', unsupported: (m) => `${m} 는 정적 검사 미지원`, busy: () => '검사 대기열이 가득 차 정적 검사 건너뜀', off: () => '검사기가 꺼져 있어 정적 검사 건너뜀', invalid: () => '패키지 이름을 해석하지 못해 정적 검사 건너뜀' };
+  const skipText = (s) => (SCAN_SKIP[s.scan.skip] || (() => '정적 검사 건너뜀'))(s.manager);
+  function staticBadge(s) {
+    const sc = s.scan;
+    if (!sc) return h('span', { class: 'muted', 'data-static': 'none' }, '—');
+    if (sc.status === 'skipped') return h('span', { class: 'muted', 'data-static': 'skipped', title: skipText(s) }, '—');
+    if (sc.status === 'running') return h('span', { class: 'badge badge-info', 'data-static': 'running' }, '검사 중…');
+    if (sc.status === 'failed') return h('span', { class: 'badge badge-level-normal', 'data-static': 'failed', title: sc.error || null }, '실패');
+    const [ko, tone] = SCAN_VERDICT[sc.verdict] || SCAN_VERDICT.clean;
+    return h('span', { class: `badge sv-${tone}`, 'data-static': sc.verdict }, ko);
+  }
+  const NOTE_RUNTIME = '정적 검사로는 악성 코드를 찾지 못했지만, 설치 중 행동을 커널에서 보고 잡았습니다.';
+  const NOTE_STATIC = '설치 중 정책 위반은 없었지만, 정적 검사에서 설치 단계의 위험한 코드가 나왔습니다 — 공급망 검사에서 코드를 확인하세요.';
   const CMD_EXAMPLE = 'sg-install pip <패키지>';
   function copyCommand(text) {
     const done = () => U.toast(`명령을 복사했습니다 — ${text}`, { tone: 'ok', key: 'copy', replace: true });
     try { navigator.clipboard.writeText(text).then(done, done); } catch { done(); }
   }
-  // 정적 분석 비교 — 같은 패키지를 OSV(알려진 취약점 DB)에 물어본 결과와 커널 관찰 결과를 나란히 (M1)
+  // 정적 분석 비교 — 같은 패키지의 정적 결과와 커널 관찰 결과를 나란히 (M1)
+  //   11/04 종합 판정: 자동 정적 검사(scan)가 있으면 왼쪽 = 「정적 검사 · GuardDog + OSV」, 건너뜀 · 옛 세션이면 지금의 OSV 이름 조회 칸 그대로(부제에 건너뛴 이유)
+  //   엇갈릴 때만 한 줄: 런타임 격리 · 경고 + 정적 정상 · 주의 · 취약 · 건너뜀 / 런타임 통과 + 정적 악성
   function osvCompare(s) {
-    const q = U.osvQuery(s.manager, s.packages[0] || '');
-    const val = h('div', { class: 'cmp-val muted' }, '조회 중…');
-    const sub = h('div', { class: 'small muted' }, `${q.ecosystem} · ${q.name} · 버전 무관 · 출처 osv.dev`);
+    const sc = s.scan || null;
     const verdictLine = h('p', { class: 'small cmp-note', hidden: true });
+    const note = (t) => { verdictLine.hidden = false; verdictLine.textContent = t; };
     const nViol = s.violations.reduce((n, v) => n + (v.count || 1), 0);
-    const box = h('section', { class: 'sheet-section', 'data-part': 'osv' }, h('h3', null, '정적 분석 비교'),
-      h('div', { class: 'cmp' },
-        h('div', { class: 'cmp-cell' }, h('div', { class: 'small strong' }, '정적 분석 (OSV)'), val, sub),
-        h('div', { class: 'cmp-cell' }, h('div', { class: 'small strong' }, '커널 관찰 (SupplyGuard)'), h('div', { class: 'cmp-val' }, U.statusBadge(s.status), h('span', { class: `num ${nViol ? 'tone-danger' : 'muted'}` }, ` 위반 ${nViol}건`)), h('div', { class: 'small muted' }, '설치 중 실제로 한 행동'))),
-      verdictLine);
-    U.api.osv(q).then((r) => {
-      if (r.error) { replace(val, h('span', { class: 'tone-warn' }, '조회 실패')); sub.textContent = `${q.ecosystem} · ${q.name} · ${r.error} — 커널 관찰 결과는 그대로입니다`; return; }
-      replace(val, h('span', { class: r.vulns ? 'tone-warn' : 'tone-ok', 'data-osv-count': '' }, `알려진 취약점 ${fmt.num(r.vulns)}건`));
-      if (!r.vulns && nViol) { verdictLine.hidden = false; verdictLine.textContent = '정적 분석으로는 깨끗하지만, 설치 중 행동을 커널에서 보고 잡았습니다.'; }
-    });
-    return box;
+    const kernel = h('div', { class: 'cmp-cell', 'data-cell': 'kernel' }, h('div', { class: 'small strong' }, '커널 관찰 (SupplyGuard)'), h('div', { class: 'cmp-val' }, U.statusBadge(s.status), h('span', { class: `num ${nViol ? 'tone-danger' : 'muted'}` }, ` 위반 ${nViol}건`)), h('div', { class: 'small muted' }, '설치 중 실제로 한 행동'));
+    const runtimeHit = s.status === 'isolated' || s.status === 'warned';
+    let left;
+    if (sc && sc.status !== 'skipped') {
+      const done = sc.status === 'done';
+      left = h('div', { class: 'cmp-cell', 'data-cell': 'static' }, h('div', { class: 'small strong' }, '정적 검사 · GuardDog + OSV'),
+        h('div', { class: 'cmp-val' }, staticBadge(s), done && sc.riskScore != null ? h('span', { class: `num ${sc.verdict === 'malicious' ? 'tone-danger' : 'muted'}` }, ` 위험 점수 ${sc.riskScore.toFixed(1)} / 10`) : null),
+        h('div', { class: 'small muted' }, h('span', { class: 'mono' }, sc.label), sc.version ? ` · ${sc.version}` : '', sc.reused ? ' · 24시간 안 검사 결과 재사용' : ''),
+        sc.id ? h('a', { ...U.to(`#/scans?id=${encodeURIComponent(sc.id)}`), class: 'link small', 'data-action': 'scan-link' }, '공급망 검사에서 보기 →') : null);
+      if (done && runtimeHit && sc.verdict !== 'malicious') note(NOTE_RUNTIME);
+      else if (done && s.status === 'passed' && sc.verdict === 'malicious') note(NOTE_STATIC);
+    } else {
+      const q = U.osvQuery(s.manager, s.packages[0] || '');
+      const why = sc ? ` · ${skipText(s)}` : '';
+      const val = h('div', { class: 'cmp-val muted' }, '조회 중…');
+      const sub = h('div', { class: 'small muted' }, `${q.ecosystem} · ${q.name} · 버전 무관 · 출처 osv.dev${why}`);
+      left = h('div', { class: 'cmp-cell', 'data-cell': 'osv' }, h('div', { class: 'small strong' }, '정적 분석 (OSV)'), val, sub);
+      if (sc && runtimeHit) note(NOTE_RUNTIME); // 건너뜀 + 런타임 격리 · 경고
+      U.api.osv(q).then((r) => {
+        if (r.error) { replace(val, h('span', { class: 'tone-warn' }, '조회 실패')); sub.textContent = `${q.ecosystem} · ${q.name} · ${r.error} — 커널 관찰 결과는 그대로입니다${why}`; return; }
+        replace(val, h('span', { class: r.vulns ? 'tone-warn' : 'tone-ok', 'data-osv-count': '' }, `알려진 취약점 ${fmt.num(r.vulns)}건`));
+        if (!sc && !r.vulns && nViol) note('정적 분석으로는 깨끗하지만, 설치 중 행동을 커널에서 보고 잡았습니다.'); // 옛 세션(scan 없음) — 지금 그대로
+      });
+    }
+    return h('section', { class: 'sheet-section', 'data-part': 'osv' }, h('h3', null, '정적 분석 비교'), h('div', { class: 'cmp' }, left, kernel), verdictLine);
   }
   U.screens['/installs'] = {
     title: '설치 검사',
@@ -202,7 +232,7 @@
       const statusChips = h('div', { class: 'chips', 'data-filter': 'status', role: 'group', 'aria-label': '결과' });
       const mgrChips = h('div', { class: 'chips', 'data-filter': 'manager', role: 'group', 'aria-label': '매니저' });
       const tbody = h('tbody');
-      const table = h('table', { class: 'table', 'data-table': 'installs' }, h('thead', null, h('tr', null, ['시작', '매니저', '패키지', '결과', '판정', '위반', '걸린 시간'].map((t) => h('th', null, t)))), tbody);
+      const table = h('table', { class: 'table', 'data-table': 'installs' }, h('thead', null, h('tr', null, ['시작', '매니저', '패키지', '설치 결과', '정적 검사', '판정', '위반', '걸린 시간'].map((t) => h('th', null, t)))), tbody);
       const emptySlot = h('div', { class: 'empty-slot' }, U.skeleton(6));
       table.hidden = true;
       const count = h('span', { class: 'num muted' });
@@ -220,7 +250,7 @@
       // quiet: 자동 재시도(30초마다, 스켈레톤 없이) [10/20 결정 4] — 오류 뒤에도 이 호출만은 통과시킨다
       let inflight = 0; // 부르는 중이면 스트림 갱신(update)이 또 부르지 않는다 — 겹친 호출이 서로의 결과를 덮지 않게
       const load = (quiet) => { inflight++; return Promise.all([U.api.installs(), U.api.cases({ source: 'install' })]).then(([r, cs]) => {
-        const next = sigOf([r.map((s) => [s.id, s.status, s.caseId, s.violations.length, s.activity.kinds]), cs.map((c) => [c.id, c.state, c.decision])]);
+        const next = sigOf([r.map((s) => [s.id, s.status, s.caseId, s.violations.length, s.activity.kinds, s.scan ? [s.scan.status, s.scan.verdict, s.scan.error] : null]), cs.map((c) => [c.id, c.state, c.decision])]);
         if (error && !quiet) return; // 오류 뒤에는 「다시 시도」 · 자동 재시도만 다시 부른다
         if (quiet) { error = null; sig = ''; }
         if (rows && next === sig) return; sig = next; rows = r; cases = new Map(cs.map((c) => [c.id, c])); draw();
@@ -281,15 +311,18 @@
           : !rows.length ? U.emptyState({ icon: '▣', title: '아직 설치 검사가 없습니다', hint: '패키지를 PC 에 바로 깔지 말고 감시 컨테이너에서 설치해 보세요.', actions: [h('code', { class: 'cmd' }, CMD_EXAMPLE), h('button', { type: 'button', class: 'btn btn-primary btn-xs', onclick: () => copyCommand(CMD_EXAMPLE) }, '⧉ 명령 복사')] })
           : !list.length ? (f.status === 'pending' ? U.emptyState({ icon: '✓', title: '판정할 설치 없음', actions: h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => setF('status', 'all') }, `전체 세션 ${rows.length}건 보기`) })
             : U.emptyState({ icon: '⌕', title: '조건에 맞는 세션 없음', actions: h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => clearFilter(f, ['status', 'manager']) }, '필터 모두 해제') })) : null);
-        replace(tbody, list.map((s) => { const c = caseOf(s); return U.rowKeys(h('tr', { 'data-id': s.id, class: `clickable ${isPending(s) ? 'needs-action' : ''} ${s.id === selId ? 'selected' : ''}`, onclick: () => select(s.id) },
+        const danger = (s) => isPending(s) || s.status === 'isolated' || s.status === 'warned' || (!!s.scan && s.scan.verdict === 'malicious'); // 11/04: 빨간 행 = 런타임 격리 · 경고 또는 정적 악성
+        const cur = rows.find((s) => s.id === selId);
+        const durTh = table.tHead.rows[0].lastElementChild; durTh.hidden = !!cur; // 11/04 결정: 시트가 열려 있으면 「걸린 시간」 열을 숨긴다(상세에 같은 값)
+        replace(tbody, list.map((s) => { const c = caseOf(s); return U.rowKeys(h('tr', { 'data-id': s.id, class: `clickable ${danger(s) ? 'needs-action' : ''} ${s.id === selId ? 'selected' : ''}`, onclick: () => select(s.id) },
           h('td', { class: 'num mono nowrap' }, fmt.dateTime(s.startedAt)),
           h('td', null, h('span', { class: 'mgr', 'data-manager': s.manager }, s.manager)),
           h('td', { class: 'mono trunc', title: pkgLabel(s) }, pkgLabel(s)),
           h('td', null, U.statusBadge(s.status)),
+          h('td', { class: 'nowrap' }, staticBadge(s)), // 11/04 정적 검사
           h('td', null, c ? U.decisionBadge(c.decision) : h('span', { class: 'muted', 'data-decision': 'none' }, '—')),
           h('td', { class: `num ${s.violationCount ? 'tone-danger' : 'muted'}`, 'data-col': 'violations' }, s.violationCount), // 위반 수 = violationCount(같은 위반 묶음의 count 합)
-          h('td', { class: 'num muted nowrap' }, durText(s))), () => select(s.id)); }));
-        const cur = rows.find((s) => s.id === selId);
+          h('td', { class: 'num muted nowrap', 'data-col': 'duration', hidden: !!cur }, durText(s))), () => select(s.id)); }));
         replace(sheetSlot, cur ? installSheet(cur) : null);
       }
       load();
@@ -316,7 +349,6 @@
   // ── 공급망 검사 — 「설치하기 전에, 이 패키지 · 저장소 · 파일에 위험한 코드나 알려진 취약점이 있나?」 [10/16] ──
   // 실제 오픈소스로 정적 검사: GuardDog(악성 코드 패턴 — 파일:줄) · OSV-Scanner(의존성의 알려진 취약점). 코드를 실행하지 않는다.
   // 결과에서 「설치 검사로 실제 설치해 보기」(eBPF 동적 검사)와 「차단 목록에 올리기」(판정 → 제안)로 잇는다
-  const SCAN_VERDICT = { malicious: ['악성 의심', 'danger'], vulnerable: ['취약점 있음', 'warn'], caution: ['주의', 'warn'], clean: ['위협 없음', 'ok'] }; // caution: 11/03 판정 3단계 — 점수는 높은데 런타임 휴리스틱 규칙만
   const RISK_LABEL = { high_risk: '높음', medium_risk: '보통', low_risk: '낮음', no_risks_detected: '없음' };
   const MAX_UPLOAD = 50 * 1024 * 1024;
   const sevTone = (s) => (Number(s) >= 9 ? 'danger' : Number(s) >= 7 ? 'high' : Number(s) >= 4 ? 'warn' : 'low');

@@ -302,7 +302,7 @@
       return id;
     }
     const s = M.newSession(spec, Date.now(), ++state.installSeq);
-    state.installs.unshift(s); emit();
+    state.installs.unshift(s); srv.autoScan(s); emit(); // 11/04 종합 판정: 세션 시작 보고(POST /api/installs) 때 서버가 같은 패키지의 정적 검사를 시작
     const label = `${s.manager} ${s.packages.join(' ')}`;
     toast(`설치 검사 시작 — sg-install ${label}`, { tone: 'info', key: `install:${s.id}`, replace: true });
     const c = { name: s.container, image: s.image, id: s.containerId, killedAt: 0 };
@@ -588,8 +588,8 @@
       return { evaluated: state.audit.length, changed, counts: { toNormal: changed.filter((x) => x.after === 'normal').length, toBlocked: changed.filter((x) => blocking(x.after) && !blocking(x.before)).length } };
     },
     // ── 공급망 검사(10/16) — POST /api/scans → 백엔드가 격리된 검사 컨테이너에서 GuardDog(코드) · OSV-Scanner(의존성)를 돌린다 ──
-    scanStart(body) {
-      const b = body || {}, t = { kind: b.kind };
+    scanStart(body, opts) {
+      const b = body || {}, t = { kind: b.kind }, o = opts || {};
       if (b.kind === 'package') {
         if (!['pip', 'npm'].includes(b.manager)) throw httpErr(400, 'manager 는 pip | npm');
         const name = String(b.name || '').trim(); if (!/^(@[\w.-]+\/)?[\w.-]+$/.test(name)) throw httpErr(400, '패키지 이름을 확인하세요');
@@ -601,7 +601,9 @@
         if (!b.fileName) throw httpErr(400, '파일을 고르세요'); if (b.size > 50 * 1024 * 1024) throw httpErr(413, '파일은 50MB 까지 올릴 수 있습니다');
         Object.assign(t, { fileName: b.fileName, size: b.size, label: b.fileName });
       } else throw httpErr(400, 'kind 는 package | repo | file');
-      const sc = { id: nextId('scan', 'scan'), target: t, status: 'running', startedAt: iso(), finishedAt: null, verdict: null, risk: null, engines: M.scanFixtures.engines.map((e) => ({ name: e.name, version: e.version })), findings: [], vulns: [], files: {}, caseId: null };
+      if (o.label) t.label = o.label; // 자동 검사(11/04): 최신 버전으로 받은 건 라벨에 버전을 붙이지 않는다(받은 버전은 target.version)
+      const sc = { id: nextId('scan', 'scan'), target: t, status: 'running', startedAt: iso(), finishedAt: null, verdict: null, risk: null, engines: M.scanFixtures.engines.map((e) => ({ name: e.name, version: e.version })), findings: [], vulns: [], files: {}, caseId: null,
+        trigger: o.trigger || 'manual', installId: o.installId || null }; // trigger: manual | install(11/04 자동 검사) · installId: 이 검사를 시작한 설치 세션
       state.scans.unshift(sc);
       setTimeout(() => { srv.scanFinish(sc); emit(); }, 1200);
       return { id: sc.id };
@@ -637,6 +639,54 @@
       if (!full) { delete v.findings; delete v.files; delete v.vulns; delete v.packages; }
       else if (!v.packages) v.packages = [];
       return v;
+    },
+    // ── 종합 판정(11/04 설계, 2026-11-03 승인) — sg-install 세션 시작 때 같은 패키지(첫 패키지)의 정적 검사를 자동으로 시작 ──
+    //   대상: pip ==X · npm @X.Y.Z 는 그 버전, 범위(>= ~= ^ @4 @latest) · 미지정은 최신(받은 버전 = target.version). [extras] · ; 표식은 뗀다
+    //   건너뜀(scanSkip): local(. / ~ 로 시작 · git+ · URL · file: · .whl/.tar.gz) · unsupported(cargo) · invalid(이름이 namePat 밖) · off(검사기 없음 · Ping 실패) · busy(동시 1 + 대기열 4 가득)
+    //   같은 manager:정규화 이름:버전 — 실행 중이면 합류 · 24시간 안 done 은 재사용 · failed 는 재검사. 거부(refused) 세션은 시작하지 않는다
+    scannerUp: true, scanSlots: 5, // SCAN_CONCURRENCY 1 + SCAN_QUEUE 4
+    autoScanTarget(manager, raw) {
+      if (!['pip', 'npm'].includes(manager)) return { skip: 'unsupported' };
+      const p = String(raw || '').trim();
+      if (/^[./~]/.test(p) || /^git\+/i.test(p) || /^[a-z][\w+.-]*:\/\//i.test(p) || /^file:/i.test(p) || /\.(whl|tar\.gz)$/i.test(p)) return { skip: 'local' };
+      let name = '', version = '', exact = false;
+      if (manager === 'pip') {
+        const m = p.split(';')[0].trim().match(/^([^\s[=<>!~;]+)\s*(\[[^\]]*\])?\s*(.*)$/);
+        if (!m || (m[3] && !/^[=<>!~]/.test(m[3]))) return { skip: 'invalid' };
+        name = m[1].toLowerCase();
+        const ex = m[3].match(/^===?\s*([\w.+!-]+)$/);
+        if (ex) { version = ex[1]; exact = true; }
+      } else {
+        const at = p.lastIndexOf('@');
+        name = at > 0 ? p.slice(0, at) : p;
+        const v = at > 0 ? p.slice(at + 1) : '';
+        if (/^\d+\.\d+\.\d+([-+][\w.-]+)?$/.test(v)) { version = v; exact = true; }
+      }
+      if (!/^(@[\w.-]+\/)?[\w.-]+$/.test(name)) return { skip: 'invalid' };
+      if (!exact) version = M.scanFixtures.latest[`${manager}:${name}`] || '1.0.0'; // 목업: 레지스트리 최신 대신 고정값
+      return { manager, name, version, exact, label: `${manager} ${name}${exact ? (manager === 'pip' ? '==' : '@') + version : ''}` };
+    },
+    autoScan(s) {
+      if (s.refusedBy) return null;
+      const t = srv.autoScanTarget(s.manager, s.packages[0] || '');
+      s.scanId = null; s.scanSkip = '';
+      if (t.skip) { s.scanSkip = t.skip; return null; }
+      const same = (x) => x.target.kind === 'package' && x.target.manager === t.manager && x.target.name.toLowerCase() === t.name && (x.target.version || '') === t.version;
+      const hit = state.scans.find((x) => same(x) && (x.status === 'running' || (x.status === 'done' && Date.now() - Date.parse(x.finishedAt) < 86400e3)));
+      if (hit) { s.scanId = hit.id; return hit.id; }
+      if (!srv.scannerUp) { s.scanSkip = 'off'; return null; }
+      if (state.scans.filter((x) => x.status === 'running').length >= srv.scanSlots) { s.scanSkip = 'busy'; return null; }
+      s.scanId = srv.scanStart({ kind: 'package', manager: t.manager, name: t.name, version: t.version }, { trigger: 'install', label: t.label, installId: s.id }).id;
+      return s.scanId;
+    },
+    // 설치 세션 응답의 scan — 읽을 때 계산(API 계약 11/04). 옛 세션(scanId · scanSkip 없음)은 null → 필드를 두지 않는다
+    scanOfSession(s) {
+      if (s.scanSkip) return { id: '', status: 'skipped', label: `${s.manager} ${s.packages[0] || ''}`, version: '', riskScore: null, installThreats: 0, threats: 0, vulnCount: 0, error: '', skip: s.scanSkip, reused: false };
+      const sc = s.scanId && state.scans.find((x) => x.id === s.scanId); if (!sc) return null;
+      const v = srv.scanView(sc, false);
+      const out = { id: sc.id, status: sc.status, label: sc.target.label, version: sc.target.version || '', riskScore: sc.risk ? sc.risk.score : null, installThreats: v.installThreats, threats: v.threats, vulnCount: v.vulnCount, error: sc.error || '', skip: '', reused: sc.installId !== s.id };
+      if (sc.status === 'done') out.verdict = sc.verdict;
+      return out;
     },
     // 차단 목록에 올리기: 공급망 검사 건(source scan)을 열고 「악성」으로 판정 → 패키지 차단 제안(기존 흐름: 미리보기 → 적용)
     // body.packages [W4 · 10/20 G]: 저장소 · 파일 검사 결과에서 고른 패키지 [{manager?, name, version?}] — 비우면 패키지 검사의 그 패키지(지금처럼 한 번에)
@@ -825,7 +875,7 @@
         Object.assign(run, { status: 'refused', finishedAt: iso(), exitCode: 3 }); srv.demo.last = run; emit(); return clone(run);
       }
       const s = M.newSession({ manager: 'pip', pkg: './reqeusts' }, Date.now(), ++state.installSeq);
-      s.container = run.container; s.demo = true; state.installs.unshift(s); run.installId = s.id;
+      s.container = run.container; s.demo = true; state.installs.unshift(s); run.installId = s.id; srv.autoScan(s); // 11/04: ./reqeusts 는 로컬 — 건너뜀
       srv.demo.running = run; emit();
       const c = { name: s.container, image: s.image, id: s.containerId, killedAt: 0 };
       const events = [...M.demoSpecs.dnsExfil.events.slice(0, 2), ...M.demoEvents(scenario).map((a) => [a, 1])]; // pip install · pypi 연결 → 시나리오
@@ -876,7 +926,7 @@
   //     GET  /api/blocklist · DELETE /api/blocklist/{list}/{value} · GET /api/changes?limit · GET /api/osv?ecosystem&name
   //   결과 미확인: 컨테이너가 끝난 뒤 10분 안에 finish 보고가 없으면 백엔드가 unknown 으로 둔다
   // 실제 백엔드 모드는 같은 경로를 쿠키 세션으로 부른다 [10/21 React 맞춤]. 라우트가 없으면(404 텍스트 · 501) 그 영역만 「백엔드 미지원」
-  const installView = (s) => { const v = Object.assign(clone(s), { status: M.statusOf(s), violationCount: s.violations.reduce((n, x) => n + (x.count || 1), 0) }); delete v.seedDecided; return v; };
+  const installView = (s) => { const v = Object.assign(clone(s), { status: M.statusOf(s), violationCount: s.violations.reduce((n, x) => n + (x.count || 1), 0) }); delete v.seedDecided; delete v.scanSkip; const sc = srv.scanOfSession(s); if (sc) v.scan = sc; return v; }; // scan: 11/04 종합 판정(scanId 는 저장 필드, scanSkip 은 scan.skip 으로)
   const unsupportedErr = (what) => Object.assign(new Error(`백엔드 미지원 — ${what || '설치 세션 API(GET /api/installs)'}가 아직 백엔드에 없습니다`), { unsupported: true });
   const isUnsupported = (e) => !!e && ((e.status === 404 && !e.json) || e.status === 501);
   // 모의 서버 응답 [10/20]: ?latency 만큼 늦게 · ?fail 에 있는 이름은 한 번 실패 · 조회자의 쓰기는 403(실제 백엔드 auth 미들웨어와 같은 문구)
