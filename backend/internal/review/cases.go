@@ -191,7 +191,7 @@ func allowedBy(rs []rules.Rule, host string) (ruleID, pattern string, ok bool) {
 
 // falsePositiveChanges: 걸린 규칙마다 가장 좁은 예외를 만든다.
 // 예외를 넣은 규칙 사본으로 그 이벤트를 다시 평가해, 다른 규칙이 또 걸리면 그 규칙의 예외도 더한다.
-// 예외로 풀리지 않는 규칙(실행 규칙, 금지 목록 deny*, 시스템 규칙)은 변경 없이 안내만 남긴다.
+// 예외로 풀리지 않는 규칙(실행 규칙, 금지 목록 deny*, 시스템 규칙, 연쇄 규칙)은 변경 없이 안내만 남긴다.
 func (s *Service) falsePositiveChanges(c *model.CaseRecord, p *model.Proposal) {
 	work := s.o.Engine.Rules()
 	// hadHosts: 제안 전에 allowHosts 가 있던 규칙 — 없던 규칙에 allowHosts 를 넣으면 그 규칙의
@@ -203,6 +203,11 @@ func (s *Service) falsePositiveChanges(c *model.CaseRecord, p *model.Proposal) {
 	for _, ev := range c.Evidence {
 		if ev.RuleID == model.RuleBlockedImage {
 			addNote(p, "이미지 차단은 예외가 아니라 차단 목록에서 해제합니다")
+			continue
+		}
+		// 연쇄 규칙(11/04): 상태 없는 Evaluate 로는 다시 맞힐 수 없어 빈 제안이 된다 — 자동 예외 없이 안내만
+		if i := slices.IndexFunc(work, func(r rules.Rule) bool { return r.ID == ev.RuleID }); i >= 0 && work[i].Kind == model.KindSequence {
+			addNote(p, fmt.Sprintf("연쇄 규칙 %s 은 자동 예외를 만들지 않습니다 — 정책 탭에서 직접 수정하세요", ev.RuleID))
 			continue
 		}
 		for range len(work) + 1 {
