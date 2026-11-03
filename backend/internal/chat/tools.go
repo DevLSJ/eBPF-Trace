@@ -21,7 +21,7 @@ var (
 	levelText  = map[model.Level]string{model.LevelKilled: "격리됨", model.LevelHeld: "격리 대상(컨테이너 살아 있음)", model.LevelAlert: "경고", model.LevelNormal: "정상"}
 	sourceText = map[model.CaseSource]string{model.CaseInstall: "설치 검사", model.CaseRuntime: "런타임", model.CaseScan: "공급망 검사"}
 	kindText   = map[model.Kind]string{model.KindExec: "실행", model.KindOpen: "파일 열기", model.KindConnect: "연결", model.KindDNS: "도메인 조회"}
-	verdictTxt = map[string]string{"malicious": "악성 의심", "vulnerable": "취약점 있음", "clean": "위협 없음"}
+	verdictTxt = map[string]string{"malicious": "악성 의심", "vulnerable": "취약점 있음", "caution": "주의", "clean": "위협 없음"}
 	rangeText  = map[string]string{"1h": "1시간", "24h": "24시간", "7d": "7일"}
 )
 

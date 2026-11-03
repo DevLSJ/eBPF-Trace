@@ -68,7 +68,7 @@ type Scan struct {
 	StartedAt  time.Time     `json:"startedAt"`
 	FinishedAt *time.Time    `json:"finishedAt"`
 	Error      string        `json:"error,omitempty"`
-	Verdict    string        `json:"verdict,omitempty"` // malicious | vulnerable | clean
+	Verdict    string        `json:"verdict,omitempty"` // malicious | vulnerable | caution | clean (scan/verdict.go)
 	Risk       *ScanRisk     `json:"risk"`
 	Engines    []ScanEngine  `json:"engines"`
 	Findings   []ScanFinding `json:"findings"`
@@ -79,9 +79,10 @@ type Scan struct {
 	Files  map[string]string `json:"files"`
 	CaseID *string           `json:"caseId"`
 	// 목록용 집계
-	Threats      int      `json:"threats"`
-	Capabilities int      `json:"capabilities"`
-	TestFindings int      `json:"testFindings"` // 테스트 코드 탐지 수(점수 제외, 11/02)
-	VulnCount    int      `json:"vulnCount"`
-	VulnMax      *float64 `json:"vulnMax"`
+	Threats        int      `json:"threats"`
+	Capabilities   int      `json:"capabilities"`
+	TestFindings   int      `json:"testFindings"`   // 테스트 코드 탐지 수(점수 제외, 11/02)
+	InstallThreats int      `json:"installThreats"` // 설치 시점 규칙(setup-* · exfil · preinstall …)에 걸린 위협 수 — 악성 판정의 근거(11/03)
+	VulnCount      int      `json:"vulnCount"`
+	VulnMax        *float64 `json:"vulnMax"`
 }

@@ -368,15 +368,8 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 			sc.VulnMax = &f
 		}
 	}
-	// 판정은 GuardDog 위험 점수(위협 · 연쇄 · 구체성을 합친 0~10)로 — 위협 줄은 점수가 낮아도 빨강으로 보인다(10/16 실측: 정상 requests 테스트 파일 4.3 · low)
-	switch {
-	case risk != nil && risk.Score >= 5:
-		sc.Verdict = "malicious"
-	case sc.VulnCount > 0:
-		sc.Verdict = "vulnerable"
-	default:
-		sc.Verdict = "clean"
-	}
+	// 판정은 verdict.go(11/03 3단계) — 점수 하나로 하던 10/16 방식은 인기 패키지가 악성이 됐다(11/02 실측)
+	sc.Verdict, sc.InstallThreats = verdictOf(risk, findings, sc.VulnCount)
 	return nil
 }
 
