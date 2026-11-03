@@ -92,10 +92,9 @@ rules:
     denyQtypes: [TXT]
 
   - id: sandbox-dns
-    description: 설치 샌드박스는 패키지 레지스트리·GitHub 외 도메인 질의 자체를 격리 (연결 전 유출 · DNS 터널링 차단). sg-vm 실측 전까지 시험 운영
+    description: 설치 샌드박스는 패키지 레지스트리·GitHub 외 도메인 질의 자체를 격리 (연결 전 유출 · DNS 터널링 차단). 11/03 sg-vm 실측(정상 설치 27건 새 오탐 0) 뒤 격리로 전환
     kind: dns
     action: kill
-    dryRun: true
     containers: ["sg-install-*"]
     allowHosts: [pypi.org, pythonhosted.org, registry.npmjs.org, registry.yarnpkg.com, crates.io, static.crates.io, github.com, githubusercontent.com, deb.debian.org, dl-cdn.alpinelinux.org]
     maxLabelLength: 40

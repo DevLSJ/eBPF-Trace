@@ -105,7 +105,8 @@ func TestDNSRules(t *testing.T) {
 	}
 }
 
-// 기본 정책의 dns 규칙 2개(10/30): runtime-dns-exfil(alert) · sandbox-dns(kill · dryRun · sg-install-*)
+// 기본 정책의 dns 규칙 2개(10/30): runtime-dns-exfil(alert) · sandbox-dns(kill · sg-install-*)
+// sandbox-dns 는 11/03 sg-vm 실측(정상 설치 27건 중 새 오탐 0, 유출 질의 탐지) 뒤 dryRun 을 해제했다
 func TestDefaultPolicyDNS(t *testing.T) {
 	rs, err := LoadFile("../../policies/default.yaml")
 	if err != nil {
@@ -118,7 +119,7 @@ func TestDefaultPolicyDNS(t *testing.T) {
 	if r, ok := ids["runtime-dns-exfil"]; !ok || r.Kind != model.KindDNS || r.Action != model.ActionAlert || r.MaxLabelLength != 40 || r.MaxNameLength != 120 || len(r.DenyQtypes) != 1 || r.DenyQtypes[0] != "TXT" {
 		t.Fatalf("runtime-dns-exfil: %+v (present %v)", r, ok)
 	}
-	if r, ok := ids["sandbox-dns"]; !ok || r.Kind != model.KindDNS || r.Action != model.ActionKill || !r.DryRun || len(r.Containers) != 1 || r.MaxLabelLength != 40 || len(r.AllowHosts) != 10 {
+	if r, ok := ids["sandbox-dns"]; !ok || r.Kind != model.KindDNS || r.Action != model.ActionKill || r.DryRun || len(r.Containers) != 1 || r.MaxLabelLength != 40 || len(r.AllowHosts) != 10 {
 		t.Fatalf("sandbox-dns: %+v (present %v)", r, ok)
 	}
 	e := New(rs)
@@ -134,7 +135,7 @@ func TestDefaultPolicyDNS(t *testing.T) {
 	}
 	sb := dnsEv("evil.test", "A")
 	sb.ContainerName = "sg-install-pip-1"
-	if v := e.Evaluate(sb); !v.Matched || v.RuleID != "sandbox-dns" || v.Action != model.ActionKill || !v.DryRun || v.Reason != "허용 목록 밖 도메인 질의: evil.test (A)" {
+	if v := e.Evaluate(sb); !v.Matched || v.RuleID != "sandbox-dns" || v.Action != model.ActionKill || v.DryRun || v.Reason != "허용 목록 밖 도메인 질의: evil.test (A)" {
 		t.Fatalf("sandbox query outside allowlist: %+v", v)
 	}
 	ok := dnsEv("files.pythonhosted.org", "A")
@@ -142,10 +143,10 @@ func TestDefaultPolicyDNS(t *testing.T) {
 	if v := e.Evaluate(ok); v.Matched {
 		t.Fatalf("registry query in sandbox must pass: %+v", v)
 	}
-	// 샌드박스의 48자 라벨: sandbox-dns(kill dry-run) 가 runtime-dns-exfil(alert) 보다 세다
+	// 샌드박스의 48자 라벨: sandbox-dns(kill) 가 runtime-dns-exfil(alert) 보다 세다
 	lb := dnsEv(long, "A")
 	lb.ContainerName = "sg-install-pip-1"
-	if v := e.Evaluate(lb); v.RuleID != "sandbox-dns" || !v.DryRun {
+	if v := e.Evaluate(lb); v.RuleID != "sandbox-dns" || v.DryRun {
 		t.Fatalf("sandbox long label: %+v", v)
 	}
 }
