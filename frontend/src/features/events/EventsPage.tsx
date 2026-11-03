@@ -2,6 +2,7 @@ import { Network, Radar, SearchX } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DnsRow } from '../../components/DnsRow';
+import { SequenceRow } from '../../components/SequenceRow';
 import { EventFeed, PauseToggle } from '../../components/EventFeed';
 import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
 import { useAutoRetry } from '../../components/list/hooks';
@@ -210,6 +211,7 @@ function EventDetail({ v }: { v: StreamVerdict }) {
           <DnsRow e={v.event} />
           <dt className="text-slate-500">사유</dt>
           <dd>{v.reason ?? '—'}</dd>
+          <SequenceRow v={v} />
           {v.enforceError && (
             <>
               <dt className="text-slate-500">격리 오류</dt>

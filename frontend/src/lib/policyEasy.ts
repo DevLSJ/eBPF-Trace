@@ -1,5 +1,5 @@
 import { dest, type Dest } from './nav';
-import type { DirectIp, Event, Kind, Rule } from './types';
+import type { DirectIp, Event, Kind, Rule, RuleKind, SingleRule } from './types';
 
 // 정책 「쉬운 설정」 로직(목업 mock/shared/policy-easy.js 확정, 2026-10-16) — 화면은 components/PolicyEasy.tsx
 // draft 는 고급 폼과 같은 모양(목록 필드 = 한 줄에 하나)이라 쉬운 설정 · 폼 · YAML 을 오가도 값이 그대로다.
@@ -50,7 +50,8 @@ export const KIND_FIELDS: Record<Kind, ListField[]> = {
 export const ALL_LIST_FIELDS: ListField[] = ['containers', ...new Set(Object.values(KIND_FIELDS).flat())];
 const PORT_FIELDS: ListField[] = ['allowPorts', 'denyPorts'];
 
-export function toDraft(r: Rule): Draft {
+// 단일 규칙만(연쇄 규칙은 단계가 있어 YAML 로만 편집한다 — 11/04)
+export function toDraft(r: SingleRule): Draft {
   const lists = {} as Record<ListField, string>;
   for (const f of ALL_LIST_FIELDS) lists[f] = ((r[f] as (string | number)[] | undefined) ?? []).join('\n');
   return {
@@ -172,7 +173,8 @@ export const KIND_TEXT: Record<Kind, [string, string]> = {
   connect: ['외부 통신', '어디로 연결하는지 봅니다'],
   dns: ['도메인 조회', '어떤 도메인을 조회하는지 봅니다'],
 };
-export const KIND_SHORT: Record<Kind, string> = { open: '파일', exec: '실행', connect: '통신', dns: '조회' };
+// sequence(11/04): 연쇄 규칙 배지 — 목업 app.js KIND_SHORT 와 같게
+export const KIND_SHORT: Record<RuleKind, string> = { open: '파일', exec: '실행', connect: '통신', dns: '조회', sequence: '연쇄' };
 
 export interface Chip {
   type: ChipType;
@@ -231,7 +233,7 @@ export interface Template {
   key: string;
   title: string;
   desc: string;
-  rule: Rule;
+  rule: SingleRule;
 }
 export const TEMPLATES: Template[] = [
   { key: 'protect-secrets', title: '비밀 파일 보호', desc: '계정 · SSH 키 · 클라우드 자격 증명 파일을 열면 격리', rule: { id: 'protect-secrets', description: '비밀 파일 보호', kind: 'open', action: 'kill', denyPaths: ['/etc/shadow', '/root/.ssh/', '/home/*/.ssh/*', '/root/.aws/credentials'] } },
@@ -251,7 +253,7 @@ export function uniqueId(base: string, existing: string[]): string {
   for (let n = 2; existing.includes(id); n++) id = `${base}-${n}`;
   return id;
 }
-export function fromTemplate(key: string, existing: string[]): Rule {
+export function fromTemplate(key: string, existing: string[]): SingleRule {
   const t = TEMPLATES.find((x) => x.key === key) ?? TEMPLATES[TEMPLATES.length - 1];
   return { ...structuredClone(t.rule), id: uniqueId(t.rule.id, existing) };
 }
@@ -264,15 +266,16 @@ export function blockLink(e: Event): Dest | null {
   return value ? dest('/policies?id=__new__', { intent: 'block', kind: e.kind, value }) : null;
 }
 export function allowLink(rule: Rule | undefined, e: Event): Dest | null {
-  if (!rule || rule.kind === 'exec' || rule.id === 'blocklist-hosts') return null;
+  // 연쇄 규칙(11/04)은 예외 칸이 단계 안에 있어 「이 행동 허용」을 만들지 않는다(목업 policy-easy.js 와 같게)
+  if (!rule || rule.kind === 'exec' || rule.kind === 'sequence' || rule.id === 'blocklist-hosts') return null;
   // dns 규칙은 허용 도메인 목록이 있을 때만(없는 규칙에 첫 allowHosts 를 넣으면 허용 목록 모드로 바뀐다 — 계약 §1 매칭 ⑥)
   if (e.kind === 'dns') return e.dstHost && rule.allowHosts?.length ? dest(`/policies?id=${encodeURIComponent(rule.id)}`, { intent: 'allow', value: e.dstHost }) : null;
   const value = e.kind === 'open' ? e.path : e.dstHost && rule.allowHosts?.length ? e.dstHost : e.dstIp ? `${e.dstIp}/32` : undefined;
   return value ? dest(`/policies?id=${encodeURIComponent(rule.id)}`, { intent: 'allow', value }) : null;
 }
-export function ruleFromBlock(kind: Kind, value: string, existing: string[]): Rule {
+export function ruleFromBlock(kind: Kind, value: string, existing: string[]): SingleRule {
   const base = { open: 'block-file', exec: 'block-program', connect: 'block-destination', dns: 'block-domain-query' }[kind];
-  const r: Rule = { id: uniqueId(base, existing), description: `${value} 막기`, kind, action: 'kill' };
+  const r: SingleRule = { id: uniqueId(base, existing), description: `${value} 막기`, kind, action: 'kill' };
   if (kind === 'open') r.denyPaths = [value];
   else if (kind === 'exec') r.denyComms = [value];
   else if (kind === 'dns') r.denyHosts = [value];
@@ -282,6 +285,7 @@ export function ruleFromBlock(kind: Kind, value: string, existing: string[]): Ru
 }
 // 허용 값을 정책의 알맞은 예외 필드에 더한 사본과 그 값(강조용)
 export function ruleWithAllow(rule: Rule, value: string): { rule: Rule; fresh: { field: ListField; value: string } | null } {
+  if (rule.kind === 'sequence') return { rule, fresh: null }; // 연쇄 규칙(11/04): 예외를 더하지 않는다
   const g = GROUPS[rule.kind].allow;
   if (!g) return { rule, fresh: null };
   const c = g.classify(value);

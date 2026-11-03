@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DecisionBadge } from '../../components/Badges';
 import { DnsRow } from '../../components/DnsRow';
+import { SequenceRow } from '../../components/SequenceRow';
 import { downloadCSV } from '../../components/list/csv';
 import { rowKeys, useAutoRetry } from '../../components/list/hooks';
 import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
@@ -408,6 +409,7 @@ function AuditDetail({ a, c }: { a: AuditEntry; c: Case | undefined }) {
           <dd className="num">{fmtDateTime(a.event.timestamp)}</dd>
           <dt className="text-slate-500">사유</dt>
           <dd data-testid="audit-reason">{a.reason ?? '—'}</dd>
+          <SequenceRow v={a} />
           {a.enforceError && (
             <>
               <dt className="text-slate-500">격리 오류</dt>

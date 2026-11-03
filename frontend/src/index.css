@@ -180,6 +180,11 @@
   .sg-btn-danger:not(:disabled):hover {
     background: var(--danger-text);
   }
+  /* 연쇄 규칙 배지(11/04) — indigo(강조), 목업 styles.css 와 같은 값 */
+  .badge-kind-sequence {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
   /* 코드 · 로그 칸 — 어두운 배경 대신 surface-3(다크에서도 자연스럽게) */
   .sg-code {
     background: var(--surface-3);

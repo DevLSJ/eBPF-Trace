@@ -2,6 +2,8 @@
 
 export type Kind = 'exec' | 'open' | 'connect' | 'dns';
 export type Action = 'alert' | 'kill';
+// 규칙 kind(11/04) — 이벤트 kind 4개 + 연쇄 규칙 sequence. 이벤트에는 sequence 가 없다(backend model.KindSequence 는 Kinds 밖)
+export type RuleKind = Kind | 'sequence';
 
 export interface Event {
   kind: Kind;
@@ -48,6 +50,23 @@ export interface Verdict {
   enforceError?: string;
   // 격리 타임라인(10/30) — matched 판정만, 옛 백엔드는 없음
   timeline?: Timeline;
+  // 이 이벤트로 완성된 연쇄(11/04, backend model.SequenceHit). ruleId 와 같으면 연쇄가 판정, 다르면 단일 규칙이 이기고 연쇄는 주석
+  sequence?: SequenceHit;
+}
+
+// 연쇄 1건(11/04) — 단계마다 그 단계를 채운 이벤트 요약(detail = Event.Detail())
+export interface SequenceHit {
+  ruleId: string;
+  action: Action;
+  dryRun?: boolean;
+  steps: SequenceStep[];
+}
+export interface SequenceStep {
+  kind: Kind;
+  timestamp: string;
+  comm: string;
+  pid: number;
+  detail: string;
 }
 
 export interface AuditEntry extends Verdict {
@@ -59,7 +78,7 @@ export interface AuditEntry extends Verdict {
 export interface Rule {
   id: string;
   description?: string;
-  kind: Kind;
+  kind: RuleKind;
   action: Action;
   dryRun?: boolean;
   disabled?: boolean;
@@ -80,7 +99,15 @@ export interface Rule {
   denyQtypes?: string[];
   maxNameLength?: number;
   maxLabelLength?: number;
+  // sequence(11/04, kind: sequence 만) — 창(1~60초) 안에 단계(2~5개)가 순서대로. 단계는 kind + 그 kind 의 조건만
+  windowSeconds?: number;
+  steps?: RuleStep[];
 }
+// 단일 규칙(이벤트 kind) — 쉬운 설정 · 고급 폼이 다루는 규칙
+export type SingleRule = Rule & { kind: Kind };
+export const isSingleRule = (r: Rule): r is SingleRule => r.kind !== 'sequence';
+// 연쇄 규칙의 한 단계 — 헤더 필드(id · action · dryRun …) 없이 kind 와 조건만(backend V7)
+export type RuleStep = Omit<Rule, 'id' | 'description' | 'kind' | 'action' | 'dryRun' | 'disabled' | 'containers' | 'windowSeconds' | 'steps'> & { kind: Kind };
 
 export type DirectIp = 'allow' | 'alert' | 'kill';
 
