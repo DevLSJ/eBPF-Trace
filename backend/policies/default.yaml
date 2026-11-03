@@ -99,3 +99,29 @@ rules:
     containers: ["sg-install-*"]
     allowHosts: [pypi.org, pythonhosted.org, registry.npmjs.org, registry.yarnpkg.com, crates.io, static.crates.io, github.com, githubusercontent.com, deb.debian.org, dl-cdn.alpinelinux.org]
     maxLabelLength: 40
+
+  # ── 연쇄 규칙(kind: sequence, 11/03) — 같은 컨테이너에서 창(windowSeconds) 안에 단계가 순서대로 일어나면 걸린다 ──
+  # 단계 사이에 다른 이벤트가 끼어도 된다. 단일 규칙과 겹치면 판정 1건으로 합치고(더 강한 쪽, 동률이면 단일 규칙) 연쇄는 판정에 함께 기록한다.
+  - id: chain-download-secrets
+    description: 같은 컨테이너에서 10초 안에 다운로더 실행 → 외부 연결 → 자격 증명 파일 접근(하나씩은 약한 신호라도 이어지면 유출 시도). sg-vm 실측 전까지 시험 운영
+    kind: sequence
+    action: kill
+    dryRun: true
+    windowSeconds: 10
+    steps:
+      - kind: exec
+        denyComms: [curl, wget]
+      - kind: connect # 내부망이 아닌 목적지(포트 · 도메인 무관)
+        allowCidrs: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8, "::1"]
+      - kind: open
+        denyPaths:
+          - /etc/shadow
+          - /root/.ssh/
+          - /home/*/.ssh/*
+          - /root/.aws/
+          - /var/run/secrets/
+          - /run/secrets/
+          - /root/.netrc
+          - /root/.git-credentials
+          - /root/.docker/config.json
+          - /root/.kube/config
