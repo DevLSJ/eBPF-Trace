@@ -38,6 +38,12 @@ type Config struct {
 	DockerHost  string
 	// 공급망 검사(10/16): 작업 볼륨(백엔드 경로 · Docker 볼륨 이름) · 검사기 이미지
 	ScanDir, ScanVolume, GuardDogImage, OSVImage string
+	// 종합 판정(11/04): 설치 세션 보고 때 서버가 같은 패키지의 정적 검사를 자동으로 시작한다(SCAN_AUTO on | off, 기본 on).
+	// 자원: 동시 실행 상한(수동 검사 포함) · 자동 검사 대기 상한(넘으면 건너뜀 busy) · 검사기 컨테이너 메모리(MB) · CPU(코어)
+	ScanAuto                   bool
+	ScanConcurrency, ScanQueue int
+	ScanMemoryMB               int64
+	ScanCPUs                   float64
 
 	DatabaseURL string
 	RedisURL    string
@@ -119,6 +125,28 @@ func Load() (Config, error) {
 	if c.DemoEnabled, err = boolEnv("DEMO_ENABLED", false); err != nil {
 		return c, err
 	}
+	if c.ScanAuto, err = onOffEnv("SCAN_AUTO", true); err != nil {
+		return c, err
+	}
+	if c.ScanConcurrency, err = intEnv("SCAN_CONCURRENCY", 1); err != nil {
+		return c, err
+	}
+	if c.ScanQueue, err = intEnv("SCAN_QUEUE", 4); err != nil {
+		return c, err
+	}
+	mem, err := intEnv("SCAN_MEMORY_MB", 1024)
+	if err != nil {
+		return c, err
+	}
+	if mem < 128 {
+		return c, fmt.Errorf("SCAN_MEMORY_MB: 128 이상 (받은 값 %d)", mem)
+	}
+	c.ScanMemoryMB = int64(mem)
+	if v := env("SCAN_CPUS", ""); v == "" {
+		c.ScanCPUs = 2
+	} else if c.ScanCPUs, err = strconv.ParseFloat(v, 64); err != nil || c.ScanCPUs <= 0 {
+		return c, fmt.Errorf("SCAN_CPUS: 0 보다 큰 수 (예: 1 · 1.5)")
+	}
 	if c.NormalEventRate, err = intEnv("NORMAL_EVENT_RATE", 50); err != nil {
 		return c, err
 	}
@@ -189,6 +217,19 @@ func boolEnv(key string, def bool) (bool, error) {
 		return def, fmt.Errorf("%s: %w", key, err)
 	}
 	return b, nil
+}
+
+// onOffEnv: on | off (true | false 등 ParseBool 값도 받는다)
+func onOffEnv(key string, def bool) (bool, error) {
+	switch strings.ToLower(env(key, "")) {
+	case "":
+		return def, nil
+	case "on":
+		return true, nil
+	case "off":
+		return false, nil
+	}
+	return boolEnv(key, def)
 }
 
 // nonNegIntEnv: 0 을 허용하는 정수 (0 = 기능 끔)

@@ -164,10 +164,26 @@ func run() error {
 			containers = dc
 		}
 	}
+	// 종합 판정(11/04): 설치 세션 보고 뒤 같은 패키지의 정적 검사를 서버가 시작한다(SCAN_AUTO). 훅은 곧바로 돌아오고 뒤에서 검사 · 세션 기록을 한다.
+	// 검사기(scans)는 review 를 Blocker 로 쓰므로 아래에서 만든다 — 훅은 부를 때 scans · rv 를 읽는다(HTTP 를 받기 전에 둘 다 정해진다)
+	var scans *scan.Service
+	var rv *review.Service
+	installHook := onInstallStart
+	if cfg.ScanAuto {
+		auto := scan.AutoScan(func() *scan.Service { return scans }, func(ctx context.Context, id, scanID, skip string) error {
+			return rv.AttachScan(ctx, id, scanID, skip)
+		})
+		installHook = func(x model.InstallSession) {
+			if onInstallStart != nil {
+				onInstallStart(x) // mock 소스의 설치 흉내
+			}
+			auto(x)
+		}
+	}
 	// 설치 세션 · 건 · 제안 · 차단 목록 · 변경 이력. 엔진에는 저장된 정책 + 차단 도메인 시스템 규칙(blocklist-hosts)
-	rv := review.New(review.Options{
+	rv = review.New(review.Options{
 		Store: reviewStore, Policies: policies, Audit: audit, Engine: engine, Hub: hub,
-		Actor: cfg.ActorName, ActorFrom: api.RequesterName, EnforceKill: cfg.EnforceKill, OnInstallStart: onInstallStart, Notifier: ntf,
+		Actor: cfg.ActorName, ActorFrom: api.RequesterName, EnforceKill: cfg.EnforceKill, OnInstallStart: installHook, Notifier: ntf,
 		Containers: containers,
 	})
 	if err := rv.Load(ctx); err != nil {
@@ -201,11 +217,12 @@ func run() error {
 	if pgScans, ok := reviewStore.(scan.Store); ok {
 		scanStore = pgScans
 	}
-	var scans *scan.Service
 	if dc, err := dockerapi.New(cfg.DockerHost); err != nil {
 		slog.Warn("scan disabled: docker", "err", err)
 	} else {
-		scans = scan.New(scan.Options{Docker: dc, Dir: cfg.ScanDir, Volume: cfg.ScanVolume, GuardDogImage: cfg.GuardDogImage, OSVImage: cfg.OSVImage, Store: scanStore, Blocker: rv})
+		scans = scan.New(scan.Options{Docker: dc, Dir: cfg.ScanDir, Volume: cfg.ScanVolume, GuardDogImage: cfg.GuardDogImage, OSVImage: cfg.OSVImage, Store: scanStore, Blocker: rv,
+			Concurrency: cfg.ScanConcurrency, Queue: cfg.ScanQueue, MemoryMB: cfg.ScanMemoryMB, CPUs: cfg.ScanCPUs})
+		slog.Info("scan", "auto", cfg.ScanAuto, "concurrency", cfg.ScanConcurrency, "queue", cfg.ScanQueue, "memoryMB", cfg.ScanMemoryMB, "cpus", cfg.ScanCPUs)
 		if err := scans.Load(ctx); err != nil {
 			slog.Warn("scan load", "err", err)
 		}
