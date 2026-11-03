@@ -115,13 +115,25 @@ func (h *handlers) finishInstall(w http.ResponseWriter, r *http.Request) {
 		reviewErr(w, "finish install", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, finishResult(s))
+	writeJSON(w, http.StatusOK, finishResult(h.installOut(s)))
+}
+
+// installView: 설치 세션 응답 — 세션 + 읽을 때 계산한 정적 검사 요약 scan(11/04 종합 판정, 설계 「API 계약」).
+// scan 이 없으면(옛 세션 · 검사 기록 없음) 필드 없음. 저장 필드 scanSkip 은 scan.skip 으로만 내보낸다(바깥 필드가 가린다)
+type installView struct {
+	model.InstallSession
+	ScanSkip string             `json:"scanSkip,omitempty"` // 항상 비움
+	Scan     *model.InstallScan `json:"scan,omitempty"`
+}
+
+func (h *handlers) installOut(s model.InstallSession) installView {
+	return installView{InstallSession: s, Scan: h.Scans.OfSession(s)} // Scans 가 nil 이어도 건너뜀은 계산한다
 }
 
 // finishResponse: 설치 세션 + sg-install 결과 출력용 요약(W14). CLI 는 SANDBOX_TOKEN 으로 이 응답만 읽는다
 // (감사 로그 · 화면 API 는 로그인 뒤). 판정 = status, 위반 수 = violationCount, 건 = caseId
 type finishResponse struct {
-	model.InstallSession
+	installView
 	// TopRules: 위반 수가 많은 규칙 순(같으면 규칙 id 순), 최대 5개. 위반이 없으면 []
 	TopRules []ruleCount `json:"topRules"`
 	// Link: 대시보드 「설치 검사」 경로 (알림과 같은 꼴, PUBLIC_URL 없이 경로만)
@@ -135,7 +147,7 @@ type ruleCount struct {
 
 const maxTopRules = 5
 
-func finishResult(s model.InstallSession) finishResponse {
+func finishResult(s installView) finishResponse {
 	byRule := map[string]int{}
 	for _, v := range s.Violations {
 		byRule[v.RuleID] += v.Count
@@ -153,7 +165,7 @@ func finishResult(s model.InstallSession) finishResponse {
 	if len(top) > maxTopRules {
 		top = top[:maxTopRules]
 	}
-	return finishResponse{InstallSession: s, TopRules: top, Link: "/installs?id=" + url.QueryEscape(s.ID)}
+	return finishResponse{installView: s, TopRules: top, Link: "/installs?id=" + url.QueryEscape(s.ID)}
 }
 
 func (h *handlers) refusedInstall(w http.ResponseWriter, r *http.Request) {
@@ -198,7 +210,12 @@ func (h *handlers) listInstalls(w http.ResponseWriter, r *http.Request) {
 		}
 		iq.Limit = n
 	}
-	writeJSON(w, http.StatusOK, h.Review.ListInstalls(iq))
+	ss := h.Review.ListInstalls(iq)
+	out := make([]installView, len(ss))
+	for i, s := range ss {
+		out[i] = h.installOut(s)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *handlers) getInstall(w http.ResponseWriter, r *http.Request) {
@@ -207,7 +224,7 @@ func (h *handlers) getInstall(w http.ResponseWriter, r *http.Request) {
 		reviewErr(w, "get install", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, s)
+	writeJSON(w, http.StatusOK, h.installOut(s))
 }
 
 func (h *handlers) listCases(w http.ResponseWriter, r *http.Request) {

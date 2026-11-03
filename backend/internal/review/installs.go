@@ -83,6 +83,30 @@ func (s *Service) StartInstall(ctx context.Context, in StartInput) (model.Instal
 	return out, nil
 }
 
+// AttachScan: 종합 판정(11/04) — 세션 보고 뒤 서버가 시작했거나(합류 · 재사용 포함) 건너뛴 정적 검사를 세션에 남긴다(scan.AutoScan 이 부른다).
+// scanID 가 있으면 그 검사, 없으면 skip(건너뛴 이유). 저장이 실패해도 캐시에는 두고 다음 flush 에 다시 쓴다(오류는 돌려준다)
+func (s *Service) AttachScan(ctx context.Context, installID, scanID, skip string) error {
+	unlock := s.lockWrite()
+	defer unlock()
+	cur, ok := s.installs[installID]
+	if !ok {
+		return notFound("세션 없음")
+	}
+	x := cur.Clone()
+	x.ScanID, x.ScanSkip = nil, ""
+	if scanID != "" {
+		x.ScanID = &scanID
+	} else {
+		x.ScanSkip = skip
+	}
+	err := s.commitLocked(ctx, store.ReviewCommit{Installs: []model.InstallSession{x}})
+	s.putInstall(&x)
+	if err != nil {
+		s.dirtyInstalls[x.ID] = true
+	}
+	return err
+}
+
 // FinishInstall: CLI 가 컨테이너 종료 코드를 보고한다.
 func (s *Service) FinishInstall(ctx context.Context, id string, exitCode int) (model.InstallSession, error) {
 	unlock := s.lockWrite()

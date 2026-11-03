@@ -139,6 +139,10 @@ type InstallSession struct {
 	Demo bool `json:"demo,omitempty"`
 	// Isolation: 격리 세션의 첫 kill 판정(감사 로그 id · 타임라인, 10/30). 격리되지 않았으면 없다
 	Isolation *Isolation `json:"isolation,omitempty"`
+	// ScanID · ScanSkip: 종합 판정(11/04) — 세션 보고 때 서버가 시작했거나(합류 · 재사용 포함) 건너뛴 정적 검사.
+	// 검사 id(옛 세션 · 건너뜀은 null) · 건너뛴 이유(local | unsupported | busy | off | invalid). 응답의 scan 은 읽을 때 계산한다
+	ScanID   *string `json:"scanId"`
+	ScanSkip string  `json:"scanSkip,omitempty"`
 }
 
 // Isolation: 격리 타임라인이 붙는 곳 — 설치 세션 · 건의 첫 실제 kill 판정

@@ -85,4 +85,32 @@ type Scan struct {
 	InstallThreats int      `json:"installThreats"` // 설치 시점 규칙(setup-* · exfil · preinstall …)에 걸린 위협 수 — 악성 판정의 근거(11/03)
 	VulnCount      int      `json:"vulnCount"`
 	VulnMax        *float64 `json:"vulnMax"`
+	// Trigger: 누가 시작했나(11/04 종합 판정) — manual(공급망 검사 화면 · API) | install(설치 세션 보고 때 서버가 자동으로)
+	Trigger string `json:"trigger"`
+	// InstallID: 이 검사를 시작한 설치 세션(trigger=install). 수동 검사는 null
+	InstallID *string `json:"installId"`
+}
+
+// 정적 검사 트리거
+const (
+	ScanManual  = "manual"
+	ScanInstall = "install"
+)
+
+// InstallScan: 설치 세션 응답의 scan(11/04 종합 판정) — 세션의 scanId · scanSkip 과 검사 기록으로 읽을 때 계산한다.
+// 옛 세션(둘 다 없음)이거나 검사 기록이 없으면 응답에 scan 필드가 없다(하위 호환)
+type InstallScan struct {
+	ID     string `json:"id"`     // 건너뜀이면 ""
+	Status string `json:"status"` // running | done | failed | skipped
+	// Verdict: done 일 때만 — malicious | vulnerable | caution | clean
+	Verdict        string   `json:"verdict,omitempty"`
+	Label          string   `json:"label"`   // 검사 대상 라벨(건너뜀이면 「매니저 입력」)
+	Version        string   `json:"version"` // 받은 버전(최신으로 검사했으면 그 버전)
+	RiskScore      *float64 `json:"riskScore"`
+	InstallThreats int      `json:"installThreats"`
+	Threats        int      `json:"threats"`
+	VulnCount      int      `json:"vulnCount"`
+	Error          string   `json:"error"`
+	Skip           string   `json:"skip"`   // local | unsupported | busy | off | invalid
+	Reused         bool     `json:"reused"` // 다른 세션이 시작한 검사에 합류했거나 24시간 안 결과를 재사용
 }
