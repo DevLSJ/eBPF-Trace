@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. 종합 판정 — `sg-install` 세션 시작 때 서버가 같은 패키지의 정적 검사를 자동 시작, 설치 화면 한 건에 런타임 + 정적 결과(목업 → React → 백엔드 → sg-vm)
 3. GitHub 공개 — 공개 전 이력 점검(첫 커밋의 실제 공인 IP 치환), 원격 생성 뒤 CI 첫 실행 확인
 4. 연쇄 규칙 `kind: sequence` — 같은 컨테이너에서 10초 안 exec curl/wget → connect → open 민감 경로, 기본 규칙 1개 **kill · dryRun 시작**(Tier 1)
-5. 시연 — `sandbox-dns` dryRun 해제(sg-vm 실측 뒤) · 시연 패널 런타임 감시 모드 · 연쇄 시나리오
+5. 시연 — ✅ `sandbox-dns` dryRun 해제(11/03 sg-vm 실측) · ✅ 연쇄 시나리오(`run-attacker.sh SCENARIO=chain`) · 시연 패널 런타임 감시 모드
 6. EC2 첫 배포 — 11/03 `sg-ec2` 준비 · 가젯 실측 완료, 스택 반영 중
 7. UI 패스 — 로그인 · 대시보드 · 공통 부품만, 21st.dev · uiverse · Magic UI · React Bits 패턴을 **CSS · 토큰으로 재구현**(의존성 추가 없음, 요소 · 문구 늘리지 않음)
 8. 리허설. **발표 뒤**: 위반 · 분 집계 · 인증 감사 보관 기간(30일)
@@ -98,10 +98,11 @@ tools/     sg-install
 
 ## 도메인 규칙
 
+- 연쇄 규칙(`kind: sequence`, 11/04) — 같은 컨테이너에서 `windowSeconds`(1~60) 안에 `steps`(2~5, 각 단계는 exec · open · connect · dns 조건) 가 순서대로 일어나면 판정. 처리 순서 기준 · 사이 이벤트 허용 · 판정은 이벤트 1건에 1개(더 강한 쪽, 동률이면 단일 규칙 — 진 연쇄는 `sequence` 주석). 미리보기 · 자동 예외 불가(감사 로그에 앞 단계가 없음). 기본 `chain-download-secrets`(kill, **dryRun — 발표까지 유지**). 기본 `no-shell-download` 가 1단계에서 먼저 격리하므로 시연은 그 규칙을 dryRun 으로 두고 한다
 - 판정: `allow` · `alert` · `kill`. 전역 `ENFORCE_KILL=false`면 kill 정책도 알림만
 - 정책은 `backend/policies/default.yaml`(기본 10개)이 빈 DB에 한 번 시드, 이후 대시보드 정책 화면에서 바꾼다. 기존 서버에 새 기본 규칙은 정책 화면 「새 기본 규칙 있음」 안내로 추가(덮어쓰지 않고 빈 값만 채움)
 - connect 규칙 `directIp: allow|alert|kill` — trace_dns 가 켜져 있을 때 도메인 조회 없는 공인 IP 연결. `directIp` 만 있고 `allowHosts` 가 없는 규칙은 IP 직접 연결 전용
-- dns 규칙(`kind: dns`, 10/30) — 질의만 판정. `denyHosts` → `allowHosts` 통과 → `denyQtypes` → `maxLabelLength` → `maxNameLength` → 허용 목록 밖(점 없는 이름 · `*.arpa` · `*.local` · `*.internal` 제외) 순서. 기본 `runtime-dns-exfil`(alert) · `sandbox-dns`(kill, **dryRun** — sg-vm 실측 뒤 해제). `blocklist-hosts` 는 dns 질의에 적용하지 않는다
+- dns 규칙(`kind: dns`, 10/30) — 질의만 판정. `denyHosts` → `allowHosts` 통과 → `denyQtypes` → `maxLabelLength` → `maxNameLength` → 허용 목록 밖(점 없는 이름 · `*.arpa` · `*.local` · `*.internal` 제외) 순서. 기본 `runtime-dns-exfil`(alert) · `sandbox-dns`(kill — 11/03 sg-vm 실측 뒤 dryRun 해제: 정상 설치 27건 새 오탐 0). `blocklist-hosts` 는 dns 질의에 적용하지 않는다
 - 시연(`DEMO_ENABLED=true`, 운영은 끈다) — 관리자 세션만 `POST /api/demo/run`, 동시 1개 · 90초 · 변경 이력. 서버 종료 때 진행 중인 시연 컨테이너를 지우고 끝낸다
 - kill 직전 증거(로그 · 파일 변경 · 프로세스)를 0.7초 안에서 모은다. 넘으면 기다리지 않고 kill
 - 자기 스택은 `IGNORE_CONTAINERS=supplyguard-*`로 관찰 제외
