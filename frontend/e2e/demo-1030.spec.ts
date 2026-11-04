@@ -25,13 +25,13 @@ test.describe('시연 패널', () => {
     await expect(page.locator(DEMO)).toHaveCount(0);
   });
 
-  test('시나리오 6개(기본 all) · 한 줄 설명 · 시작 → POST {scenario}', async ({ page, backend }) => {
+  test('시나리오 8개(기본 all · 11/04 benign · chain 추가) · 한 줄 설명 · 시작 → POST {scenario}', async ({ page, backend }) => {
     backend.enableDemo();
     backend.demoStepMs = 5000; // 진행 전 상태를 본다
     await page.goto('/');
     const sel = page.locator(`${DEMO} [data-testid="demo-scenario"]`);
     await expect(sel).toBeVisible();
-    expect(await sel.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))).toEqual(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil']);
+    expect(await sel.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))).toEqual(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil', 'benign', 'chain']); // 11/04: 정상 대조군 · 연쇄 시연 추가
     await expect(sel).toHaveValue('all');
     await expect(page.locator(DEMO)).toContainText('전부 순서대로');
     await sel.selectOption('dns-exfil');

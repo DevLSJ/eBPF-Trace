@@ -20,6 +20,8 @@ const DESC: Record<DemoScenario, string> = {
   'direct-ip': 'DNS 없이 공인 IP 접속',
   domain: '예약 도메인 example.com 접속',
   'dns-exfil': 'DNS 질의로 데이터 실어 보내기',
+  benign: '정상 설치 대조군(위반 없이 통과)',
+  chain: '연쇄 공격(다운로드 → 외부 연결 → 비밀 파일)',
 };
 const STEPS = ['컨테이너 시작', '설치 진행', '커널 이벤트 수집', '규칙 위반', '격리 · 증거', '판정 대기'];
 const POLL_MS = 2000;

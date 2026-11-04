@@ -161,8 +161,8 @@ export interface Info {
 }
 
 // ── 시연 실행(10/30 계약 §2) ──
-export type DemoScenario = 'all' | 'shell' | 'revshell' | 'direct-ip' | 'domain' | 'dns-exfil';
-export const DEMO_SCENARIOS: DemoScenario[] = ['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil'];
+export type DemoScenario = 'all' | 'shell' | 'revshell' | 'direct-ip' | 'domain' | 'dns-exfil' | 'benign' | 'chain';
+export const DEMO_SCENARIOS: DemoScenario[] = ['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil', 'benign', 'chain'];
 export type DemoStatus = 'running' | 'finished' | 'timeout' | 'failed' | 'refused';
 export interface DemoRun {
   id: string;
