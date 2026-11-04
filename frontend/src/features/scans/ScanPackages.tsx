@@ -111,7 +111,7 @@ export function ScanPackages({ s }: { s: Scan }) {
                       {canPick(g) ? (
                         <input type="checkbox" className="accent-indigo-600" aria-label={`${g.key} 고르기`} checked={picked.has(g.key)} onChange={(e) => toggle(g.key, e.target.checked)} />
                       ) : (
-                        <span className="text-[11px] text-slate-400" title={g.manager ? '이미 차단 목록에 있음' : '차단 목록이 다루지 않는 생태계'}>
+                        <span className="text-xs text-slate-400" title={g.manager ? '이미 차단 목록에 있음' : '차단 목록이 다루지 않는 생태계'}>
                           {g.manager ? '차단됨' : '—'}
                         </span>
                       )}
@@ -121,7 +121,7 @@ export function ScanPackages({ s }: { s: Scan }) {
                   <td className="px-2 py-1 font-mono">{g.version}</td>
                   <td className={`num px-2 py-1 ${g.vulns ? 'font-semibold text-amber-700' : 'text-slate-400'}`}>{g.vulns}</td>
                   <td className="px-2 py-1">{g.direct ? '직접' : '간접'}</td>
-                  <td className="px-2 py-1 font-mono text-[11px] text-slate-600">
+                  <td className="px-2 py-1 font-mono text-xs text-slate-600">
                     <ul>
                       {g.sources.map((x) => (
                         <li key={x}>{x}</li>

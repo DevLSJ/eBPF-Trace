@@ -1,16 +1,18 @@
 import { Copy, PackageSearch, SearchX } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DecisionBadge, StatusBadge } from '../../components/Badges';
+import { BusyBar, SortHead, TablePager } from '../../components/DataTable';
 import { FilterChips } from '../../components/FilterChips';
 import { PageActions } from '../../components/PageActions';
 import { Panel } from '../../components/Panel';
-import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
-import { rowKeys, useAutoRetry } from '../../components/list/hooks';
+import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, PagerSlot, Skeleton } from '../../components/list/ListStates';
+import { barStyle, rowKeys, useAutoRetry, useBusy } from '../../components/list/hooks';
 import { useCases } from '../../hooks/cases-context';
 import { useFilters } from '../../hooks/useFilters';
 import { useCopyCommand } from '../../hooks/useCopyCommand';
 import { useInterval, useLoad, useNow } from '../../hooks/useLoad';
+import { useTableKit, type Column } from '../../hooks/useTableKit';
 import { api } from '../../lib/api';
 import { fmtDateTime, fmtNum, fmtTime, isToday } from '../../lib/format';
 import { duration, EXAMPLE_COMMAND, sessionLabel, violationTotal } from '../../lib/pkg';
@@ -18,6 +20,13 @@ import { INSTALL_STATUS_LABEL, INSTALL_STATUSES, MANAGERS, type Case, type Insta
 import { InstallSheet } from './InstallSheet';
 import { StaticBadge } from './StaticBadge';
 import { isDangerRow } from './staticScan';
+
+// 표 칸(R4 11/04 — 목업 11/04e U.tableKit): 머리 클릭 정렬 · 기본은 시작 내림(목록 순서 그대로). 설치 결과는 위험한 것부터
+const STATUS_RANK: Record<string, number> = { isolated: 0, warned: 1, refused: 2, running: 3, failed: 4, unknown: 5, passed: 6 };
+const durSec = (s: InstallSession) => {
+  const end = s.finishedAt ?? s.containerExitedAt;
+  return s.status === 'refused' || !end ? null : (Date.parse(end) - Date.parse(s.startedAt)) / 1000;
+};
 
 // 결과 칩: 기본 「판정 대기」(목표 문서 완료 기준 ①), 그다음 전체 · 설치 결과별
 type StatusFilter = 'pending' | 'all' | (typeof INSTALL_STATUSES)[number];
@@ -45,16 +54,38 @@ export function InstallsPage() {
   useInterval(poll, 5000);
   useAutoRetry(failing, list.error, reload);
 
+  const caseOf = useMemo(() => new Map((cases ?? []).map((c) => [c.id, c])), [cases]);
+  const columns = useMemo<Column<InstallSession>[]>(
+    () => [
+      { key: 'started', label: '시작', sort: (s) => Date.parse(s.startedAt), short: true },
+      { key: 'manager', label: '매니저', sort: (s) => s.manager, short: true },
+      { key: 'package', label: '패키지', sort: (s) => sessionLabel(s) },
+      { key: 'status', label: '설치 결과', sort: (s) => STATUS_RANK[s.status], short: true },
+      { key: 'static', label: '정적 검사', sort: (s) => (s.scan ? (s.scan.verdict ?? s.scan.status) : null), short: true },
+      { key: 'decision', label: '판정', sort: (s) => (s.caseId ? (caseOf.get(s.caseId)?.decision ?? null) : null), short: true },
+      { key: 'violations', label: '위반', num: true, sort: (s) => violationTotal(s) ?? null, short: true },
+      { key: 'duration', label: '걸린 시간', num: true, sort: durSec, short: true },
+    ],
+    [caseOf],
+  );
+  const kit = useTableKit({ columns, sort: { key: 'started', dir: 'desc' } });
+  const busy = useBusy(list.loading && !!list.data);
+
   const set = (k: 'id' | 'status' | 'manager', v: string | null) => {
-    if (k !== 'id') return setFilters({ [k]: v ?? '' });
+    if (k !== 'id') {
+      kit.setPage(1); // 필터를 바꾸면 첫 쪽부터(11/04e)
+      return setFilters({ [k]: v ?? '' });
+    }
     const next = new URLSearchParams(params);
     if (v) next.set(k, v);
     else next.delete(k);
     setParams(next);
   };
-  const clearFilters = () => setFilters({ status: '', manager: '' });
+  const clearFilters = () => {
+    kit.setPage(1);
+    setFilters({ status: '', manager: '' });
+  };
 
-  const caseOf = useMemo(() => new Map((cases ?? []).map((c) => [c.id, c])), [cases]);
   const sessions = useMemo(() => list.data ?? [], [list.data]);
   const isPending = useCallback((s: InstallSession) => !!s.caseId && caseOf.get(s.caseId)?.state === 'open', [caseOf]);
 
@@ -68,6 +99,16 @@ export function InstallsPage() {
       (o) => o.count > 0 || o.value === status,
     ),
   ];
+  // 주소 ?id= 로 들어오면 그 행이 있는 쪽(첫 데이터 한 번 — 목업 kit.reveal)
+  const [revealed, setRevealed] = useState(false);
+  if (!revealed && id && list.data) {
+    setRevealed(true);
+    kit.reveal(rows, (s) => s.id === id);
+  }
+  const view = kit.view(rows);
+  // 11/04 결정: 시트가 열려 있으면 「걸린 시간」 열을 숨긴다(상세에 같은 값)
+  const shown = id ? columns.filter((c) => c.key !== 'duration') : columns;
+
   const managerOptions = [
     { value: '', label: '전체', count: sessions.length },
     ...MANAGERS.map((m) => ({ value: m as string, label: m, count: sessions.filter((s) => s.manager === m).length })),
@@ -121,25 +162,22 @@ export function InstallsPage() {
               <EmptyState icon={SearchX} title="조건에 맞는 세션 없음" actions={<ClearFiltersButton onClick={clearFilters} />} />
             )
           ) : (
-            <div data-fill="" className="min-h-0 flex-1 overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs text-slate-500">
-                  <tr>
-                    {/* 11/04: 설치 결과 다음 「정적 검사」 · 시트가 열려 있으면 「걸린 시간」 열을 숨긴다(상세에 같은 값) */}
-                    {['시작', '매니저', '패키지', '설치 결과', '정적 검사', '판정', '위반', ...(id ? [] : ['걸린 시간'])].map((h) => (
-                      <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">
-                        {h}
-                      </th>
+            <>
+              <BusyBar on={busy} />
+              <div data-fill="" className="min-h-0 flex-1 overflow-auto">
+                <table className="sg-table" data-table="installs">
+                  <SortHead columns={shown} sort={kit.sort} onSort={kit.sortBy} />
+                  <tbody>
+                    {view.rows.map((s) => (
+                      <Row key={s.id} s={s} now={now} c={s.caseId ? caseOf.get(s.caseId) : undefined} pending={isPending(s)} selected={s.id === id} showDuration={!id} onOpen={() => set('id', s.id)} />
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((s) => (
-                    <Row key={s.id} s={s} now={now} c={s.caseId ? caseOf.get(s.caseId) : undefined} selected={s.id === id} showDuration={!id} onOpen={() => set('id', s.id)} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </tbody>
+                </table>
+              </div>
+              <PagerSlot edge={!id}>
+                <TablePager name="installs" total={view.total} from={view.from} to={view.to} page={view.page} size={kit.size} onPage={kit.setPage} onSize={kit.setSize} />
+              </PagerSlot>
+            </>
           )}
         </div>
       </Panel>
@@ -149,39 +187,60 @@ export function InstallsPage() {
   );
 }
 
-function Row({ s, c, now, selected, showDuration, onOpen }: { s: InstallSession; c: Case | undefined; now: number; selected: boolean; showDuration: boolean; onOpen: () => void }) {
+function Row({
+  s,
+  c,
+  now,
+  pending,
+  selected,
+  showDuration,
+  onOpen,
+}: {
+  s: InstallSession;
+  c: Case | undefined;
+  now: number;
+  pending: boolean;
+  selected: boolean;
+  showDuration: boolean;
+  onOpen: () => void;
+}) {
   const n = violationTotal(s);
   const danger = isDangerRow(s); // 11/04: 런타임 격리 · 경고 또는 정적 악성
+  // 11/04e 막대: 판정 대기 · 격리 · 경고 · 정적 악성 행만 — 격리 · 정적 악성은 위험색, 나머지(판정 대기 · 경고)는 경고색
+  const bar = s.status === 'isolated' || s.scan?.verdict === 'malicious' ? 'danger' : pending || danger ? 'warn' : null;
   return (
     <tr
       {...rowKeys(onOpen)}
       data-install={s.id}
       data-danger={danger || undefined}
+      data-bar={bar ?? undefined}
       aria-selected={selected}
       onClick={onOpen}
-      className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${
-        selected ? 'bg-indigo-50' : ''
-      } ${danger ? 'shadow-[inset_3px_0_0_var(--color-red-500)]' : ''}`}
+      className={`cursor-pointer hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${selected ? 'bg-indigo-50' : ''}`}
     >
-      <td className="num px-3 py-2 font-mono text-xs whitespace-nowrap text-slate-600" title={fmtDateTime(s.startedAt)}>
+      <td data-col="started" className="num tk-short font-mono text-xs text-slate-600" title={fmtDateTime(s.startedAt)} style={barStyle(bar)}>
         {isToday(s.startedAt, now) ? fmtTime(s.startedAt) : fmtDateTime(s.startedAt)}
       </td>
-      <td className="px-3 py-2">
+      <td data-col="manager" className="tk-short">
         <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-600">{s.manager}</span>
       </td>
-      <td className="w-full max-w-0 truncate px-3 py-2 font-mono text-slate-800" title={sessionLabel(s)}>
+      <td data-col="package" className="tk-fill font-mono text-slate-800" title={sessionLabel(s)}>
         {sessionLabel(s)}
       </td>
-      <td className="px-3 py-2">
+      <td data-col="status" className="tk-short">
         <StatusBadge status={s.status} />
       </td>
-      <td className="px-3 py-2 whitespace-nowrap">
+      <td data-col="static" className="tk-short">
         <StaticBadge s={s} />
       </td>
-      <td className="px-3 py-2">{c ? <DecisionBadge decision={c.decision} /> : <span className="text-xs text-slate-300">—</span>}</td>
-      <td className={`num px-3 py-2 text-right whitespace-nowrap ${n ? 'font-semibold text-red-600' : 'text-slate-400'}`}>{n === undefined ? '—' : fmtNum(n)}</td>
+      <td data-col="decision" className="tk-short">
+        {c ? <DecisionBadge decision={c.decision} /> : <span className="text-xs text-slate-300">—</span>}
+      </td>
+      <td data-col="violations" className={`num num-col tk-short ${n ? 'font-semibold text-red-600' : 'text-slate-400'}`}>
+        {n === undefined ? '—' : fmtNum(n)}
+      </td>
       {showDuration && (
-        <td className="num px-3 py-2 text-xs whitespace-nowrap text-slate-500" data-col="duration">
+        <td className="num num-col tk-short text-xs text-slate-500" data-col="duration">
           {s.status === 'running' ? '진행 중' : s.status === 'refused' ? '—' : duration(s.startedAt, s.finishedAt ?? s.containerExitedAt)}
         </td>
       )}

@@ -196,7 +196,8 @@ test.describe('11/04 종합 판정 — 설치 한 건에 런타임 + 정적 결�
     backend.staticMalicious();
     await allRows(page);
     const danger = await page.locator('tr[data-install]').evaluateAll((els) =>
-      Object.fromEntries(els.map((e) => [e.getAttribute('data-install'), e.getAttribute('data-danger') === 'true' && getComputedStyle(e).boxShadow.includes('inset')])),
+      // R4 11/04: 3px 막대는 행의 첫 칸에(목업 11/04e tr.needs-action td:first-child)
+      Object.fromEntries(els.map((e) => [e.getAttribute('data-install'), e.getAttribute('data-danger') === 'true' && getComputedStyle((e as HTMLTableRowElement).cells[0]).boxShadow.includes('inset')])),
     );
     expect(danger).toEqual({
       'ins-0014': true, // 통과 + 정적 악성

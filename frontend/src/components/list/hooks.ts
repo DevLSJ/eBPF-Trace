@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { isUnsupported } from '../../lib/api';
 
 // 오류 동안 30초마다 조용히 한 번 다시 부른다(스켈레톤 없이) — 오류가 풀리면 멈춘다.
@@ -28,3 +28,18 @@ export function rowKeys(open: () => void) {
     },
   };
 }
+
+// 재조회 진행 띠(R4 11/04 — 목업 kit.busy): 데이터가 있는 채로 다시 부를 때만, 짧은 재조회(5초 폴링 등)는 깜빡이지 않게 ms 뒤부터 켠다
+export function useBusy(reloading: boolean, ms = 300) {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setOn(reloading), reloading ? ms : 0);
+    return () => window.clearTimeout(t);
+  }, [reloading, ms]);
+  return reloading && on;
+}
+
+// 행 왼쪽 3px 막대(R4 11/04 — 목업 needs-action bar-*): 판정 대기(경고색) · 격리 · 정적 악성(빨강) 행만.
+// 첫 칸에 둔다(목업 tr.needs-action td:first-child 와 같은 자리)
+export type RowBar = 'danger' | 'warn' | null | undefined | false;
+export const barStyle = (bar: RowBar) => (bar ? { boxShadow: `inset 3px 0 0 var(--${bar})` } : undefined);

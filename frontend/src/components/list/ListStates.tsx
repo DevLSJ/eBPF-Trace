@@ -39,7 +39,7 @@ export function ListError({ error, what, onRetry, retrying }: { error: unknown; 
           >
             <RotateCw className={`size-3.5 ${retrying ? 'sg-spin' : ''}`} aria-hidden /> 다시 시도
           </button>
-          <span className="text-[11px] text-slate-400">30초마다 한 번씩 저절로 다시 불러 봅니다</span>
+          <span className="text-xs text-slate-400">30초마다 한 번씩 저절로 다시 불러 봅니다</span>
         </>
       )}
     </div>
@@ -56,6 +56,12 @@ export function EmptyState({ icon: Icon, title, hint, actions, testId }: { icon:
       {actions && <div className="mt-1 flex flex-wrap items-center justify-center gap-2">{actions}</div>}
     </div>
   );
+}
+
+// 쪽 번호 바닥줄 자리(R4 11/04) — 표 패널이 화면 오른쪽 끝이면(시트 닫힘) 오른쪽 아래 도우미 단추(52px)가 쪽 단추를 가리지 않게
+// 오른쪽을 88px 비운다(목업 styles.css 「.split > .panel:last-child .tk-foot」 padding-right: 88px). 768 미만은 기존 그대로
+export function PagerSlot({ children, edge = true }: { children: ReactNode; edge?: boolean }) {
+  return <div className={`shrink-0 ${edge ? 'md:[&>.tk-foot]:pr-[88px]!' : ''}`}>{children}</div>;
 }
 
 export function ClearFiltersButton({ onClick, children = '필터 모두 해제' }: { onClick: () => void; children?: ReactNode }) {

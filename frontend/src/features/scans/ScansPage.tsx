@@ -4,8 +4,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFilters } from '../../hooks/useFilters';
 import { dest } from '../../lib/nav';
 import { FilterChips } from '../../components/FilterChips';
-import { rowKeys, useAutoRetry } from '../../components/list/hooks';
-import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
+import { barStyle, rowKeys, useAutoRetry, useBusy } from '../../components/list/hooks';
+import { BusyBar, SortHead, TablePager } from '../../components/DataTable';
+import { useTableKit, type Column } from '../../hooks/useTableKit';
+import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, PagerSlot, Skeleton } from '../../components/list/ListStates';
 import { CodeWindow, CW_BODY } from '../../components/CodeWindow';
 import { FileTree, type TreeItem } from '../../components/FileTree';
 import { ConfirmDialog } from '../../components/Modal';
@@ -61,6 +63,17 @@ function repoUrlError(raw: string): string {
 
 type VerdictFilter = '' | 'malicious' | 'vulnerable' | 'caution' | 'clean';
 
+// 표 칸(R4 11/04 — 목업 11/04e U.tableKit): 머리 클릭 정렬 · 기본은 시작 내림(목록 순서 그대로). 결과는 위험한 것부터(검사 중이 맨 앞)
+const VERDICT_RANK: Record<string, number> = { malicious: 0, vulnerable: 1, caution: 2, clean: 3 };
+const COLUMNS: Column<Scan>[] = [
+  { key: 'started', label: '시작', sort: (x) => Date.parse(x.startedAt), short: true },
+  { key: 'target', label: '대상', sort: (x) => x.target.label },
+  { key: 'verdict', label: '결과', sort: (x) => (x.status === 'running' ? -1 : x.verdict ? VERDICT_RANK[x.verdict] : null), short: true },
+  { key: 'risk', label: '위험 점수', num: true, sort: (x) => x.risk?.score ?? null, short: true },
+  { key: 'threats', label: '위협', num: true, sort: (x) => (x.status === 'done' ? x.threats : null), short: true },
+  { key: 'vulns', label: '취약점', num: true, sort: (x) => (x.status === 'done' ? x.vulnCount : null), short: true },
+];
+
 export function ScansPage() {
   const { isAdmin } = useAuth();
   const [params, setParams] = useSearchParams();
@@ -79,8 +92,13 @@ export function ScansPage() {
   useInterval(poll, running ? 2000 : 15000);
   useAutoRetry(failing, list.error, reload);
   const canWrite = isAdmin; // 조회자는 검사 시작 · 차단 버튼을 그리지 않는다(W16)
+  const kit = useTableKit({ columns: COLUMNS, sort: { key: 'started', dir: 'desc' } });
+  const busy = useBusy(list.loading && !!list.data);
   const setQ = (k: 'id' | 'verdict', v: string) => {
-    if (k === 'verdict') return setFilters({ verdict: v });
+    if (k === 'verdict') {
+      kit.setPage(1); // 필터를 바꾸면 첫 쪽부터(11/04e)
+      return setFilters({ verdict: v });
+    }
     const next = new URLSearchParams(params);
     if (v) next.set(k, v);
     else next.delete(k);
@@ -88,6 +106,13 @@ export function ScansPage() {
   };
   const select = (id: string) => setQ('id', id);
   const rows = (list.data ?? []).filter((x) => !vf || x.verdict === vf);
+  // 주소 ?id= 로 들어오면 그 행이 있는 쪽(첫 데이터 한 번)
+  const [revealed, setRevealed] = useState(false);
+  if (!revealed && selId && list.data) {
+    setRevealed(true);
+    kit.reveal(rows, (x) => x.id === selId);
+  }
+  const view = kit.view(rows);
   const vOptions = [
     { value: '' as VerdictFilter, label: '전체', count: list.data?.length },
     ...(['malicious', 'vulnerable', 'caution', 'clean'] as const).map((k) => ({ value: k as VerdictFilter, label: VERDICT[k], count: list.data?.filter((x) => x.verdict === k).length })),
@@ -113,26 +138,31 @@ export function ScansPage() {
           ) : !rows.length ? (
             <EmptyState icon={SearchX} title="조건에 맞는 검사 없음" actions={<ClearFiltersButton onClick={() => setQ('verdict', '')} />} />
           ) : (
-            <div data-fill="" className="min-h-0 flex-1 overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-slate-50 text-left text-xs text-slate-500">
-                  <tr>{['시작', '대상', '결과', '위험 점수', '위협', '취약점'].map((t) => <th key={t} className={`px-3 py-2 font-semibold ${t === '대상' ? 'w-[38%]' : ''}`}>{t}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {rows.map((s) => (
-                    <tr key={s.id} {...rowKeys(() => select(s.id))} data-scan={s.id} data-status={s.status} onClick={() => select(s.id)} aria-selected={s.id === selId}
-                      className={`cursor-pointer border-t border-slate-100 hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${s.id === selId ? 'bg-indigo-50' : ''} ${s.verdict === 'malicious' ? 'shadow-[inset_3px_0_0_#dc2626]' : ''}`}>
-                      <td className="num px-3 py-2 font-mono text-xs whitespace-nowrap">{fmtDateTime(s.startedAt)}</td>
-                      <td className="max-w-0 truncate px-3 py-2 font-mono" title={s.target.label}>{s.target.label}</td>
-                      <td className="px-3 py-2"><StatusBadge s={s} /></td>
-                      <td className="num px-3 py-2">{s.risk ? s.risk.score.toFixed(1) : '—'}</td>
-                      <td className={`num px-3 py-2 ${s.threats ? 'text-red-600' : 'text-slate-400'}`}>{s.status === 'done' ? s.threats : '—'}</td>
-                      <td className={`num px-3 py-2 ${s.vulnCount ? 'text-amber-700' : 'text-slate-400'}`}>{s.status === 'done' ? (s.vulnCount ? `${fmtNum(s.vulnCount)} (최고 ${s.vulnMax})` : 0) : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <BusyBar on={busy} />
+              <div data-fill="" className="min-h-0 flex-1 overflow-auto">
+                <table className="sg-table" data-table="scans">
+                  <SortHead columns={COLUMNS} sort={kit.sort} onSort={kit.sortBy} />
+                  <tbody>
+                    {view.rows.map((s) => (
+                      <tr key={s.id} {...rowKeys(() => select(s.id))} data-scan={s.id} data-status={s.status} onClick={() => select(s.id)} aria-selected={s.id === selId}
+                        className={`cursor-pointer hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${s.id === selId ? 'bg-indigo-50' : ''}`}>
+                        {/* 11/04e 막대: 악성 의심 행만(위험색) */}
+                        <td data-col="started" className="num tk-short font-mono text-xs" style={barStyle(s.verdict === 'malicious' && 'danger')}>{fmtDateTime(s.startedAt)}</td>
+                        <td data-col="target" className="tk-fill font-mono" title={s.target.label}>{s.target.label}</td>
+                        <td data-col="verdict" className="tk-short"><StatusBadge s={s} /></td>
+                        <td data-col="risk" className="num num-col tk-short">{s.risk ? s.risk.score.toFixed(1) : '—'}</td>
+                        <td data-col="threats" className={`num num-col tk-short ${s.threats ? 'text-red-600' : 'text-slate-400'}`}>{s.status === 'done' ? s.threats : '—'}</td>
+                        <td data-col="vulns" className={`num num-col tk-short ${s.vulnCount ? 'text-amber-700' : 'text-slate-400'}`}>{s.status === 'done' ? (s.vulnCount ? `${fmtNum(s.vulnCount)} (최고 ${s.vulnMax})` : 0) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <PagerSlot edge={!selId}>
+                <TablePager name="scans" total={view.total} from={view.from} to={view.to} page={view.page} size={kit.size} onPage={kit.setPage} onSize={kit.setSize} />
+              </PagerSlot>
+            </>
           )}
           </div>
         </Panel>
@@ -274,7 +304,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
           <b className="font-medium text-slate-800" title={f.message}>{RULE_KO[f.rule] ?? f.message}</b>
           <span className="col-start-2 font-mono text-slate-400">
             {f.rule}
-            {f.test && <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 font-sans text-[11px] text-slate-600">테스트 코드</span>}
+            {f.test && <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 font-sans text-xs text-slate-600">테스트 코드</span>}
           </span>
         </button>
       </li>
@@ -373,7 +403,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
           </table>
         </Section>
       )}
-      <p className="px-4 pb-3 text-[11px] text-slate-400">{(s.engines ?? []).map((e) => `${e.name} ${e.version}`).join(' · ')} — 오픈소스 정적 분석(Apache-2.0)</p>
+      <p className="px-4 pb-3 text-xs text-slate-400">{(s.engines ?? []).map((e) => `${e.name} ${e.version}`).join(' · ')} — 오픈소스 정적 분석(Apache-2.0)</p>
     </div>
   );
 }
