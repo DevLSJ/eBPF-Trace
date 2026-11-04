@@ -2,6 +2,7 @@ import { ChartColumn, Download } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { StatusBadge } from '../../components/Badges';
 import { KpiCard } from '../../components/KpiCard';
+import { useSortable } from '../../hooks/useSortable';
 import type { Stripe } from '../../lib/kpi';
 import { useAutoRetry } from '../../components/list/hooks';
 import { EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
@@ -106,9 +107,16 @@ function Tag({ id, k, v, title }: { id: string; k: string; v: string; title?: st
   );
 }
 // 지표 칸 — 11/04e KPI 카드 모양(띠 · 아이콘 칩 · 28/700, R1 11/04). 글자 값(퍼센트 · 「—」)이라 카운트업은 없다
-function Kpi({ k, label, value, unit, sub, icon, stripe }: { k: string; label: string; value: string; unit?: string; sub: string; icon: string; stripe: Stripe }) {
-  return <KpiCard k={k} label={label} icon={icon} stripe={stripe} text={value} unit={unit} sub={sub} wrapSub className="eval-kpi" />;
+interface KpiDef {
+  k: string;
+  label: string;
+  value: string;
+  unit?: string;
+  sub: string;
+  icon: string;
+  stripe: Stripe;
 }
+const KPI_IDS = ['static-detection', 'static-fpr', 'runtime-detection', 'runtime-fpr', 'latency', 'model-f1'];
 
 // ── 머리 ──
 function Head({ d }: { d: Evaluation }) {
@@ -162,21 +170,35 @@ function Kpis({ d }: { d: Evaluation }) {
   const lat = latencyHead(rt);
   const pref = md?.candidates?.find((x) => x.id === md.preferredId);
   const by = b?.byEcosystem ? Object.entries(b.byEcosystem).map(([k, v]) => `${k} ${fmtNum(v)}`).join(', ') : '';
+  const defs: KpiDef[] = [
+    { k: 'static-detection', icon: '⌕', stripe: 'accent', label: '정적 악성 탐지율', value: st ? pct(mt.detectionRate) : '—', sub: c ? hint(`악성 ${fmtNum(c.tp)} / ${fmtNum(c.tp + c.fn)}`, `주의 포함 ${pct(mt.detectionRateWithSuspicious)}`) : '정적 결과 없음' },
+    {
+      k: 'static-fpr',
+      icon: '✓',
+      stripe: 'info',
+      label: '정상 오탐률',
+      value: st ? pct(mt.falsePositiveRate) : '—',
+      sub: c ? hint(`인기 패키지 ${fmtNum(c.fp)} / ${fmtNum(c.fp + c.tn)}`, mt.falsePositiveRateWithSuspicious != null && `주의 포함 ${pct(mt.falsePositiveRateWithSuspicious)}`) : '정적 결과 없음',
+    },
+    { k: 'runtime-detection', icon: '▣', stripe: 'accent', label: '런타임 공격 탐지율', value: a.runs ? pct(a.detected / a.runs) : '—', sub: a.runs ? hint(`공격 ${fmtNum(a.detected)} / ${fmtNum(a.runs)}회`, `${a.list.length}종`) : '런타임 결과 없음' },
+    { k: 'runtime-fpr', icon: '✓', stripe: 'info', label: '정상 설치 오탐률', value: b ? pct(b.falsePositiveRate) : '—', sub: b ? hint(`위반 ${fmtNum(b.violations)} / ${fmtNum(b.installs)}건`, by) : '런타임 결과 없음' },
+    { k: 'latency', icon: '◷', stripe: 'warn', label: '탐지 → 격리 p50 / p95', value: lat ? fmtNum(lat.p50) : '—', unit: lat ? ` / ${fmtNum(lat.p95)} ms` : undefined, sub: lat ? lat.hint : '격리한 시나리오 없음' },
+    { k: 'model-f1', icon: '◔', stripe: 'ok', label: '모델 시험 F1', value: pref ? dec(pref.test.f1) : '—', sub: pref ? `${pref.label}${md?.deploymentApproved ? '' : ' · 운영 미적용'}` : '모델 결과 없음' },
+  ];
+  return <KpiGrid defs={defs} />;
+}
+
+// 지표 6칸 — 길게 눌러(또는 Alt+←/→) 순서 바꾸기(11/04d, R1 11/04 — localStorage supplyguard.layout.evaluationKpi). 칸(div)은 tabindex 0
+function KpiGrid({ defs }: { defs: KpiDef[] }) {
+  const by = new Map(defs.map((x) => [x.k, x]));
+  const { ref, order, containerClass, itemProps, pickedClass } = useSortable<HTMLDivElement>({ scope: 'evaluationKpi', ids: KPI_IDS, layout: 'grid', focusable: false, labelOf: (id) => by.get(id)?.label ?? id });
   return (
-    <div data-part="kpis" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-      <Kpi k="static-detection" icon="⌕" stripe="accent" label="정적 악성 탐지율" value={st ? pct(mt.detectionRate) : '—'} sub={c ? hint(`악성 ${fmtNum(c.tp)} / ${fmtNum(c.tp + c.fn)}`, `주의 포함 ${pct(mt.detectionRateWithSuspicious)}`) : '정적 결과 없음'} />
-      <Kpi
-        k="static-fpr"
-        icon="✓"
-        stripe="info"
-        label="정상 오탐률"
-        value={st ? pct(mt.falsePositiveRate) : '—'}
-        sub={c ? hint(`인기 패키지 ${fmtNum(c.fp)} / ${fmtNum(c.fp + c.tn)}`, mt.falsePositiveRateWithSuspicious != null && `주의 포함 ${pct(mt.falsePositiveRateWithSuspicious)}`) : '정적 결과 없음'}
-      />
-      <Kpi k="runtime-detection" icon="▣" stripe="accent" label="런타임 공격 탐지율" value={a.runs ? pct(a.detected / a.runs) : '—'} sub={a.runs ? hint(`공격 ${fmtNum(a.detected)} / ${fmtNum(a.runs)}회`, `${a.list.length}종`) : '런타임 결과 없음'} />
-      <Kpi k="runtime-fpr" icon="✓" stripe="info" label="정상 설치 오탐률" value={b ? pct(b.falsePositiveRate) : '—'} sub={b ? hint(`위반 ${fmtNum(b.violations)} / ${fmtNum(b.installs)}건`, by) : '런타임 결과 없음'} />
-      <Kpi k="latency" icon="◷" stripe="warn" label="탐지 → 격리 p50 / p95" value={lat ? fmtNum(lat.p50) : '—'} unit={lat ? ` / ${fmtNum(lat.p95)} ms` : undefined} sub={lat ? lat.hint : '격리한 시나리오 없음'} />
-      <Kpi k="model-f1" icon="◔" stripe="ok" label="모델 시험 F1" value={pref ? dec(pref.test.f1) : '—'} sub={pref ? `${pref.label}${md?.deploymentApproved ? '' : ' · 운영 미적용'}` : '모델 결과 없음'} />
+    <div ref={ref} data-part="kpis" className={`grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6 ${containerClass}`}>
+      {order.map((id) => {
+        const x = by.get(id)!;
+        // 지표 칸 — 11/04e KPI 카드 모양(띠 · 아이콘 칩 · 28/700). 글자 값(퍼센트 · 「—」)이라 카운트업은 없다
+        return <KpiCard key={id} k={x.k} label={x.label} icon={x.icon} stripe={x.stripe} text={x.value} unit={x.unit} sub={x.sub} wrapSub className={`eval-kpi ${pickedClass(id)}`} attrs={itemProps(id)} />;
+      })}
     </div>
   );
 }

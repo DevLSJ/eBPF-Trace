@@ -1,10 +1,10 @@
-import { useState, type AnimationEvent, type ReactNode } from "react";
-import { Link } from "react-router-dom";
-import { useCountUp } from "../hooks/useCountUp";
-import { fmtNum } from "../lib/format";
-import { reducedMotion } from "../lib/motion";
-import type { Dest } from "../lib/nav";
-import type { KpiDelta, Stripe } from "../lib/kpi";
+import { useState, type AnimationEvent, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { useCountUp } from '../hooks/useCountUp';
+import { fmtNum } from '../lib/format';
+import { reducedMotion } from '../lib/motion';
+import type { Dest } from '../lib/nav';
+import type { KpiDelta, Stripe } from '../lib/kpi';
 
 // KPI 카드(11/04e 목업 U.kpiCard, R1 11/04) — 왼쪽 4px 띠(종류) · 오른쪽 위 아이콘 칩(글자 없이 data-icon) · 이름 13/600 ·
 // 값 28/700 tabular(단위 13/500 분리) · 증감 줄 ▲▼(위반 · 격리 증가만 빨강 — kpiDelta 의 up/down 으로 정한다) · 보조 한 줄.
@@ -20,7 +20,7 @@ export interface KpiCardProps {
   text?: ReactNode;
   unit?: string;
   // 값 > 0 일 때 숫자 색(위반 · 격리 = danger)
-  tone?: "danger" | "warn";
+  tone?: 'danger' | 'warn';
   // 증감 줄 — 없으면 줄 자체가 없다(평가 지표). 대시보드는 kpiDelta() 결과(이전 기간이 없으면 「이전 기간 정보 없음」)
   delta?: KpiDelta;
   sub?: ReactNode;
@@ -30,78 +30,50 @@ export interface KpiCardProps {
   // 칸 안에서 줄 바꿈을 허용(평가 지표처럼 보조 줄이 길 때)
   wrapSub?: boolean;
   className?: string;
+  // 바깥(길게 눌러 옮기기 등)이 루트에 붙이는 속성(data-sort-id · tabIndex · aria-describedby)
+  attrs?: Record<string, string | number | undefined>;
 }
 
-export function KpiCard({
-  k,
-  label,
-  icon = "▦",
-  stripe = "accent",
-  value,
-  text,
-  unit,
-  tone,
-  delta,
-  sub,
-  subTitle,
-  to,
-  wrapSub,
-  className = "",
-}: KpiCardProps) {
+export function KpiCard({ k, label, icon = '▦', stripe = 'accent', value, text, unit, tone, delta, sub, subTitle, to, wrapSub, className = '', attrs }: KpiCardProps) {
   // 0 · 값 없음(「—」)이면 띠만 색 — 글자 값(퍼센트 등)은 value 를 주지 않아도 된다
-  const zero = value === 0 || (value == null && (text == null || text === "—"));
+  const zero = value === 0 || (value == null && (text == null || text === '—'));
   const n = useCountUp(value ?? 0);
   const [ring, ringDone] = useRing(value ?? null);
-  const onAnim = (e: AnimationEvent) =>
-    e.animationName === "kpi-ring" &&
-    e.target === e.currentTarget &&
-    ringDone();
-  const d: KpiDelta = delta ?? { dir: "none" };
-  const arrow = d.dir === "up" ? "▲" : d.dir === "down" ? "▼" : "—";
-  const cls = `kpi-card stripe-${stripe}${zero ? " is-zero" : ""}${ring ? " kpi-ring" : ""} ${to ? "kpi-link" : ""} ${className}`;
+  const onAnim = (e: AnimationEvent) => e.animationName === 'kpi-ring' && e.target === e.currentTarget && ringDone();
+  const d: KpiDelta = delta ?? { dir: 'none' };
+  const arrow = d.dir === 'up' ? '▲' : d.dir === 'down' ? '▼' : '—';
+  const cls = `kpi-card stripe-${stripe}${zero ? ' is-zero' : ''}${ring ? ' kpi-ring' : ''} ${to ? 'kpi-link' : ''} ${className}`;
   const body = (
     <>
       <span className="kpi-name">{label}</span>
       <i className="kpi-ico" data-icon={icon} aria-hidden />
       <div className="kpi-num" data-value="">
-        <b className={`kpi-val num tone-${!zero && tone ? tone : "default"}`}>
-          {text ?? fmtNum(n)}
-        </b>
+        <b className={`kpi-val num tone-${!zero && tone ? tone : 'default'}`}>{text ?? fmtNum(n)}</b>
         {unit && <small className="kpi-unit">{unit}</small>}
       </div>
       {delta && (
-        <div
-          className={`kpi-delta tone-${d.tone ?? "neutral"}`}
-          data-delta={d.dir}
-          data-delta-tone={d.tone ?? "neutral"}
-        >
-          {d.dir === "none" ? (
-            <small className="kpi-note">
-              {d.note ?? "이전 기간 정보 없음"}
-            </small>
+        <div className={`kpi-delta tone-${d.tone ?? 'neutral'}`} data-delta={d.dir} data-delta-tone={d.tone ?? 'neutral'}>
+          {d.dir === 'none' ? (
+            <small className="kpi-note">{d.note ?? '이전 기간 정보 없음'}</small>
           ) : (
             <>
-              <b className="num">{`${arrow} ${d.text ?? ""}`}</b>
+              <b className="num">{`${arrow} ${d.text ?? ''}`}</b>
               {d.note && <small className="kpi-note">{d.note}</small>}
             </>
           )}
         </div>
       )}
-      <span
-        className={`kpi-sub${wrapSub ? " kpi-sub-wrap" : ""}`}
-        data-hint=""
-        title={subTitle}
-      >
+      <span className={`kpi-sub${wrapSub ? ' kpi-sub-wrap' : ''}`} data-hint="" title={subTitle}>
         {sub}
       </span>
     </>
   );
   return to ? (
-    <Link {...to} className={cls} data-kpi={k} onAnimationEnd={onAnim}>
+    <Link {...to} className={cls} data-kpi={k} onAnimationEnd={onAnim} {...attrs}>
       {body}
     </Link>
   ) : (
-    <div className={cls} data-kpi={k} onAnimationEnd={onAnim}>
+    <div className={cls} data-kpi={k} onAnimationEnd={onAnim} {...attrs}>
       {body}
     </div>
   );

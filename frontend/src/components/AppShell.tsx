@@ -11,6 +11,7 @@ import { NoticeCenter } from './shell/NoticeCenter';
 import { SearchBox } from './shell/SearchBox';
 import { StreamBanners } from './shell/StreamBanners';
 import { useSidebar } from './shell/useSidebar';
+import { useSortable } from '../hooks/useSortable';
 import { WsStatus } from './WsStatus';
 import { FRESH } from '../lib/nav';
 import { dialogOpen, typingTarget } from '../lib/shell';
@@ -23,9 +24,11 @@ interface NavItem {
 }
 
 // 사이드바는 시나리오별 묶음 (10/15 확정): 대시보드 / 설치 검사 / 런타임 감시 / 설정 · 기록
-const groups: { label?: string; items: NavItem[] }[] = [
+// id = 순서 저장(localStorage supplyguard.layout sidebar.<id>)의 키(R1 11/04 — 목업과 같은 이름). 항목 id = 경로에서 / 를 뗀 것
+const groups: { id?: 'install' | 'runtime' | 'records'; label?: string; items: NavItem[] }[] = [
   { items: [{ to: '/', label: '대시보드', icon: LayoutDashboard, end: true }] },
   {
+    id: 'install',
     label: '설치 검사',
     items: [
       { to: '/installs', label: '설치 검사', icon: PackageSearch },
@@ -34,6 +37,7 @@ const groups: { label?: string; items: NavItem[] }[] = [
     ],
   },
   {
+    id: 'runtime',
     label: '런타임 감시',
     items: [
       { to: '/events', label: '이벤트', icon: ListTree },
@@ -41,6 +45,7 @@ const groups: { label?: string; items: NavItem[] }[] = [
     ],
   },
   {
+    id: 'records',
     label: '설정 · 기록',
     items: [
       { to: '/policies', label: '정책', icon: SlidersHorizontal },
@@ -133,39 +138,7 @@ export function AppShell() {
           </div>
           <nav className="flex min-h-0 flex-col gap-3 overflow-y-auto px-2 py-3" aria-label="화면">
             {groups.map((g, gi) => (
-              <div key={gi} className="flex flex-col gap-0.5" data-nav-group={g.label ?? 'home'}>
-                {g.label &&
-                  (collapsed ? (
-                    <div className="mx-2 mb-1 border-t border-border" aria-hidden />
-                  ) : (
-                    <div className="px-3 pb-1 text-[11px] font-medium tracking-wide text-text-3">{g.label}</div>
-                  ))}
-                {g.items.map(({ to, label, icon: Icon, end }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    state={FRESH}
-                    end={end}
-                    title={collapsed ? label : undefined}
-                    className={({ isActive }) =>
-                      `relative flex items-center gap-3 rounded-[var(--r-sm)] py-2 text-sm transition-colors duration-[var(--t-fast)] ${collapsed ? 'justify-center px-0' : 'px-3'} ${
-                        isActive ? 'bg-accent-soft font-medium text-accent-text' : 'hover:bg-surface-2 hover:text-text'
-                      }`
-                    }
-                  >
-                    <Icon className="size-4 shrink-0" aria-hidden />
-                    <span className={collapsed ? 'sr-only' : 'flex-1'}>{label}</span>
-                    {to === '/' && pending > 0 && (
-                      <span
-                        className={`num rounded-full bg-warn px-1.5 text-[11px] font-semibold text-text-inverse ${collapsed ? 'absolute -top-0.5 right-0.5 px-1 text-[10px] leading-4' : ''}`}
-                        aria-label={`판정 대기 ${pending}건`}
-                      >
-                        {pending}
-                      </span>
-                    )}
-                  </NavLink>
-                ))}
-              </div>
+              <NavGroup key={gi} g={g} collapsed={collapsed} pending={pending} />
             ))}
           </nav>
           {!collapsed && (
@@ -242,6 +215,49 @@ export function AppShell() {
       </div>
       <Assistant />
       {help && <HelpDialog onClose={() => setHelp(false)} />}
+    </div>
+  );
+}
+
+// 사이드바 묶음 — 길게 눌러(또는 Alt+↑/↓) 묶음 안에서만 순서를 바꾼다(11/04d, R1 11/04). 대시보드 줄(묶음 제목 없음)은 고정 · 묶음 순서 그대로
+function NavGroup({ g, collapsed, pending }: { g: (typeof groups)[number]; collapsed: boolean; pending: number }) {
+  const byId = new Map(g.items.map((it) => [it.to.slice(1), it]));
+  const { ref, order, containerClass, itemProps, pickedClass } = useSortable<HTMLDivElement>({ scope: `sidebar.${g.id ?? 'home'}`, ids: g.items.map((it) => it.to.slice(1)), labelOf: (id) => byId.get(id)?.label ?? id });
+  const list = g.id ? order.map((id) => byId.get(id)!).filter(Boolean) : g.items;
+  return (
+    <div ref={g.id ? ref : undefined} className={`flex flex-col gap-0.5 ${g.id ? containerClass : ''}`} data-nav-group={g.label ?? 'home'}>
+      {g.label &&
+        (collapsed ? (
+          <div className="mx-2 mb-1 border-t border-border" aria-hidden />
+        ) : (
+          <div className="px-3 pb-1 text-[11px] font-medium tracking-wide text-text-3">{g.label}</div>
+        ))}
+      {list.map(({ to, label, icon: Icon, end }) => (
+        <NavLink
+          key={to}
+          to={to}
+          state={FRESH}
+          end={end}
+          title={collapsed ? label : undefined}
+          {...(g.id ? itemProps(to.slice(1)) : {})}
+          className={({ isActive }) =>
+            `relative flex items-center gap-3 rounded-[var(--r-sm)] py-2 text-sm transition-colors duration-[var(--t-fast)] ${collapsed ? 'justify-center px-0' : 'px-3'} ${
+              isActive ? 'bg-accent-soft font-medium text-accent-text' : 'hover:bg-surface-2 hover:text-text'
+            } ${g.id ? pickedClass(to.slice(1)) : ''}`
+          }
+        >
+          <Icon className="size-4 shrink-0" aria-hidden />
+          <span className={collapsed ? 'sr-only' : 'flex-1'}>{label}</span>
+          {to === '/' && pending > 0 && (
+            <span
+              className={`num rounded-full bg-warn px-1.5 text-[11px] font-semibold text-text-inverse ${collapsed ? 'absolute -top-0.5 right-0.5 px-1 text-[10px] leading-4' : ''}`}
+              aria-label={`판정 대기 ${pending}건`}
+            >
+              {pending}
+            </span>
+          )}
+        </NavLink>
+      ))}
     </div>
   );
 }

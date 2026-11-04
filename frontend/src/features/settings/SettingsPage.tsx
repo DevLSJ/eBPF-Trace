@@ -7,6 +7,8 @@ import { ConfirmDialog, Modal } from '../../components/Modal';
 import { Empty, LoadError } from '../../components/Panel';
 import { useAuth } from '../../hooks/auth-context';
 import { useToast } from '../../hooks/toast-context';
+import { PageActions } from '../../components/PageActions';
+import { resetLayout } from '../../lib/layout';
 import { useLoad } from '../../hooks/useLoad';
 import { api, ApiError, authApi, errorText } from '../../lib/api';
 import { AUTH_MSG, daysLeft, licenseText, ROLE_KO } from '../../lib/auth';
@@ -27,8 +29,24 @@ export function SettingsPage() {
   const [params, setParams] = useSearchParams();
   const tabs = TABS.filter((t) => isAdmin || !t.admin);
   const tab = tabs.find((t) => t.key === params.get('tab'))?.key ?? 'server';
+  const toast = useToast();
   return (
     <div className="sg-card flex h-full min-h-0 flex-col overflow-hidden">
+      {/* 화면 머리 오른쪽 「화면 배치 기본 순서로」(11/04d, R1 11/04) — 확인 없이 즉시 · 토스트 · 조회자도(이 브라우저에만 저장된 값). 열린 사이드바는 바로 기본 순서 */}
+      <PageActions>
+        <button
+          type="button"
+          data-action="layout-reset"
+          title="길게 눌러 바꾼 순서(사이드바 · 대시보드 숫자 칸 · 평가 지표)를 처음대로 — 이 브라우저에만 저장된 값"
+          onClick={() => {
+            resetLayout();
+            toast('화면 배치를 기본 순서로 되돌렸습니다 — 사이드바 · 대시보드 숫자 칸 · 평가 지표', { tone: 'ok', key: 'layout-reset' });
+          }}
+          className="ml-auto shrink-0 rounded-md px-2.5 py-1 text-xs whitespace-nowrap text-text-2 hover:bg-surface-2 hover:text-text"
+        >
+          화면 배치 기본 순서로
+        </button>
+      </PageActions>
       <div role="tablist" data-part="settings-tabs" aria-label="설정" className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-3 [scrollbar-width:none]">
         {tabs.map((t) => (
           <button
