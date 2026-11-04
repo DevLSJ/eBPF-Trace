@@ -330,12 +330,41 @@ func (h *handlers) audit(w http.ResponseWriter, r *http.Request) {
 	}
 	aq.Limit, _ = strconv.Atoi(q.Get("limit"))
 	aq.BeforeID, _ = strconv.ParseInt(q.Get("before"), 10, 64)
+	// 쪽 번호(11/04): offset 이 있으면 {items, total, offset, limit}. 없으면 예전처럼 배열(커서 before)
+	paged := q.Has("offset")
+	if paged {
+		if aq.Offset, err = strconv.Atoi(q.Get("offset")); err != nil || aq.Offset < 0 {
+			writeErr(w, http.StatusBadRequest, "offset: 0 이상 정수")
+			return
+		}
+		if q.Get("before") != "" {
+			writeErr(w, http.StatusBadRequest, "before 와 offset 은 함께 쓸 수 없음")
+			return
+		}
+	}
 	entries, err := h.Audit.QueryAudit(r.Context(), aq)
 	if err != nil {
 		serverErr(w, "audit", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, entries)
+	if !paged {
+		writeJSON(w, http.StatusOK, entries)
+		return
+	}
+	total, err := h.Audit.CountAudit(r.Context(), aq)
+	if err != nil {
+		serverErr(w, "audit count", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, AuditPage{Items: entries, Total: total, Offset: aq.Offset, Limit: store.NormalizeLimit(aq.Limit)})
+}
+
+// AuditPage: GET /api/audit?offset=… 응답(11/04) — total 은 필터 뒤 전체 건수(쪽 번호 = ceil(total/limit))
+type AuditPage struct {
+	Items  []model.AuditEntry `json:"items"`
+	Total  int                `json:"total"`
+	Offset int                `json:"offset"`
+	Limit  int                `json:"limit"`
 }
 
 func parseTime(s string) (time.Time, error) {

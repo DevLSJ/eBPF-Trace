@@ -160,8 +160,8 @@ func (p *Postgres) SaveAudit(ctx context.Context, v model.Verdict) (int64, error
 	return id, err
 }
 
-func (p *Postgres) QueryAudit(ctx context.Context, q AuditQuery) ([]model.AuditEntry, error) {
-	q.normalize()
+// auditWhere: 필터 조건(kind · action · rule · container · since · until)과 인자. 커서(BeforeID)는 cursor 일 때만
+func auditWhere(q AuditQuery, cursor bool) (string, []any) {
 	var where []string
 	var args []any
 	add := func(cond string, v any) {
@@ -186,15 +186,33 @@ func (p *Postgres) QueryAudit(ctx context.Context, q AuditQuery) ([]model.AuditE
 	if !q.Until.IsZero() {
 		add("ts <= $%d", q.Until)
 	}
-	if q.BeforeID > 0 {
+	if cursor && q.BeforeID > 0 {
 		add("id < $%d", q.BeforeID)
 	}
-	sql := `SELECT id, verdict FROM audit_log`
-	if len(where) > 0 {
-		sql += " WHERE " + strings.Join(where, " AND ")
+	if len(where) == 0 {
+		return "", args
 	}
+	return " WHERE " + strings.Join(where, " AND "), args
+}
+
+// CountAudit: 필터 뒤 count(*) — 위반만 저장하는 표라 행 수가 작다(인덱스 근거는 11/04 보고)
+func (p *Postgres) CountAudit(ctx context.Context, q AuditQuery) (int, error) {
+	where, args := auditWhere(q, false)
+	var n int
+	err := p.pool.QueryRow(ctx, `SELECT count(*) FROM audit_log`+where, args...).Scan(&n)
+	return n, err
+}
+
+func (p *Postgres) QueryAudit(ctx context.Context, q AuditQuery) ([]model.AuditEntry, error) {
+	q.normalize()
+	where, args := auditWhere(q, true)
+	sql := `SELECT id, verdict FROM audit_log` + where
 	args = append(args, q.Limit)
 	sql += fmt.Sprintf(" ORDER BY id DESC LIMIT $%d", len(args))
+	if q.Offset > 0 {
+		args = append(args, q.Offset)
+		sql += fmt.Sprintf(" OFFSET $%d", len(args))
+	}
 
 	rows, err := p.pool.Query(ctx, sql, args...)
 	if err != nil {

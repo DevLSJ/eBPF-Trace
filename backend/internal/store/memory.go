@@ -85,32 +85,48 @@ func (m *Memory) QueryAudit(_ context.Context, q AuditQuery) ([]model.AuditEntry
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	out := []model.AuditEntry{}
+	skip := q.Offset
 	for i := len(m.audit) - 1; i >= 0 && len(out) < q.Limit; i-- {
 		a := m.audit[i]
 		if q.BeforeID > 0 && a.ID >= q.BeforeID {
 			continue
 		}
-		if q.Kind != "" && a.Event.Kind != q.Kind {
+		if !q.matches(a) {
 			continue
 		}
-		if q.Action != "" && a.Action != q.Action {
-			continue
-		}
-		if q.RuleID != "" && a.RuleID != q.RuleID {
-			continue
-		}
-		if q.Container != "" && !strings.Contains(a.Event.ContainerName, q.Container) {
-			continue
-		}
-		if !q.Since.IsZero() && a.Event.Timestamp.Before(q.Since) {
-			continue
-		}
-		if !q.Until.IsZero() && a.Event.Timestamp.After(q.Until) {
+		if skip > 0 {
+			skip--
 			continue
 		}
 		out = append(out, a)
 	}
 	return out, nil
+}
+
+func (m *Memory) CountAudit(_ context.Context, q AuditQuery) (int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	n := 0
+	for _, a := range m.audit {
+		if q.matches(a) {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// matches: 필터(kind · action · rule · container · since · until) — 커서 · 쪽은 보지 않는다
+func (q AuditQuery) matches(a model.AuditEntry) bool {
+	switch {
+	case q.Kind != "" && a.Event.Kind != q.Kind,
+		q.Action != "" && a.Action != q.Action,
+		q.RuleID != "" && a.RuleID != q.RuleID,
+		q.Container != "" && !strings.Contains(a.Event.ContainerName, q.Container),
+		!q.Since.IsZero() && a.Event.Timestamp.Before(q.Since),
+		!q.Until.IsZero() && a.Event.Timestamp.After(q.Until):
+		return false
+	}
+	return true
 }
 
 func (m *Memory) Push(_ context.Context, v model.Verdict) error {
