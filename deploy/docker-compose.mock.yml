@@ -7,6 +7,8 @@ services:
     environment:
       EVENT_SOURCE: mock
       ENFORCE_KILL: "true"
+      # 개발 전용 로그인(11/04) — 기본 false. 셸(make stack-up AUTH_DEV_MODE=true) 또는 .env 에서만 켠다. mock 소스에서만 허용
+      AUTH_DEV_MODE: ${AUTH_DEV_MODE:-false}
       HOST_ROOT: !reset null
       DOCKER_HOST: !reset null
     privileged: false
