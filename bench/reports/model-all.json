@@ -1,0 +1,380 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-11-04T01:47:48Z",
+  "dataset": {
+    "source": "bench/reports/static-items.jsonl",
+    "sha256": "b3c4edafce67568deacdfe7b2493d278c0df23ea94ef025c2c4e9b78279e630d",
+    "rows": 1494,
+    "used": {
+      "npmMalicious": 297,
+      "npmBenign": 300,
+      "pypiMalicious": 297,
+      "pypiBenign": 599
+    },
+    "excluded": "verdict == error 행(검사 실패)"
+  },
+  "protocol": {
+    "seed": 42,
+    "split": "packageGroup 그룹 분할 60/20/20 (PyPI + npm, 생태계 · 라벨 층화)",
+    "selection": "보정 FPR≤5% 에서 F1 최대 · 시험은 선택에 쓰지 않음",
+    "sha256": "20eeeea90907df2642c4e45a819fff7de4b2d45753ba7d5bd7e4e9399d76cfa0",
+    "selectionSha256": "da484350e9f07de0e1e295168d89073abe68d7aa5e8931357c7e4709d57bf3b6",
+    "scope": "all",
+    "partitions": {
+      "train": {
+        "malicious": 352,
+        "benign": 539
+      },
+      "calibration": {
+        "malicious": 121,
+        "benign": 180
+      },
+      "test": {
+        "malicious": 121,
+        "benign": 180
+      }
+    },
+    "groups": {
+      "train": 694,
+      "calibration": 230,
+      "test": 232
+    }
+  },
+  "features": [
+    "score",
+    "installThreats",
+    "threats",
+    "capabilities",
+    "rule:capability-filesystem-browser",
+    "rule:capability-filesystem-delete",
+    "rule:capability-filesystem-read",
+    "rule:capability-filesystem-write-executable",
+    "rule:capability-network-download",
+    "rule:capability-network-lolbas",
+    "rule:capability-network-outbound",
+    "rule:capability-process-hooks",
+    "rule:capability-process-schedule",
+    "rule:capability-process-spawn",
+    "rule:capability-runtime-clipboard",
+    "rule:threat-filesystem-autostart",
+    "rule:threat-filesystem-destruction",
+    "rule:threat-filesystem-read",
+    "rule:threat-network-dns-exfil",
+    "rule:threat-network-exfil-messenger",
+    "rule:threat-network-exfil-sysinfo",
+    "rule:threat-network-exfiltration",
+    "rule:threat-network-outbound-shady-links",
+    "rule:threat-npm-dependency-confusion",
+    "rule:threat-npm-http-dependency",
+    "rule:threat-npm-preinstall-script",
+    "rule:threat-process-download-exec",
+    "rule:threat-process-hooks",
+    "rule:threat-process-injection-dll",
+    "rule:threat-process-memory",
+    "rule:threat-process-powershell-encoded",
+    "rule:threat-process-spawn-silent",
+    "rule:threat-process-sysinfo",
+    "rule:threat-runtime-dynamic-loader",
+    "rule:threat-runtime-enumeration",
+    "rule:threat-runtime-environment-read",
+    "rule:threat-runtime-obfuscation",
+    "rule:threat-runtime-obfuscation-base64exec",
+    "rule:threat-runtime-obfuscation-chr",
+    "rule:threat-runtime-obfuscation-dynamic-eval",
+    "rule:threat-runtime-obfuscation-general",
+    "rule:threat-runtime-obfuscation-import-exec",
+    "rule:threat-runtime-obfuscation-js-mangling",
+    "rule:threat-runtime-obfuscation-steganography",
+    "rule:threat-runtime-obfuscation-unicode",
+    "rule:threat-runtime-self-propagation",
+    "rule:threat-runtime-system-info",
+    "rule:threat-setup-import-aliasing",
+    "rule:threat-setup-network-in-install",
+    "rule:threat-setup-suspicious-imports"
+  ],
+  "candidates": [
+    {
+      "id": "rule-malicious",
+      "label": "규칙 판정 (악성)",
+      "calibration": {
+        "f1": 0.8476,
+        "fpr": 0.0,
+        "precision": 1.0,
+        "recall": 0.7355
+      },
+      "test": {
+        "f1": 0.7677,
+        "precision": 0.987,
+        "recall": 0.6281,
+        "fpr": 0.0056
+      },
+      "confusion": {
+        "tp": 76,
+        "fn": 45,
+        "fp": 1,
+        "tn": 179
+      }
+    },
+    {
+      "id": "rule-suspicious",
+      "label": "규칙 판정 (악성+주의)",
+      "calibration": {
+        "f1": 0.9018,
+        "fpr": 0.0111,
+        "precision": 0.9806,
+        "recall": 0.8347
+      },
+      "test": {
+        "f1": 0.8571,
+        "precision": 0.9688,
+        "recall": 0.7686,
+        "fpr": 0.0167
+      },
+      "confusion": {
+        "tp": 93,
+        "fn": 28,
+        "fp": 3,
+        "tn": 177
+      }
+    },
+    {
+      "id": "logreg",
+      "label": "로지스틱 회귀",
+      "calibration": {
+        "f1": 0.9217,
+        "fpr": 0.0167,
+        "precision": 0.9725,
+        "recall": 0.876
+      },
+      "test": {
+        "f1": 0.8772,
+        "precision": 0.9346,
+        "recall": 0.8264,
+        "fpr": 0.0389
+      },
+      "confusion": {
+        "tp": 100,
+        "fn": 21,
+        "fp": 7,
+        "tn": 173
+      },
+      "threshold": 0.479632
+    },
+    {
+      "id": "hgb",
+      "label": "HistGradientBoosting",
+      "calibration": {
+        "f1": 0.9447,
+        "fpr": 0.0167,
+        "precision": 0.9737,
+        "recall": 0.9174
+      },
+      "test": {
+        "f1": 0.8889,
+        "precision": 0.9615,
+        "recall": 0.8264,
+        "fpr": 0.0222
+      },
+      "confusion": {
+        "tp": 100,
+        "fn": 21,
+        "fp": 4,
+        "tn": 176
+      },
+      "threshold": 0.51545
+    }
+  ],
+  "preferredId": "hgb",
+  "deploymentApproved": false,
+  "npmReference": {
+    "note": "all 범위 — npm 은 주 실험에 들어 있다. 아래는 시험 구간 npm 재현율(byEcosystem.npm 참고)",
+    "rows": 59,
+    "recall": {
+      "rule-malicious": 0.5932,
+      "rule-suspicious": 0.7627,
+      "logreg": 0.8305,
+      "hgb": 0.8644
+    }
+  },
+  "topFeatures": [
+    {
+      "feature": "score",
+      "weight": 1.9352
+    },
+    {
+      "feature": "rule:threat-setup-suspicious-imports",
+      "weight": 1.1043
+    },
+    {
+      "feature": "rule:threat-runtime-obfuscation-base64exec",
+      "weight": 1.0908
+    },
+    {
+      "feature": "rule:capability-filesystem-read",
+      "weight": -0.9724
+    },
+    {
+      "feature": "rule:threat-process-powershell-encoded",
+      "weight": 0.8837
+    },
+    {
+      "feature": "rule:threat-process-download-exec",
+      "weight": -0.8452
+    },
+    {
+      "feature": "rule:threat-network-exfil-sysinfo",
+      "weight": 0.6459
+    },
+    {
+      "feature": "rule:threat-runtime-obfuscation",
+      "weight": 0.6426
+    },
+    {
+      "feature": "rule:capability-network-outbound",
+      "weight": -0.6285
+    },
+    {
+      "feature": "rule:threat-runtime-environment-read",
+      "weight": -0.6205
+    }
+  ],
+  "limits": [
+    "표본이 작다 — 시험 구간은 악성 121행 · 정상 180행(그룹 232개)뿐이라 후보 간 F1 차이 몇 %p 는 우연 범위 안일 수 있다.",
+    "악성 데이터셋(malicious-software-packages-dataset)과 입력을 만든 GuardDog 이 모두 DataDog 제작이다 — GuardDog 규칙이 이 표본에 맞춰져 있을 수 있어 규칙 · 모델 모두 낙관적이다.",
+    "정상 표본은 인기 패키지(PyPI wheel + sdist · npm)뿐이다 — 덜 알려진 정상 패키지에서의 오탐률은 재지 않았다.",
+    "모델은 운영에 적용하지 않는다(deploymentApproved=false) — 서버 판정 · kill 은 그대로 scan/verdict.go 규칙이다.",
+    "입력이 GuardDog 결과(점수 · 규칙 · 개수)라 GuardDog 이 못 보는 악성은 모델도 못 본다 — 모델은 GuardDog 신호의 재가중일 뿐이다.",
+    "같은 정상 패키지의 wheel · sdist 는 같은 구간에 묶었다 — 정상 행 수는 패키지 수의 약 2배라 정상 쪽 표본이 서로 독립이 아니다.",
+    "files · bytes(파일 수 · 크기)와 testFindings 는 입력에서 뺐다 — sdist 행에 값이 없거나 포장 형식 단서라서(프로토콜 2판, 결과를 보기 전 수정)."
+  ],
+  "byEcosystem": {
+    "npm": {
+      "test": {
+        "malicious": 59,
+        "benign": 60
+      },
+      "candidates": {
+        "rule-malicious": {
+          "test": {
+            "f1": 0.7447,
+            "precision": 1.0,
+            "recall": 0.5932,
+            "fpr": 0.0
+          },
+          "confusion": {
+            "tp": 35,
+            "fn": 24,
+            "fp": 0,
+            "tn": 60
+          }
+        },
+        "rule-suspicious": {
+          "test": {
+            "f1": 0.8571,
+            "precision": 0.9783,
+            "recall": 0.7627,
+            "fpr": 0.0167
+          },
+          "confusion": {
+            "tp": 45,
+            "fn": 14,
+            "fp": 1,
+            "tn": 59
+          }
+        },
+        "logreg": {
+          "test": {
+            "f1": 0.875,
+            "precision": 0.9245,
+            "recall": 0.8305,
+            "fpr": 0.0667
+          },
+          "confusion": {
+            "tp": 49,
+            "fn": 10,
+            "fp": 4,
+            "tn": 56
+          }
+        },
+        "hgb": {
+          "test": {
+            "f1": 0.8947,
+            "precision": 0.9273,
+            "recall": 0.8644,
+            "fpr": 0.0667
+          },
+          "confusion": {
+            "tp": 51,
+            "fn": 8,
+            "fp": 4,
+            "tn": 56
+          }
+        }
+      }
+    },
+    "pypi": {
+      "test": {
+        "malicious": 62,
+        "benign": 120
+      },
+      "candidates": {
+        "rule-malicious": {
+          "test": {
+            "f1": 0.7885,
+            "precision": 0.9762,
+            "recall": 0.6613,
+            "fpr": 0.0083
+          },
+          "confusion": {
+            "tp": 41,
+            "fn": 21,
+            "fp": 1,
+            "tn": 119
+          }
+        },
+        "rule-suspicious": {
+          "test": {
+            "f1": 0.8571,
+            "precision": 0.96,
+            "recall": 0.7742,
+            "fpr": 0.0167
+          },
+          "confusion": {
+            "tp": 48,
+            "fn": 14,
+            "fp": 2,
+            "tn": 118
+          }
+        },
+        "logreg": {
+          "test": {
+            "f1": 0.8793,
+            "precision": 0.9444,
+            "recall": 0.8226,
+            "fpr": 0.025
+          },
+          "confusion": {
+            "tp": 51,
+            "fn": 11,
+            "fp": 3,
+            "tn": 117
+          }
+        },
+        "hgb": {
+          "test": {
+            "f1": 0.8829,
+            "precision": 1.0,
+            "recall": 0.7903,
+            "fpr": 0.0
+          },
+          "confusion": {
+            "tp": 49,
+            "fn": 13,
+            "fp": 0,
+            "tn": 120
+          }
+        }
+      }
+    }
+  }
+}

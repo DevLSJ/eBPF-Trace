@@ -1,0 +1,128 @@
+{
+  "rule": "보정 FPR<=5% 후보 중 보정 F1 최대(동률은 단순한 쪽) — 시험 구간 계산 전에 저장",
+  "numeric": [
+    "score",
+    "installThreats",
+    "threats",
+    "capabilities"
+  ],
+  "vocab": [
+    "capability-filesystem-browser",
+    "capability-filesystem-delete",
+    "capability-filesystem-read",
+    "capability-filesystem-write-executable",
+    "capability-network-download",
+    "capability-network-lolbas",
+    "capability-network-outbound",
+    "capability-process-hooks",
+    "capability-process-schedule",
+    "capability-process-spawn",
+    "capability-runtime-clipboard",
+    "threat-filesystem-autostart",
+    "threat-filesystem-destruction",
+    "threat-filesystem-read",
+    "threat-network-dns-exfil",
+    "threat-network-exfil-messenger",
+    "threat-network-exfil-sysinfo",
+    "threat-network-exfiltration",
+    "threat-network-outbound-shady-links",
+    "threat-npm-dependency-confusion",
+    "threat-npm-http-dependency",
+    "threat-npm-preinstall-script",
+    "threat-process-download-exec",
+    "threat-process-hooks",
+    "threat-process-injection-dll",
+    "threat-process-memory",
+    "threat-process-powershell-encoded",
+    "threat-process-spawn-silent",
+    "threat-process-sysinfo",
+    "threat-runtime-dynamic-loader",
+    "threat-runtime-enumeration",
+    "threat-runtime-environment-read",
+    "threat-runtime-obfuscation",
+    "threat-runtime-obfuscation-base64exec",
+    "threat-runtime-obfuscation-chr",
+    "threat-runtime-obfuscation-dynamic-eval",
+    "threat-runtime-obfuscation-general",
+    "threat-runtime-obfuscation-import-exec",
+    "threat-runtime-obfuscation-js-mangling",
+    "threat-runtime-obfuscation-steganography",
+    "threat-runtime-obfuscation-unicode",
+    "threat-runtime-self-propagation",
+    "threat-runtime-system-info",
+    "threat-setup-import-aliasing",
+    "threat-setup-network-in-install",
+    "threat-setup-suspicious-imports"
+  ],
+  "thresholds": {
+    "logreg": 0.479632,
+    "hgb": 0.51545
+  },
+  "calibration": {
+    "rule-malicious": {
+      "f1": 0.8476,
+      "precision": 1.0,
+      "recall": 0.7355,
+      "fpr": 0.0,
+      "confusion": {
+        "tp": 89,
+        "fn": 32,
+        "fp": 0,
+        "tn": 180
+      }
+    },
+    "rule-suspicious": {
+      "f1": 0.9018,
+      "precision": 0.9806,
+      "recall": 0.8347,
+      "fpr": 0.0111,
+      "confusion": {
+        "tp": 101,
+        "fn": 20,
+        "fp": 2,
+        "tn": 178
+      }
+    },
+    "logreg": {
+      "f1": 0.9217,
+      "precision": 0.9725,
+      "recall": 0.876,
+      "fpr": 0.0167,
+      "confusion": {
+        "tp": 106,
+        "fn": 15,
+        "fp": 3,
+        "tn": 177
+      }
+    },
+    "hgb": {
+      "f1": 0.9447,
+      "precision": 0.9737,
+      "recall": 0.9174,
+      "fpr": 0.0167,
+      "confusion": {
+        "tp": 111,
+        "fn": 10,
+        "fp": 3,
+        "tn": 177
+      }
+    }
+  },
+  "preferredId": "hgb",
+  "scope": "all",
+  "seed": 42,
+  "partitions": {
+    "train": {
+      "malicious": 352,
+      "benign": 539
+    },
+    "calibration": {
+      "malicious": 121,
+      "benign": 180
+    },
+    "test": {
+      "malicious": 121,
+      "benign": 180
+    }
+  }
+}
