@@ -82,6 +82,9 @@ type Options struct {
 	SecretKey string
 	// CookieSecure: AUTH_COOKIE_SECURE (HTTPS 에서 켠다)
 	CookieSecure bool
+	// DevMode: AUTH_DEV_MODE (11/04, 로컬 개발 전용). 시드 관리자에 「아이디와 다름」을 보지 않고(길이 검사는 유지)
+	// 첫 로그인 비밀번호 변경 없이 만들며, 라이선스 단계를 통과한 것으로 본다. OTP 는 OTPRequired 가 따로 정한다
+	DevMode bool
 	// TrustProxy: X-Real-IP / X-Forwarded-For 를 믿는다 (nginx 뒤, 백엔드 포트가 바깥에 없을 때만)
 	TrustProxy  bool
 	BcryptCost  int           // 0 → 12

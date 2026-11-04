@@ -64,6 +64,9 @@ type Config struct {
 	AuthOTPRequired      bool
 	AuthCookieSecure     bool
 	AuthSecretKey        string
+	// AuthDevMode: AUTH_DEV_MODE (기본 false, 11/04). 로컬 개발 전용 — 시드 관리자 admin/admin 허용 · 첫 로그인 단계(비밀번호 변경 · 라이선스) 건너뜀.
+	// EVENT_SOURCE=mock 일 때만 켤 수 있다(가젯 소스면 Load 가 오류)
+	AuthDevMode bool
 	// 외부 알림(10/20): 둘 다 비면 비활성. PublicURL 은 알림의 대시보드 링크 앞에 붙는다
 	NotifyWebhookURL, NotifySlackURL, PublicURL string
 	// AI 도우미(10/20): OLLAMA_URL 이 비면 챗봇 비활성(라우트 없음). 모델은 로컬 Ollama — 데이터가 서버 밖으로 나가지 않는다
@@ -120,6 +123,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if c.AuthCookieSecure, err = boolEnv("AUTH_COOKIE_SECURE", false); err != nil {
+		return c, err
+	}
+	if c.AuthDevMode, err = boolEnv("AUTH_DEV_MODE", false); err != nil {
 		return c, err
 	}
 	if c.ResolveDNS, err = boolEnv("RESOLVE_DNS", true); err != nil {
@@ -185,6 +191,10 @@ func Load() (Config, error) {
 	}
 	if c.EventSource != "gadget" && c.EventSource != "mock" {
 		return c, fmt.Errorf("EVENT_SOURCE: %q (gadget | mock)", c.EventSource)
+	}
+	// 개발 전용 로그인(admin/admin · 첫 로그인 단계 없음)이 실제 서버에서 켜지지 않게 — mock 이 아니면 시작하지 않는다
+	if c.AuthDevMode && c.EventSource != "mock" {
+		return c, fmt.Errorf("AUTH_DEV_MODE=true 는 EVENT_SOURCE=mock(로컬 개발)에서만 쓸 수 있음 — 실제 서버(%s)는 AUTH_DEV_MODE 를 지우거나 false 로", c.EventSource)
 	}
 	// 같은 값이면 CLI 토큰으로 관리자 쓰기가 열린다 — 두 토큰의 분리가 무너지므로 시작하지 않는다
 	if c.AdminToken != "" && c.AdminToken == c.SandboxToken {

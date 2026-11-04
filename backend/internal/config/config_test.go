@@ -25,6 +25,35 @@ func TestTokensMustDiffer(t *testing.T) {
 	}
 }
 
+// Tier 1 — AUTH_DEV_MODE(11/04): 기본 false. 개발 전용 로그인이라 EVENT_SOURCE=mock 에서만 켤 수 있다 — 가젯 소스면 시작 거부
+func TestAuthDevMode(t *testing.T) {
+	c, err := Load()
+	if err != nil || c.AuthDevMode {
+		t.Fatalf("default: %v %v", c.AuthDevMode, err)
+	}
+	t.Setenv("AUTH_DEV_MODE", "true")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AUTH_DEV_MODE") {
+		t.Fatalf("기본 소스(gadget) + AUTH_DEV_MODE=true 는 거부: %v", err)
+	}
+	t.Setenv("EVENT_SOURCE", "gadget")
+	if _, err := Load(); err == nil {
+		t.Fatal("EVENT_SOURCE=gadget + AUTH_DEV_MODE=true 는 거부")
+	}
+	t.Setenv("EVENT_SOURCE", "mock")
+	if c, err := Load(); err != nil || !c.AuthDevMode {
+		t.Fatalf("mock + AUTH_DEV_MODE=true: %v %v", c.AuthDevMode, err)
+	}
+	t.Setenv("AUTH_DEV_MODE", "yes-please")
+	if _, err := Load(); err == nil {
+		t.Fatal("잘못된 값은 거부")
+	}
+	t.Setenv("AUTH_DEV_MODE", "false")
+	t.Setenv("EVENT_SOURCE", "gadget")
+	if c, err := Load(); err != nil || c.AuthDevMode {
+		t.Fatalf("gadget + false: %v %v", c.AuthDevMode, err)
+	}
+}
+
 // EVAL_REPORTS_DIR(11/04): 기본은 배포 이미지 안 경로(/bench/reports), make dev 는 저장소의 bench/reports 로 덮어쓴다
 func TestEvalReportsDir(t *testing.T) {
 	c, err := Load()
