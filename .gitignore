@@ -15,3 +15,4 @@ docs/
 # 공급망 검사 실측(11/04): 데이터셋 · 원시 결과는 커밋하지 않는다 — bench/reports/ 의 수치만
 bench/raw/
 bench/datasets/
+bench/.venv/
