@@ -1,33 +1,38 @@
 {
   "schema": 1,
+  "revision": 2,
   "purpose": "정적 검사 실험 모델(M1) — 판정 · kill 에 쓰지 않는 오프라인 비교. 지금 규칙 판정 vs 로지스틱 회귀 vs HistGradientBoosting",
-  "fixedAt": "2026-11-04 — 모델 학습 · 평가 결과를 보기 전에 고정",
+  "fixedAt": "2026-11-04 — 모델 학습 · 평가 결과를 보기 전에 고정(1판 e2b64fc)",
+  "revisedAt": "2026-11-04 — 모델 결과(보정 · 시험)를 보기 전 2판: files · bytes 가 sdist 행에 없음 · testFindings 는 포장 형식 단서 · all 범위 추가",
   "data": {
     "source": "bench/reports/static-items.jsonl",
-    "include": "ecosystem == pypi 이고 verdict != error",
-    "label": "set 이 datadog-* 이면 악성(1), benign-* 이면 정상(0). verdict 는 라벨이 아니라 규칙 판정 후보의 예측값",
-    "benignSets": ["benign-pypi", "benign-pypi-sdist"],
-    "maliciousSets": ["datadog-pypi"],
-    "npmReference": "datadog-npm(verdict != error)은 학습 · 보정 · 선택에 쓰지 않는다. PyPI 로 정한 모델 · 임계값을 그대로 적용한 재현율만 참고값으로 낸다(정상 표본 없음)"
+    "include": "scope=pypi(주 실험, 기본): ecosystem == pypi 이고 verdict != error · scope=all: pypi + npm(생태계마다 악성 · 정상이 모두 있을 때만 — 없으면 실행 거부)",
+    "label": "set 이 datadog-* 이면 악성(1), 그 밖(benign-*)이면 정상(0). verdict 는 라벨이 아니라 규칙 판정 후보의 예측값",
+    "benignSets": ["benign-pypi", "benign-pypi-sdist", "benign-npm(scope=all)"],
+    "maliciousSets": ["datadog-pypi", "datadog-npm(scope=all)"],
+    "npmReference": "scope=pypi 에서 datadog-npm(verdict != error)은 학습 · 보정 · 선택에 쓰지 않는다. PyPI 로 정한 모델 · 임계값을 그대로 적용한 재현율만 참고값으로 낸다(정상 표본 없음). scope=all 에서는 주 실험에 들어가고 model.json 에 byEcosystem(생태계별 시험 지표)을 더한다"
   },
   "split": {
     "unit": "packageGroup (같은 그룹의 wheel · sdist · 여러 버전은 한 구간으로)",
-    "method": "라벨별 층화 그룹 분할 — 라벨마다 packageGroup 을 정렬한 뒤 numpy.random.default_rng(seed) 로 섞고 앞 60% 학습 · 다음 20% 보정 · 나머지 시험(경계는 round(n*0.6) · round(n*0.8))",
+    "method": "(생태계, 라벨) 층화 그룹 분할 — 층 이름 순서대로, 층마다 packageGroup 을 정렬한 뒤 numpy.random.default_rng(seed) 하나로 섞고 앞 60% 학습 · 다음 20% 보정 · 나머지 시험(경계는 round(n*0.6) · round(n*0.8)). pypi 만이면 층은 (pypi,정상) → (pypi,악성)",
     "seed": 42,
     "fractions": {"train": 0.6, "calibration": 0.2, "test": 0.2}
   },
   "features": {
-    "numeric": ["score", "installThreats", "threats", "capabilities", "testFindings", "log1p(files)", "log1p(bytes)"],
+    "numeric": ["score", "installThreats", "threats", "capabilities"],
     "rules": "GuardDog 규칙 multi-hot — 학습 구간에서 2행 이상 나온 규칙만(이름 정렬)",
     "excluded": {
-      "ecosystem": "PyPI 만 쓰므로 상수 · npm 을 넣으면 생태계 단서만 배운다",
+      "ecosystem": "pypi 범위에서는 상수 · npm 을 정상 없이 넣으면 생태계 단서만 배운다",
       "id": "입력 파일 해시 앞 8자 — 내용과 무관한 식별자",
       "seconds": "검사 시간은 서버 부하 · 크기에 좌우되는 측정값이지 패키지 성질이 아니다",
       "vulns": "알려진 취약점(OSV) 개수 — 취약 판정용이지 악성 판별 신호가 아니다. 악성 zip 은 자기 버전 OSV 조회가 없어(static.md 한계) 정상 쪽에만 값이 생기는 누설 단서다",
+      "files · bytes": "benign-pypi-sdist 299행 전부 값이 없다(sg-bench-dataset 이 registry 형식에서 기록하지 않음). 0 이나 결측 표시로 채우면 「값 없음 = sdist = 정상」 단서가 되어 누설",
+      "testFindings": "테스트 코드 탐지 개수 — 값 > 0 비율이 정상 sdist 200/299 · 정상 wheel 31/300 · 악성 10/297 로 포장 형식(sdist 는 tests 포함) 단서이고, 공격자가 tests 폴더만 넣어도 피한다. 도메인 규칙 「테스트 코드 탐지는 어디에도 넣지 않는다」",
       "set": "라벨 그 자체",
       "packageGroup": "분할 키",
       "verdict": "규칙 판정 후보의 출력 — 모델 입력에 넣으면 규칙을 베낀다"
-    }
+    },
+    "limits": ["files · bytes(파일 수 · 크기)와 testFindings 는 입력에서 뺐다 — sdist 행에 값이 없거나 포장 형식 단서라서(프로토콜 2판, 결과를 보기 전 수정)."]
   },
   "candidates": [
     {"id": "rule-malicious", "label": "규칙 판정 (악성)", "predict": "verdict == malicious"},
@@ -36,9 +41,10 @@
     {"id": "hgb", "label": "HistGradientBoosting", "model": "HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_leaf_nodes=15, min_samples_leaf=10, l2_regularization=1.0, early_stopping=False, class_weight=balanced, random_state=42) — 하이퍼파라미터 탐색 없음"}
   ],
   "threshold": "logreg · hgb 는 학습 구간으로 맞춘 뒤 보정 구간 확률(소수 6자리 반올림)의 고유값을 후보로, p >= t 를 양성으로 해 FPR <= 0.05 인 것 중 F1 최대(동률이면 FPR 낮은 쪽, 그다음 큰 t)",
-  "selection": "보정 구간 FPR <= 0.05 인 후보 중 보정 F1 최대(동률이면 위 candidates 순서가 앞인 것 — 단순한 쪽). 선택 결과를 bench/ml/selection.json 에 쓴 뒤에만 시험 구간을 계산한다",
+  "selection": "보정 구간 FPR <= 0.05 인 후보 중 보정 F1 최대(동률이면 위 candidates 순서가 앞인 것 — 단순한 쪽). 선택 결과를 bench/ml/selection.json(all 은 selection-all.json)에 쓴 뒤에만 시험 구간을 계산한다",
   "test": "시험 구간은 한 번만 평가하고, 본 뒤 프로토콜 · 코드 · 선택을 바꾸지 않는다",
   "metrics": "양성 = 악성. precision · recall · f1 · fpr(= FP / 정상 수), 소수 4자리",
   "topFeatures": "로지스틱 회귀 표준화 계수 절댓값 상위 10(부호 포함)",
+  "scopes": {"pypi": "주 실험(기본)", "all": "npm 정상 세트(benign-npm)가 들어온 뒤 메인이 실행"},
   "reproducibility": "같은 명령 두 번 → model.json 이 generatedAt 외 동일"
 }
