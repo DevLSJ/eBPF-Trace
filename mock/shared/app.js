@@ -873,12 +873,57 @@
     demo: { running: null, last: null, timer: 0 },
     demoGet() {
       if (!state.info.demo) throw Object.assign(httpErr(404, 'Not Found'), { json: false });
-      return { enabled: true, scenarios: M.DEMO_SCENARIOS.slice(), running: srv.demo.running ? clone(srv.demo.running) : null, last: srv.demo.last ? clone(srv.demo.last) : null };
+      // explain [11/04e B — 백엔드 계약]: GET 에서만, Run 마다 {decidedBy, sequence} — decidedBy null = 위반 없음(통과)
+      const out = (r) => (r ? Object.assign(clone(r), { explain: srv.demoExplain(r) }) : null);
+      return { enabled: true, scenarios: M.DEMO_SCENARIOS.slice(), running: out(srv.demo.running), last: out(srv.demo.last) };
+    },
+    // 「왜」 데이터(sim) — 판정을 만든 위반(첫 격리, 없으면 첫 kill · 첫 위반) · 규칙 조건 문장 · 연쇄 규칙 진행(chain 시나리오)
+    demoExplain(run) {
+      const s = run.installId && state.installs.find((x) => x.id === run.installId);
+      if (!s || run.status === 'refused') return { decidedBy: null, sequence: null };
+      const vs = s.violations, d = vs.find((v) => v.enforced) || vs.find((v) => v.action === 'kill') || vs[0] || null;
+      const rule = d && state.rules.find((r) => r.id === d.ruleId);
+      const e = d && d.event;
+      const decidedBy = d ? { ruleId: d.ruleId, description: rule ? rule.description : '', condition: srv.ruleCondition(rule, d), action: d.action, dryRun: !!d.dryRun, enforced: !!d.enforced, reason: d.reason,
+        event: { kind: e.kind, timestamp: e.timestamp, comm: e.comm, pid: e.pid, args: e.args || '', path: e.path || '', dstIp: e.dstIp || '', dstPort: e.dstPort || 0, dstHost: e.dstHost || '', qtype: e.qtype || '' } } : null;
+      return { decidedBy, sequence: run.scenario === 'chain' ? srv.seqProgress(run.container) : null };
+    },
+    // 규칙 조건을 사람 말로(백엔드 explain.decidedBy.condition 과 같은 뜻 — 목업 문구)
+    ruleCondition(rule, v) {
+      if (!rule) return '';
+      const list = (a, n = 4) => { a = a || []; return a.slice(0, n).join(' · ') + (a.length > n ? ` 외 ${a.length - n}개` : ''); };
+      const act = rule.action === 'kill' ? (rule.dryRun ? '격리 대상(시험 운영 — 알림만)' : '격리') : '경고';
+      const where = (rule.containers || []).length ? `${rule.containers.join(' · ')} 컨테이너에서 ` : '';
+      const r = (v && v.reason) || '';
+      let c = '';
+      if (rule.kind === 'exec') c = r.includes('금지 인자') ? `명령 인자에 내려받은 내용을 셸로 넘기는 패턴(${list(rule.denyArgs)})이 있으면` : `${list(rule.denyComms)} 같은 다운로더 · 네트워크 도구를 실행하면`;
+      else if (rule.kind === 'open') c = `자격 증명 · 계정 파일(${list(rule.denyPaths)})을 열면`;
+      else if (rule.kind === 'connect') c = r.includes('금지 포트') ? `리버스 셸에 흔한 포트(${list(rule.denyPorts)})로 나가면` : r.includes('직접 연결') ? '도메인 조회 없이 공인 IP 로 바로 나가면' : r.includes('금지 도메인') ? '차단 목록의 도메인으로 나가면'
+        : (rule.allowHosts || []).length ? `허용 도메인(${list(rule.allowHosts, 3)}) · 내부망 밖으로 나가면` : `허용 포트(${list(rule.allowPorts)}) · 내부망 밖으로 나가면`;
+      else if (rule.kind === 'dns') c = r.includes('라벨') ? `DNS 라벨이 ${rule.maxLabelLength}자를 넘으면(데이터 실어 보내기 의심)` : r.includes('질의 유형') ? `${list(rule.denyQtypes)} 질의를 보내면` : r.includes('긴 DNS 이름') ? `DNS 이름이 ${rule.maxNameLength}자를 넘으면` : `허용 도메인(${list(rule.allowHosts, 3)}) 밖 이름을 질의하면`;
+      return `${where}${c} ${act}`;
+    },
+    // 연쇄 규칙 진행(sim) — 그 컨테이너 이벤트를 시간 순으로 단계 조건에 맞춰 본다(사이 이벤트 허용, windowSeconds 안)
+    seqProgress(container) {
+      const rule = state.rules.find((r) => r.id === 'chain-download-secrets'); if (!rule) return null;
+      const evs = state.verdicts.filter((v) => v.event.containerName === container).map((v) => v.event).sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+      const cond = (st) => (st.kind === 'exec' ? `${(st.denyComms || []).join(' · ')} 실행` : st.kind === 'connect' ? '내부망 밖 목적지로 연결' : st.kind === 'open' ? `자격 증명 파일 열기(${(st.denyPaths || []).slice(0, 3).join(' · ')} …)` : st.kind);
+      let i = 0, prev = null, t0 = null;
+      const steps = rule.steps.map((st) => ({ kind: st.kind, condition: cond(st), matched: false, event: null, gapMs: null }));
+      for (const e of evs) {
+        if (i >= steps.length) break;
+        const t = Date.parse(e.timestamp); if (t0 != null && t - t0 > rule.windowSeconds * 1000) break;
+        if (M.evaluate([Object.assign({ id: 'step', action: 'alert' }, rule.steps[i])], e).matched) {
+          steps[i] = Object.assign(steps[i], { matched: true, event: { kind: e.kind, timestamp: e.timestamp, comm: e.comm, pid: e.pid, detail: detailOf(e) }, gapMs: prev == null ? null : t - prev });
+          if (t0 == null) t0 = t; prev = t; i++;
+        }
+      }
+      return { ruleId: rule.id, description: rule.description, action: rule.action, dryRun: !!rule.dryRun, disabled: !!rule.disabled, windowSeconds: rule.windowSeconds, completed: i >= steps.length, steps };
     },
     demoRun(body) {
       if (!state.info.demo) throw Object.assign(httpErr(404, 'Not Found'), { json: false });
       const scenario = body && body.scenario;
-      if (!M.DEMO_SCENARIOS.includes(scenario)) throw httpErr(400, 'scenario: all | shell | revshell | direct-ip | domain | dns-exfil');
+      if (!M.DEMO_SCENARIOS.includes(scenario)) throw httpErr(400, `scenario: ${M.DEMO_SCENARIOS.join(' | ')}`);
       if (srv.demo.running) throw Object.assign(httpErr(409, '시연이 이미 실행 중입니다'), { running: clone(srv.demo.running) });
       const unix = Math.floor(Date.now() / 1000);
       const run = { id: `demo-${unix}`, scenario, container: `sg-install-demo-${unix}`, installId: null, startedAt: iso(), finishedAt: null, status: 'running', exitCode: null, simulated: true };
@@ -888,11 +933,12 @@
         run.installId = srv.installsRefused({ manager: 'pip', packages: ['./reqeusts'], value: chk.value }).id;
         Object.assign(run, { status: 'refused', finishedAt: iso(), exitCode: 3 }); srv.demo.last = run; emit(); return clone(run);
       }
-      const s = M.newSession({ manager: 'pip', pkg: './reqeusts' }, Date.now(), ++state.installSeq);
+      const plan = M.demoPlan(scenario); // 11/04e B: benign 은 pip sg-demo-benign(정상), 나머지는 pip ./reqeusts
+      const s = M.newSession({ manager: 'pip', pkg: plan.pkg }, Date.now(), ++state.installSeq);
       s.container = run.container; s.demo = true; state.installs.unshift(s); run.installId = s.id; srv.autoScan(s); // 11/04: ./reqeusts 는 로컬 — 건너뜀
       srv.demo.running = run; emit();
       const c = { name: s.container, image: s.image, id: s.containerId, killedAt: 0 };
-      const events = [...M.demoSpecs.dnsExfil.events.slice(0, 2), ...M.demoEvents(scenario).map((a) => [a, 1])]; // pip install · pypi 연결 → 시나리오
+      const events = plan.events; // pip install · pypi 연결 → 시나리오(benign 은 정상 설치 이벤트 전부)
       let i = 0;
       const finish = (status) => {
         const end = iso(); s.containerExitedAt = end; s.finishedAt = end; s.exitCode = c.killedAt ? 137 : 0;
@@ -1446,7 +1492,7 @@
   // 사이드바 = 시나리오별 묶음 [10/15 확정]. 묶음 제목이 없는 첫 줄은 두 시나리오 공통
   //   [묶음 id, 제목, 항목] — 묶음 id 는 순서 저장(localStorage supplyguard.layout sidebar.<id>)의 키 [11/04d]. 항목 순서만 묶음 안에서 바꿀 수 있고, 대시보드 · 묶음 순서는 고정
   const NAV = [
-    [null, null, [['/', '대시보드', '▦']]],
+    [null, null, [['/', '대시보드', '▦'], ['/demo', '시연', '▶']]], // 시연 [11/04e B] — 관리자 + 서버 시연 켜짐일 때만 메뉴가 생긴다(sync 가 넣고 뺀다). 맨 위 고정(순서 바꾸기 없음)
     ['install', '설치 검사', [['/installs', '설치 검사', '▣'], ['/scans', '공급망 검사', '⌕'], ['/evaluation', '평가', '◔']]], // 평가 [11/04 U1] — 공급망 검사 · 설치 검사를 재는 화면이라 같은 묶음 끝
     ['runtime', '런타임 감시', [['/events', '이벤트', '≣'], ['/topology', '토폴로지', '⌘']]],
     ['records', '설정 · 기록', [['/policies', '정책', '§'], ['/audit', '감사 로그', '◷'], ['/settings', '설정', '⚙']]], // 설정 화면 [10/20 결정 2]
@@ -1460,6 +1506,7 @@
         to === '/' ? h('span', { class: 'nav-badge num', 'data-nav-badge': '', hidden: true }) : null))]));
     // 길게 눌러 순서 바꾸기 [11/04d] — 묶음마다 따로(묶음 밖으로는 못 옮긴다). 항목 id = 경로에서 / 를 뗀 것(installs …)
     if (window.SG_SORT) for (const [gid, , links] of NAV) if (gid) SG_SORT.attach(nav, { scope: `sidebar.${gid}`, selector: `.nav-link[data-nav-group="${gid}"]`, defaults: links.map(([to]) => to.slice(1)), idOf: (el) => el.dataset.to.slice(1), labelOf: (el) => el.querySelector('.nav-label').textContent });
+    const demoLink = nav.querySelector('.nav-link[data-to="/demo"]'); demoLink.remove(); // sync 가 조건에 맞으면 대시보드 다음에 넣는다
     const foot = h('div', { class: 'side-foot' });
     // 10/20 E: 통합 검색(shell-plus.js 가 채움) · 접기 버튼. 10/20 C: 종 = 알림 센터(shell-plus.js) · 10/20 A: 라이선스 칩 · 계정 메뉴(auth.js)
     const search = h('div', { class: 'side-search', 'data-part': 'search' });
@@ -1496,6 +1543,9 @@
     const root = h('div', { class: 'shell' }, aside, main);
     function sync() {
       const { path } = route();
+      // 시연 메뉴 [11/04e B]: 관리자 + /api/info.demo 일 때만 DOM 에 둔다(숨김이 아니라 없음 — 조회자 화면에 보이지 않는 메뉴가 남지 않게)
+      const demoOk = !!(UI.can && UI.can() && state.info && state.info.demo);
+      if (demoOk && !demoLink.isConnected) nav.querySelector('.nav-link[data-to="/"]').after(demoLink); else if (!demoOk && demoLink.isConnected) demoLink.remove();
       for (const a of nav.querySelectorAll('.nav-link')) a.classList.toggle('active', a.dataset.to === path);
       const st = state.stats, enforce = state.info.enforceKill;
       banner.hidden = !state.liveError; banner.textContent = state.liveError;

@@ -48,7 +48,8 @@ const EVAL_DEFAULT = ['static-detection', 'static-fpr', 'runtime-detection', 'ru
     return pg;
   };
   const go = async (pg, hash, extra = '') => { await pg.goto(`${BASE}?source=sim&as=admin${extra}#${hash}`); await pg.waitForSelector('.page-title', { timeout: 6000 }); await pg.waitForTimeout(450); };
-  const navOrder = (pg) => pg.$$eval('.side-nav .nav-link', (els) => els.map((e) => e.dataset.to));
+  // 11/04e B: 「시연」(/demo — 관리자 · 시연 켜짐)은 대시보드처럼 맨 위 고정이라 순서 비교에서 뺀다(자리는 2번에서 따로 본다)
+  const navOrder = (pg) => pg.$$eval('.side-nav .nav-link', (els) => els.map((e) => e.dataset.to).filter((to) => to !== '/demo'));
   const kpiOrder = (pg) => pg.$$eval('.ov-kpis > [data-kpi]', (els) => els.map((e) => e.dataset.kpi));
   const evalOrder = (pg) => pg.$$eval('.eval-kpis > [data-kpi]', (els) => els.map((e) => e.dataset.kpi));
   const stored = (pg) => pg.evaluate((k) => localStorage.getItem(k), KEY);
@@ -114,6 +115,7 @@ const EVAL_DEFAULT = ['static-detection', 'static-fpr', 'runtime-detection', 'ru
     ok(same(await navOrder(pg), ['/', '/installs', '/scans', '/evaluation', '/topology', '/events', '/policies', '/audit', '/settings']), `토폴로지는 런타임 묶음 맨 앞까지만 ${await navOrder(pg)}`);
     await drag(pg, '.nav-link[data-to="/installs"]', '.nav-link[data-to="/"]', { dy: -10 });
     ok((await navOrder(pg))[0] === '/' && (await navOrder(pg))[1] === '/installs', `대시보드 위로 못 감 ${await navOrder(pg)}`);
+    ok(await pg.$$eval('.side-nav .nav-link', (els) => els.map((e) => e.dataset.to).slice(0, 2).join()) === '/,/demo', '시연이 대시보드 바로 아래 고정이 아님'); // 11/04e B
     await drag(pg, '.nav-link[data-to="/policies"]', '.nav-link[data-to="/events"]', { release: false });
     ok(await picked(pg) === 1, '정책이 집히지 않음');
     ok((await navOrder(pg)).indexOf('/policies') === 6, `설정 · 기록 묶음을 벗어남 ${await navOrder(pg)}`);

@@ -1,6 +1,6 @@
 /* 2026-10-30 시연 패널 · 격리 타임라인 · 신호등 · 보고서 — 계약 §2 · §3 · §4 · §5(공통 계약 contract-1030.md)
-   ① 카드 조건: 관리자 + /api/info.demo 일 때만(조회자 · ?demo=off 면 없음) · 대시보드 맨 위(판정 대기 위) · 시나리오 6개(기본 all, 한 줄 설명)
-   ② 시연 시작(shell) → 단계 레일 6단계 · 경과 · 첫 위반에 설치 시트 자동 열림(#/installs?id=) · 결과 「격리됨 — 규칙 N개 · 0.xx초」 · 다시 실행
+   ① [11/04e B] 시연은 사이드바 「시연」 페이지(관리자 + /api/info.demo) — 대시보드 카드 없음 · 시나리오 8개(benign · chain 추가)
+   ② 시연 시작(shell) → 단계 흐름 5단계 · 경과 · 결과 「격리됨 — 규칙 · 탐지→kill N ms」 · 다시 시작(설치 시트 자동 열림은 없앰)
    ③ 모의 API: GET /api/demo(scenarios · running · last) · POST 400 · 409 · 거부(차단 목록 → refused) · 변경 이력 demo_run
    ④ 타임라인: 설치 시트 결과 칸 · 토폴로지 판정 카드 막대(구간 4 + ms + 「격리까지 N.NN초」) · Verdict.timeline · InstallSession.isolation · Case.isolation
    ⑤ 종합 「격리 지연 중앙값」: 기간 안 격리 없으면 「—」 · 있으면 N ms(p95 · 최대 · 건수)
@@ -35,64 +35,47 @@ const SECTIONS = ['summary', 'timeline', 'violations', 'evidence', 'decision', '
   const confirmOk = async (pg) => { await pg.waitForSelector('dialog[data-part="confirm"] [data-confirm="ok"]', W); await pg.waitForTimeout(150); await pg.click('dialog[data-part="confirm"] [data-confirm="ok"]'); await pg.waitForTimeout(300); };
 
   // ① 카드 조건 · 자리 · 시나리오
-  await T('① 시연 카드: 관리자 + demo 일 때 대시보드 맨 위(판정 대기 위) · 조회자 · ?demo=off 면 없음 · 시나리오 6개(기본 all) 설명 한 줄 · 신호등은 카드 위 한 줄', async () => {
+  // 11/04e B: 시연 카드는 대시보드에서 빠지고 「시연」 페이지(#/demo)로 옮겼다 — ① ② 는 같은 뜻을 페이지에서 본다(자세한 회귀는 demo-page-1104.cjs)
+  await T('① 시연: 관리자 + demo 일 때 사이드바 「시연」 · 대시보드 카드 없음 · 조회자 · ?demo=off 면 메뉴 없음 · 시나리오 8개(기본 shell) 설명 · 신호등은 대시보드 머리 줄', async () => {
     const pg = await newPage();
     await go(pg, '/');
-    ok(await pg.locator(DEMO).count() === 1, '카드 없음');
-    const [d, p, s] = await Promise.all([pg.$eval(DEMO, (e) => e.getBoundingClientRect().top), pg.$eval('[data-section="pending"]', (e) => e.getBoundingClientRect().top), pg.$eval('[data-part="signals"]', (e) => e.getBoundingClientRect().top)]);
-    ok(d < s && s < p, `자리 시연 ${d} < 신호등 ${s} < 판정 대기 ${p}`); // 11/04e 대시보드 재배치: 신호등은 종합 머리 줄(KPI 위), 판정 대기는 아래 3칸 — 시연 카드는 그 위(B 커밋에서 시연 페이지로 옮김)
-    ok((await pg.textContent(`${DEMO} .panel-head h2`)).trim() === '시연', '제목');
-    const opts = await pg.$$eval(`${DEMO} [data-part="demo-scenario"] option`, (els) => els.map((e) => [e.value, e.textContent, e.selected]));
-    ok(JSON.stringify(opts.map((o) => o[0])) === JSON.stringify(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil']), `시나리오 ${JSON.stringify(opts)}`);
-    ok(opts[0][2] === true, '기본 all 아님');
-    const want = { shell: '외부 스크립트 실행 + 비밀 파일 접근', revshell: '리버스 셸 포트 4444', 'direct-ip': 'DNS 없이 공인 IP 접속', domain: '예약 도메인 example.com 접속', 'dns-exfil': 'DNS 질의로 데이터 실어 보내기', all: '전부 순서대로' };
-    for (const [k, t] of opts) ok(t.includes(want[k]), `설명 ${k}: ${t}`);
-    ok(await pg.locator(`${DEMO} [data-action="demo-start"]`).count() === 1 && (await pg.textContent(`${DEMO} [data-action="demo-start"]`)).includes('시연 시작'), '시작 버튼');
-    // 11/02 React 맞춤: 「시나리오」 라벨 · 선택 옆 설명 · 버튼은 줄 오른쪽 끝
-    ok((await pg.textContent(`${DEMO} label[data-part="demo-label"]`)).includes('시나리오') && (await pg.textContent(`${DEMO} [data-part="demo-desc"]`)).trim() === '전부 순서대로', '라벨 · 설명');
-    await pg.selectOption(`${DEMO} [data-part="demo-scenario"]`, 'revshell'); ok((await pg.textContent(`${DEMO} [data-part="demo-desc"]`)).trim() === '리버스 셸 포트 4444', '설명이 선택을 따라가지 않음'); await pg.selectOption(`${DEMO} [data-part="demo-scenario"]`, 'all');
-    { const [btn, head] = await Promise.all([pg.$eval(`${DEMO} [data-action="demo-start"]`, (e) => e.getBoundingClientRect().right), pg.$eval(`${DEMO} .panel-head`, (e) => e.getBoundingClientRect().right)]); ok(head - btn <= 24, `버튼이 오른쪽 끝이 아님 ${btn} / ${head}`); }
-    ok(await pg.$eval(`${DEMO} .demo-body`, (e) => e.hidden), '실행 전인데 본문이 보임');
-    const p2 = await newPage(); await go(p2, '/', '&demo=off'); ok(await p2.locator(DEMO).count() === 0, '?demo=off 인데 카드'); await p2.close();
-    const p3 = await newPage(); await go(p3, '/', '', 'viewer'); ok(await p3.locator(DEMO).count() === 0, '조회자인데 카드'); ok(await p3.locator('[data-part="signals"]').count() === 1, '조회자 신호등 없음'); await p3.close();
+    ok(await pg.locator(DEMO).count() === 0, '대시보드에 시연 카드가 남음'); // 11/04e B
+    ok(await pg.locator('.side-nav .nav-link[data-to="/demo"]').count() === 1, '시연 메뉴 없음');
+    await go(pg, '/demo');
+    const keys = await pg.$$eval('[data-scenario]', (els) => els.map((e) => [e.dataset.scenario, e.getAttribute('aria-pressed'), e.textContent]));
+    ok(JSON.stringify(keys.map((k) => k[0])) === JSON.stringify(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil', 'benign', 'chain']), `시나리오 ${JSON.stringify(keys.map((k) => k[0]))}`); // 11/04e B benign · chain
+    const want = { shell: '외부 스크립트 실행 + 비밀 파일 접근', revshell: '리버스 셸 포트 4444', 'direct-ip': 'DNS 없이 공인 IP 접속', domain: '예약 도메인 example.com 접속', 'dns-exfil': 'DNS 질의로 데이터 실어 보내기', all: '전부 순서대로', benign: '정상 설치 대조군', chain: '연쇄 규칙' };
+    for (const [k, , txt] of keys) ok(txt.includes(want[k]), `설명 ${k}: ${txt}`);
+    ok(keys.find((k) => k[0] === 'shell')[1] === 'true', '기본 shell 아님');
+    ok((await pg.textContent('[data-action="demo-run"]')).includes('시연 시작'), '시작 버튼');
     const o = await pg.evaluate(() => { const p = document.querySelector('#page'); return [p.scrollHeight - p.clientHeight, p.scrollWidth - p.clientWidth]; });
-    ok(o.every((x) => x <= 1), `1440 대시보드 넘침 ${JSON.stringify(o)}`);
+    ok(o.every((x) => x <= 1), `1440 시연 페이지 넘침 ${JSON.stringify(o)}`);
+    const p2 = await newPage(); await go(p2, '/', '&demo=off'); ok(await p2.locator('.side-nav .nav-link[data-to="/demo"]').count() === 0, '?demo=off 인데 메뉴'); await p2.close();
+    const p3 = await newPage(); await go(p3, '/', '', 'viewer'); ok(await p3.locator('.side-nav .nav-link[data-to="/demo"]').count() === 0, '조회자인데 메뉴'); ok(await p3.locator('[data-part="signals"]').count() === 1, '조회자 신호등 없음'); await p3.close();
     await pg.close();
   });
 
-  // ② 시연 실행 흐름
-  await T('② 시연 시작(shell): 레일 6단계 · 경과 · 첫 위반에 설치 시트 자동 열림 · 돌아오면 결과 「격리됨 — 규칙 N개 · 0.xx초」 + 타임라인 + 「다시 실행」 · 설치 세션 라벨 pip ./reqeusts · 컨테이너 sg-install-demo-*', async () => {
+  await T('② 시연 시작(shell): 단계 흐름 5단계 · 경과 · 결과 「격리됨 — 규칙 · 탐지→kill N ms」 · 다시 시작 · 설치 세션 pip ./reqeusts · 컨테이너 sg-install-demo-*', async () => {
     const pg = await newPage();
-    await go(pg, '/');
-    await pg.selectOption(`${DEMO} [data-part="demo-scenario"]`, 'shell');
-    await pg.click(`${DEMO} [data-action="demo-start"]`); await pg.waitForTimeout(300);
-    ok(await pg.$eval(`${DEMO} [data-action="demo-start"]`, (e) => e.disabled), '실행 중인데 시작 버튼 활성');
-    const rail = await pg.$$eval(`${DEMO} [data-part="demo-rail"] li`, (els) => els.map((e) => [e.dataset.step, e.querySelector('.rail-label').textContent, e.dataset.state]));
-    ok(rail.length === 6 && JSON.stringify(rail.map((r) => r[1])) === JSON.stringify(['컨테이너 시작', '설치 진행', '커널 이벤트 수집', '규칙 위반', '격리 · 증거', '판정 대기']), `레일 ${JSON.stringify(rail)}`);
-    ok(rail[0][2] === 'done' && rail.some((r) => r[2] === 'active'), `단계 상태 ${JSON.stringify(rail.map((r) => r[2]))}`);
-    ok(/^실행 중 · \d+초 경과$/.test((await pg.textContent(`${DEMO} [data-part="demo-elapsed"]`)).trim()), '경과'); // 11/02 React 문구
-    ok((await pg.textContent(`${DEMO} [data-action="demo-start"]`)).includes('실행 중…'), '실행 중 버튼 문구');
-    ok((await pg.textContent(`${DEMO} .demo-meta`)).includes('sg-install-demo-'), '컨테이너 이름');
-    // 첫 위반 → 설치 시트 자동 열림
-    await pg.waitForFunction(() => /^#\/installs\?id=ins-/.test(location.hash), null, W);
-    await pg.waitForSelector('.sheet[data-sheet="install"]', W);
-    ok((await pg.textContent('.sheet[data-sheet="install"] .panel-head h2')).trim() === 'pip ./reqeusts', '시트 제목');
-    await pg.waitForTimeout(1500);
-    await pg.waitForSelector('.sheet [data-part="timeline"]', W);
-    ok(await pg.$eval('.sheet [data-part="result"] [data-status]', (e) => e.dataset.status) === 'isolated', '세션 격리 아님');
-    // 대시보드로 돌아오면 결과
-    await pg.evaluate(() => UI.go('#/')); await pg.waitForTimeout(600);
-    await pg.waitForSelector(`${DEMO} [data-part="demo-result"]`, W);
-    const res = await pg.$eval(`${DEMO} [data-part="demo-result"]`, (e) => [e.dataset.outcome, e.textContent.trim()]); // 11/02: React 처럼 결과는 한 줄 문구
-    ok(res[0] === 'isolated' && /^격리됨 — 규칙 \d+개 · \d+\.\d{2}초$/.test(res[1]), `결과 ${JSON.stringify(res)}`);
-    const states = await pg.$$eval(`${DEMO} [data-part="demo-rail"] li`, (els) => els.map((e) => e.dataset.state));
-    ok(states.every((s) => s === 'done'), `끝난 뒤 레일 ${JSON.stringify(states)}`);
-    ok(await pg.locator(`${DEMO} [data-part="timeline"]`).count() === 1, '⑤ 타임라인 막대 없음');
-    ok((await pg.textContent(`${DEMO} [data-action="demo-start"]`)).includes('다시 실행') && !(await pg.$eval(`${DEMO} [data-action="demo-start"]`, (e) => e.disabled)) && await pg.locator(`${DEMO} [data-action="demo-again"]`).count() === 0, '다시 실행은 시작 버튼 자리'); // 11/02 React 맞춤
-    ok(/^\d+초 걸림$/.test((await pg.textContent(`${DEMO} [data-part="demo-elapsed"]`)).trim()), '걸린 시간');
-    ok((await pg.$eval(`${DEMO} [data-action="demo-install"]`, (e) => e.getAttribute('href'))).startsWith('#/installs?id=ins-'), '설치 검사에서 보기 링크');
+    await go(pg, '/demo');
+    await pg.click('[data-scenario="shell"]');
+    await pg.click('[data-action="demo-run"]'); await pg.waitForTimeout(300);
+    ok(await pg.$eval('[data-action="demo-run"]', (e) => e.disabled), '실행 중인데 시작 버튼 활성');
+    ok((await pg.textContent('[data-action="demo-run"]')).includes('실행 중…'), '실행 중 버튼 문구');
+    const steps = await pg.$$eval('[data-part="demo-steps"] > li', (els) => els.map((e) => [e.dataset.step, e.dataset.state]));
+    ok(JSON.stringify(steps.map((s) => s[0])) === JSON.stringify(['start', 'events', 'match', 'evidence', 'outcome']) && steps[0][1] === 'done', `단계 ${JSON.stringify(steps)}`);
+    ok(/^실행 중 · \d+초 경과$/.test((await pg.textContent('[data-part="demo-outcome"]')).trim()), '경과');
+    ok((await pg.textContent('[data-step="start"]')).includes('sg-install-demo-'), '컨테이너 이름');
+    // 11/04e B: 첫 위반에 설치 시트로 자동 이동하던 동작은 없앴다 — 페이지가 「왜」 카드로 같은 내용을 보인다(설치 시트는 보고서 · 설치 검사 링크로)
+    await pg.waitForSelector('[data-part="demo-outcome"][data-outcome="isolated"]', W);
+    const res = (await pg.textContent('[data-part="demo-outcome"]')).trim();
+    ok(/^격리됨 — [\w-]+ · 탐지→kill \d+ ms$/.test(res), `결과 ${res}`);
+    ok((await pg.$$eval('[data-part="demo-steps"] > li', (els) => els.map((e) => e.dataset.state))).every((s) => s === 'done'), '끝난 뒤 단계');
+    ok((await pg.textContent('[data-action="demo-run"]')).includes('시연 시작') && !(await pg.$eval('[data-action="demo-run"]', (e) => e.disabled)), '다시 시작');
     const run = await pg.evaluate(async () => (await UI.api.demo()).last);
     ok(run && run.status === 'finished' && run.exitCode === 137 && run.simulated === true && run.scenario === 'shell' && /^demo-\d+$/.test(run.id) && run.container === `sg-install-${run.id}` && run.installId && run.finishedAt, `Run ${JSON.stringify(run)}`);
+    ok((await pg.textContent('[data-part="why"] [data-why="what"]')).includes('pip ./reqeusts'), '설치 세션 라벨');
+    await go(pg, '/');
     ok(await pg.textContent('[data-pending-count]') === '1', '판정 대기 1 아님');
     await pg.close();
   });
@@ -102,9 +85,9 @@ const SECTIONS = ['summary', 'timeline', 'violations', 'evidence', 'decision', '
     const pg = await newPage();
     await go(pg, '/');
     const d = await pg.evaluate(() => UI.api.demo());
-    ok(d.enabled === true && JSON.stringify(d.scenarios) === JSON.stringify(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil']) && d.running === null && d.last === null, `GET ${JSON.stringify(d)}`);
+    ok(d.enabled === true && JSON.stringify(d.scenarios) === JSON.stringify(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil', 'benign', 'chain']) && d.running === null && d.last === null, `GET ${JSON.stringify(d)}`);
     const e400 = await pg.evaluate(() => UI.api.demoRun({ scenario: 'nope' }).then(() => null, (e) => [e.status, e.message]));
-    ok(e400 && e400[0] === 400 && e400[1].includes('scenario: all | shell | revshell | direct-ip | domain | dns-exfil'), `400 ${JSON.stringify(e400)}`);
+    ok(e400 && e400[0] === 400 && e400[1].includes('scenario: all | shell | revshell | direct-ip | domain | dns-exfil | benign | chain'), `400 ${JSON.stringify(e400)}`);
     const first = await pg.evaluate(() => UI.api.demoRun({ scenario: 'dns-exfil' }));
     ok(first.status === 'running' && first.installId, `202 ${JSON.stringify(first)}`);
     const e409 = await pg.evaluate(() => UI.api.demoRun({ scenario: 'shell' }).then(() => null, (e) => [e.status, e.message, !!e.running]));
@@ -119,8 +102,8 @@ const SECTIONS = ['summary', 'timeline', 'violations', 'evidence', 'decision', '
     await pg.waitForTimeout(300);
     const refused = await pg.evaluate(() => UI.api.demoRun({ scenario: 'all' }));
     ok(refused.status === 'refused' && refused.exitCode === 3 && refused.installId, `refused ${JSON.stringify(refused)}`);
-    await pg.evaluate(() => UI.go('#/')); await pg.waitForTimeout(700);
-    const res = await pg.$eval(`${DEMO} [data-part="demo-result"]`, (e) => [e.dataset.outcome, e.textContent]);
+    await pg.evaluate(() => UI.go('#/demo')); await pg.waitForTimeout(900); // 11/04e B: 결과는 시연 페이지에
+    const res = await pg.$eval('[data-part="demo-outcome"]', (e) => [e.dataset.outcome, e.textContent]);
     ok(res[0] === 'refused' && res[1].includes('거부됨(차단 목록)') && res[1].includes('차단 목록에 있어 설치 전 거부됨, 차단 해제 후 다시'), `거부 안내 ${JSON.stringify(res)}`);
     await pg.close();
   });
@@ -274,7 +257,7 @@ const SECTIONS = ['summary', 'timeline', 'violations', 'evidence', 'decision', '
   });
 
   // ⑧ 넘침 · 1280
-  await T('⑧ 1280 × 800 대시보드(시연 카드 · 신호등 포함) · 보고서 · 시연 끝난 대시보드 넘침 0', async () => {
+  await T('⑧ 1280 × 800 대시보드(신호등 포함 — 시연 카드는 11/04e B 에서 시연 페이지로) · 보고서 · 시연 끝난 대시보드 넘침 0', async () => {
     const pg = await newPage({ width: 1280, height: 800 });
     await go(pg, '/');
     const o = (p) => p.evaluate(() => { const d = document.documentElement, m = document.querySelector('main'), pg = document.querySelector('#page'); return [d.scrollWidth - innerWidth, m.scrollWidth - m.clientWidth, pg.scrollWidth - pg.clientWidth, pg.scrollHeight - pg.clientHeight]; });

@@ -52,7 +52,7 @@ const TITLES = { '/': '대시보드', '/installs': '설치 검사', '/events': '
     const groups = await pg.$$eval('.nav-group-title', (els) => els.map((e) => e.textContent.trim()));
     ok(JSON.stringify(groups) === JSON.stringify(['설치 검사', '런타임 감시', '설정 · 기록']), `묶음 ${JSON.stringify(groups)}`);
     const order = await pg.$$eval('.nav-link', (els) => els.map((e) => e.dataset.to));
-    ok(JSON.stringify(order) === JSON.stringify(['/', '/installs', '/scans', '/evaluation', '/events', '/topology', '/policies', '/audit', '/settings']), `순서 ${JSON.stringify(order)}`); // 10/16: 설치 검사 묶음에 공급망 검사 // 10/20: 「설정 · 기록」 끝에 설정 // 11/04: 설치 검사 묶음 끝에 평가
+    ok(JSON.stringify(order) === JSON.stringify(['/', '/demo', '/installs', '/scans', '/evaluation', '/events', '/topology', '/policies', '/audit', '/settings']), `순서 ${JSON.stringify(order)}`); // 11/04e B: 관리자 · 시연 켜짐이면 대시보드 아래 「시연」 // 10/16: 설치 검사 묶음에 공급망 검사 // 10/20: 「설정 · 기록」 끝에 설정 // 11/04: 설치 검사 묶음 끝에 평가
   });
 
   // ---------------- 2. 단계 칩 없음 · 화면 이름 ----------------

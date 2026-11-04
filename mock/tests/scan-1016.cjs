@@ -50,7 +50,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     const pg = await newPage();
     await go(pg, '/');
     const order = await pg.$$eval('.nav-link', (els) => els.map((e) => e.dataset.to));
-    ok(JSON.stringify(order.slice(0, 3)) === JSON.stringify(['/', '/installs', '/scans']), `순서 ${JSON.stringify(order)}`);
+    ok(JSON.stringify(order.slice(0, 4)) === JSON.stringify(['/', '/demo', '/installs', '/scans']), `순서 ${JSON.stringify(order)}`);
     await go(pg, '/scans');
     ok((await pg.textContent('.page-title')).includes('공급망 검사'), '화면 이름');
     await pg.close();

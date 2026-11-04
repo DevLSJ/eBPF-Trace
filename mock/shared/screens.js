@@ -53,14 +53,13 @@
       const cRes = U.donut({ name: 'results', label: '설치 검사 결과', centerLabel: '설치 검사' });
       const resLegend = h('ul', { class: 'res-legend' }), resRows = h('div', { class: 'res-rows' });
       const topRules = h('div', { class: 'grid-scroll', 'data-fill': '', 'data-top': 'rules' }), topCtrs = h('div', { class: 'grid-scroll', 'data-fill': '', 'data-top': 'containers' });
-      // 상태 신호등(머리 한 줄) [10/30 계약 §5] · 시연 카드(관리자 + /api/info.demo) [10/30 계약 §4] — shared/demo.js
+      // 상태 신호등(머리 한 줄) [10/30 계약 §5] — shared/demo.js. 시연 카드는 11/04e B 에서 「시연」 페이지(#/demo, shared/demo-page.js)로 옮겼다
       const signals = U.signals ? U.signals() : null;
-      const demo = U.demoPanel ? U.demoPanel() : null;
       const pending = h('section', { class: 'panel pending-panel', 'data-section': 'pending' },
         h('header', { class: 'panel-head' }, h('h2', null, '판정 대기 ', count), h('span', { class: 'panel-sub small muted' }, '격리 · 경고된 설치 · 격리된 런타임'),
           h('div', { class: 'panel-actions' }, h('a', { ...U.to({ href: '#/installs' }), class: 'panel-more', 'data-more': '' }, '설치 검사 ›'))),
         h('div', { class: 'panel-body' }, list), drafts);
-      page.append(h('div', { class: 'dash' }, demo,
+      page.append(h('div', { class: 'dash' },
         h('section', { class: 'dash-ov', 'data-section': 'overview' },
           h('div', { class: 'dash-top' }, signals, h('span', { class: 'push-right' }), h('span', { class: 'row-inline small muted dash-live' }, h('i', { class: 'live-dot', 'aria-hidden': true }), 'eBPF 감시 중 ', eps), chips),
           kpis,

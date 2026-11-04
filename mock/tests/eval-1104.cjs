@@ -60,7 +60,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     const pg = await newPage();
     await go(pg, '/');
     const order = await pg.$$eval('.nav-link', (els) => els.map((e) => e.dataset.to));
-    ok(same(order.slice(0, 4), ['/', '/installs', '/scans', '/evaluation']), `순서 ${JSON.stringify(order)}`);
+    ok(same(order.slice(0, 5), ['/', '/demo', '/installs', '/scans', '/evaluation']), `순서 ${JSON.stringify(order)}`);
     const groups = await pg.$$eval('.nav-group-title', (els) => els.map((e) => e.textContent.trim()));
     ok(same(groups, ['설치 검사', '런타임 감시', '설정 · 기록']), `묶음 ${JSON.stringify(groups)}`);
     await pg.click('.nav-link[data-to="/evaluation"]'); await ready(pg);

