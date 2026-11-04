@@ -514,7 +514,69 @@
       },
       "detectedNotKilled": 0,
       "killNotRunning": 0,
-      "dryRun": false
+      "dryRun": false,
+      "samples": [
+        {
+          "latencyMs": 296.9,
+          "matchMs": 0.1,
+          "evidenceMs": 108.7,
+          "killApiMs": 188.2
+        },
+        {
+          "latencyMs": 332.4,
+          "matchMs": 0.0,
+          "evidenceMs": 138.6,
+          "killApiMs": 193.7
+        },
+        {
+          "latencyMs": 318.4,
+          "matchMs": 0.2,
+          "evidenceMs": 132.0,
+          "killApiMs": 186.1
+        },
+        {
+          "latencyMs": 278.0,
+          "matchMs": 0.1,
+          "evidenceMs": 101.8,
+          "killApiMs": 176.0
+        },
+        {
+          "latencyMs": 293.7,
+          "matchMs": 0.0,
+          "evidenceMs": 102.9,
+          "killApiMs": 190.8
+        },
+        {
+          "latencyMs": 295.5,
+          "matchMs": 0.1,
+          "evidenceMs": 143.4,
+          "killApiMs": 151.9
+        },
+        {
+          "latencyMs": 295.0,
+          "matchMs": 0.0,
+          "evidenceMs": 113.2,
+          "killApiMs": 181.8
+        },
+        {
+          "latencyMs": 289.2,
+          "matchMs": 0.0,
+          "evidenceMs": 135.0,
+          "killApiMs": 154.2
+        },
+        {
+          "latencyMs": 289.7,
+          "matchMs": 0.0,
+          "evidenceMs": 119.3,
+          "killApiMs": 170.3
+        },
+        {
+          "latencyMs": 259.9,
+          "matchMs": 0.0,
+          "evidenceMs": 119.0,
+          "killApiMs": 140.8
+        }
+      ]
     },
     {
       "id": "sandbox-dns-exfil",
@@ -556,7 +618,69 @@
       },
       "detectedNotKilled": 0,
       "killNotRunning": 0,
-      "dryRun": false
+      "dryRun": false,
+      "samples": [
+        {
+          "latencyMs": 307.6,
+          "matchMs": 0.1,
+          "evidenceMs": 120.1,
+          "killApiMs": 187.4
+        },
+        {
+          "latencyMs": 315.7,
+          "matchMs": 0.1,
+          "evidenceMs": 138.3,
+          "killApiMs": 177.3
+        },
+        {
+          "latencyMs": 266.9,
+          "matchMs": 0.1,
+          "evidenceMs": 113.7,
+          "killApiMs": 153.1
+        },
+        {
+          "latencyMs": 308.8,
+          "matchMs": 0.0,
+          "evidenceMs": 123.1,
+          "killApiMs": 185.6
+        },
+        {
+          "latencyMs": 326.3,
+          "matchMs": 0.1,
+          "evidenceMs": 137.0,
+          "killApiMs": 189.2
+        },
+        {
+          "latencyMs": 395.3,
+          "matchMs": 0.0,
+          "evidenceMs": 158.2,
+          "killApiMs": 237.0
+        },
+        {
+          "latencyMs": 359.7,
+          "matchMs": 0.1,
+          "evidenceMs": 162.2,
+          "killApiMs": 197.4
+        },
+        {
+          "latencyMs": 484.6,
+          "matchMs": 0.1,
+          "evidenceMs": 250.4,
+          "killApiMs": 234.1
+        },
+        {
+          "latencyMs": 303.6,
+          "matchMs": 0.1,
+          "evidenceMs": 149.9,
+          "killApiMs": 153.5
+        },
+        {
+          "latencyMs": 284.9,
+          "matchMs": 0.1,
+          "evidenceMs": 144.1,
+          "killApiMs": 140.7
+        }
+      ]
     },
     {
       "id": "runtime-chain",
@@ -581,7 +705,8 @@
       "killedByRule": {},
       "detectedNotKilled": 10,
       "killNotRunning": 0,
-      "dryRun": true
+      "dryRun": true,
+      "samples": []
     },
     {
       "id": "chain-gap-control",
@@ -600,7 +725,8 @@
       "detectedNotKilled": 0,
       "killNotRunning": 0,
       "dryRun": false,
-      "lastStepRan": 5
+      "lastStepRan": 5,
+      "samples": []
     }
   ],
   "limits": [
@@ -622,5 +748,39 @@
     "restoreHttp": 200,
     "diffLines": 0,
     "dryRunDuring": "runtime-chain · chain-gap-control"
+  },
+  "killLatencyMs": {
+    "p50": 296.9,
+    "p95": 395.3,
+    "max": 484.6,
+    "n": 20,
+    "scenarios": [
+      "sandbox-dns-exfil",
+      "sandbox-typosquat"
+    ]
+  },
+  "killStagesMs": {
+    "match": {
+      "p50": 0.1,
+      "p95": 0.1,
+      "max": 0.2,
+      "n": 20
+    },
+    "evidence": {
+      "p50": 132.0,
+      "p95": 162.2,
+      "max": 250.4,
+      "n": 20
+    },
+    "killApi": {
+      "p50": 181.8,
+      "p95": 234.1,
+      "max": 237.0,
+      "n": 20
+    }
+  },
+  "rebuild": {
+    "at": "2026-11-04T01:01:00Z",
+    "from": "감사 로그 격리 타임라인(측정 창 안 kill 판정, 설치 세션으로 시나리오 연결) — 다시 재지 않음, 기존 latencyMs · killed 와 일치 확인"
   }
 }

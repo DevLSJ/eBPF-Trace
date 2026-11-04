@@ -18,6 +18,7 @@
     토큰: 환경 변수 ADMIN_TOKEN · SUPPLYGUARD_SANDBOX_TOKEN, 없으면 -t 파일의 ADMIN_TOKEN= · SANDBOX_TOKEN= 줄(값은 출력하지 않는다)
     목록: 한 줄에 「pip 이름[==버전]」 또는 「npm 이름[@버전]」. 빈 줄 · # 주석 무시
     --plan  실행하지 않고 실행 순서만 출력
+    --rebuild 결과.json  다시 재지 않고, 그 측정 창의 감사 로그에서 실행별 원시값(samples)과 합산 키(killLatencyMs · killStagesMs)를 채운다
   종료 코드: 0 측정 완료(정상 설치 위반 0 · 대조군 탐지 0 · 정책 원복 확인) · 1 측정은 끝났지만 위 조건 중 하나 실패 · 2 사용 오류
   출력 JSON 은 수치와 공개 인기 패키지 이름만 담는다(토큰 · 컨테이너 로그 원문 없음).
 """
@@ -257,6 +258,7 @@ class Bench:
             "dryRun": bool(first and (first.get("dryRun") or (first.get("sequence") or {}).get("dryRun"))),
             "matchMs": ms_between(tl.get("detectedAt"), tl.get("matchedAt")),
             "isolationMs": ms_between(ktl.get("detectedAt"), ktl.get("killedAt")),
+            "killMatchMs": ms_between(ktl.get("detectedAt"), ktl.get("matchedAt")),
             "evidenceMs": ms_between(ktl.get("evidenceStartedAt"), ktl.get("evidenceDoneAt")),
             "killApiMs": ms_between(ktl.get("evidenceDoneAt"), ktl.get("killedAt")),
             "notRunning": any("not running" in (r.get("enforceError") or "") for r in rows),
@@ -436,7 +438,71 @@ def scenario_out(sid, runs):
            "dryRun": any(r.get("dryRun") for r in runs if r.get("detected"))}
     if sid.startswith("chain"):
         out["lastStepRan"] = sum(1 for r in runs if r.get("lastStepRan"))
+    out["samples"] = [sample(r["isolationMs"], r.get("killMatchMs"), r.get("evidenceMs"), r.get("killApiMs"))
+                      for r in runs if r.get("isolationMs") is not None]
     return out
+
+
+def sample(latency, match, evidence, kill_api):
+    """격리된 실행 1회의 원시값(ms) — 다시 계산할 수 있게 scenarios[].samples 에 남긴다"""
+    return {"latencyMs": latency, "matchMs": match, "evidenceMs": evidence, "killApiMs": kill_api}
+
+
+def add_kill_totals(report):
+    """최상위 killLatencyMs · killStagesMs — kind=attack 이고 실제로 kill 된 실행 전체(시나리오 합산)의 분포"""
+    picked = [(s["id"], x) for s in report["scenarios"] if s.get("kind") == "attack" for x in s.get("samples") or []]
+    vals = lambda k: [x[k] for _, x in picked if x.get(k) is not None]  # noqa: E731
+    lat = dist(vals("latencyMs"))
+    report["killLatencyMs"] = dict(lat or {"p50": None, "p95": None, "max": None, "n": 0},
+                                   scenarios=sorted({sid for sid, _ in picked}))
+    report["killStagesMs"] = {"match": dist(vals("matchMs")), "evidence": dist(vals("evidenceMs")),
+                              "killApi": dist(vals("killApiMs"))}
+
+
+def ts_plus(iso, seconds):
+    return (parse_ts(iso) + dt.timedelta(seconds=seconds)).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def rebuild(args, api):
+    """다시 재지 않고 samples · 합산 키를 채운다 — 측정 창(startedAt ~ generatedAt) 안 감사 로그의 kill 판정을
+    설치 세션(같은 패키지 경로)으로 시나리오에 붙이고, 기존 latencyMs 분포 · killed 수와 같을 때만 쓴다"""
+    report = json.load(open(args.rebuild))
+    since, until = ts_plus(report["startedAt"], -1), ts_plus(report["generatedAt"], 1)
+    rows = api.get(f"/api/audit?limit=2000&since={since}&until={until}")
+    kills = sorted((r for r in rows if (r.get("timeline") or {}).get("killedAt")), key=lambda r: r["id"])
+    by_sid, sessions = collections.defaultdict(list), {}
+    for r in kills:
+        ref = (r.get("install") or {}).get("id")
+        if not ref:
+            raise SystemExit(f"감사 {r['id']}: 설치 세션이 없는 kill 판정 — 시나리오를 정할 수 없습니다")
+        if ref not in sessions:
+            sessions[ref] = api.get("/api/installs/" + ref).get("packages") or []
+        pk = sessions[ref]
+        sid = "sandbox-dns-exfil" if any("/dns-exfil/" in x for x in pk) else             "sandbox-typosquat" if any(x.rstrip("/").endswith("/reqeusts") for x in pk) else None
+        if sid is None:
+            raise SystemExit(f"감사 {r['id']}: 설치 세션 {ref} 의 kill 판정이 공격 시나리오가 아닙니다(정상 설치 격리?) — 멈춥니다")
+        t = r["timeline"]
+        by_sid[sid].append(sample(ms_between(t["detectedAt"], t["killedAt"]), ms_between(t["detectedAt"], t.get("matchedAt")),
+                                  ms_between(t.get("evidenceStartedAt"), t.get("evidenceDoneAt")),
+                                  ms_between(t.get("evidenceDoneAt"), t["killedAt"])))
+    for s in report["scenarios"]:
+        got = by_sid.pop(s["id"], [])
+        want = s.get("latencyMs")
+        have = dist([x["latencyMs"] for x in got])
+        if len(got) != s.get("killed", 0) or (want or have) and {k: (want or {}).get(k) for k in ("p50", "p95", "max", "n")} !=                 {k: (have or {}).get(k) for k in ("p50", "p95", "max", "n")}:
+            raise SystemExit(f"{s['id']}: 감사 로그에서 되살린 값이 보고서와 다릅니다(격리 {s.get('killed')} · 되살림 {len(got)} · "
+                             f"보고서 {want} · 되살림 {have}) — 쓰지 않고 멈춥니다")
+        s["samples"] = got
+    if by_sid:
+        raise SystemExit(f"보고서에 없는 시나리오의 kill 판정: {dict((k, len(v)) for k, v in by_sid.items())}")
+    add_kill_totals(report)
+    report["rebuild"] = {"at": now_iso(), "from": "감사 로그 격리 타임라인(측정 창 안 kill 판정, 설치 세션으로 시나리오 연결) — "
+                                                  "다시 재지 않음, 기존 latencyMs · killed 와 일치 확인"}
+    with open(os.path.abspath(args.out), "w") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    log(f"되살림 {sum(len(s['samples']) for s in report['scenarios'])}건 → {os.path.abspath(args.out)}")
+    return 0
 
 
 def main():
@@ -454,6 +520,7 @@ def main():
     ap.add_argument("--scan-wait", type=int, default=240)
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--plan", action="store_true")
+    ap.add_argument("--rebuild", default="", help="기존 결과 JSON — 다시 재지 않고 감사 로그에서 samples · 합산 키만 채워 -o 에 쓴다")
     args = ap.parse_args()
     if args.seed is None:
         args.seed = random.randrange(1 << 30)
@@ -474,6 +541,8 @@ def main():
             print(f"없음: {p}", file=sys.stderr)
             return 2
     api = API(args.api, admin)
+    if args.rebuild:
+        return rebuild(args, api)
     info = api.get("/api/info")
     if info.get("source") != "gadget":
         print(f"백엔드가 가젯 소스가 아닙니다(source={info.get('source')}) — 커널 측정이 아닙니다", file=sys.stderr)
@@ -551,6 +620,7 @@ def main():
         "scenarios": scen,
         "limits": limits,
     }
+    add_kill_totals(report)
     if b.policy:
         report["policyChange"] = {k: b.policy.get(k) for k in ("rule", "changedAt", "restoredAt", "restoreHttp", "diffLines")}
         report["policyChange"]["dryRunDuring"] = "runtime-chain · chain-gap-control"
