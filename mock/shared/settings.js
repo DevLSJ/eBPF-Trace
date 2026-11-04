@@ -99,6 +99,9 @@
       const bar = h('div', { class: 'pol-tabs seg settings-tabs', role: 'tablist', 'aria-label': '설정' });
       const body = h('div', { class: 'settings-body', 'data-settings-view': '' });
       page.append(bar, body);
+      // 「화면 배치 기본 순서로」 [11/04d] — 이 브라우저에 저장한 순서(사이드바 · 대시보드 숫자 칸 · 평가 지표)를 지운다. 확인 없이 즉시 + 토스트, 조회자도(개인 설정)
+      if (U.sortable) U.headerActions(h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'data-action': 'layout-reset', title: '길게 눌러 바꾼 순서(사이드바 · 대시보드 숫자 칸 · 평가 지표)를 처음대로 — 이 브라우저에만 저장된 값',
+        onclick: () => { U.sortable.reset(); U.toast('화면 배치를 기본 순서로 되돌렸습니다 — 사이드바 · 대시보드 숫자 칸 · 평가 지표', { tone: 'ok', key: 'layout-reset', replace: true }); } }, '화면 배치 기본 순서로'));
       const VIEWS = {
         server: () => h('div', { class: 'settings-scroll' }, U.policyEasy.serverSettings()),
         accounts: () => h('section', { class: 'panel grow acct-panel' }, U.auth.accountsView()),

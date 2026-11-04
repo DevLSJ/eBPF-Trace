@@ -75,6 +75,10 @@
       const chips = h('div', { class: 'chips', role: 'group', 'aria-label': '기간' });
       const eps = h('span', { class: 'small muted num' });
       const kpis = h('div', { class: 'ov-kpis' });
+      // 길게 눌러 순서 바꾸기 [11/04d] — 끄는 동안(누르기 포함) 숫자 칸을 다시 그리지 않고, 끝나면 미뤄 둔 값으로 그린다. 다시 그린 뒤 저장된 순서를 입힌다
+      let kpiLater = null;
+      const kpiSort = U.sortable ? U.sortable.attach(kpis, { scope: 'dashboardKpi', selector: '.ov-kpi[data-kpi]', layout: 'grid', labelOf: (el) => el.firstElementChild.textContent,
+        onEnd: () => { if (kpiLater) { const x = kpiLater; kpiLater = null; drawKpis(x); } } }) : null;
       const cCollected = stackedBars({ name: 'collected', label: '수집량 추이', keys: [['exec', '실행', 'k-exec'], ['open', '파일', 'k-open'], ['connect', '통신', 'k-connect'], ['dns', '조회', 'k-dns']] }); // 조회(dns) #fb923c [10/30]
       const cViol = stackedBars({ name: 'violations', label: '위반 추이', keys: [['killed', '격리', 'k-killed'], ['alert', '경고', 'k-alert']] });
       const topRules = h('div', { 'data-top': 'rules' }), topCtrs = h('div', { 'data-top': 'containers' }), results = h('div', { 'data-results': '' });
@@ -128,8 +132,16 @@
         return h('span', { class: 'menu-anchor' }, btn, menu);
       }
       function drawOverview(s) {
+        if (kpiSort && kpiSort.busy()) kpiLater = s; else drawKpis(s);
+        if (s instanceof Error) return;
+        cCollected.set(s.series, s.bucketSec);
+        cViol.set(s.series, s.bucketSec);
+        drawRest(s);
+      }
+      function drawKpis(s) {
         if (s instanceof Error) { replace(kpis, empty(s.unsupported ? '백엔드 미지원 — 종합 API(GET /api/summary)가 아직 백엔드에 없습니다' : `불러오기 실패: ${s.message}`)); return; }
         const k = s.collected.byKind;
+        const focused = document.activeElement && document.activeElement.parentElement === kpis ? document.activeElement.dataset.kpi : null; // 다시 그려도 키보드 포커스 유지 [11/04d]
         const iso = s.isolation || { count: 0 }; // 격리 지연 [10/30 계약 §3] — count 0 이면 「—」
         const prev = Object.fromEntries([...kpis.querySelectorAll('[data-kpi] [data-value][data-countup]')].map((e) => [e.closest('[data-kpi]').dataset.kpi, Number(e.dataset.countup)]));
         const tile = (key, label, value, sub, link, tone) => { const b = h('b', { class: `num tone-${tone || 'default'}`, 'data-value': '' }, fmt.num(value)); if (key in prev) { b.dataset.countup = String(prev[key]); U.countUp(b, value); } else b.dataset.countup = String(value); // 숫자 변화 카운트업 600ms [10/30 모션]
@@ -143,8 +155,10 @@
           h('a', { ...U.to({ href: '#/audit', state: { action: 'kill' } }), class: 'ov-kpi', 'data-kpi': 'isolation', 'data-count': iso.count }, h('span', { class: 'small muted' }, '격리 지연 중앙값'),
             h('b', { class: `num tone-${iso.count ? 'danger' : 'default'}`, 'data-value': '' }, iso.count ? `${fmt.num(iso.medianMs)} ms` : '—'),
             h('span', { class: 'small muted' }, iso.count ? `p95 ${fmt.num(iso.p95Ms)} ms · 최대 ${fmt.num(iso.maxMs)} ms · 격리 ${fmt.num(iso.count)}건` : '이 기간에 격리 없음 (탐지→kill)')));
-        cCollected.set(s.series, s.bucketSec);
-        cViol.set(s.series, s.bucketSec);
+        if (kpiSort) kpiSort.apply(true);
+        if (focused) { const el = kpis.querySelector(`[data-kpi="${focused}"]`); if (el) el.focus({ preventScroll: true }); }
+      }
+      function drawRest(s) {
         const topList = (rows, key, href) => (rows.length ? h('ol', { class: 'top-list' }, rows.slice(0, 5).map((r) => { const max = rows[0].count;
           return h('li', { 'data-row': r[key], 'data-count': r.count }, h('a', { ...U.to(href(r[key])), class: 'trunc-cell mono', title: r[key] }, r[key]),
             h('span', { class: 'top-bar' }, h('i', { class: `lv-${r.level}`, style: `width:${Math.max(4, (r.count / max) * 100)}%` })), h('b', { class: 'num' }, fmt.num(r.count))); }))

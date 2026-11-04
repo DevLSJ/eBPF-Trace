@@ -1431,19 +1431,22 @@
   }
 
   // 사이드바 = 시나리오별 묶음 [10/15 확정]. 묶음 제목이 없는 첫 줄은 두 시나리오 공통
+  //   [묶음 id, 제목, 항목] — 묶음 id 는 순서 저장(localStorage supplyguard.layout sidebar.<id>)의 키 [11/04d]. 항목 순서만 묶음 안에서 바꿀 수 있고, 대시보드 · 묶음 순서는 고정
   const NAV = [
-    [null, [['/', '대시보드', '▦']]],
-    ['설치 검사', [['/installs', '설치 검사', '▣'], ['/scans', '공급망 검사', '⌕'], ['/evaluation', '평가', '◔']]], // 평가 [11/04 U1] — 공급망 검사 · 설치 검사를 재는 화면이라 같은 묶음 끝
-    ['런타임 감시', [['/events', '이벤트', '≣'], ['/topology', '토폴로지', '⌘']]],
-    ['설정 · 기록', [['/policies', '정책', '§'], ['/audit', '감사 로그', '◷'], ['/settings', '설정', '⚙']]], // 설정 화면 [10/20 결정 2]
+    [null, null, [['/', '대시보드', '▦']]],
+    ['install', '설치 검사', [['/installs', '설치 검사', '▣'], ['/scans', '공급망 검사', '⌕'], ['/evaluation', '평가', '◔']]], // 평가 [11/04 U1] — 공급망 검사 · 설치 검사를 재는 화면이라 같은 묶음 끝
+    ['runtime', '런타임 감시', [['/events', '이벤트', '≣'], ['/topology', '토폴로지', '⌘']]],
+    ['records', '설정 · 기록', [['/policies', '정책', '§'], ['/audit', '감사 로그', '◷'], ['/settings', '설정', '⚙']]], // 설정 화면 [10/20 결정 2]
   ];
   let current = null; // { unmount, update }
 
   function shell() {
-    const nav = h('nav', { class: 'side-nav', 'aria-label': '메뉴' }, NAV.map(([group, links]) => [
+    const nav = h('nav', { class: 'side-nav', 'aria-label': '메뉴' }, NAV.map(([gid, group, links]) => [
       group ? h('div', { class: 'nav-group-title' }, group) : null,
-      links.map(([to, label, icon]) => h('a', { href: '#' + to, class: 'nav-link', 'data-to': to, title: label }, h('span', { class: 'nav-icon', 'aria-hidden': true }, icon), h('span', { class: 'nav-label' }, label),
+      links.map(([to, label, icon]) => h('a', { href: '#' + to, class: 'nav-link', 'data-to': to, 'data-nav-group': gid, title: label }, h('span', { class: 'nav-icon', 'aria-hidden': true }, icon), h('span', { class: 'nav-label' }, label),
         to === '/' ? h('span', { class: 'nav-badge num', 'data-nav-badge': '', hidden: true }) : null))]));
+    // 길게 눌러 순서 바꾸기 [11/04d] — 묶음마다 따로(묶음 밖으로는 못 옮긴다). 항목 id = 경로에서 / 를 뗀 것(installs …)
+    if (window.SG_SORT) for (const [gid, , links] of NAV) if (gid) SG_SORT.attach(nav, { scope: `sidebar.${gid}`, selector: `.nav-link[data-nav-group="${gid}"]`, defaults: links.map(([to]) => to.slice(1)), idOf: (el) => el.dataset.to.slice(1), labelOf: (el) => el.querySelector('.nav-label').textContent });
     const foot = h('div', { class: 'side-foot' });
     // 10/20 E: 통합 검색(shell-plus.js 가 채움) · 접기 버튼. 10/20 C: 종 = 알림 센터(shell-plus.js) · 10/20 A: 라이선스 칩 · 계정 메뉴(auth.js)
     const search = h('div', { class: 'side-search', 'data-part': 'search' });
@@ -1598,6 +1601,7 @@
     // 10/20 2차 시안
     disconnect, whenReady, remount: () => mount(), loadEvents, actor, serverFromInfo, CASE_SOURCE, caseLink, topoLink,
     // 10/20 결정 반영
+    sortable: window.SG_SORT || null, // 11/04d 길게 눌러 순서 바꾸기(shared/sortable.js)
     RETRY_MS, simFail: failHit, simFailNext: (name, n) => failLeft.set(name, Math.max(1, Number(n) || 1)) }; // simFailNext: 회귀용 — 데이터를 받은 뒤 다음 n 번 실패 [10/21]
   document.addEventListener('DOMContentLoaded', boot);
 })();
