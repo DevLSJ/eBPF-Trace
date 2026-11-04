@@ -7,7 +7,7 @@ sg-bench 는 레지스트리 이름 목록으로 「인기 패키지가 악성�
 
 안전:
   - 악성 zip 은 디스크에 풀지 않는다 — 메모리에서 읽어 tar.gz 로 다시 묶어 올린다. 어떤 파일도 실행하지 않는다.
-  - 올리는 파일 이름 · 결과 기록에는 패키지 이름을 넣지 않는다(sgb-<해시 접두 8자>). 경로 ↔ id 표는 VM 에만(<out>.paths.tsv).
+  - 올리는 파일 이름 · 결과 기록에는 패키지 이름을 넣지 않는다(sgb-<해시 접두 8자>). 경로 ↔ id 표(<out>.paths.tsv)는 정상 세트만 VM 에 남기고, 악성 세트는 쓰지 않는다.
   - 토큰은 환경 변수 ADMIN_TOKEN 또는 -t 파일의 ADMIN_TOKEN= 줄 — 출력하지 않는다.
 
   scan:   sg-bench-dataset scan -s datadog-pypi -r <dir> -o raw.jsonl [-a http://127.0.0.1/api] [-t ~/sg/.tokens] [-n 개수] [--ids 파일]
@@ -307,9 +307,10 @@ def cmd_scan(args):
     manifest = dict(set=args.set, files=len(inputs), listSha256=sha256("\n".join(sorted(hashes)).encode()))
     with open(out + "." + args.set + ".manifest.json", "w") as f:
         json.dump(manifest, f)
-    with open(out + ".paths.tsv", "a") as f:  # VM 전용 — 패키지 이름이 든 경로, 복사 · 커밋하지 않는다
-        for rel, _, h in rows:
-            f.write(f"{args.set}\t{h[:8]}\t{rel}\n")
+    if ds["kind"] == "benign":  # 이름 대응표는 정상 세트만(VM 전용, 복사 · 커밋하지 않는다). 악성 세트는 이름을 되살릴 수 없게 쓰지 않는다(11/04)
+        with open(out + ".paths.tsv", "a") as f:
+            for rel, _, h in rows:
+                f.write(f"{args.set}\t{h[:8]}\t{rel}\n")
     print(f"{args.set}: 입력 {len(inputs)}개 · 목록 해시 {manifest['listSha256'][:12]} · 이미 끝남 {len(done)}개", flush=True)
     n = 0
     with open(out, "a") as fo:
