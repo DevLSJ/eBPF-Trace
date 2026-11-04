@@ -368,6 +368,7 @@
     title: '공급망 검사',
     mount(page, query) {
       let selId = query.get('id') || '', rows = null, error = null, input = 'package', file = null, detail = null, focusLoc = '';
+      const treeOpen = new Map(); let refocusTree = false; // 11/04f 파일 트리 — 검사별 펼침 상태(다시 그려도 유지) · 트리에서 고른 뒤 포커스 되돌리기
       let vf = SCAN_VERDICT[query.get('verdict')] ? query.get('verdict') : ''; // 결과 필터 [10/20 D]
       let picked = new Set(); // 패키지 골라 차단 [10/20 G] — 고른 행 키(매니저:이름@버전) [10/21 React 맞춤]
       let blk = null; // 차단 목록(GET /api/blocklist) — 「차단됨」 판단. live 도 같은 경로로
@@ -469,7 +470,15 @@
             h('span', { class: 'ln' }, n), h('code', null, mark(ln || ' ', t || c))); })));
         if (focusLine) setTimeout(() => { const el = box.querySelector(`[data-line="${focusLine}"]`); if (el) el.scrollIntoView({ block: 'center' }); }, 0);
         // 11/04f 코드 창 — 파일 이름은 창 머리줄에(아래 옛 「파일 이름 한 줄」은 머리줄과 겹쳐 뺐다)
-        return [paths.length > 1 ? h('div', { class: 'chips' }, paths.map((p) => h('button', { type: 'button', class: `chip-btn ${p === cur ? 'on' : ''}`, onclick: () => { focusLoc = `${p}:0`; draw(); } }, p))) : null, U.codeWin({ name: cur, body: box })];
+        // 11/04f 파일 트리 — 위협 파일 경로를 폴더 트리로(옛 파일 칩 대신). 왼쪽 트리 · 오른쪽 코드 창, 768 미만은 트리가 위. 위협 파일이 든 폴더는 처음부터 펼침
+        const threatsIn = (p) => d.findings.filter((f) => f.file === p && f.category === 'threat').length;
+        if (!treeOpen.has(d.id)) treeOpen.set(d.id, new Map());
+        const tree = U.fileTree({ label: '위협 파일', selected: cur, open: treeOpen.get(d.id),
+          items: paths.map((p) => { const n = threatsIn(p); return { path: p, badge: n ? { text: String(n), cls: 'ft-threat', title: `위협 ${n}곳` } : null }; }),
+          defaultOpen: (dir) => paths.some((p) => p.startsWith(`${dir}/`) && threatsIn(p) > 0),
+          onSelect: (p) => { if (p === cur) return; focusLoc = `${p}:0`; refocusTree = true; draw(); } });
+        if (refocusTree) { refocusTree = false; setTimeout(() => { const el = tree.querySelector('[aria-selected="true"]'); if (el && el.isConnected) el.focus(); }, 0); }
+        return h('div', { class: 'code-split' }, tree, U.codeWin({ name: cur, body: box }));
       }
       // 패키지 골라 차단 [10/20 G · 10/21 React 맞춤 — features/scans/ScanPackages.tsx] — 잠금 파일마다 한 행인 패키지를 (매니저, 이름, 버전)으로 묶어 한 줄, 출처 파일을 나열.
       //   키 = 매니저:이름@버전(생태계 미지원은 생태계:이름@버전). 정렬 취약 수 → 이름 → 버전. 「차단됨」은 매니저:이름 소문자(blockKey — 차단은 버전과 무관)
@@ -536,7 +545,7 @@
         const vulnN = d.vulns.reduce((n, v) => n + v.count, 0);
         const cmd = t.kind === 'package' ? `sg-install ${t.manager} ${t.name}${t.version ? (t.manager === 'pip' ? '==' : '@') + t.version : ''}` : null;
         const finding = (f) => h('li', null, h('button', { type: 'button', class: `finding f-${f.test ? 'test' : f.category} ${focusLoc === `${f.file}:${f.line}` ? 'on' : ''}`, 'data-finding': '', 'data-category': f.category, 'data-test': f.test ? 'true' : null, 'data-loc': `${f.file}:${f.line}`, onclick: () => { focusLoc = `${f.file}:${f.line}`; draw(); } },
-          h('span', { class: 'mono small' }, `${f.file}:${f.line}`), h('b', null, f.message), h('span', { class: 'mono small muted' }, f.rule, f.test ? h('span', { class: 'badge badge-test' }, '테스트 코드') : null)));
+          h('span', { class: 'mono small', title: `${f.file}:${f.line}` }, `${f.file}:${f.line}`), h('b', null, f.message), h('span', { class: 'mono small muted' }, f.rule, f.test ? h('span', { class: 'badge badge-test' }, '테스트 코드') : null)));
         return U.sheet({ kind: 'scan', title: t.label, onClose: () => select(''), body: [
           h('section', { class: `sheet-section scan-verdict sv-box-${tone}`, 'data-part': 'verdict' },
             h('div', { class: 'row-inline' }, h('span', { class: `badge sv-${tone}` }, vk), d.risk ? h('span', { class: 'small' }, '위험 점수 ', h('b', { class: 'num' }, d.risk.score.toFixed(1)), ` / 10 · ${RISK_LABEL[d.risk.label] || d.risk.label}`) : null),
@@ -1379,7 +1388,11 @@
             ev.partial && ev.error ? h('p', { class: 'small tone-warn' }, ev.error) : null,
             h('section', { class: 'sheet-section' }, h('h3', null, '로그 ', h('span', { class: 'small muted' }, '— 마지막 200줄')), U.codeWin({ lang: 'log', wrap: true, body: h('pre', { class: 'json ev-logs', 'data-part': 'evidence-logs' }, ev.logs || '(비어 있음)') })), // 11/04f 코드 창 — 파일명 없음(종류만)
             h('section', { class: 'sheet-section' }, h('h3', null, `파일 변경 ${ev.changes.length}`, h('span', { class: 'small muted' }, ' — docker diff (A 추가 · C 변경 · D 삭제)')),
-              ev.changes.length ? h('table', { class: 'table compact', 'data-part': 'evidence-changes' }, h('thead', null, h('tr', null, h('th', null, '종류'), h('th', null, '경로'))), h('tbody', null, ev.changes.map((x) => h('tr', null, h('td', { class: `mono ev-${x.kind}` }, x.kind), h('td', { class: 'mono small' }, x.path)))))
+              // 11/04f 파일 트리 — 여러 폴더에 걸치면 폴더 트리 + A · C · D 배지(기존 색 .ev-A/C/D), 1개이거나 모두 같은 폴더면 예전 표 그대로(폴더 한 겹은 정보가 없다)
+              ev.changes.length > 1 && new Set(ev.changes.map((x) => x.path.slice(0, x.path.lastIndexOf('/')))).size > 1
+                ? U.fileTree({ label: '파일 변경', selectable: false, attrs: { 'data-part': 'evidence-changes' },
+                  items: ev.changes.map((x) => ({ path: x.path, diff: x.kind, badge: { text: x.kind, cls: `ev-${x.kind}`, title: { A: '추가', C: '변경', D: '삭제' }[x.kind] || x.kind } })) })
+              : ev.changes.length ? h('table', { class: 'table compact', 'data-part': 'evidence-changes' }, h('thead', null, h('tr', null, h('th', null, '종류'), h('th', null, '경로'))), h('tbody', null, ev.changes.map((x) => h('tr', null, h('td', { class: `mono ev-${x.kind}` }, x.kind), h('td', { class: 'mono small' }, x.path)))))
                 : h('p', { class: 'small muted', 'data-part': 'evidence-changes' }, '없음')),
             h('section', { class: 'sheet-section' }, h('h3', null, `프로세스 ${ev.processes.length}`, h('span', { class: 'small muted' }, ' — docker top')),
               ev.processes.length ? h('table', { class: 'table compact', 'data-part': 'evidence-procs' }, h('thead', null, h('tr', null, ['PID', '사용자', '명령'].map((t) => h('th', null, t)))), h('tbody', null, ev.processes.map((p) => h('tr', null, h('td', { class: 'num' }, p.pid), h('td', null, p.user), h('td', { class: 'mono small' }, p.cmd)))))

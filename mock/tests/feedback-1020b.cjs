@@ -541,7 +541,7 @@ const W = { timeout: 3000 };
     await pg.click('.sheet [data-tab="evidence"]'); await pg.waitForTimeout(300);
     await pg.waitForSelector('[data-part="evidence"]', W);
     ok((await pg.textContent('[data-part="evidence-logs"]')).length > 10, '로그 없음');
-    ok(await pg.locator('[data-part="evidence-changes"] tbody tr').count() >= 1, '파일 변경 없음');
+    ok(await pg.locator('[data-part="evidence-changes"] tbody tr, [data-part="evidence-changes"] [role="treeitem"][data-diff]').count() >= 1, '파일 변경 없음'); // 11/04f 여러 폴더면 파일 트리(A · C · D 배지)
     ok(await pg.locator('[data-part="evidence-partial"]').count() === 1, '「일부만 모음」 없음(설치 컨테이너는 일부만)');
     await shot(pg, 'evidence');
     const normalId = await pg.evaluate(() => UI.state.audit.find((a) => UI.levelOf(a) === 'alert').id);

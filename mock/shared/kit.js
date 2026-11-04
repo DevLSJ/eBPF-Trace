@@ -307,5 +307,75 @@
     return h('figure', Object.assign(attrs, { role: 'group' }), head, body);
   }
 
-  Object.assign(U, { kpiCard, kpiDelta: delta, tableKit, lineChart, stackBars, donut, tipLayer, codeWin, codeLang });
+  // ── 파일 트리(11/04f) — 경로 목록을 폴더 트리로. 카드 안 role=tree, 하위는 들여쓰기 11 + 세로 연결선 · 항목 앞 가로 연결선 ──
+  // o = { label(aria-label), items: [{ path, badge?: {text, cls, title}, diff? }], selected?(경로), selectable?(기본 true — false 면 aria-selected 없음),
+  //       open?(Map 폴더 경로 → 펼침, 다시 그려도 유지되게 화면이 들고 있는다), defaultOpen?(폴더 경로) => bool(기본 펼침), onSelect?(경로), attrs? }
+  // 펼침/접힘은 자리에서 aria-expanded 만 바꾸고 CSS(grid-template-rows 0fr ↔ 1fr, --t-slow)가 움직인다. 선택 파일의 부모는 늘 펼친다
+  // 키보드(roving tabindex): ↑↓ 보이는 항목 이동 · → 펼침/첫 자식 · ← 접힘/부모 · Home/End · Enter/Space 폴더 토글 · 파일 선택
+  function fileTree(o) {
+    const open = o.open || new Map(), selectable = o.selectable !== false;
+    const root = { kids: new Map() };
+    for (const it of o.items || []) {
+      const abs = it.path.startsWith('/'), segs = it.path.replace(/^\/+/, '').split('/').filter(Boolean);
+      let node = root, acc = '';
+      segs.forEach((seg, i) => {
+        acc = abs ? `${acc}/${seg}` : acc ? `${acc}/${seg}` : seg;
+        if (!node.kids.has(seg)) node.kids.set(seg, { name: i === 0 && abs ? `/${seg}` : seg, path: acc, kids: new Map(), item: null });
+        node = node.kids.get(seg);
+      });
+      node.item = it;
+    }
+    const sel = selectable ? o.selected || null : null;
+    // 선택이 바뀌면(딥링크 포함) 그 파일의 부모를 펼친다 — 같은 선택으로 다시 그릴 때는 사용자가 접은 그대로
+    if (sel && open.get('\u0000sel') !== sel) { open.set('\u0000sel', sel); let p = sel; while (p.includes('/')) { p = p.slice(0, p.lastIndexOf('/')); if (p) open.set(p, true); } }
+    const isOpen = (p) => (open.has(p) ? open.get(p) : o.defaultOpen ? !!o.defaultOpen(p) : true);
+    const sorted = (m) => [...m.values()].sort((a, b) => (b.kids.size > 0) - (a.kids.size > 0) || a.name.localeCompare(b.name, 'en'));
+    let first = null;
+    const itemEl = (n, lvl) => {
+      const dir = n.kids.size > 0, on = dir && isOpen(n.path), b = n.item && n.item.badge;
+      const li = h('li', { role: 'treeitem', class: `ft-item ${dir ? 'ft-dir' : 'ft-file'}`, 'data-path': n.path, 'data-kind': dir ? 'dir' : 'file', 'data-diff': (n.item && n.item.diff) || null,
+        'aria-level': String(lvl), 'aria-expanded': dir ? String(on) : null, 'aria-selected': !dir && selectable ? String(n.path === sel) : null, tabindex: '-1', title: n.path },
+        h('div', { class: 'ft-row' }, h('i', { class: 'ft-ico', 'aria-hidden': 'true', 'data-icon': dir ? (on ? '▾' : '▸') : '▤' }), h('span', { class: 'ft-name' }, n.name),
+          b ? h('span', { class: `ft-badge ${b.cls || ''}`, title: b.title || null }, b.text) : null),
+        dir ? h('div', { class: 'ft-kids' }, h('ul', { role: 'group' }, sorted(n.kids).map((k) => itemEl(k, lvl + 1)))) : null);
+      if (!first) first = li;
+      return li;
+    };
+    const tree = h('ul', { role: 'tree', class: 'ft-tree', 'aria-label': o.label || '파일' }, sorted(root.kids).map((n) => itemEl(n, 1)));
+    const items = () => [...tree.querySelectorAll('[role="treeitem"]')];
+    const shown = () => items().filter((li) => !li.parentElement.closest('[aria-expanded="false"]'));
+    const rove = (li) => { for (const x of items()) x.tabIndex = -1; li.tabIndex = 0; li.focus(); };
+    (tree.querySelector('[aria-selected="true"]') || first || { tabIndex: 0 }).tabIndex = 0;
+    function toggle(li, to) {
+      const on = to == null ? li.getAttribute('aria-expanded') !== 'true' : to;
+      li.setAttribute('aria-expanded', String(on)); li.querySelector(':scope > .ft-row .ft-ico').dataset.icon = on ? '▾' : '▸';
+      open.set(li.dataset.path, on);
+    }
+    function activate(li) {
+      if (li.dataset.kind === 'dir') return toggle(li);
+      if (!selectable) return;
+      for (const x of items()) if (x.hasAttribute('aria-selected')) x.setAttribute('aria-selected', String(x === li));
+      if (o.onSelect) o.onSelect(li.dataset.path);
+    }
+    tree.addEventListener('click', (e) => { const row = e.target.closest('.ft-row'); if (!row) return; const li = row.parentElement; rove(li); activate(li); });
+    tree.addEventListener('keydown', (e) => {
+      const li = e.target.closest('[role="treeitem"]'); if (!li) return;
+      const vis = shown(), i = vis.indexOf(li), dir = li.dataset.kind === 'dir', on = li.getAttribute('aria-expanded') === 'true';
+      const go = (x) => { if (x) rove(x); };
+      switch (e.key) {
+        case 'ArrowDown': go(vis[i + 1]); break;
+        case 'ArrowUp': go(vis[i - 1]); break;
+        case 'Home': go(vis[0]); break;
+        case 'End': go(vis[vis.length - 1]); break;
+        case 'ArrowRight': if (dir && !on) toggle(li, true); else if (dir) go(li.querySelector(':scope > .ft-kids [role="treeitem"]')); break;
+        case 'ArrowLeft': if (dir && on) toggle(li, false); else go(li.parentElement.closest('[role="treeitem"]')); break;
+        case 'Enter': case ' ': activate(li); break;
+        default: return;
+      }
+      e.preventDefault();
+    });
+    return h('div', Object.assign({ class: 'ftree', 'data-part': 'file-tree' }, o.attrs || {}), tree);
+  }
+
+  Object.assign(U, { kpiCard, kpiDelta: delta, tableKit, lineChart, stackBars, donut, tipLayer, codeWin, codeLang, fileTree });
 })();

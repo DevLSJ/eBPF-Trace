@@ -1374,3 +1374,34 @@ small { font-size: 12px; } /* 11/04e: 브라우저 기본 smaller(11.7px) 대신
 /* AI 도우미 답변 속 코드 블록 */
 .bubble .code-win { margin: 6px 0; white-space: normal; }
 .bubble .code-win .cw-body { max-height: 260px; }
+
+/* ── 11/04f 파일 트리(U.fileTree) — 공급망 검사 코드 보기 · 증거 「파일 변경」. 사용자가 준 Uiverse.io 트리 CSS 는 원리만(토큰으로 다시 구현)
+   카드 = 1px · 반경 8 · 패딩 · 옅은 그림자. 하위 그룹 = 들여쓰기 11 + 세로 연결선 1px, 항목 앞 가로 연결선 11px. 행 28 · 패딩 4/8 · 반경 4 · 14px
+   hover 옅은 배경 · 선택 옅은 배경 + 500 · 아이콘 16px 보조색(▸ 닫힌 폴더 · ▾ 열린 폴더 · ▤ 파일 — 목업 글리프 아이콘 체계)
+   펼침/접힘 = grid-template-rows 0fr ↔ 1fr(--t-slow), 접힌 그룹은 전환이 끝난 뒤 visibility hidden. reduced-motion 이면 전역 규칙으로 즉시 */
+.ftree { min-width: 0; padding: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: var(--sh-1); overflow: auto; }
+.ft-tree, .ft-tree [role="group"] { margin: 0; padding: 0; list-style: none; }
+.ft-item { position: relative; outline: none; }
+.ft-row { display: flex; align-items: center; gap: 6px; height: 28px; min-width: 0; padding: 4px 8px; border-radius: 4px; font-size: 14px; line-height: 20px; color: var(--text); cursor: pointer; user-select: none;
+  transition: background var(--t-fast) var(--ease); }
+.ft-row:hover { background: var(--surface-2); }
+.ft-item[aria-selected="true"] > .ft-row { background: var(--accent-soft); color: var(--accent-text); font-weight: 500; }
+.ft-item:focus-visible > .ft-row { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ft-ico { flex: 0 0 16px; width: 16px; height: 16px; font-size: 16px; line-height: 16px; font-style: normal; text-align: center; color: var(--text-3); }
+.ft-ico::before { content: attr(data-icon); }
+.ft-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ft-badge { flex-shrink: 0; margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font: 600 12px/18px var(--mono); text-align: center; }
+.ft-badge.ft-threat { background: var(--danger-soft); color: var(--danger-text); }
+.ft-badge.ev-A { color: var(--ok); } .ft-badge.ev-C { color: var(--warn); } .ft-badge.ev-D { color: var(--danger); }
+.ft-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--t-slow) var(--ease); }
+.ft-item[aria-expanded="false"] > .ft-kids { grid-template-rows: 0fr; }
+.ft-kids > [role="group"] { min-height: 0; overflow: hidden; margin-left: 11px; border-left: 1px solid var(--border); visibility: visible; transition: visibility 0s; }
+.ft-item[aria-expanded="false"] > .ft-kids > [role="group"] { visibility: hidden; transition: visibility 0s linear var(--t-slow); }
+@media (prefers-reduced-motion: reduce) { .ft-item[aria-expanded="false"] > .ft-kids > [role="group"] { transition-delay: 0s; } } /* 전역 규칙은 길이만 줄여 지연이 남는다 */
+.ft-kids > [role="group"] > .ft-item { padding-left: 11px; }
+.ft-kids > [role="group"] > .ft-item::before { content: ''; position: absolute; left: 0; top: 14px; width: 11px; height: 1px; background: var(--border); }
+/* 공급망 검사: 왼쪽 트리 · 오른쪽 코드 창, 768 미만은 트리가 위 */
+.code-split { display: grid; grid-template-columns: minmax(140px, 32%) minmax(0, 1fr); gap: 10px; align-items: start; min-width: 0; }
+.code-split > .ftree { max-height: 352px; }
+@media (max-width: 767px) { .code-split { grid-template-columns: minmax(0, 1fr); } .code-split > .ftree { max-height: 200px; } }
+.finding > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 폴더 안 파일이면 「경로:줄」이 110px 를 넘어 설명과 겹쳤다 — 말줄임(전체는 트리 · 코드 창 이름) */
