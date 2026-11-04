@@ -16,7 +16,7 @@ REST · WS 앞: 로그인(쿠키 세션 · 역할 · OTP) — CLI 는 Bearer ADM
 | 구성 | 스택 | 위치 |
 | --- | --- | --- |
 | 백엔드 | Go 1.26 · Inspektor Gadget v0.56.1 (Go 패키지, in-process) · pgx · go-redis · bcrypt · TOTP(RFC 6238) | `backend/` |
-| 프론트엔드 | React 18 · TypeScript · Vite 7 · Tailwind 4 · React Flow · Recharts · qrcode | `frontend/` |
+| 프론트엔드 | React 18 · TypeScript · Vite 7 · Tailwind 4 · React Flow · 직접 그린 SVG 차트 · qrcode | `frontend/` |
 | 배포 | Docker Compose (nginx · backend · frontend · PostgreSQL 17 · Redis 7 · 선택 Caddy HTTPS · 선택 Ollama) · GitHub Actions → Docker Hub → EC2 | `deploy/` · `.github/workflows/` |
 | 목업 | 정적 HTML 대시보드 — 화면 · 흐름을 먼저 확정하는 곳(React 가 기준) | `mock/` |
 | 문서 | 개발 계획 · 결정 · 아키텍처 · API 계약 · 진행 기록 | Claude Docs (아래 「문서」) |

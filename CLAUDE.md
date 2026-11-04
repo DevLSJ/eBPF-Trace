@@ -39,7 +39,7 @@ AI 도우미: 백엔드 → Ollama qwen2.5:3b(선택, 읽기 전용 조회 → �
 
 - **백엔드**: Go 1.26 · Inspektor Gadget v0.56.1을 Go 패키지로 프로세스 안에서 실행(Cgo 없음). 가젯 데이터 오퍼레이터는 `operators.GetDataOperators()` 전체를 쓰고 LocalManager만 직접 만든 컬렉션으로 교체한다 — 일부만 넣으면 trace_dns가 CO-RE 오류로 안 뜬다
 - **컨테이너 발견**: `CONTAINER_DISCOVERY=auto`(기본) — fanotify(runc 훅)를 먼저 시도하고 안 되면(Docker Desktop) docker-events. docker-events는 컨테이너 시작 순간의 동작을 놓친다(11/03 sg-vm · sg-ec2 실측: 시작 0초 0/10, 0.05초부터 10/10)
-- **프론트**: React 18 · TS · Vite 7 · Tailwind 4 · React Flow · Recharts · qrcode(로컬 번들)
+- **프론트**: React 18 · TS · Vite 7 · Tailwind 4 · React Flow · qrcode(로컬 번들). 차트는 직접 그린 SVG(차트 라이브러리 없음 — 3becc47 에서 Recharts 제거, 11/04 「SVG 유지」 확정)
 - **저장**: PostgreSQL 17 · Redis 7(이벤트 버퍼). 정상 이벤트는 하나씩 저장하지 않고 분 단위 개수만(`collected_minutes`), 감사 로그는 위반만. 증거만 7일 정리(11/02 sg-vm 실측: 이벤트 12.7만 건 뒤 DB 8.9MB)
 - **배포**: Docker Compose(nginx 80 → backend :8000 · frontend :80 · PG · Redis · 선택 Caddy · 선택 `ollama`(`--profile ai`, 4GB)) · 레지스트리 Docker Hub(`sg-ec2` 는 SSH 로 이미지 전송) · EC2 단일 호스트(`sg-ec2`, 11/03 새 계정)
 - **격리 책임**: IG는 탐지만, kill은 백엔드가 Docker API로
