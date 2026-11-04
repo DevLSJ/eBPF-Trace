@@ -3,26 +3,27 @@ import { scopeOf } from '../lib/rules';
 import { DECISION_LABEL, INSTALL_STATUS_LABEL, SCAN_VERDICT_LABEL, type Decision, type InstallStatus, type Rule, type ScanVerdict } from '../lib/types';
 
 const statusStyle: Record<InstallStatus, string> = {
-  running: 'bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200',
+  running: 'bg-indigo-50 text-indigo-700',
   passed: 'bg-emerald-50 text-emerald-700',
   isolated: 'bg-red-600 text-white',
   warned: 'bg-amber-100 text-amber-800',
   failed: 'bg-slate-200 text-slate-700',
-  unknown: 'bg-white text-slate-600 ring-1 ring-inset ring-slate-300',
+  unknown: 'bg-white text-slate-600',
   refused: 'bg-slate-800 text-white',
 };
 
+// 상태 배지(R4 11/04 — 목업 11/04e .badge): sg-pill = 11.5/700 · 글자색 1px 테두리 · pill 모양. 색은 종류별 그대로
 // 설치 결과
 export function StatusBadge({ status }: { status: InstallStatus }) {
   return (
-    <span data-status={status} className={`inline-block rounded px-2 py-0.5 text-xs font-medium whitespace-nowrap ${statusStyle[status]}`}>
+    <span data-status={status} className={`sg-pill ${statusStyle[status]}`}>
       {INSTALL_STATUS_LABEL[status]}
     </span>
   );
 }
 
 const decisionStyle: Record<Decision, string> = {
-  pending: 'bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-300',
+  pending: 'bg-amber-50 text-amber-800',
   malicious: 'bg-red-100 text-red-800',
   false_positive: 'bg-sky-100 text-sky-800',
 };
@@ -30,7 +31,7 @@ const decisionStyle: Record<Decision, string> = {
 // 판정(사람의 결론)
 export function DecisionBadge({ decision }: { decision: Decision }) {
   return (
-    <span data-decision={decision} className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${decisionStyle[decision]}`}>
+    <span data-decision={decision} className={`sg-pill ${decisionStyle[decision]}`}>
       {DECISION_LABEL[decision]}
     </span>
   );
@@ -51,7 +52,7 @@ export function ScanVerdictBadge({
   className = '',
   ...rest
 }: { status: 'running' | 'done' | 'failed'; verdict?: ScanVerdict | null; error?: string } & HTMLAttributes<HTMLSpanElement>) {
-  const base = `rounded px-1.5 py-0.5 text-xs ${className}`;
+  const base = `sg-pill ${className}`;
   if (status === 'running')
     return (
       <span {...rest} className={`${base} bg-indigo-50 text-indigo-700`}>
@@ -66,7 +67,7 @@ export function ScanVerdictBadge({
     );
   const v = verdict ?? 'clean';
   return (
-    <span {...rest} className={`${base} font-medium ${scanVerdictStyle[v]}`}>
+    <span {...rest} className={`${base} ${scanVerdictStyle[v]}`}>
       {SCAN_VERDICT_LABEL[v]}
     </span>
   );
@@ -78,7 +79,7 @@ export function ScopeChip({ rule }: { rule: Rule }) {
   if (s.key === 'all') return null;
   const tone = s.key === 'sandbox' ? 'bg-indigo-50 text-indigo-700' : 'bg-violet-50 text-violet-700';
   return (
-    <span data-scope={s.key} className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] whitespace-nowrap ${tone}`}>
+    <span data-scope={s.key} className={`shrink-0 rounded px-1.5 py-0.5 text-xs whitespace-nowrap ${tone}`}>
       {s.label}
     </span>
   );
