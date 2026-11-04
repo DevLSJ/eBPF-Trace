@@ -62,12 +62,12 @@ test.describe('F6 디자인 토큰 · 부품 · 모션', () => {
     ]) expect(await token(page, k), k).toBe(v);
     expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#F7F7F8'));
     expect(await page.getByTestId('rules').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#FFFFFF'));
-    // 표 머리(Linear 식): 12px/600 · text-3
+    // 표 머리(Linear 식): 12px · text-3 — R4 11/04: 굵기 600 → 700(11/04e 표 머리 12/700)
     await page.goto('/audit');
     const th = page.locator('[data-testid="audit"] thead th').first();
     await expect(th).toBeVisible();
     const thStyle = await th.evaluate((e) => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight, getComputedStyle(e).color]);
-    expect(thStyle).toEqual(['12px', '600', rgb('#6B7280')]);
+    expect(thStyle).toEqual(['12px', '700', rgb('#6B7280')]);
     // 버튼 36px · r-md, 시트 480px
     await page.goto('/policies?id=egress-allowlist');
     const btn = page.locator('[data-view="rule-editor"]').getByRole('button', { name: '저장 전 확인' });

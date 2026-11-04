@@ -75,7 +75,7 @@ async function scrollAudit(page: Page) {
         return /(auto|scroll)/.test(cs.overflowY) && e.scrollHeight > e.clientHeight + 1 && !allowed(e);
       })
       .map((e) => `${e.tagName.toLowerCase()}[${e.getAttribute('data-part') ?? e.getAttribute('data-testid') ?? String(e.className).split(' ').slice(0, 3).join('.')}]+${e.scrollHeight - e.clientHeight}`);
-    return { doc: se.scrollHeight - innerHeight, docW: se.scrollWidth - innerWidth, main: main.scrollHeight - main.clientHeight, page: document.querySelectorAll('main [data-page]').length, fills: document.querySelectorAll('main [data-page] [data-fill]').length, bad };
+    return { doc: se.scrollHeight - innerHeight, docW: se.scrollWidth - innerWidth, main: main.scrollHeight - main.clientHeight, page: document.querySelectorAll('main [data-page=""]').length, fills: document.querySelectorAll('main [data-page=""] [data-fill]').length, bad }; // R4 11/04: 쪽 단추(TablePager)도 data-page="1" 등을 달아 화면 틀만 센다
   });
 }
 
