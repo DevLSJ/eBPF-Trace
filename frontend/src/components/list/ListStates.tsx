@@ -37,7 +37,7 @@ export function ListError({ error, what, onRetry, retrying }: { error: unknown; 
             onClick={onRetry}
             className="mt-1 flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
-            <RotateCw className={`size-3.5 ${retrying ? 'animate-spin' : ''}`} aria-hidden /> 다시 시도
+            <RotateCw className={`size-3.5 ${retrying ? 'sg-spin' : ''}`} aria-hidden /> 다시 시도
           </button>
           <span className="text-[11px] text-slate-400">30초마다 한 번씩 저절로 다시 불러 봅니다</span>
         </>

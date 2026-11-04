@@ -47,7 +47,7 @@ export function Overview() {
       <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-2.5">
         <h2 className="text-sm font-semibold text-slate-800">eBPF 수집 종합</h2>
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
-          <span className="size-2 animate-pulse rounded-full bg-emerald-500" aria-hidden />
+          <span className="size-2 sg-blink rounded-full bg-emerald-500" aria-hidden />
           감시 중 · 초당 <span className="num">{fmtNum(stats?.eventsPerSec ?? 0)}</span> evt
         </span>
         <div className="ml-auto flex gap-1.5" role="group" aria-label="기간">

@@ -6,7 +6,7 @@ export function WsStatus() {
   return (
     <div className="hidden items-center gap-4 text-sm md:flex" role="status">
       <span className="flex items-center gap-1.5">
-        <span className={`size-2 rounded-full ${connected ? 'bg-emerald-500' : 'animate-pulse bg-slate-400'}`} />
+        <span className={`size-2 rounded-full ${connected ? 'bg-emerald-500' : 'sg-blink bg-slate-400'}`} />
         <span className={connected ? 'text-slate-700' : 'text-slate-500'}>{connected ? '실시간 연결됨' : '재연결 중…'}</span>
       </span>
       <span className="text-slate-500">

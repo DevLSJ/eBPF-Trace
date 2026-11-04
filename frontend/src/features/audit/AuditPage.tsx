@@ -328,7 +328,7 @@ function Violations({
               onClick={() => void fetchPage(rows[rows.length - 1]?.id)}
               className="rounded-md border border-slate-300 px-4 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
-              <RotateCw className={`mr-1 inline size-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden />더 보기
+              <RotateCw className={`mr-1 inline size-3.5 ${loading ? 'sg-spin' : ''}`} aria-hidden />더 보기
             </button>
           </div>
         )}

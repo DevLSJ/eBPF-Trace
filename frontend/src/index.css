@@ -40,6 +40,26 @@
   --k-dns: #FDBA74;
 }
 
+/* ── 11/04e · 11/04f 토큰(R1 11/04 — 목업 mock/shared/styles.css 와 같은 값) ──
+   줄 선 한 단계 옅게 · 차트 높이(높이 800 이하 하한 120) · KPI 띠 · 선 · 잉크(반전 툴팁) · 코드 창(--code-* 두 테마 모두 어두운 바탕) · 창 점(--win-*, 창 장식 — 「빨강은 위험에만」의 예외) */
+:root {
+  --line-soft: #EEEFF2; --chart-h: clamp(120px, calc(100vh - 660px), 240px); --stripe: var(--accent); --stripe-soft: var(--accent-soft);
+  --danger-line: #FECDD3; --warn-line: #FDE68A; --ok-line: #A7F3D0; --accent-line: #C7D2FE; --info-line: #BAE6FD;
+  --ink: #111827; --ink-text: #F3F4F6; --ink-2: #1F2937; --ink-muted: #9CA3AF;
+  --code-bg: #0F172A; --code-fg: #E2E8F0; --code-muted: #94A3B8; --code-border: #1E293B; --code-scroll: #475569; --code-scroll-hover: #64748B;
+  --win-close: #D9827B; --win-min: #D8B567; --win-max: #86B985;
+}
+:root[data-theme="dark"] {
+  --line-soft: #232832;
+  --danger-line: #7F1D2D; --warn-line: #78500F; --ok-line: #14532D; --accent-line: #3B4396; --info-line: #0C4A6E;
+  --ink: #272C36; --ink-text: #E6E8EE; --ink-2: #2F3542; --ink-muted: #7E8696;
+  --code-bg: #0A0C11; --code-fg: #E6E8EE; --code-muted: #9AA3B2; --code-border: #262B36; --code-scroll: #4A5263; --code-scroll-hover: #626B7E;
+  --win-close: #B8746E; --win-min: #B89D5E; --win-max: #729F71;
+}
+@media (max-height: 800px) {
+  :root { --chart-h: 120px; } /* 높이 낮은 화면: 차트를 줄이되 하한 120px */
+}
+
 /* Tailwind 유틸리티가 토큰을 쓰게 한다. 의미 이름(bg-surface · text-text-2 · border-border …)을 더하고,
    기존 팔레트 이름(slate · indigo · red · amber · emerald · sky · violet · teal · white)은 토큰으로 다시 매핑해
    문구 · 선택자 · 동작은 그대로 두고 색만 바뀐다(중간 단계는 color-mix). 다크 모드는 토큰이 바뀌면서 따라온다 */
@@ -192,12 +212,12 @@
     border: 1px solid var(--border);
     border-radius: var(--r-sm);
   }
-  /* 스켈레톤: surface-2 위 1.2s 반짝임 */
+  /* 스켈레톤: surface-2 위 반짝임 — 길이는 모션 토큰(--t-slow × 4 = 1.28s, R1 11/04) */
   .sg-skeleton {
     background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
     background-size: 200% 100%;
     border-radius: var(--r-sm);
-    animation: sg-shimmer 1.2s linear infinite;
+    animation: sg-shimmer calc(var(--t-slow) * 4) linear infinite;
   }
   /* 배너: soft 배경 + 왼쪽 4px 색 띠(--banner-color) */
   .sg-banner {
@@ -212,13 +232,21 @@
   .sg-screen {
     animation: sg-enter var(--t-base) var(--ease);
   }
-  /* 새 위반 행: danger-soft → 투명 1.2s */
+  /* 새 위반 행: danger-soft → 투명(--t-slow × 4) */
   .sg-flash {
-    animation: sg-flash 1.2s var(--ease);
+    animation: sg-flash calc(var(--t-slow) * 4) var(--ease);
   }
-  /* 단계 레일 활성 점 맥동 링 */
+  /* 단계 레일 활성 점 맥동 링(--t-slow × 4) */
   .sg-pulse-ring {
-    animation: sg-pulse 1.2s var(--ease) infinite;
+    animation: sg-pulse calc(var(--t-slow) * 4) var(--ease) infinite;
+  }
+  /* 회전(다시 시도 · 실행 중 아이콘) — Tailwind animate-spin(1s) 대신 토큰(--t-slow × 2.5 = 0.8s) */
+  .sg-spin {
+    animation: sg-spin calc(var(--t-slow) * 2.5) linear infinite;
+  }
+  /* 상태 점 깜빡임(연결 끊김 · 감시 중) — Tailwind animate-pulse(2s) 대신 토큰(--t-slow × 5 = 1.6s) */
+  .sg-blink {
+    animation: sg-blink calc(var(--t-slow) * 5) ease-in-out infinite;
   }
   /* 모바일 서랍 사이드바 */
   .sg-drawer {
@@ -242,6 +270,16 @@
   }
   to {
     background-color: transparent;
+  }
+}
+@keyframes sg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes sg-blink {
+  50% {
+    opacity: 0.3;
   }
 }
 @keyframes sg-shimmer {

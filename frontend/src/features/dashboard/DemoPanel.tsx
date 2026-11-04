@@ -199,7 +199,7 @@ export function DemoPanel() {
         >
           {running ? (
             <>
-              <RotateCw className="size-3.5 animate-spin" aria-hidden /> 실행 중…
+              <RotateCw className="size-3.5 sg-spin" aria-hidden /> 실행 중…
             </>
           ) : run ? (
             <>
