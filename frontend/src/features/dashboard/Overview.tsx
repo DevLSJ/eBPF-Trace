@@ -84,7 +84,7 @@ function kpiDefs(s: Summary, range: string): KpiDef[] {
       icon: "≣",
       stripe: "info",
       value: s.collected.total,
-      delta: D(s.collected.total, P?.collected),
+      delta: D(s.collected.total, P?.collected, { down: "warn" }), // 수집 감소 = 감시 끊김 의심(11/04 사용자 — 목업과 같게)
       // 10/30: byKind.dns 는 선택(옛 백엔드 없음) — 있을 때만 「조회 N」
       sub: `실행 ${fmtNum(k.exec)} · 파일 ${fmtNum(k.open)} · 통신 ${fmtNum(k.connect)}${k.dns !== undefined ? ` · 조회 ${fmtNum(k.dns)}` : ""}`,
       to: dest("/events", { normal: "1" }),
@@ -141,7 +141,7 @@ function kpiDefs(s: Summary, range: string): KpiDef[] {
           value: iso.medianMs ?? 0,
           unit: "ms",
           delta: P
-            ? D(iso.medianMs, P.isolationMedianMs, { unit: " ms" })
+            ? D(iso.medianMs, P.isolationMedianMs, { unit: " ms", up: "warn" })
             : kpiDelta(null, null),
           sub: `p95 ${fmtNum(iso.p95Ms ?? 0)} ms · 최대 ${fmtNum(iso.maxMs ?? 0)} ms · 격리 ${fmtNum(iso.count)}건`,
           to: dest("/audit", { action: "kill" }),

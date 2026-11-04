@@ -267,6 +267,23 @@ test.describe("B 시연 카드 없음", () => {
 });
 
 test.describe("C KPI 증감 줄(previous)", () => {
+  test("수집 감소 · 격리 지연 증가는 경고색(사용자 결정 11/04 — 목업과 같게)", async ({ page, backend }) => {
+    const s = backend.summary("24h");
+    const iso = s.isolation?.medianMs ?? null;
+    backend.summaryPrevious = {
+      collected: s.collected.total + 10,
+      violations: s.violations.total,
+      isolatedContainers: s.isolatedContainers,
+      installs: s.installs.total,
+      decided: s.decisions.malicious + s.decisions.falsePositive,
+      isolationMedianMs: iso != null ? Math.max(0, iso - 50) : null,
+    };
+    await page.goto("/");
+    await ready(page);
+    expect(await delta(page, "collected")).toMatchObject({ dir: "down", tone: "warn" });
+    if (iso != null && iso > 0) expect(await delta(page, "isolation")).toMatchObject({ dir: "up", tone: "warn" });
+  });
+
   test("위반 · 격리 증가만 빨강 ▲, 그 외 중립 · 「지난 24시간 대비」 · 기간 바꾸면 문구도", async ({
     page,
     backend,
@@ -344,7 +361,7 @@ test.describe("C KPI 증감 줄(previous)", () => {
     ).toContainText("지난 1시간 대비");
   });
 
-  test("격리 지연: 이전 중앙값과 ms 차이(중립), 이 기간 격리가 없으면 「비교할 격리 없음」", async ({
+  test("격리 지연: 이전 중앙값과 ms 차이(증가 = 경고색), 이 기간 격리가 없으면 「비교할 격리 없음」", async ({
     page,
     backend,
   }) => {
@@ -376,7 +393,7 @@ test.describe("C KPI 증감 줄(previous)", () => {
     ).toHaveText("ms"); // 단위 분리(13/500)
     expect(await delta(page, "isolation")).toEqual({
       dir: "up",
-      tone: "neutral",
+      tone: "warn", // 11/04 사용자 결정: 격리 지연 증가 = 경고색(목업과 같게)
       text: "▲ 80 ms 지난 24시간 대비",
     });
   });
