@@ -1,222 +1,310 @@
-import { useCallback, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { LoadError } from '../../components/Panel';
-import { useCountUp } from '../../hooks/useCountUp';
-import { useStream } from '../../hooks/stream-context';
-import { useFilters } from '../../hooks/useFilters';
-import { useInterval, useLoad } from '../../hooks/useLoad';
-import { api } from '../../lib/api';
-import { fmtNum, fmtTime } from '../../lib/format';
-import { dest, type Dest } from '../../lib/nav';
-import type { Level, Summary, SummaryRange, SummaryTop } from '../../lib/types';
+import { Link } from "react-router-dom";
+import {
+  Donut,
+  LineChart,
+  StackBars,
+  type Point,
+} from "../../components/charts";
+import { KpiCard } from "../../components/KpiCard";
+import { Empty, LoadError, Panel } from "../../components/Panel";
+import { useSortable } from "../../hooks/useSortable";
+import { fmtNum } from "../../lib/format";
+import { kpiDelta, type KpiDelta, type Stripe } from "../../lib/kpi";
+import { dest, type Dest } from "../../lib/nav";
+import type { Summary, SummaryRange, SummaryTop } from "../../lib/types";
+import { RANGE_KO, RANGES } from "./summary";
 
-// eBPF 수집 종합(10/16, 목업 확정) — 「지금까지 무엇을 수집 · 탐지했나?」 저장된 기록(GET /api/summary) 기반이라 재시작해도 그대로.
-const RANGES: [SummaryRange, string][] = [
-  ['1h', '1시간'],
-  ['24h', '24시간'],
-  ['7d', '7일'],
+// eBPF 수집 종합(10/16 · 11/04e 재배치, R2 11/04) — 저장된 기록(GET /api/summary) 기반이라 재시작해도 그대로.
+//   KPI 6칸(길게 눌러 옮기기 dashboardKpi) · 차트 줄(수집량 추이 선 · 위반 추이 막대 · 설치 검사 결과 도넛) · 많이 걸린 정책 · 위반 많은 컨테이너.
+//   KPI 증감 줄 = summary.previous(바로 앞 같은 길이 기간) — 위반 · 격리 증가만 빨강, 그 외 중립. previous 가 없으면(null · 옛 백엔드) 「이전 기간 정보 없음」
+export function RangeChips({
+  range,
+  onPick,
+}: {
+  range: SummaryRange;
+  onPick: (r: SummaryRange) => void;
+}) {
+  return (
+    <div className="flex gap-1.5" role="group" aria-label="기간">
+      {RANGES.map(([r, ko]) => (
+        <button
+          key={r}
+          type="button"
+          data-range={r}
+          aria-pressed={range === r}
+          onClick={() => onPick(r)}
+          className={`rounded-full border px-2.5 py-0.5 text-xs ${range === r ? "border-accent bg-accent text-text-inverse" : "border-border text-text-2 hover:bg-surface-2"}`}
+        >
+          {ko}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── KPI 6칸 ──
+interface KpiDef {
+  k: string;
+  label: string;
+  icon: string;
+  stripe: Stripe;
+  value: number | null;
+  text?: string;
+  unit?: string;
+  tone?: "danger";
+  delta: KpiDelta;
+  sub: string;
+  to: Dest;
+}
+const KPI_IDS = [
+  "collected",
+  "violations",
+  "isolated",
+  "installs",
+  "decided",
+  "isolation",
 ];
 
-export function Overview() {
-  const { stats, subscribe } = useStream();
-  // 기간은 화면 상태로만(10/21, 주소에 남기지 않음)
-  const [filters, setFilters] = useFilters('/');
-  const range = (RANGES.some(([r]) => r === filters.range) ? filters.range : '24h') as SummaryRange;
-  const load = useCallback(() => api.summary(range), [range]);
-  const sum = useLoad(load);
-  const { reload } = sum;
-  useInterval(reload, 30_000);
-  // 새 위반이 들어오면(WS) 잠깐 모았다가 다시 계산
-  const timer = useRef<number | undefined>(undefined);
-  useEffect(
-    () =>
-      subscribe((m) => {
-        if (m.type !== 'verdict' || !m.data.matched) return;
-        window.clearTimeout(timer.current);
-        timer.current = window.setTimeout(reload, 800);
-      }),
-    [subscribe, reload],
-  );
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+function kpiDefs(s: Summary, range: string): KpiDef[] {
+  const P = s.previous ?? null;
+  const note = `지난 ${RANGE_KO[range] ?? range} 대비`;
+  // 위반 · 격리 증가만 danger, 나머지는 중립(사용자 결정 R2 11/04)
+  const D = (
+    cur: number | null | undefined,
+    prev: number | null | undefined,
+    o: { up?: "danger"; unit?: string } = {},
+  ) => kpiDelta(cur, P ? prev : null, { note, ...o });
+  const k = s.collected.byKind;
+  const iso = s.isolation;
+  const decided = s.decisions.malicious + s.decisions.falsePositive;
+  return [
+    {
+      k: "collected",
+      label: "수집한 이벤트",
+      icon: "≣",
+      stripe: "info",
+      value: s.collected.total,
+      delta: D(s.collected.total, P?.collected),
+      // 10/30: byKind.dns 는 선택(옛 백엔드 없음) — 있을 때만 「조회 N」
+      sub: `실행 ${fmtNum(k.exec)} · 파일 ${fmtNum(k.open)} · 통신 ${fmtNum(k.connect)}${k.dns !== undefined ? ` · 조회 ${fmtNum(k.dns)}` : ""}`,
+      to: dest("/events", { normal: "1" }),
+    },
+    {
+      k: "violations",
+      label: "위반",
+      icon: "⚠",
+      stripe: "danger",
+      tone: "danger",
+      value: s.violations.total,
+      delta: D(s.violations.total, P?.violations, { up: "danger" }),
+      sub: `격리 ${fmtNum(s.violations.killed + s.violations.held)} · 경고 ${fmtNum(s.violations.alert)}`,
+      to: { to: "/audit" },
+    },
+    {
+      k: "isolated",
+      label: "격리한 컨테이너",
+      icon: "⛔",
+      stripe: "danger",
+      tone: "danger",
+      value: s.isolatedContainers,
+      delta: D(s.isolatedContainers, P?.isolatedContainers, { up: "danger" }),
+      sub: "설치 검사 포함",
+      to: dest("/audit", { action: "kill" }),
+    },
+    {
+      k: "installs",
+      label: "설치 검사",
+      icon: "▣",
+      stripe: "accent",
+      value: s.installs.total,
+      delta: D(s.installs.total, P?.installs),
+      sub: `통과 ${s.installs.passed} · 격리 ${s.installs.isolated} · 거부 ${s.installs.refused}`,
+      to: dest("/installs", { status: "all" }),
+    },
+    {
+      k: "decided",
+      label: "판정 완료",
+      icon: "✓",
+      stripe: "ok",
+      value: decided,
+      delta: D(decided, P?.decided),
+      sub: `악성 ${s.decisions.malicious} · 오탐 ${s.decisions.falsePositive} · 대기 ${s.decisions.pending}`,
+      to: { to: "/audit?view=changes" },
+    },
+    // 격리 지연(10/30 계약 §3): killedAt − detectedAt 의 중앙값. 기록이 없으면(count 0 · 옛 백엔드) 「—」
+    iso?.count
+      ? {
+          k: "isolation",
+          label: "격리 지연 중앙값",
+          icon: "◷",
+          stripe: "warn",
+          value: iso.medianMs ?? 0,
+          unit: "ms",
+          delta: P
+            ? D(iso.medianMs, P.isolationMedianMs, { unit: " ms" })
+            : kpiDelta(null, null),
+          sub: `p95 ${fmtNum(iso.p95Ms ?? 0)} ms · 최대 ${fmtNum(iso.maxMs ?? 0)} ms · 격리 ${fmtNum(iso.count)}건`,
+          to: dest("/audit", { action: "kill" }),
+        }
+      : {
+          k: "isolation",
+          label: "격리 지연 중앙값",
+          icon: "◷",
+          stripe: "warn",
+          value: null,
+          text: "—",
+          delta: P
+            ? { dir: "none", note: "비교할 격리 없음" }
+            : kpiDelta(null, null),
+          sub: "이 기간에 격리 없음 (탐지→kill)",
+          to: dest("/audit", { action: "kill" }),
+        },
+  ];
+}
 
-  const pick = (r: SummaryRange) => setFilters({ range: r });
-  const s = sum.data;
-
+export function KpiRow({
+  s,
+  range,
+  error,
+}: {
+  s: Summary | null;
+  range: string;
+  error: unknown;
+}) {
+  const defs = s ? kpiDefs(s, range) : [];
+  const by = new Map(defs.map((x) => [x.k, x]));
+  const { ref, order, containerClass, itemProps, pickedClass } =
+    useSortable<HTMLDivElement>({
+      scope: "dashboardKpi",
+      ids: KPI_IDS,
+      layout: "grid",
+      labelOf: (id) => by.get(id)?.label ?? id,
+    });
   return (
-    <section className="sg-card flex min-h-0 flex-col overflow-hidden" data-section="overview">
-      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-2.5">
-        <h2 className="text-sm font-semibold text-slate-800">eBPF 수집 종합</h2>
-        <span className="flex items-center gap-1.5 text-xs text-slate-500">
-          <span className="size-2 sg-blink rounded-full bg-emerald-500" aria-hidden />
-          감시 중 · 초당 <span className="num">{fmtNum(stats?.eventsPerSec ?? 0)}</span> evt
-        </span>
-        <div className="ml-auto flex gap-1.5" role="group" aria-label="기간">
-          {RANGES.map(([r, ko]) => (
-            <button
-              key={r}
-              type="button"
-              data-range={r}
-              aria-pressed={range === r}
-              onClick={() => pick(r)}
-              className={`rounded-full border px-2.5 py-0.5 text-xs ${range === r ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}
-            >
-              {ko}
-            </button>
-          ))}
+    <div
+      ref={ref}
+      data-part="kpis"
+      className={`sg-dash-kpis ${containerClass}`}
+    >
+      {!s ? (
+        <div className="col-span-full">
+          {error ? (
+            <LoadError error={error} what="종합" compact />
+          ) : (
+            <p className="py-6 text-sm text-text-3">불러오는 중…</p>
+          )}
         </div>
-      </header>
-      {sum.error && !s ? (
-        <div className="p-4">
-          <LoadError error={sum.error} what="종합" />
-        </div>
-      ) : !s ? (
-        <p className="p-4 text-sm text-slate-400">불러오는 중…</p>
       ) : (
-        <div data-fill="" className="grid min-h-0 gap-3 overflow-y-auto px-4 py-3" data-part="overview-body">
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-            {/* 10/30: byKind.dns 는 선택(옛 백엔드 없음) — 있을 때만 「조회 N」 */}
-            <Kpi
-              k="collected"
-              label="수집한 이벤트"
-              value={s.collected.total}
-              sub={`실행 ${fmtNum(s.collected.byKind.exec)} · 파일 ${fmtNum(s.collected.byKind.open)} · 통신 ${fmtNum(s.collected.byKind.connect)}${s.collected.byKind.dns !== undefined ? ` · 조회 ${fmtNum(s.collected.byKind.dns)}` : ''}`}
-              to={dest('/events', { normal: '1' })}
-            />
-            <Kpi k="violations" label="위반" value={s.violations.total} sub={`격리 ${fmtNum(s.violations.killed + s.violations.held)} · 경고 ${fmtNum(s.violations.alert)}`} to={{ to: '/audit' }} danger />
-            <Kpi k="isolated" label="격리한 컨테이너" value={s.isolatedContainers} sub="설치 검사 포함" to={dest('/audit', { action: 'kill' })} danger />
-            <Kpi k="installs" label="설치 검사" value={s.installs.total} sub={`통과 ${s.installs.passed} · 격리 ${s.installs.isolated} · 거부 ${s.installs.refused}`} to={dest('/installs', { status: 'all' })} />
-            <Kpi k="decided" label="판정 완료" value={s.decisions.malicious + s.decisions.falsePositive} sub={`악성 ${s.decisions.malicious} · 오탐 ${s.decisions.falsePositive} · 대기 ${s.decisions.pending}`} to={{ to: '/audit?view=changes' }} />
-            {/* 격리 지연(10/30 계약 §3): killedAt − detectedAt 의 중앙값. 기록이 없으면(count 0 · 옛 백엔드) 「—」 */}
-            <Kpi
-              k="isolation"
-              label="격리 지연 중앙값"
-              value={s.isolation?.count ? `${fmtNum(s.isolation.medianMs ?? 0)} ms` : '—'}
-              sub={s.isolation?.count ? `격리 ${fmtNum(s.isolation.count)}건 · p95 ${fmtNum(s.isolation.p95Ms ?? 0)} ms · 최대 ${fmtNum(s.isolation.maxMs ?? 0)} ms` : '격리 타임라인 기록 없음'}
-              to={dest('/audit', { action: 'kill' })}
-            />
-          </div>
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <Card title="수집량 추이 — 종류별">
-              {/* 색은 토큰(라이트: 실행 #8b5cf6 · 파일 #38bdf8 · 통신 #14b8a6 · 조회 #fb923c) — 다크에서 밝은 값으로 바뀐다 */}
-              <Stacked name="collected" s={s} keys={[['exec', '실행', 'var(--k-exec)'], ['open', '파일', 'var(--k-open)'], ['connect', '통신', 'var(--k-connect)'], ...(s.collected.byKind.dns !== undefined ? ([['dns', '조회', 'var(--k-dns)']] as [Key, string, string][]) : [])]} />
-            </Card>
-            <Card title="위반 추이">
-              <Stacked name="violations" s={s} keys={[['killed', '격리', 'var(--danger)'], ['alert', '경고', 'var(--warn)']]} />
-            </Card>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <Card title="많이 걸린 정책">
-              <TopList testId="rules" rows={s.topRules} keyOf={(r) => r.ruleId ?? ''} href={(k) => ({ to: `/policies?id=${encodeURIComponent(k)}` })} />
-            </Card>
-            <Card title="위반이 많은 컨테이너 · 패키지">
-              <TopList testId="containers" rows={s.topContainers} keyOf={(r) => r.container ?? ''} href={(k) => dest('/audit', { container: k })} />
-            </Card>
-            <Card title="설치 검사 · 판정">
-              <Results s={s} />
-            </Card>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-// 스탯 타일(10/30 계약 §7): 큰 숫자 24px/600 · 라벨 12px text-3 · 보조 한 줄, 누르면 들리는 카드. 숫자는 600ms 카운트업
-function Kpi({ k, label, value, sub, to, danger }: { k: string; label: string; value: number | string; sub: string; to: Dest; danger?: boolean }) {
-  const n = useCountUp(typeof value === 'number' ? value : 0);
-  return (
-    <Link {...to} className="sg-card sg-card-hover grid min-w-0 gap-0.5 rounded-[var(--r-md)] bg-surface-2 px-3 py-2 shadow-none hover:border-accent" data-kpi={k}>
-      <span className="truncate text-xs text-text-3">{label}</span>
-      <b className={`num truncate text-2xl font-semibold ${danger && value ? 'text-danger' : 'text-text'}`} data-value="">
-        {typeof value === 'number' ? fmtNum(n) : value}
-      </b>
-      <span className="truncate text-[11px] text-slate-500" title={sub}>
-        {sub}
-      </span>
-    </Link>
-  );
-}
-
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="grid min-w-0 content-start gap-1.5">
-      <h3 className="text-xs font-semibold text-slate-600">{title}</h3>
-      {children}
-    </div>
-  );
-}
-
-type Key = 'exec' | 'open' | 'connect' | 'dns' | 'killed' | 'alert';
-// 쌓은 막대 — 칸마다 <g data-bucket>, 조각마다 rect[data-kind]. dns(10/30)는 series 에 없을 수 있다(0 으로)
-function Stacked({ name, s, keys }: { name: string; s: Summary; keys: [Key, string, string][] }) {
-  const pts = s.series;
-  const tot = (p: Summary['series'][number]) => keys.reduce((n, [k]) => n + (p[k] ?? 0), 0);
-  const max = Math.max(4, ...pts.map(tot));
-  const W = 100 * pts.length;
-  const H = 100;
-  const label = (t: string) => (s.bucketSec >= 21600 ? `${new Date(t).getMonth() + 1}/${new Date(t).getDate()}` : fmtTime(t).slice(0, 5));
-  const every = Math.ceil(pts.length / 6);
-  return (
-    <div data-chart={name} className="grid gap-1">
-      <div className="flex gap-3 text-[11px] text-slate-500">
-        {keys.map(([k, ko, c]) => (
-          <span key={k} className="flex items-center gap-1" data-key={k}>
-            <i className="size-2 rounded-sm" style={{ background: c }} />
-            {ko}
-          </span>
-        ))}
-        <span className="num ml-auto">최대 {fmtNum(max)}</span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-24 w-full" role="img" aria-label={name === 'collected' ? '수집량 추이' : '위반 추이'}>
-        {pts.map((p, i) => {
-          let acc = 0;
+        order.map((id) => {
+          const x = by.get(id)!;
           return (
-            <g key={p.t} data-bucket={p.t}>
-              <title>{`${label(p.t)} · ${keys.map(([k, ko]) => `${ko} ${fmtNum(p[k] ?? 0)}`).join(' · ')}`}</title>
-              {keys.map(([k, , c]) => {
-                const v = p[k] ?? 0;
-                if (!v) return null;
-                const y1 = H - ((acc + v) / max) * H;
-                const y0 = H - (acc / max) * H;
-                acc += v;
-                return <rect key={k} data-kind={k} x={i * 100 + 15} y={y1} width={70} height={Math.max(0.5, y0 - y1)} style={{ fill: c }} />;
-              })}
-              {!tot(p) && <rect x={i * 100 + 15} y={H - 1} width={70} height={1} style={{ fill: 'var(--border)' }} />}
-            </g>
+            <KpiCard
+              key={id}
+              k={x.k}
+              label={x.label}
+              icon={x.icon}
+              stripe={x.stripe}
+              value={x.value}
+              text={x.text}
+              unit={x.unit}
+              tone={x.tone}
+              delta={x.delta}
+              sub={x.sub}
+              subTitle={x.sub}
+              to={x.to}
+              className={pickedClass(id)}
+              attrs={itemProps(id)}
+            />
           );
-        })}
-      </svg>
-      <div className="flex justify-between text-[10px] text-slate-400">
-        {pts
-          .filter((_, i) => i % every === 0)
-          .map((p) => (
-            <span key={p.t} className="num">
-              {label(p.t)}
-            </span>
-          ))}
-      </div>
+        })
+      )}
     </div>
   );
 }
 
-const barColor: Record<Level, string> = { normal: 'bg-slate-300', alert: 'bg-amber-500', held: 'bg-red-500', killed: 'bg-red-600' };
-function TopList({ testId, rows, keyOf, href }: { testId: string; rows: SummaryTop[]; keyOf: (r: SummaryTop) => string; href: (k: string) => Dest }) {
-  const top = rows.slice(0, 5);
-  if (!top.length) return <p className="text-xs text-slate-400">이 기간에 위반 없음</p>;
+// ── 차트 줄 3칸(1.8 : 1 : 1.2) ──
+const RES: [
+  key: "passed" | "isolated" | "warned" | "refused" | "failed",
+  label: string,
+  cls: string,
+][] = [
+  ["passed", "통과", "dn-passed"],
+  ["isolated", "격리", "dn-isolated"],
+  ["warned", "경고", "dn-warned"],
+  ["refused", "설치 전 거부", "dn-refused"],
+  ["failed", "실패 · 미확인", "dn-failed"],
+];
+export function ChartRow({ s }: { s: Summary | null }) {
+  // 색은 토큰(라이트: 실행 #8b5cf6 · 파일 #38bdf8 · 통신 #14b8a6 · 조회 #fb923c) — 다크에서 밝은 값으로 바뀐다. dns 는 옛 백엔드면 없다
+  const hasDns = s?.collected.byKind.dns !== undefined;
+  const data: Point[] = (s?.series ?? []).map((p) => ({
+    ...p,
+    dns: p.dns ?? 0,
+  }));
+  const lineKeys: [string, string, string][] = [
+    ["exec", "실행", "--k-exec"],
+    ["open", "파일", "--k-open"],
+    ["connect", "통신", "--k-connect"],
+    ...(hasDns
+      ? ([["dns", "조회", "--k-dns"]] as [string, string, string][])
+      : []),
+  ];
+  const none = <Empty>{s ? "" : "—"}</Empty>;
   return (
-    <ol className="grid gap-1" data-top={testId}>
-      {top.map((r) => (
-        <li key={keyOf(r)} data-row={keyOf(r)} data-count={r.count} className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_2.5rem] items-center gap-2 text-xs">
-          <Link {...href(keyOf(r))} className="truncate font-mono text-slate-700 hover:text-indigo-600" title={keyOf(r)}>
-            {keyOf(r)}
-          </Link>
-          <span className="h-1.5 overflow-hidden rounded bg-slate-100">
-            <i className={`block h-full ${barColor[r.level]}`} style={{ width: `${Math.max(4, (r.count / top[0].count) * 100)}%` }} />
-          </span>
-          <b className="num text-right">{fmtNum(r.count)}</b>
-        </li>
-      ))}
-    </ol>
+    <div data-part="charts" className="sg-dash-charts">
+      <Card id="collected" title="수집량 추이" sub="종류별 커널 이벤트">
+        {s ? (
+          <LineChart
+            name="collected"
+            label="수집량 추이"
+            keys={lineKeys}
+            data={data}
+            step={s.bucketSec}
+          />
+        ) : (
+          none
+        )}
+      </Card>
+      <Card id="violations" title="위반 추이" sub="격리 · 경고">
+        {s ? (
+          <StackBars
+            name="violations"
+            label="위반 추이"
+            keys={[
+              ["killed", "격리", "k-killed"],
+              ["alert", "경고", "k-alert"],
+            ]}
+            data={data}
+            step={s.bucketSec}
+          />
+        ) : (
+          none
+        )}
+      </Card>
+      <Card id="results" title="설치 검사 결과" sub="분포 · 판정 · 차단 목록">
+        {s ? <Results s={s} /> : none}
+      </Card>
+    </div>
+  );
+}
+
+function Card({
+  id,
+  title,
+  sub,
+  children,
+}: {
+  id: string;
+  title: string;
+  sub: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div data-card={id} className="flex min-w-0">
+      <Panel title={title} sub={sub} className="w-full">
+        <div className="sg-dash-chart-body">{children}</div>
+      </Panel>
+    </div>
   );
 }
 
@@ -224,34 +312,124 @@ function Results({ s }: { s: Summary }) {
   const I = s.installs;
   const D = s.decisions;
   const B = s.blocklist;
-  const chip = (ko: string, n: number, cls: string) => (
-    <span key={ko} className={`rounded px-1.5 py-0.5 ${cls}`}>
-      {ko} <b className="num">{n}</b>
-    </span>
-  );
   return (
-    <div className="grid gap-1.5 text-xs" data-results="">
-      <div className="grid gap-1">
-        <span className="text-slate-500">설치 검사</span>
-        <span className="flex flex-wrap gap-1">
-          {chip('통과', I.passed, 'bg-emerald-50 text-emerald-700')}
-          {chip('격리', I.isolated, 'bg-red-50 text-red-700')}
-          {chip('경고', I.warned, 'bg-amber-50 text-amber-800')}
-          {chip('설치 전 거부', I.refused, 'bg-slate-800 text-white')}
-          {chip('실패 · 미확인', I.failed, 'bg-slate-100 text-slate-600')}
+    <div className="sg-res" data-results="">
+      <Donut
+        name="results"
+        label="설치 검사 결과"
+        centerLabel="설치 검사"
+        items={RES.map(([k, ko, cls]) => [k, ko, cls, I[k] ?? 0])}
+      />
+      <div className="sg-res-side">
+        <ul className="sg-res-legend">
+          {RES.map(([k, ko, cls]) => (
+            <li key={k} data-res={k}>
+              <i className={`sw ${cls}`} aria-hidden />
+              <span>{ko}</span>
+              <b>{fmtNum(I[k] ?? 0)}</b>
+            </li>
+          ))}
+        </ul>
+        {/* 판정 · 차단 목록은 한 줄씩(카드 높이를 차트와 맞춘다) — 차단 목록 종류별 수는 툴팁 */}
+        <span className="sg-res-line" data-part="res-decisions">
+          <span className="text-text-3">판정</span> 악성{" "}
+          <b className={D.malicious ? "tone-danger" : ""}>{D.malicious}</b> ·
+          오탐 <b>{D.falsePositive}</b> · 대기 <b>{D.pending}</b>
         </span>
+        <Link
+          to="/policies"
+          className="sg-res-line"
+          data-part="res-blocklist"
+          title={`패키지 ${B.packages} · 이미지 ${B.images} · 도메인 ${B.hosts}`}
+        >
+          <span className="text-text-3">차단 목록</span>{" "}
+          <b data-blocklist-total="">
+            {fmtNum(B.packages + B.images + B.hosts)}
+          </b>
+          개 ›
+        </Link>
       </div>
-      <div className="grid gap-1">
-        <span className="text-slate-500">판정</span>
-        <span className="flex flex-wrap gap-1">
-          {chip('악성', D.malicious, 'bg-red-50 text-red-700')}
-          {chip('오탐', D.falsePositive, 'bg-blue-50 text-blue-700')}
-          {chip('대기', D.pending, 'bg-amber-50 text-amber-800')}
-        </span>
-      </div>
-      <Link to="/policies" className="text-indigo-600 hover:underline">
-        차단 목록 <b className="num" data-blocklist-total="">{fmtNum(B.packages + B.images + B.hosts)}</b> (패키지 {B.packages} · 이미지 {B.images} · 도메인 {B.hosts})
-      </Link>
     </div>
+  );
+}
+
+// ── 아래 줄: 많이 걸린 정책 · 위반 많은 컨테이너(상위 5) ──
+export function TopPanel({
+  kind,
+  s,
+}: {
+  kind: "rules" | "containers";
+  s: Summary | null;
+}) {
+  const rules = kind === "rules";
+  const rows = s ? (rules ? s.topRules : s.topContainers) : null;
+  return (
+    <div
+      data-card={rules ? "top-rules" : "top-containers"}
+      className="flex min-w-0"
+    >
+      <Panel
+        title={rules ? "많이 걸린 정책" : "위반이 많은 컨테이너 · 패키지"}
+        sub="위반 수 상위 5"
+        more={
+          rules
+            ? { to: "/policies", label: "정책" }
+            : { to: "/audit", label: "감사 로그" }
+        }
+        className="w-full"
+      >
+        <div data-fill="" className="sg-dash-fill">
+          {!rows ? (
+            <p className="sg-top-empty">—</p>
+          ) : (
+            <TopList
+              testId={kind}
+              rows={rows}
+              keyOf={(r) => (rules ? r.ruleId : r.container) ?? ""}
+              href={(k) =>
+                rules
+                  ? { to: `/policies?id=${encodeURIComponent(k)}` }
+                  : dest("/audit", { container: k })
+              }
+            />
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function TopList({
+  testId,
+  rows,
+  keyOf,
+  href,
+}: {
+  testId: string;
+  rows: SummaryTop[];
+  keyOf: (r: SummaryTop) => string;
+  href: (k: string) => Dest;
+}) {
+  const top = rows.slice(0, 5);
+  if (!top.length) return <p className="sg-top-empty">이 기간에 위반 없음</p>;
+  return (
+    <ol className="sg-top-list" data-top={testId}>
+      {top.map((r) => (
+        <li key={keyOf(r)} data-row={keyOf(r)} data-count={r.count}>
+          <Link {...href(keyOf(r))} title={keyOf(r)}>
+            {keyOf(r)}
+          </Link>
+          <span className="sg-top-bar">
+            <i
+              className={`lv-${r.level}`}
+              style={{
+                width: `${Math.max(4, (r.count / top[0].count) * 100)}%`,
+              }}
+            />
+          </span>
+          <b>{fmtNum(r.count)}</b>
+        </li>
+      ))}
+    </ol>
   );
 }

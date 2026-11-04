@@ -136,7 +136,9 @@ test.describe('격리 타임라인 · 종합 격리 지연', () => {
     await expect(page.locator('[data-section="overview"] [data-kpi="isolation"]')).toContainText('격리 지연 중앙값');
     backend.enableIsolation();
     await page.reload();
-    await expect(v).toHaveText('380 ms');
+    // R2 11/04: KPI 카드는 단위를 분리(값 28/700 · 단위 13/500)
+    await expect(v.locator('.kpi-val')).toHaveText('380');
+    await expect(v.locator('.kpi-unit')).toHaveText('ms');
     expect(backend.summary('24h').isolation).toEqual({ count: 2, medianMs: 380, p95Ms: 420, maxMs: 420 });
   });
 });

@@ -997,11 +997,31 @@ export class MockBackend {
   }
 
   summaryRanges: Record<string, [number, number]> = { '1h': [60, 60], '24h': [24, 3600], '7d': [28, 21600] };
+  // R2 11/04: previous — 바로 앞 같은 길이 기간(백엔드 internal/summary 와 같은 규칙: 경계는 지금 기간 쪽, 기록이 하나도 없으면 null).
+  //   테스트가 값을 정하려면 summaryPrevious 에 객체 · null 을 넣는다(undefined 면 계산, 'omit' 이면 옛 백엔드처럼 키 없음)
+  summaryPrevious: Summary['previous'] | 'omit' | undefined = undefined;
   summary(range: string): Summary {
+    const cur = this.summaryWindow(range, 0);
+    if (this.summaryPrevious === 'omit') {
+      const { previous: _p, ...old } = cur.s;
+      void _p;
+      return old;
+    }
+    if (this.summaryPrevious !== undefined) return { ...cur.s, previous: this.summaryPrevious };
+    const p = this.summaryWindow(range, 1);
+    return {
+      ...cur.s,
+      previous: p.has
+        ? { collected: p.s.collected.total, violations: p.s.violations.total, isolatedContainers: p.s.isolatedContainers, installs: p.s.installs.total, decided: p.s.decisions.malicious + p.s.decisions.falsePositive, isolationMedianMs: p.s.isolation?.medianMs ?? null }
+        : null,
+    };
+  }
+  private summaryWindow(range: string, shift: number): { s: Summary; has: boolean } {
     const [n, step] = this.summaryRanges[range] ?? [24, 3600];
     const stepMs = step * 1000;
-    const end = Math.floor(Date.now() / stepMs) * stepMs + stepMs;
+    const end = Math.floor(Date.now() / stepMs) * stepMs + stepMs - shift * n * stepMs;
     const from = end - n * stepMs;
+    let rows = 0;
     // 10/30: dns 는 enableDns() 일 때만(옛 백엔드처럼 키 자체가 없는 응답도 화면이 받아야 한다)
     const series: Summary['series'] = Array.from({ length: n }, (_, i) => ({ t: new Date(from + i * stepMs).toISOString(), exec: 0, open: 0, connect: 0, ...(this.dnsCollected ? { dns: 0 } : {}), killed: 0, alert: 0 }));
     const at = (ms: number) => (ms >= from && ms < end ? series[Math.floor((ms - from) / stepMs)] : undefined);
@@ -1010,6 +1030,7 @@ export class MockBackend {
     for (const c of this.collected) {
       const b = at(c.minute * 60000);
       if (!b) continue;
+      rows++;
       for (const k of kinds) {
         b[k] = (b[k] ?? 0) + (c[k] ?? 0);
         byKind[k] = (byKind[k] ?? 0) + (c[k] ?? 0);
@@ -1048,10 +1069,11 @@ export class MockBackend {
       bump(tops.ctrs, a.install?.label ?? a.event.containerName, l);
     }
     const sorted = (m: Map<string, { count: number; level: Level }>) => [...m.entries()].sort((x, y) => y[1].count - x[1].count || x[0].localeCompare(y[0])).slice(0, 10);
-    const ins = this.installs.filter((s) => Date.parse(s.startedAt) >= from);
+    const ins = this.installs.filter((s) => Date.parse(s.startedAt) >= from && Date.parse(s.startedAt) < end);
     const st = (k: string) => ins.filter((s) => s.status === k).length;
-    const dec = this.cases.filter((c) => c.decidedAt && Date.parse(c.decidedAt) >= from);
-    return {
+    const dec = this.cases.filter((c) => c.decidedAt && Date.parse(c.decidedAt) >= from && Date.parse(c.decidedAt) < end);
+    const has = rows > 0 || vio.total > 0 || ins.length > 0 || dec.length > 0;
+    const s: Summary = {
       range: this.summaryRanges[range] ? range : '24h',
       from: new Date(from).toISOString(),
       to: new Date(end).toISOString(),
@@ -1066,7 +1088,9 @@ export class MockBackend {
       decisions: { malicious: dec.filter((c) => c.decision === 'malicious').length, falsePositive: dec.filter((c) => c.decision === 'false_positive').length, pending: this.cases.filter((c) => c.state === 'open').length },
       blocklist: { packages: this.blocklist.packages.length, images: this.blocklist.images.length, hosts: this.blocklist.hosts.length },
       isolation,
+      previous: null,
     };
+    return { s, has };
   }
 
   private addChange(kind: Change['kind'], summary: string, caseId: string | null = null, proposalId: string | null = null, reason = '') {

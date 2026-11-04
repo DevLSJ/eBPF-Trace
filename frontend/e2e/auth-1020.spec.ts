@@ -205,7 +205,8 @@ test.describe('인증 — 앱 안에서', () => {
     await page.goto('/');
     await expect(page.getByTestId('page-title')).toHaveText('대시보드');
     backend.auth.session!.state = 'need_license';
-    await page.getByRole('link', { name: '감사 로그' }).click();
+    // R2 11/04: 대시보드 아래 칸 「감사 로그 ›」(더 보기)와 겹치지 않게 사이드바에서 누른다
+    await page.getByRole('navigation', { name: '화면' }).getByRole('link', { name: '감사 로그' }).click();
     await expect(step(page)).toHaveAttribute('data-step', 'license');
 
     backend.auth.session!.state = 'active';

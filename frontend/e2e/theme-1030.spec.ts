@@ -167,7 +167,7 @@ test.describe('F7 다크 모드', () => {
       expect(contrast(await token(page, t), await token(page, '--bg')), `${t} on --bg`).toBeGreaterThanOrEqual(4.5);
     }
     expect(contrast(await token(page, '--text-inverse'), await token(page, '--accent'))).toBeGreaterThanOrEqual(4.5);
-    const legend = page.locator('[data-section="overview"] [data-chart="violations"] [data-key="killed"] i');
+    const legend = page.locator('[data-section="overview"] [data-chart="violations"] .chart-legend .sw.k-killed'); // R2 11/04: R1 막대 차트 범례(.sw.k-killed)
     await expect(legend).toBeVisible();
     expect(await legend.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#FB7185'));
     await page.goto('/topology?node=c%3Apkg-reqeusts');
@@ -216,10 +216,11 @@ test.describe('F8 768px 미만 · 뷰포트별 넘침 0', () => {
       await page.goto('/');
       await expect(page.getByTestId('pending')).toBeVisible();
       await page.screenshot({ path: `${SHOTS}/1030-mobile.png`, fullPage: false });
+      // R2 11/04: 시연 카드는 대시보드에서 뺐다(시연 페이지 — R3) — 시연이 켜져도 대시보드에는 없다
       backend.enableDemo();
       await page.reload();
-      await expect(page.getByTestId('demo')).toBeVisible();
-      await page.screenshot({ path: `${SHOTS}/1030-demo-390.png` });
+      await expect(page.getByTestId('pending')).toBeVisible();
+      await expect(page.getByTestId('demo')).toHaveCount(0);
       await page.goto('/report?install=ins-0012');
       await expect(page.getByTestId('report').locator('[data-section="meta"]')).toBeVisible();
       await noPageOverflow(page);

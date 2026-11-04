@@ -1,101 +1,184 @@
-import { ChevronRight, CircleCheck, FileText } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { Empty, LoadError, Panel } from '../../components/Panel';
-import { Overview } from './Overview';
-import { DemoPanel } from './DemoPanel';
-import { SignalPills } from './SignalPills';
-import { LevelBadge } from '../../components/VerdictBadge';
-import { useAuth } from '../../hooks/auth-context';
-import { useCases } from '../../hooks/cases-context';
-import { useStream } from '../../hooks/stream-context';
-import { fmtNum, fmtTime } from '../../lib/format';
-import { scanHref, SOURCE_LABEL } from '../../lib/guide';
-import { installDest, topologyDest } from '../../lib/nav';
-import { caseLabel, type Case } from '../../lib/types';
+import { CircleCheck, FileText } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Empty, LoadError, Panel } from "../../components/Panel";
+import { ChartRow, KpiRow, RangeChips, TopPanel } from "./Overview";
+import { useSummary } from "./summary";
+import { SignalPills } from "./SignalPills";
+import { LevelBadge } from "../../components/VerdictBadge";
+import { useCases } from "../../hooks/cases-context";
+import { useStream } from "../../hooks/stream-context";
+import { fmtNum, fmtTime } from "../../lib/format";
+import { scanHref, SOURCE_LABEL } from "../../lib/guide";
+import { installDest, topologyDest } from "../../lib/nav";
+import { caseLabel, type Case } from "../../lib/types";
+import "./dashboard.css";
 
 // 대시보드 — 「지금 처리할 일이 있나?」(판정 대기) + 「지금까지 무엇을 수집 · 탐지했나?」(eBPF 수집 종합, 10/16)
-// 낮은 화면(768px 폭 등)에서는 판정 대기가 최소 7rem 을 지키고 수집 종합이 제 칸 안에서 스크롤한다(W20)
-// 10/30: 맨 위 상태 신호등 한 줄(계약 §5) · 그 아래 「시연」 카드(관리자 + /api/info.demo 일 때만, §4) · 판정 대기 · 종합
+// 11/04e 재배치(R2 11/04, 목업 mock/README.md 11/04e A): 머리 한 줄(상태 신호등 · 「eBPF 감시 중」 · 기간) → KPI 6칸(종합 카드 밖 독립 줄, 길게 눌러 옮기기)
+//   → 차트 줄 3칸(수집량 추이 1.8 : 위반 추이 1 : 설치 검사 결과 1.2) → 아래 3칸(판정 대기 · 많이 걸린 정책 · 위반 많은 컨테이너 — 남은 높이 채움, 몸통만 스크롤).
+//   768 이상은 화면 안에 다 들어간다(스크롤 0). 시연 카드는 대시보드에서 뺐다(R3 시연 페이지, 사용자 결정 R2 11/04)
 export function DashboardPage() {
-  const { cases, error } = useCases();
-  const { info } = useStream();
-  const { isAdmin } = useAuth();
-  const demo = isAdmin && info?.demo === true;
-
-  const pending = (cases ?? []).filter((c) => c.state === 'open').sort((a, b) => b.openedAt.localeCompare(a.openedAt));
-  const awaitingApply = (cases ?? []).filter((c) => c.state === 'decided').length;
-
+  const { stats } = useStream();
+  const { range, setRange, sum } = useSummary();
+  const s = sum.data ?? null;
   return (
-    <div className={`grid h-full min-h-0 gap-4 ${demo ? 'grid-rows-[auto_auto_minmax(7rem,1fr)_minmax(0,auto)]' : 'grid-rows-[auto_minmax(7rem,1fr)_minmax(0,auto)]'}`}>
-      <SignalPills />
-      {demo && <DemoPanel />}
-      <Panel
-        testId="pending"
-        title={
-          <span className="flex items-baseline gap-2">
-            판정 대기
-            <b className={`num text-lg ${pending.length ? 'text-amber-600' : 'text-slate-400'}`} data-testid="pending-count">
-              {cases ? pending.length : '—'}
-            </b>
-          </span>
-        }
-        actions={
-          awaitingApply > 0 && (
-            <Link to="/policies" className="text-xs text-indigo-600 hover:underline" data-testid="awaiting-apply">
-              적용 대기 제안 {awaitingApply}건 → 정책
-            </Link>
-          )
-        }
-      >
-        {error && !cases ? (
-          <LoadError error={error} what="건(판정 대기)" />
-        ) : !cases ? (
-          <Empty>불러오는 중…</Empty>
-        ) : pending.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-500" data-testid="nothing-to-do">
-            <CircleCheck className="size-8 text-emerald-500" aria-hidden />
-            <b className="text-base text-slate-700">처리할 일 없음</b>
-            <span className="text-sm">설치 검사 · 런타임 감시가 계속 돌고 있습니다.</span>
-          </div>
-        ) : (
-          <ul data-fill="" className="h-full overflow-y-auto" data-testid="pending-list">
-            {pending.map((c) => (
-              <PendingRow key={c.id} c={c} />
-            ))}
-          </ul>
-        )}
-      </Panel>
-
-      <Overview />
+    <div data-part="dashboard" data-section="overview" className="sg-dash">
+      <div data-part="dash-top" className="sg-dash-top">
+        <SignalPills />
+        <span
+          data-part="dash-live"
+          className="sg-dash-live flex items-center gap-1.5 text-xs text-text-3"
+        >
+          <span className="size-2 sg-blink rounded-full bg-ok" aria-hidden />
+          eBPF 감시 중 · 초당{" "}
+          <span className="num">
+            {fmtNum(Math.round((stats?.eventsPerSec ?? 0) * 10) / 10)}
+          </span>{" "}
+          evt
+        </span>
+        <RangeChips range={range} onPick={setRange} />
+      </div>
+      <KpiRow s={s} range={range} error={sum.error} />
+      <ChartRow s={s} />
+      <div data-part="bottom" className="sg-dash-bottom">
+        <Pending />
+        <TopPanel kind="rules" s={s} />
+        <TopPanel kind="containers" s={s} />
+      </div>
     </div>
   );
 }
 
+// 판정 대기 — 설치 · 런타임 · 공급망 검사 건(열린 것), 최근 순. 판정했지만 적용 전인 제안은 바닥줄 한 줄
+function Pending() {
+  const { cases, error } = useCases();
+  const pending = (cases ?? [])
+    .filter((c) => c.state === "open")
+    .sort((a, b) => b.openedAt.localeCompare(a.openedAt));
+  const awaitingApply = (cases ?? []).filter(
+    (c) => c.state === "decided",
+  ).length;
+  return (
+    <div data-card="pending" className="flex min-w-0">
+      <Panel
+        testId="pending"
+        className="w-full"
+        title={
+          <span className="flex items-baseline gap-1.5">
+            판정 대기
+            <b
+              className={`num text-base ${pending.length ? "text-warn-text" : "text-text-3"}`}
+              data-testid="pending-count"
+            >
+              {cases ? pending.length : "—"}
+            </b>
+          </span>
+        }
+        sub="격리 · 경고된 설치 · 격리된 런타임"
+        more={{ to: "/installs", label: "설치 검사" }}
+        foot={
+          awaitingApply > 0 && (
+            <div className="sg-pend-foot">
+              <Link
+                to="/policies"
+                className="text-accent hover:underline"
+                data-testid="awaiting-apply"
+              >
+                적용 대기 제안 {awaitingApply}건 → 정책
+              </Link>
+            </div>
+          )
+        }
+      >
+        <div data-fill="" className="sg-dash-fill">
+          {error && !cases ? (
+            <LoadError error={error} what="건(판정 대기)" />
+          ) : !cases ? (
+            <Empty>불러오는 중…</Empty>
+          ) : pending.length === 0 ? (
+            <div
+              className="flex h-full min-h-24 flex-col items-center justify-center gap-1.5 p-4 text-center text-text-3"
+              data-testid="nothing-to-do"
+            >
+              <CircleCheck className="size-7 text-ok" aria-hidden />
+              <b className="text-sm text-text-2">처리할 일 없음</b>
+              <span className="text-xs">
+                새 격리 · 경고가 생기면 여기에 판정 대기로 올라옵니다.
+              </span>
+            </div>
+          ) : (
+            <ul data-testid="pending-list">
+              {pending.map((c) => (
+                <PendingRow key={c.id} c={c} />
+              ))}
+            </ul>
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+const CHIP: Record<Case["source"], string> = {
+  install: "bg-accent-soft text-accent-text",
+  scan: "bg-warn-soft text-warn-text",
+  runtime: "bg-info-soft text-info-text",
+};
 function PendingRow({ c }: { c: Case }) {
   const sh = scanHref(c);
-  const to = c.source === 'install' && c.installId ? installDest(c.installId, 'pending') : sh ? { to: sh } : topologyDest(c.container);
-  const chip = c.source === 'install' ? 'bg-indigo-50 text-indigo-700' : c.source === 'scan' ? 'bg-amber-50 text-amber-800' : 'bg-teal-50 text-teal-700';
+  const to =
+    c.source === "install" && c.installId
+      ? installDest(c.installId, "pending")
+      : sh
+        ? { to: sh }
+        : topologyDest(c.container);
+  const bar =
+    c.level === "killed" || c.level === "held" ? "bar-danger" : "bar-warn";
   return (
-    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center border-b border-slate-100">
-      <Link {...to} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto_1rem] items-center gap-3 px-4 py-3 text-sm hover:bg-slate-50 md:grid-cols-[4.5rem_minmax(0,1fr)_auto_3.5rem_4.5rem_1rem]" data-case={c.id} data-source={c.source}>
-        <span className={`rounded px-1.5 py-0.5 text-center text-[11px] font-medium whitespace-nowrap ${chip}`}>{SOURCE_LABEL[c.source] ?? c.source}</span>
-        <span className="min-w-0">
-          <span className="block truncate font-mono font-medium text-slate-800">{caseLabel(c)}</span>
-          <span className="block truncate text-xs text-slate-500">{c.ruleIds.join(' · ')}</span>
+    <li className="sg-pend-row">
+      {/* 한 행 두 단: 위 = 출처 · 대상 · 탐지 결과, 아래 = 걸린 규칙 · 위반 수 · 시각(1/3 폭 칸에서도 읽히게) */}
+      <Link
+        {...to}
+        className={`sg-pend-link ${bar}`}
+        data-case={c.id}
+        data-source={c.source}
+        aria-label={`${caseLabel(c)} 판정하기`}
+      >
+        <span
+          className={`sg-pend-src rounded px-1.5 py-0.5 text-center text-xs font-medium whitespace-nowrap ${CHIP[c.source] ?? ""}`}
+        >
+          {SOURCE_LABEL[c.source] ?? c.source}
         </span>
-        <LevelBadge level={c.level} />
-        <span className="num hidden text-right text-xs text-slate-500 md:inline">위반 {fmtNum(c.violations)}</span>
-        <span className="num hidden text-right font-mono text-xs text-slate-500 md:inline">{fmtTime(c.openedAt)}</span>
-        <ChevronRight className="size-4 text-slate-400" aria-hidden />
+        <span className="sg-pend-what">
+          <span
+            className="block truncate font-mono font-medium text-text"
+            title={caseLabel(c)}
+          >
+            {caseLabel(c)}
+          </span>
+          <span className="block truncate text-xs text-text-3">
+            {c.ruleIds.join(" · ")}
+          </span>
+        </span>
+        <span className="sg-pend-badge">
+          <LevelBadge level={c.level} />
+        </span>
+        <span className="sg-pend-meta" data-part="pend-meta">
+          위반 {fmtNum(c.violations)} · {fmtTime(c.openedAt)}
+        </span>
+        <span className="sg-pend-chev" aria-hidden>
+          ›
+        </span>
       </Link>
       {/* 건 보고서 1장(10/30 계약 §5) — 행 메뉴 「보고서」 */}
       <Link
         to={`/report?case=${encodeURIComponent(c.id)}`}
         data-action="report"
         title="건 보고서 1장"
-        className="mr-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+        aria-label={`${caseLabel(c)} 보고서`}
+        className="mr-1.5 inline-flex shrink-0 items-center rounded-md p-1.5 text-text-3 hover:bg-surface-2 hover:text-text"
       >
-        <FileText className="size-3.5" aria-hidden /> 보고서
+        <FileText className="size-3.5" aria-hidden />
       </Link>
     </li>
   );

@@ -547,6 +547,16 @@ export interface Summary {
   blocklist: { packages: number; images: number; hosts: number };
   // 격리 지연(10/30): 범위 안 killedAt 있는 행, ms = killedAt − detectedAt. 없으면 count 0 · 나머지 null. 옛 백엔드는 없음
   isolation?: { count: number; medianMs: number | null; p95Ms: number | null; maxMs: number | null };
+  // 직전 기간(R2 11/04): 바로 앞 같은 길이 기간의 같은 숫자 — KPI 증감 줄. 그 기간에 기록이 없으면 null, 옛 백엔드는 키 없음
+  previous?: SummaryPrevious | null;
+}
+export interface SummaryPrevious {
+  collected: number; // collected.total
+  violations: number; // violations.total
+  isolatedContainers: number;
+  installs: number; // installs.total
+  decided: number; // decisions.malicious + falsePositive
+  isolationMedianMs: number | null; // isolation.medianMs — 그 기간에 격리가 없으면 null
 }
 
 // 공급망 검사(10/16) — GuardDog(악성 코드 패턴) · OSV-Scanner(알려진 취약점). 백엔드 internal/scan

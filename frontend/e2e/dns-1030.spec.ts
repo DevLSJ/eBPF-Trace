@@ -155,7 +155,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     const kpi = page.locator('[data-section="overview"] [data-kpi="collected"]');
     await expect(kpi).toContainText('통신');
     await expect(kpi).not.toContainText('조회');
-    await expect(page.locator('[data-section="overview"] [data-chart="collected"] rect[data-kind="dns"]')).toHaveCount(0);
+    await expect(page.locator('[data-section="overview"] [data-chart="collected"] [data-kind="dns"]')).toHaveCount(0); // R2 11/04: 수집량 추이는 선 차트(path.line[data-kind])
     backend.enableDns();
     await page.reload();
     const s = backend.summary('24h');
@@ -164,8 +164,9 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     await expect(kpi.locator('[data-value]')).toHaveText(s.collected.total.toLocaleString('ko-KR'));
     const chart = page.locator('[data-section="overview"] [data-chart="collected"]');
     await expect(chart).toContainText('조회');
-    expect(await chart.locator('rect[data-kind="dns"]').count()).toBeGreaterThan(0);
-    const color = await chart.locator('[data-key="dns"] i').evaluate((e) => getComputedStyle(e).backgroundColor);
+    // R2 11/04: 선 차트 — 조회 선 · 선 끝 라벨 「조회 N」 색이 토큰 --k-dns
+    expect(await chart.locator('path.line[data-kind="dns"]').count()).toBe(1);
+    const color = await chart.locator('[data-end-label="dns"]').evaluate((e) => getComputedStyle(e).fill);
     expect(color).toBe('rgb(251, 146, 60)'); // #fb923c
   });
 
