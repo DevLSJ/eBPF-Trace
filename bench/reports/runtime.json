@@ -1,0 +1,626 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-11-04T00:36:42Z",
+  "startedAt": "2026-11-04T00:16:58Z",
+  "seed": 37154547,
+  "host": {
+    "name": "sg-vm",
+    "kernel": "5.15.0-202-generic",
+    "discovery": "fanotify",
+    "igVersion": "v0.56.1",
+    "backendCommit": "845907c07677f929d82c47a1798af886f4846019",
+    "enforceKill": true,
+    "dnsResolve": "ok"
+  },
+  "benign": {
+    "installs": 50,
+    "byEcosystem": {
+      "pip": 35,
+      "npm": 15
+    },
+    "violations": 0,
+    "falsePositiveRate": 0.0,
+    "items": [
+      {
+        "ecosystem": "pip",
+        "name": "typing-extensions",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.5,
+        "exitCode": 0,
+        "events": 1744
+      },
+      {
+        "ecosystem": "pip",
+        "name": "attrs",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.0,
+        "exitCode": 0,
+        "events": 1810
+      },
+      {
+        "ecosystem": "npm",
+        "name": "express",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.6,
+        "exitCode": 0,
+        "events": 4545
+      },
+      {
+        "ecosystem": "pip",
+        "name": "flask",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.8,
+        "exitCode": 0,
+        "events": 2302
+      },
+      {
+        "ecosystem": "pip",
+        "name": "pyyaml",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1797
+      },
+      {
+        "ecosystem": "pip",
+        "name": "numpy",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.8,
+        "exitCode": 0,
+        "events": 3482
+      },
+      {
+        "ecosystem": "pip",
+        "name": "psutil",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.2,
+        "exitCode": 0,
+        "events": 1771
+      },
+      {
+        "ecosystem": "pip",
+        "name": "pytest",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.9,
+        "exitCode": 0,
+        "events": 3250
+      },
+      {
+        "ecosystem": "pip",
+        "name": "aiohttp",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.4,
+        "exitCode": 0,
+        "events": 2339
+      },
+      {
+        "ecosystem": "npm",
+        "name": "sharp",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.4,
+        "exitCode": 0,
+        "events": 3720
+      },
+      {
+        "ecosystem": "pip",
+        "name": "pillow",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.5,
+        "exitCode": 0,
+        "events": 2068
+      },
+      {
+        "ecosystem": "pip",
+        "name": "uvicorn",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.5,
+        "exitCode": 0,
+        "events": 2017
+      },
+      {
+        "ecosystem": "pip",
+        "name": "jinja2",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1852
+      },
+      {
+        "ecosystem": "npm",
+        "name": "uuid",
+        "result": "pass",
+        "rule": null,
+        "seconds": 2.6,
+        "exitCode": 0,
+        "events": 3482
+      },
+      {
+        "ecosystem": "npm",
+        "name": "react-dom",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.6,
+        "exitCode": 0,
+        "events": 3514
+      },
+      {
+        "ecosystem": "pip",
+        "name": "six",
+        "result": "pass",
+        "rule": null,
+        "seconds": 2.9,
+        "exitCode": 0,
+        "events": 1745
+      },
+      {
+        "ecosystem": "pip",
+        "name": "certifi",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1759
+      },
+      {
+        "ecosystem": "npm",
+        "name": "moment",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.4,
+        "exitCode": 0,
+        "events": 3956
+      },
+      {
+        "ecosystem": "pip",
+        "name": "redis",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.4,
+        "exitCode": 0,
+        "events": 2100
+      },
+      {
+        "ecosystem": "pip",
+        "name": "boto3",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.6,
+        "exitCode": 0,
+        "events": 4439
+      },
+      {
+        "ecosystem": "pip",
+        "name": "idna",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1775
+      },
+      {
+        "ecosystem": "pip",
+        "name": "rich",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.0,
+        "exitCode": 0,
+        "events": 3369
+      },
+      {
+        "ecosystem": "pip",
+        "name": "python-dateutil",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.2,
+        "exitCode": 0,
+        "events": 2502
+      },
+      {
+        "ecosystem": "pip",
+        "name": "fastapi",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.5,
+        "exitCode": 0,
+        "events": 2891
+      },
+      {
+        "ecosystem": "pip",
+        "name": "protobuf",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.4,
+        "exitCode": 0,
+        "events": 1916
+      },
+      {
+        "ecosystem": "pip",
+        "name": "packaging",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1810
+      },
+      {
+        "ecosystem": "pip",
+        "name": "httpx",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.4,
+        "exitCode": 0,
+        "events": 2283
+      },
+      {
+        "ecosystem": "pip",
+        "name": "pyjwt",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1778
+      },
+      {
+        "ecosystem": "npm",
+        "name": "lodash",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.0,
+        "exitCode": 0,
+        "events": 4462
+      },
+      {
+        "ecosystem": "npm",
+        "name": "esbuild",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.2,
+        "exitCode": 0,
+        "events": 3536
+      },
+      {
+        "ecosystem": "npm",
+        "name": "chalk",
+        "result": "pass",
+        "rule": null,
+        "seconds": 2.7,
+        "exitCode": 0,
+        "events": 3423
+      },
+      {
+        "ecosystem": "pip",
+        "name": "pandas",
+        "result": "pass",
+        "rule": null,
+        "seconds": 11.4,
+        "exitCode": 0,
+        "events": 8725
+      },
+      {
+        "ecosystem": "pip",
+        "name": "django",
+        "result": "pass",
+        "rule": null,
+        "seconds": 5.7,
+        "exitCode": 0,
+        "events": 7371
+      },
+      {
+        "ecosystem": "pip",
+        "name": "charset-normalizer",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.3,
+        "exitCode": 0,
+        "events": 1785
+      },
+      {
+        "ecosystem": "npm",
+        "name": "vue",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.2,
+        "exitCode": 0,
+        "events": 4219
+      },
+      {
+        "ecosystem": "pip",
+        "name": "cryptography",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.8,
+        "exitCode": 0,
+        "events": 2154
+      },
+      {
+        "ecosystem": "pip",
+        "name": "werkzeug",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.3,
+        "exitCode": 0,
+        "events": 1938
+      },
+      {
+        "ecosystem": "pip",
+        "name": "urllib3",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1849
+      },
+      {
+        "ecosystem": "pip",
+        "name": "click",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1793
+      },
+      {
+        "ecosystem": "pip",
+        "name": "sqlalchemy",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.7,
+        "exitCode": 0,
+        "events": 2555
+      },
+      {
+        "ecosystem": "pip",
+        "name": "tqdm",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.2,
+        "exitCode": 0,
+        "events": 1840
+      },
+      {
+        "ecosystem": "pip",
+        "name": "pydantic",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.5,
+        "exitCode": 0,
+        "events": 2186
+      },
+      {
+        "ecosystem": "pip",
+        "name": "gunicorn",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.2,
+        "exitCode": 0,
+        "events": 1951
+      },
+      {
+        "ecosystem": "npm",
+        "name": "commander",
+        "result": "pass",
+        "rule": null,
+        "seconds": 2.7,
+        "exitCode": 0,
+        "events": 3423
+      },
+      {
+        "ecosystem": "npm",
+        "name": "axios",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.2,
+        "exitCode": 0,
+        "events": 4048
+      },
+      {
+        "ecosystem": "npm",
+        "name": "react",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 3438
+      },
+      {
+        "ecosystem": "pip",
+        "name": "requests",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.3,
+        "exitCode": 0,
+        "events": 2101
+      },
+      {
+        "ecosystem": "npm",
+        "name": "typescript",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.4,
+        "exitCode": 0,
+        "events": 4021
+      },
+      {
+        "ecosystem": "npm",
+        "name": "debug",
+        "result": "pass",
+        "rule": null,
+        "seconds": 2.8,
+        "exitCode": 0,
+        "events": 3431
+      },
+      {
+        "ecosystem": "npm",
+        "name": "dayjs",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 3856
+      }
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "sandbox-typosquat",
+      "label": "설치 샌드박스 — 타이포스쿼팅",
+      "kind": "attack",
+      "runs": 10,
+      "detected": 10,
+      "killed": 10,
+      "rule": "pipe-to-shell",
+      "latencyMs": {
+        "p50": 293.7,
+        "p95": 332.4,
+        "max": 332.4,
+        "n": 10
+      },
+      "matchLatencyMs": {
+        "p50": 0.0,
+        "p95": 0.2,
+        "max": 0.2,
+        "n": 10
+      },
+      "evidenceMs": {
+        "p50": 119.0,
+        "p95": 143.4,
+        "max": 143.4,
+        "n": 10
+      },
+      "killApiMs": {
+        "p50": 176.0,
+        "p95": 193.7,
+        "max": 193.7,
+        "n": 10
+      },
+      "detectedByRule": {
+        "pipe-to-shell": 10
+      },
+      "killedByRule": {
+        "pipe-to-shell": 10
+      },
+      "detectedNotKilled": 0,
+      "killNotRunning": 0,
+      "dryRun": false
+    },
+    {
+      "id": "sandbox-dns-exfil",
+      "label": "설치 샌드박스 — DNS 유출 질의",
+      "kind": "attack",
+      "runs": 10,
+      "detected": 10,
+      "killed": 10,
+      "rule": "sandbox-dns",
+      "latencyMs": {
+        "p50": 308.8,
+        "p95": 484.6,
+        "max": 484.6,
+        "n": 10
+      },
+      "matchLatencyMs": {
+        "p50": 0.1,
+        "p95": 0.1,
+        "max": 0.1,
+        "n": 10
+      },
+      "evidenceMs": {
+        "p50": 138.3,
+        "p95": 250.4,
+        "max": 250.4,
+        "n": 10
+      },
+      "killApiMs": {
+        "p50": 185.6,
+        "p95": 237.0,
+        "max": 237.0,
+        "n": 10
+      },
+      "detectedByRule": {
+        "sandbox-dns": 10
+      },
+      "killedByRule": {
+        "sandbox-dns": 10
+      },
+      "detectedNotKilled": 0,
+      "killNotRunning": 0,
+      "dryRun": false
+    },
+    {
+      "id": "runtime-chain",
+      "label": "런타임 — 연쇄(다운로드 → 외부 연결 → 자격 증명 파일)",
+      "kind": "attack",
+      "runs": 10,
+      "detected": 10,
+      "killed": 0,
+      "rule": "chain-download-secrets",
+      "latencyMs": null,
+      "matchLatencyMs": {
+        "p50": 0.1,
+        "p95": 0.4,
+        "max": 0.4,
+        "n": 10
+      },
+      "evidenceMs": null,
+      "killApiMs": null,
+      "detectedByRule": {
+        "chain-download-secrets": 10
+      },
+      "killedByRule": {},
+      "detectedNotKilled": 10,
+      "killNotRunning": 0,
+      "dryRun": true
+    },
+    {
+      "id": "chain-gap-control",
+      "label": "런타임 — 연쇄 대조군(마지막 단계 11초 뒤, 창 밖)",
+      "kind": "control",
+      "runs": 5,
+      "detected": 0,
+      "killed": 0,
+      "rule": "chain-download-secrets",
+      "latencyMs": null,
+      "matchLatencyMs": null,
+      "evidenceMs": null,
+      "killApiMs": null,
+      "detectedByRule": {},
+      "killedByRule": {},
+      "detectedNotKilled": 0,
+      "killNotRunning": 0,
+      "dryRun": false,
+      "lastStepRan": 5
+    }
+  ],
+  "limits": [
+    "표본이 작다 — 정상 설치 50건 · 공격 시나리오별 10회 · 대조군 5회. p95 는 가장 가까운 순위 방식이라 10회면 사실상 최댓값이고, 오탐률 0 은 「이 표본에서 0」일 뿐이다.",
+    "단일 호스트 측정 — sg-vm(커널 5.15.0-202-generic · 발견 fanotify · IG v0.56.1). 다른 커널(특히 Ubuntu 26.04 커널 7.0 에서는 이벤트 유실을 실측)이나 docker-events 발견 방식에는 그대로 옮길 수 없다.",
+    "공격은 모두 무해 시뮬레이션(TEST-NET 203.0.113.7 · 예약 도메인 *.example)이다. 실제 악성 패키지의 다양한 회피 기법은 재지 않았다.",
+    "지연은 백엔드가 적은 격리 타임라인(백엔드가 가젯 이벤트를 받은 시각 → Docker kill 응답 시각)이다. 이벤트 시각은 커널 시각이 아니라 수신 시각(time.Now)이라 커널 → 사용자 공간 전달 시간은 빠져 있다. kill 직전 증거 수집(최대 0.7초)이 포함된다.",
+    "짧게 끝나는 컨테이너는 증거 수집 동안 먼저 종료돼 kill 이 「container is not running」이 될 수 있다 — 탐지는 성공으로, 격리(killed)는 따로 센다.",
+    "연쇄 규칙 chain-download-secrets 는 발표까지 dryRun 이라 격리 수가 0 인 것이 정상이다. 측정 동안만 no-shell-download 를 dryRun 으로 두었다(그대로면 1단계 wget 에서 먼저 격리된다).",
+    "TEST-NET 목적지는 접속 실패(약 3초) 뒤에 connect 이벤트가 나와 연쇄 판정도 그만큼 늦다 — 실제 도달 가능한 서버면 더 빠르다.",
+    "sg-install 세션 시작 때 서버가 같은 패키지의 정적 검사를 자동 시작한다(종합 판정). 정상 설치 동안 검사기 컨테이너가 함께 돈다.",
+    "정상 설치는 인기 패키지 최신 버전만 쟀다. puppeteer 처럼 설치 중 허용 목록 밖에서 바이너리를 받는 패키지는 기본 목록에서 뺐다(11/03 실측: sandbox-egress 로 격리).",
+    "엔진은 TCP 와 DNS(53 · 5353)만 관찰한다 — 일반 UDP 유출은 이 표의 탐지율에 들어가지 않는다."
+  ],
+  "policyChange": {
+    "rule": "no-shell-download",
+    "changedAt": "2026-11-04T00:32:15Z",
+    "restoredAt": "2026-11-04T00:36:42Z",
+    "restoreHttp": 200,
+    "diffLines": 0,
+    "dryRunDuring": "runtime-chain · chain-gap-control"
+  }
+}

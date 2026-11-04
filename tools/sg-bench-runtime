@@ -1,0 +1,578 @@
+#!/usr/bin/env python3
+"""sg-bench-runtime — 런타임(커널) 탐지 반복 측정표(D3, 11/04). 가젯 백엔드가 떠 있는 호스트(sg-vm · EC2)에서 돈다.
+
+  표본: 정상 설치(기본 pip 35 · npm 15, -l 로 바꿈) · 공격 3종 각 -n 회 · 연쇄 음성 대조군 -c 회
+    sandbox-typosquat  sg-install pip deploy/demo/reqeusts                   (설치 샌드박스 격리)
+    sandbox-dns-exfil  sg-install pip <reqeusts 사본, 시나리오 dns-exfil 만>  (sandbox-dns)
+    runtime-chain      deploy/demo/run-attacker.sh SCENARIO=chain              (chain-download-secrets)
+    chain-gap-control  같은 스크립트 CHAIN_GAP=11 — 창 10초 밖이라 탐지되면 안 된다
+  연쇄 측정 동안만 no-shell-download 를 dryRun 으로 바꾸고(1단계 wget 에서 먼저 격리하므로) 끝나면 반드시 원복한다.
+  바꾸기 전 정책 전체를 작업 폴더에 백업하고, 원복 뒤 다시 받아 백업과 비교(차이 0 이어야 성공)한다. 다른 정책 · 설정은 건드리지 않는다.
+  정상 설치 · 공격(샌드박스)은 섞어서, 연쇄 · 대조군은 따로 섞어서 돌린다. 매 실행 전 공급망 검사(GET /api/scans)에
+  running 이 없을 때까지 기다린다(--scan-wait 초까지, 넘기면 그대로 돌리고 결과에 센다).
+  지연은 감사 로그 판정의 격리 타임라인(timeline.detectedAt → killedAt, 백엔드가 적은 시각 — detectedAt 은 가젯 이벤트 수신 시각)에서 계산한다.
+
+  사용: tools/sg-bench-runtime [-a http://127.0.0.1] [-t ~/sg/.tokens] [-l 목록] [-o bench/reports/runtime.json]
+                               [-n 10] [-c 5] [--only benign,typosquat,dns,chain] [--host-name sg-vm] [--backend-commit SHA]
+                               [--work ./.sg-bench-runtime] [--seed N] [--plan]
+    토큰: 환경 변수 ADMIN_TOKEN · SUPPLYGUARD_SANDBOX_TOKEN, 없으면 -t 파일의 ADMIN_TOKEN= · SANDBOX_TOKEN= 줄(값은 출력하지 않는다)
+    목록: 한 줄에 「pip 이름[==버전]」 또는 「npm 이름[@버전]」. 빈 줄 · # 주석 무시
+    --plan  실행하지 않고 실행 순서만 출력
+  종료 코드: 0 측정 완료(정상 설치 위반 0 · 대조군 탐지 0 · 정책 원복 확인) · 1 측정은 끝났지만 위 조건 중 하나 실패 · 2 사용 오류
+  출력 JSON 은 수치와 공개 인기 패키지 이름만 담는다(토큰 · 컨테이너 로그 원문 없음).
+"""
+import argparse
+import collections
+import datetime as dt
+import difflib
+import json
+import os
+import platform
+import random
+import re
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SG_INSTALL = os.path.join(ROOT, "tools", "sg-install")
+ATTACKER = os.path.join(ROOT, "deploy", "demo", "run-attacker.sh")
+DEMO_PKG = os.path.join(ROOT, "deploy", "demo", "reqeusts")
+CHAIN_RULE = "chain-download-secrets"
+STAGE1_RULE = "no-shell-download"
+
+# puppeteer 는 브라우저를 storage.googleapis.com 에서 받아 sandbox-egress 로 격리된다(11/03 sg-vm 실측, 허용 목록 밖) —
+# 정책 질문이 끝나기 전까지 기본 목록에서 뺀다. 넣고 재려면 -l 목록에 적는다.
+DEFAULT_LIST = """
+pip requests
+pip urllib3
+pip certifi
+pip idna
+pip charset-normalizer
+pip six
+pip python-dateutil
+pip pyyaml
+pip flask
+pip jinja2
+pip click
+pip packaging
+pip attrs
+pip django
+pip numpy
+pip boto3
+pip cryptography
+pip typing-extensions
+pip pydantic
+pip fastapi
+pip sqlalchemy
+pip pandas
+pip pytest
+pip rich
+pip httpx
+pip aiohttp
+pip werkzeug
+pip pillow
+pip protobuf
+pip pyjwt
+pip tqdm
+pip gunicorn
+pip uvicorn
+pip psutil
+pip redis
+npm lodash
+npm express
+npm react
+npm react-dom
+npm axios
+npm chalk
+npm commander
+npm debug
+npm moment
+npm uuid
+npm dayjs
+npm typescript
+npm vue
+npm esbuild
+npm sharp
+"""
+
+SCENARIOS = {
+    "sandbox-typosquat": {"label": "설치 샌드박스 — 타이포스쿼팅", "kind": "attack", "expect": None},
+    "sandbox-dns-exfil": {"label": "설치 샌드박스 — DNS 유출 질의", "kind": "attack", "expect": "sandbox-dns"},
+    "runtime-chain": {"label": "런타임 — 연쇄(다운로드 → 외부 연결 → 자격 증명 파일)", "kind": "attack", "expect": CHAIN_RULE},
+    "chain-gap-control": {"label": "런타임 — 연쇄 대조군(마지막 단계 11초 뒤, 창 밖)", "kind": "control", "expect": CHAIN_RULE},
+}
+
+
+def log(msg):
+    print(time.strftime("%H:%M:%S"), msg, flush=True)
+
+
+def now_iso():
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def parse_ts(s):
+    if not s:
+        return None
+    m = re.match(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(\.\d+)?(Z|[+-]\d\d:\d\d)$", s)
+    if not m:
+        return None
+    frac = (m.group(2) or ".0")[1:7].ljust(6, "0")
+    tz = "+00:00" if m.group(3) == "Z" else m.group(3)
+    return dt.datetime.fromisoformat(f"{m.group(1)}.{frac}{tz}")
+
+
+def ms_between(a, b):
+    ta, tb = parse_ts(a), parse_ts(b)
+    if ta is None or tb is None:
+        return None
+    return round((tb - ta).total_seconds() * 1000, 1)
+
+
+def pct(values, p):
+    """가장 가까운 순위(nearest-rank) 백분위 — 표본이 적으면 p95 는 사실상 최댓값이다"""
+    if not values:
+        return None
+    v = sorted(values)
+    k = max(1, -(-len(v) * p // 100))  # ceil
+    return v[int(k) - 1]
+
+
+def dist(values):
+    if not values:
+        return None
+    return {"p50": pct(values, 50), "p95": pct(values, 95), "max": max(values), "n": len(values)}
+
+
+class API:
+    def __init__(self, base, token):
+        self.base, self.token = base.rstrip("/"), token
+
+    def call(self, method, path, body=None, timeout=15):
+        data = None if body is None else json.dumps(body).encode()
+        req = urllib.request.Request(self.base + path, data=data, method=method)
+        req.add_header("Authorization", "Bearer " + self.token)
+        if data is not None:
+            req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.status, json.loads(r.read() or b"null")
+        except urllib.error.HTTPError as e:
+            return e.code, (e.read() or b"")[:300].decode("utf-8", "replace")
+
+    def get(self, path):
+        code, out = self.call("GET", path)
+        if code != 200:
+            raise RuntimeError(f"GET {path} → HTTP {code} {out}")
+        return out
+
+
+def read_tokens(path):
+    vals = {}
+    if path and os.path.exists(os.path.expanduser(path)):
+        with open(os.path.expanduser(path)) as f:
+            for line in f:
+                k, _, v = line.strip().partition("=")
+                if k in ("ADMIN_TOKEN", "SANDBOX_TOKEN") and v:
+                    vals.setdefault(k, v)
+    return os.environ.get("ADMIN_TOKEN") or vals.get("ADMIN_TOKEN"), \
+        os.environ.get("SUPPLYGUARD_SANDBOX_TOKEN") or vals.get("SANDBOX_TOKEN")
+
+
+def read_list(path):
+    text = open(path).read() if path else DEFAULT_LIST
+    out = []
+    for line in text.splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        eco, _, name = line.partition(" ")
+        if eco not in ("pip", "npm") or not name.strip():
+            raise SystemExit(f"목록 줄을 읽을 수 없습니다: {line!r} (pip|npm 이름)")
+        out.append((eco, name.strip()))
+    return out
+
+
+class Bench:
+    def __init__(self, args, api, sandbox_token):
+        self.a, self.api, self.sandbox_token = args, api, sandbox_token
+        self.work = os.path.abspath(os.path.expanduser(args.work))
+        self.scan_busy_runs = 0
+        self.policy = None  # 연쇄 측정 정책 변경 기록
+
+    # ── 공통 ──────────────────────────────────────────────────────────
+    def wait_scans_idle(self):
+        t0 = time.time()
+        while True:
+            try:
+                scans = self.api.get("/api/scans")
+            except RuntimeError as e:
+                log(f"  (공급망 검사 목록 확인 실패: {e})")
+                return
+            running = [s.get("id") for s in scans or [] if s.get("status") == "running"]
+            if not running:
+                return
+            if time.time() - t0 > self.a.scan_wait:
+                log(f"  공급망 검사 {len(running)}건 실행 중인 채로 진행(대기 {self.a.scan_wait}초 초과)")
+                self.scan_busy_runs += 1
+                return
+            time.sleep(3)
+
+    def audit_for(self, container, settle=1.5, tries=8):
+        """컨테이너의 감사 로그 판정(오래된 순). 판정이 저장되기를 잠깐 기다리고, 건수가 안정되면 돌려준다"""
+        last = None
+        path = "/api/audit?limit=200&container=" + urllib.request.quote(container, safe="")
+        for _ in range(tries):
+            rows = [r for r in self.api.get(path) if (r.get("event") or {}).get("containerName") == container]
+            if last is not None and len(rows) == len(last):
+                break
+            last = rows
+            time.sleep(settle)
+        return sorted(last or [], key=lambda r: r.get("id", 0))
+
+    @staticmethod
+    def summarize(rows, expect):
+        """판정 목록 → 탐지 · 격리 · 지연. expect 가 있으면 그 규칙(또는 그 연쇄 주석)이 붙은 판정만 탐지로 센다"""
+        def hits(r):
+            if expect is None:
+                return True
+            return r.get("ruleId") == expect or (r.get("sequence") or {}).get("ruleId") == expect
+        det = [r for r in rows if hits(r)]
+        kills = [r for r in rows if r.get("enforced")]
+        first = det[0] if det else None
+        tl = (first or {}).get("timeline") or {}
+        # 격리 타임라인(killedAt)은 실제로 kill 을 부른 판정 1건에만 붙는다 — 같은 컨테이너의 뒤 판정은 enforced 만 true
+        ktl = next((r["timeline"] for r in rows if (r.get("timeline") or {}).get("killedAt")), {})
+        return {
+            "detected": bool(det),
+            "rule": (first or {}).get("ruleId"),
+            "killed": bool(kills),
+            "killRule": kills[0].get("ruleId") if kills else None,
+            "dryRun": bool(first and (first.get("dryRun") or (first.get("sequence") or {}).get("dryRun"))),
+            "matchMs": ms_between(tl.get("detectedAt"), tl.get("matchedAt")),
+            "isolationMs": ms_between(ktl.get("detectedAt"), ktl.get("killedAt")),
+            "evidenceMs": ms_between(ktl.get("evidenceStartedAt"), ktl.get("evidenceDoneAt")),
+            "killApiMs": ms_between(ktl.get("evidenceDoneAt"), ktl.get("killedAt")),
+            "notRunning": any("not running" in (r.get("enforceError") or "") for r in rows),
+            "verdicts": len(rows),
+        }
+
+    def sg_install(self, eco, target):
+        env = dict(os.environ, SUPPLYGUARD_API=self.a.api)
+        if self.sandbox_token:
+            env["SUPPLYGUARD_SANDBOX_TOKEN"] = self.sandbox_token
+        t0 = time.time()
+        try:
+            p = subprocess.run([SG_INSTALL, eco, target], env=env, capture_output=True, text=True, timeout=900)
+            out, code = p.stdout + p.stderr, p.returncode
+        except subprocess.TimeoutExpired as e:
+            out, code = (e.stdout or "") if isinstance(e.stdout, str) else "", 124
+        secs = round(time.time() - t0, 1)
+        m = re.search(r"컨테이너 (sg-install-\S+)", out)
+        s = re.search(r"세션 (ins-[\w-]+)", out)
+        return code, secs, (m.group(1) if m else None), (s.group(1) if s else None), out
+
+    # ── 정상 설치 ──────────────────────────────────────────────────────
+    def run_benign(self, eco, name):
+        self.wait_scans_idle()
+        code, secs, container, session, out = self.sg_install(eco, name)
+        rows = self.audit_for(container) if container else []
+        s = self.summarize(rows, None)
+        violation = code == 2 or s["detected"]
+        # 관찰한 커널 이벤트 수(설치 세션 activity) — 「위반 0」이 감시 누락이 아님을 보이는 근거
+        events = None
+        if session:
+            try:
+                events = sum((self.api.get("/api/installs/" + session).get("activity") or {}).get("kinds", {}).values())
+            except (RuntimeError, AttributeError) as e:
+                log(f"    (세션 {session} 조회 실패: {e})")
+        item = {"ecosystem": eco, "name": name, "result": "violation" if violation else "pass",
+                "rule": s["rule"], "seconds": secs, "exitCode": code, "events": events}
+        if violation:
+            item["killed"] = s["killed"]
+        if code not in (0, 2):
+            item["note"] = {1: "설치 실패", 3: "차단 목록 거부", 4: "결과 확인 불가", 124: "시간 초과"}.get(code, "기타 오류")
+            tail = [ln for ln in out.splitlines() if ln.strip()][-3:]
+            log("    " + " / ".join(t[:120] for t in tail))
+        log(f"  정상 {eco} {name}: {item['result']}{' ' + str(item['rule']) if item['rule'] else ''} · {secs}s · 이벤트 {events} · 종료 {code}")
+        return item
+
+    # ── 설치 샌드박스 공격 ──────────────────────────────────────────────
+    def dns_pkg(self):
+        dst = os.path.join(self.work, "dns-exfil", "reqeusts")
+        if not os.path.isdir(dst):
+            shutil.copytree(DEMO_PKG, dst)
+            path = os.path.join(dst, "setup.py")
+            src = open(path).read()
+            old = 'os.environ.get("SG_DEMO_SCENARIOS", "all")'
+            if old not in src:
+                raise SystemExit("reqeusts/setup.py 에서 시나리오 기본값을 찾지 못했습니다 — DNS 시나리오 사본을 만들 수 없습니다")
+            # sg-install 은 컨테이너에 환경 변수를 넘기지 않는다 — 사본의 기본값만 dns-exfil 로 바꾼다(원본은 그대로)
+            open(path, "w").write(src.replace(old, 'os.environ.get("SG_DEMO_SCENARIOS", "dns-exfil")'))
+        return dst
+
+    def run_sandbox_attack(self, sid, i):
+        self.wait_scans_idle()
+        target = DEMO_PKG if sid == "sandbox-typosquat" else self.dns_pkg()
+        code, secs, container, _, _ = self.sg_install("pip", target)
+        rows = self.audit_for(container) if container else []
+        s = self.summarize(rows, SCENARIOS[sid]["expect"])
+        s.update(exitCode=code, seconds=secs)
+        log(f"  {sid} #{i}: 탐지 {s['detected']}({s['rule']}) · 격리 {s['killed']}"
+            f"{' · 지연 %sms' % s['isolationMs'] if s['isolationMs'] is not None else ''}"
+            f"{' · not running' if s['notRunning'] else ''} · 종료 {code}")
+        return s
+
+    # ── 연쇄 ────────────────────────────────────────────────────────────
+    def run_chain(self, sid, i):
+        self.wait_scans_idle()
+        gap = 11 if sid == "chain-gap-control" else 1
+        name = f"sgbench-chain-{int(time.time())}-{i:02d}"
+        env = dict(os.environ, SCENARIO="chain", NAME=name, CHAIN_GAP=str(gap))
+        env.pop("LOOP", None)
+        env.pop("DRY", None)
+        t0 = time.time()
+        # 출력은 파일로 — 스크립트가 남기는 `docker logs -f` 가 파이프를 붙잡아 기다림이 끝나지 않는다(컨테이너를 지우면 같이 끝난다)
+        with open(os.path.join(self.work, "chain-attacker.log"), "a") as lf:
+            subprocess.run(["bash", ATTACKER], env=env, stdout=lf, stderr=subprocess.STDOUT, timeout=120)
+        # 마지막 단계(파일 열기) 뒤에 찍히는 「done; idling」 을 기다린다 — 대조군도 마지막 단계가 실제로 실행됐는지 확인
+        last_step = False
+        while time.time() - t0 < gap + 25:
+            p = subprocess.run(["docker", "logs", name], capture_output=True, text=True)
+            if "done; idling" in (p.stdout + p.stderr):
+                last_step = True
+                break
+            time.sleep(1)
+        rows = self.audit_for(name)
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+        s = self.summarize(rows, CHAIN_RULE)
+        s.update(lastStepRan=last_step, seconds=round(time.time() - t0, 1))
+        log(f"  {sid} #{i}: 탐지 {s['detected']} · 마지막 단계 실행 {last_step} · 판정 {s['verdicts']}건 · 격리 {s['killed']}")
+        return s
+
+    def policies(self):
+        return self.api.get("/api/policies")
+
+    def chain_begin(self):
+        before = self.policies()
+        bak = os.path.join(self.work, "policies-before-chain.json")
+        with open(bak, "w") as f:
+            json.dump(before, f, ensure_ascii=False, indent=1, sort_keys=True)
+        rule = next((r for r in before if r.get("id") == STAGE1_RULE), None)
+        if rule is None:
+            raise SystemExit(f"정책 {STAGE1_RULE} 이 없습니다")
+        if rule.get("dryRun"):
+            raise SystemExit(f"{STAGE1_RULE} 이 이미 dryRun 입니다 — 다른 작업이 바꾼 상태일 수 있어 멈춥니다")
+        self.policy = {"rule": STAGE1_RULE, "backup": bak, "original": rule, "changedAt": now_iso()}
+        code, out = self.api.call("POST", "/api/policies", dict(rule, dryRun=True))
+        if code != 200:
+            raise SystemExit(f"{STAGE1_RULE} dryRun 전환 실패 HTTP {code} {out}")
+        log(f"정책 {STAGE1_RULE} → dryRun (백업 {bak})")
+
+    def chain_end(self):
+        if not self.policy or self.policy.get("restoredAt"):
+            return
+        code, out = self.api.call("POST", "/api/policies", self.policy["original"])
+        after = self.policies()
+        with open(self.policy["backup"]) as f:
+            before = json.load(f)
+        a = json.dumps(after, ensure_ascii=False, indent=1, sort_keys=True).splitlines()
+        b = json.dumps(before, ensure_ascii=False, indent=1, sort_keys=True).splitlines()
+        diff = [d for d in difflib.unified_diff(b, a, lineterm="", n=0) if d[:1] in "+-" and d[:3] not in ("+++", "---")]
+        self.policy.update(restoredAt=now_iso(), restoreHttp=code, diffLines=len(diff))
+        after_path = os.path.join(self.work, "policies-after-chain.json")
+        with open(after_path, "w") as f:
+            json.dump(after, f, ensure_ascii=False, indent=1, sort_keys=True)
+        log(f"정책 {STAGE1_RULE} 원복 HTTP {code} · 백업과 차이 {len(diff)}줄 (원복 뒤 {after_path})")
+        if diff:
+            for d in diff[:20]:
+                log("    " + d)
+
+
+def build_plan(args, items):
+    rnd = random.Random(args.seed)
+    only = set(args.only.split(","))
+    phase_a = []
+    if "benign" in only:
+        phase_a += [("benign", it) for it in items]
+    if "typosquat" in only:
+        phase_a += [("sandbox-typosquat", i) for i in range(1, args.runs + 1)]
+    if "dns" in only:
+        phase_a += [("sandbox-dns-exfil", i) for i in range(1, args.runs + 1)]
+    rnd.shuffle(phase_a)
+    phase_b = []
+    if "chain" in only:
+        phase_b = [("runtime-chain", i) for i in range(1, args.runs + 1)] + \
+                  [("chain-gap-control", i) for i in range(1, args.controls + 1)]
+        rnd.shuffle(phase_b)
+    return phase_a, phase_b
+
+
+def scenario_out(sid, runs):
+    meta = SCENARIOS[sid]
+    lat = [r["isolationMs"] for r in runs if r.get("isolationMs") is not None]
+    match = [r["matchMs"] for r in runs if r.get("detected") and r.get("matchMs") is not None]
+    rules = collections.Counter(r["rule"] for r in runs if r.get("detected") and r.get("rule"))
+    kill_rules = collections.Counter(r["killRule"] for r in runs if r.get("killRule"))
+    out = {"id": sid, "label": meta["label"], "kind": meta["kind"], "runs": len(runs),
+           "detected": sum(1 for r in runs if r.get("detected")),
+           "killed": sum(1 for r in runs if r.get("killed")),
+           "rule": meta["expect"] or (rules.most_common(1)[0][0] if rules else None),
+           "latencyMs": dist(lat),
+           # 아래는 스키마 1 에 더한 키(화면은 없어도 된다)
+           "matchLatencyMs": dist(match),
+           "evidenceMs": dist([r["evidenceMs"] for r in runs if r.get("evidenceMs") is not None]),
+           "killApiMs": dist([r["killApiMs"] for r in runs if r.get("killApiMs") is not None]),
+           "detectedByRule": dict(rules),
+           "killedByRule": dict(kill_rules),
+           "detectedNotKilled": sum(1 for r in runs if r.get("detected") and not r.get("killed")),
+           "killNotRunning": sum(1 for r in runs if r.get("notRunning") and not r.get("killed")),
+           "dryRun": any(r.get("dryRun") for r in runs if r.get("detected"))}
+    if sid.startswith("chain"):
+        out["lastStepRan"] = sum(1 for r in runs if r.get("lastStepRan"))
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser(description="런타임 탐지 반복 측정표", add_help=True)
+    ap.add_argument("-a", "--api", default=os.environ.get("SUPPLYGUARD_API", "http://127.0.0.1"))
+    ap.add_argument("-t", "--tokens", default="")
+    ap.add_argument("-l", "--list", default="")
+    ap.add_argument("-o", "--out", default=os.path.join(ROOT, "bench", "reports", "runtime.json"))
+    ap.add_argument("-n", "--runs", type=int, default=10)
+    ap.add_argument("-c", "--controls", type=int, default=5)
+    ap.add_argument("--only", default="benign,typosquat,dns,chain")
+    ap.add_argument("--work", default="./.sg-bench-runtime")
+    ap.add_argument("--host-name", default=socket.gethostname())
+    ap.add_argument("--backend-commit", default=None)
+    ap.add_argument("--scan-wait", type=int, default=240)
+    ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--plan", action="store_true")
+    args = ap.parse_args()
+    if args.seed is None:
+        args.seed = random.randrange(1 << 30)
+
+    items = read_list(args.list or None)
+    phase_a, phase_b = build_plan(args, items)
+    if args.plan:
+        for k, v in phase_a + phase_b:
+            print(k, " ".join(v) if isinstance(v, tuple) else v)
+        return 0
+
+    admin, sandbox = read_tokens(args.tokens)
+    if not admin:
+        print("ADMIN_TOKEN 이 없습니다 (환경 변수 또는 -t 파일)", file=sys.stderr)
+        return 2
+    for p in (SG_INSTALL, ATTACKER, DEMO_PKG):
+        if not os.path.exists(p):
+            print(f"없음: {p}", file=sys.stderr)
+            return 2
+    api = API(args.api, admin)
+    info = api.get("/api/info")
+    if info.get("source") != "gadget":
+        print(f"백엔드가 가젯 소스가 아닙니다(source={info.get('source')}) — 커널 측정이 아닙니다", file=sys.stderr)
+        return 2
+    os.makedirs(os.path.expanduser(args.work), exist_ok=True)
+    b = Bench(args, api, sandbox)
+    started = now_iso()
+    log(f"시작 seed={args.seed} · 정상 {sum(1 for k, _ in phase_a if k == 'benign')} · 샌드박스 공격 "
+        f"{sum(1 for k, _ in phase_a if k != 'benign')} · 연쇄 {len(phase_b)}")
+
+    def on_term(signum, _frame):
+        raise KeyboardInterrupt(f"signal {signum}")
+    signal.signal(signal.SIGTERM, on_term)
+    signal.signal(signal.SIGHUP, on_term)
+
+    benign, runs = [], collections.defaultdict(list)
+    interrupted = None
+    try:
+        for kind, v in phase_a:
+            if kind == "benign":
+                benign.append(b.run_benign(*v))
+            else:
+                runs[kind].append(b.run_sandbox_attack(kind, v))
+        if phase_b:
+            b.chain_begin()
+            try:
+                for kind, i in phase_b:
+                    runs[kind].append(b.run_chain(kind, i))
+            finally:
+                b.chain_end()
+    except KeyboardInterrupt as e:
+        interrupted = str(e) or "interrupted"
+        log(f"중단: {interrupted}")
+        b.chain_end()
+
+    viol = [x for x in benign if x["result"] == "violation"]
+    by_eco = collections.Counter(x["ecosystem"] for x in benign)
+    scen = [scenario_out(sid, runs[sid]) for sid in SCENARIOS if runs.get(sid)]
+    limits = [
+        f"표본이 작다 — 정상 설치 {len(benign)}건 · 공격 시나리오별 {args.runs}회 · 대조군 {args.controls}회. "
+        f"p95 는 가장 가까운 순위 방식이라 10회면 사실상 최댓값이고, 오탐률 0 은 「이 표본에서 0」일 뿐이다.",
+        f"단일 호스트 측정 — {args.host_name}(커널 {platform.release()} · 발견 {info.get('discovery')} · IG {info.get('gadgetVersion')}). "
+        "다른 커널(특히 Ubuntu 26.04 커널 7.0 에서는 이벤트 유실을 실측)이나 docker-events 발견 방식에는 그대로 옮길 수 없다.",
+        "공격은 모두 무해 시뮬레이션(TEST-NET 203.0.113.7 · 예약 도메인 *.example)이다. 실제 악성 패키지의 다양한 회피 기법은 재지 않았다.",
+        "지연은 백엔드가 적은 격리 타임라인(백엔드가 가젯 이벤트를 받은 시각 → Docker kill 응답 시각)이다. 이벤트 시각은 커널 시각이 아니라 수신 시각(time.Now)이라 커널 → 사용자 공간 전달 시간은 빠져 있다. kill 직전 증거 수집(최대 0.7초)이 포함된다.",
+        "짧게 끝나는 컨테이너는 증거 수집 동안 먼저 종료돼 kill 이 「container is not running」이 될 수 있다 — 탐지는 성공으로, 격리(killed)는 따로 센다.",
+        "연쇄 규칙 chain-download-secrets 는 발표까지 dryRun 이라 격리 수가 0 인 것이 정상이다. 측정 동안만 no-shell-download 를 dryRun 으로 두었다"
+        "(그대로면 1단계 wget 에서 먼저 격리된다).",
+        "TEST-NET 목적지는 접속 실패(약 3초) 뒤에 connect 이벤트가 나와 연쇄 판정도 그만큼 늦다 — 실제 도달 가능한 서버면 더 빠르다.",
+        "sg-install 세션 시작 때 서버가 같은 패키지의 정적 검사를 자동 시작한다(종합 판정). 정상 설치 동안 검사기 컨테이너가 함께 돈다.",
+        "정상 설치는 인기 패키지 최신 버전만 쟀다. puppeteer 처럼 설치 중 허용 목록 밖에서 바이너리를 받는 패키지는 기본 목록에서 뺐다"
+        "(11/03 실측: sandbox-egress 로 격리).",
+        "엔진은 TCP 와 DNS(53 · 5353)만 관찰한다 — 일반 UDP 유출은 이 표의 탐지율에 들어가지 않는다.",
+    ]
+    if b.scan_busy_runs:
+        limits.append(f"{b.scan_busy_runs}회는 다른 공급망 검사가 실행 중인 채로 측정했다(대기 {args.scan_wait}초 초과).")
+    if interrupted:
+        limits.append(f"측정이 중간에 멈췄다({interrupted}) — 위 수치는 끝난 실행만 센다.")
+    if any(x.get("exitCode") not in (0, 2) for x in benign):
+        n = sum(1 for x in benign if x.get("exitCode") not in (0, 2))
+        limits.append(f"정상 설치 {n}건은 위반 없이 설치 자체가 실패하거나 결과를 확인하지 못했다(items 의 exitCode · note). 오탐 계산에는 위반 여부만 쓴다.")
+
+    report = {
+        "schema": 1,
+        "generatedAt": now_iso(),
+        "startedAt": started,
+        "seed": args.seed,
+        "host": {"name": args.host_name, "kernel": platform.release(), "discovery": info.get("discovery"),
+                 "igVersion": info.get("gadgetVersion"), "backendCommit": args.backend_commit,
+                 "enforceKill": info.get("enforceKill"), "dnsResolve": info.get("dnsResolve")},
+        "benign": {"installs": len(benign), "byEcosystem": {"pip": by_eco.get("pip", 0), "npm": by_eco.get("npm", 0)},
+                   "violations": len(viol),
+                   "falsePositiveRate": round(len(viol) / len(benign), 4) if benign else None,
+                   "items": benign},
+        "scenarios": scen,
+        "limits": limits,
+    }
+    if b.policy:
+        report["policyChange"] = {k: b.policy.get(k) for k in ("rule", "changedAt", "restoredAt", "restoreHttp", "diffLines")}
+        report["policyChange"]["dryRunDuring"] = "runtime-chain · chain-gap-control"
+    out = os.path.abspath(args.out)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    log(f"결과 {out}")
+
+    print("\n시나리오|종류|실행|탐지|격리|p50|p95|max(ms)")
+    for s in scen:
+        lat = s["latencyMs"] or {}
+        print("|".join(map(str, [s["id"], s["kind"], s["runs"], s["detected"], s["killed"],
+                                 lat.get("p50", "-"), lat.get("p95", "-"), lat.get("max", "-")])))
+    print(f"정상 설치 {len(benign)}건 · 위반 {len(viol)}건" + "".join(f"\n  - {x['ecosystem']} {x['name']}: {x['rule']}" for x in viol))
+
+    ok = not viol and not interrupted
+    ok = ok and all(s["detected"] == 0 for s in scen if s["kind"] == "control")
+    ok = ok and (not b.policy or b.policy.get("diffLines") == 0)
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
