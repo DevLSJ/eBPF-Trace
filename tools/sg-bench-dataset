@@ -48,6 +48,10 @@ DATASETS = {
     # wheel 에는 setup.py 가 없어 설치 시점 규칙이 걸릴 수 없으므로, 악성(대부분 sdist)과 같은 조건의 오탐률을 보려고 둔다. 지표(metrics)에는 넣지 않는다
     "benign-pypi-sdist": dict(label="인기 PyPI 300 — 레지스트리 sdist (정상, 보조)", kind="benign", ecosystem="pypi", fmt="registry",
                               source="https://pypi.org (benign-pypi 와 같은 이름 · 버전, 검사 시점에 받음)", sourceCommit=None, primary=False),
+    # npm 정상(11/04): 월간 다운로드 상위(@types 제외) — 목록 · 버전은 npm-list 로 고정(bench/lists/benign-npm-300.tsv), 검사는 레지스트리 tarball
+    "benign-npm": dict(label="인기 npm 300 (정상)", kind="benign", ecosystem="npm", fmt="npm-list",
+                       source="https://packages.ecosyste.ms (npmjs.org 월간 다운로드 내림차순, @types/* 제외, 2026-11-04) · 버전은 그날 registry latest",
+                       sourceCommit=None),
 }
 VERDICT = {"malicious": "malicious", "vulnerable": "vulnerable", "caution": "suspicious", "clean": "clean"}
 INSTALL_TIME = ("threat-setup-", "threat-npm-preinstall-script", "threat-npm-dependency-confusion", "threat-npm-http-dependency",
@@ -67,8 +71,15 @@ def norm_name(eco, name):
 
 
 def list_inputs(root, fmt):
-    """(상대 경로, 패키지 이름) 목록 — 경로 정렬"""
+    """(상대 경로, 패키지 이름) 목록 — 경로 정렬. npm-list 는 root 가 목록 파일이고 「이름@버전」이 경로 자리"""
     out = []
+    if fmt == "npm-list":
+        with open(root) as f:
+            for line in f:
+                if line.strip() and not line.startswith("#"):
+                    name, version = line.rstrip("\n").split("\t")[:2]
+                    out.append((f"{name}@{version}", name))
+        return sorted(out)
     for d, _, fs in os.walk(root):
         for f in fs:
             p = os.path.join(d, f)
@@ -282,8 +293,11 @@ def cmd_scan(args):
     # 매니페스트: 파일 수 · 목록 해시(입력 파일 sha256 정렬 목록의 sha256) — 같은 입력인지 확인용
     hashes, rows = [], []
     for rel, name in inputs:
-        with open(os.path.join(root, rel), "rb") as f:
-            raw = f.read()
+        if ds["fmt"] == "npm-list":
+            raw = ("npm:" + rel).encode()  # 파일이 없으니 「npm:이름@버전」의 해시
+        else:
+            with open(os.path.join(root, rel), "rb") as f:
+                raw = f.read()
         h = sha256(raw)
         hashes.append(h)
         rows.append((rel, name, h))
@@ -324,6 +338,10 @@ def cmd_scan(args):
                 with zipfile.ZipFile(io.BytesIO(data)) as zf:
                     nfiles, size = len(zf.infolist()), sum(i.file_size for i in zf.infolist())
                 fname = f"sgb-{iid}.whl"
+            elif ds["fmt"] == "npm-list":  # 정상 패키지만 — 레지스트리 tarball(설치되는 것과 같은 파일)
+                name, version = rel.rsplit("@", 1)
+                data = json.dumps({"kind": "package", "manager": "npm", "name": name, "version": version}).encode()
+                nfiles = size = None
             else:  # registry — 정상 패키지만(이름 · 버전을 레지스트리에서 받는다)
                 parts = os.path.basename(rel).split("-")
                 data = json.dumps({"kind": "package", "manager": "pip", "name": parts[0], "version": parts[1]}).encode()
@@ -331,7 +349,7 @@ def cmd_scan(args):
             if nfiles is not None:
                 base.update(files=nfiles, bytes=size)
             for attempt in range(6):
-                code, resp = api.start_package(data) if ds["fmt"] == "registry" else api.upload(fname, data)
+                code, resp = api.start_package(data) if ds["fmt"] in ("registry", "npm-list") else api.upload(fname, data)
                 if code in (0, 502, 503, 504):
                     time.sleep(10 * (attempt + 1))
                     continue
@@ -507,6 +525,32 @@ def cmd_diff(args):
     sys.exit(1 if diff else 0)
 
 
+def cmd_npm_list(args):
+    """ecosyste.ms 의 npm 월간 다운로드 순위 → @types/* 를 빼고 상위 n 개 → registry 의 그날 latest 버전으로 고정(TSV: 이름 · 버전 · 월간 다운로드)"""
+    ua = {"User-Agent": "supplyguard-bench/1 (capstone research)"}
+    def get(u):
+        with urllib.request.urlopen(urllib.request.Request(u, headers=ua), timeout=60) as r:
+            return json.load(r)
+    picked, page = [], 1
+    while len(picked) < args.n and page <= 20:
+        for p in get(f"https://packages.ecosyste.ms/api/v1/registries/npmjs.org/packages?sort=downloads&order=desc&per_page=100&page={page}"):
+            if p["name"].startswith("@types/") or len(picked) >= args.n:
+                continue
+            picked.append((p["name"], p.get("downloads") or 0))
+        page += 1
+    rows = []
+    for name, dl in picked:
+        meta = get("https://registry.npmjs.org/" + name.replace("/", "%2F") + "/latest")
+        rows.append((name, meta["version"], dl))
+        time.sleep(0.05)
+    with open(args.out, "w") as f:
+        f.write(f"# 인기 npm {len(rows)}개 — packages.ecosyste.ms npmjs.org 월간 다운로드 내림차순, @types/* 제외, "
+                f"버전은 registry latest ({dt.date.today().isoformat()})\n")
+        for name, ver, dl in rows:
+            f.write(f"{name}\t{ver}\t{dl}\n")
+    print(f"{len(rows)}개 → {args.out}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sp = ap.add_subparsers(dest="cmd", required=True)
@@ -519,6 +563,9 @@ def main():
     s.add_argument("-n", "--limit", type=int, default=0)
     s.add_argument("--ids", help="이 id(줄마다 하나)만 — 재현성 확인용")
     s.add_argument("--timeout", type=int, default=900, help="검사 한 건 결과 대기 상한(초)")
+    nl = sp.add_parser("npm-list", help="인기 npm 목록을 받아 이름 · 버전을 고정한다(정상 세트 전용)")
+    nl.add_argument("-n", type=int, default=300)
+    nl.add_argument("-o", "--out", required=True)
     r = sp.add_parser("report")
     r.add_argument("-i", "--input", action="append", required=True)
     r.add_argument("-o", "--out", required=True)
@@ -530,7 +577,7 @@ def main():
     d.add_argument("a")
     d.add_argument("b")
     a = ap.parse_args()
-    {"scan": cmd_scan, "report": cmd_report, "diff": cmd_diff}[a.cmd](a)
+    {"scan": cmd_scan, "report": cmd_report, "diff": cmd_diff, "npm-list": cmd_npm_list}[a.cmd](a)
 
 
 if __name__ == "__main__":

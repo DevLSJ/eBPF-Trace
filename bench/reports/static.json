@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "generatedAt": "2026-11-04T01:22:53Z",
+ "generatedAt": "2026-11-04T01:42:52Z",
  "scanner": {
   "guarddog": "3.2.0",
   "osv": "2.7.0",
@@ -42,6 +42,15 @@
    "sourceCommit": null,
    "files": 300,
    "listSha256": "cfb4048ca727a4d40b390c42006b24fbff09222c670c7e5604a2fbe98ca36f2a"
+  },
+  {
+   "id": "benign-npm",
+   "label": "인기 npm 300 (정상)",
+   "kind": "benign",
+   "source": "https://packages.ecosyste.ms (npmjs.org 월간 다운로드 내림차순, @types/* 제외, 2026-11-04) · 버전은 그날 registry latest",
+   "sourceCommit": null,
+   "files": 300,
+   "listSha256": "cf23c6ed3fd83008e6c727bc6c24a9b29686e9610e4136ea7a3ca05896d35e3c"
   }
  ],
  "sets": [
@@ -128,39 +137,59 @@
     "malicious": 0.0468,
     "maliciousOrSuspicious": 0.0702
    }
+  },
+  {
+   "id": "benign-npm",
+   "kind": "benign",
+   "ecosystem": "npm",
+   "primary": true,
+   "total": 300,
+   "scanned": 300,
+   "skipped": {},
+   "verdicts": {
+    "malicious": 1,
+    "vulnerable": 0,
+    "suspicious": 3,
+    "clean": 296,
+    "error": 0
+   },
+   "rates": {
+    "malicious": 0.0033,
+    "maliciousOrSuspicious": 0.0133
+   }
   }
  ],
  "metrics": {
   "detectionRate": 0.6801,
   "detectionRateWithSuspicious": 0.7896,
-  "falsePositiveRate": 0.0267,
-  "falsePositiveRateWithSuspicious": 0.0433,
-  "precision": 0.9806,
+  "falsePositiveRate": 0.015,
+  "falsePositiveRateWithSuspicious": 0.0283,
+  "precision": 0.9782,
   "recall": 0.6801,
-  "f1": 0.8032
+  "f1": 0.8024
  },
  "confusion": {
   "tp": 404,
   "fn": 190,
-  "fp": 8,
-  "tn": 292
+  "fp": 9,
+  "tn": 591
  },
  "metricsByEcosystem": {
   "npm": {
    "metrics": {
     "detectionRate": 0.6532,
     "detectionRateWithSuspicious": 0.771,
-    "falsePositiveRate": null,
-    "falsePositiveRateWithSuspicious": null,
-    "precision": 1.0,
+    "falsePositiveRate": 0.0033,
+    "falsePositiveRateWithSuspicious": 0.0133,
+    "precision": 0.9949,
     "recall": 0.6532,
-    "f1": 0.7902
+    "f1": 0.7886
    },
    "confusion": {
     "tp": 194,
     "fn": 103,
-    "fp": 0,
-    "tn": 0
+    "fp": 1,
+    "tn": 299
    }
   },
   "pypi": {
@@ -185,31 +214,31 @@
   {
    "rule": "capability-process-spawn",
    "maliciousHits": 350,
-   "benignHits": 113,
+   "benignHits": 179,
    "installTime": false
   },
   {
    "rule": "capability-process-hooks",
    "maliciousHits": 275,
-   "benignHits": 0,
+   "benignHits": 69,
    "installTime": false
   },
   {
    "rule": "capability-network-outbound",
    "maliciousHits": 264,
-   "benignHits": 105,
+   "benignHits": 196,
    "installTime": false
   },
   {
    "rule": "capability-network-download",
    "maliciousHits": 199,
-   "benignHits": 41,
+   "benignHits": 52,
    "installTime": false
   },
   {
    "rule": "threat-process-hooks",
    "maliciousHits": 181,
-   "benignHits": 0,
+   "benignHits": 2,
    "installTime": false
   },
   {
@@ -221,7 +250,7 @@
   {
    "rule": "capability-filesystem-read",
    "maliciousHits": 160,
-   "benignHits": 160,
+   "benignHits": 197,
    "installTime": false
   },
   {
@@ -239,7 +268,7 @@
   {
    "rule": "threat-npm-preinstall-script",
    "maliciousHits": 116,
-   "benignHits": 0,
+   "benignHits": 1,
    "installTime": true
   },
   {
@@ -251,7 +280,7 @@
   {
    "rule": "threat-runtime-system-info",
    "maliciousHits": 106,
-   "benignHits": 3,
+   "benignHits": 5,
    "installTime": false
   },
   {
@@ -269,13 +298,13 @@
   {
    "rule": "threat-filesystem-read",
    "maliciousHits": 63,
-   "benignHits": 12,
+   "benignHits": 16,
    "installTime": false
   },
   {
    "rule": "capability-filesystem-delete",
    "maliciousHits": 62,
-   "benignHits": 80,
+   "benignHits": 88,
    "installTime": false
   },
   {
@@ -293,19 +322,19 @@
   {
    "rule": "threat-runtime-obfuscation-base64exec",
    "maliciousHits": 39,
-   "benignHits": 0,
+   "benignHits": 1,
    "installTime": false
   },
   {
    "rule": "capability-filesystem-write-executable",
    "maliciousHits": 38,
-   "benignHits": 54,
+   "benignHits": 60,
    "installTime": false
   },
   {
    "rule": "threat-runtime-environment-read",
    "maliciousHits": 36,
-   "benignHits": 13,
+   "benignHits": 14,
    "installTime": false
   },
   {
@@ -347,19 +376,19 @@
   {
    "rule": "capability-process-schedule",
    "maliciousHits": 15,
-   "benignHits": 25,
-   "installTime": false
-  },
-  {
-   "rule": "threat-runtime-obfuscation",
-   "maliciousHits": 11,
-   "benignHits": 1,
+   "benignHits": 28,
    "installTime": false
   },
   {
    "rule": "threat-filesystem-autostart",
    "maliciousHits": 11,
    "benignHits": 3,
+   "installTime": false
+  },
+  {
+   "rule": "threat-runtime-obfuscation",
+   "maliciousHits": 11,
+   "benignHits": 4,
    "installTime": false
   },
   {
@@ -383,7 +412,7 @@
   {
    "rule": "threat-npm-http-dependency",
    "maliciousHits": 5,
-   "benignHits": 0,
+   "benignHits": 1,
    "installTime": true
   },
   {
@@ -395,7 +424,7 @@
   {
    "rule": "threat-runtime-obfuscation-steganography",
    "maliciousHits": 4,
-   "benignHits": 4,
+   "benignHits": 5,
    "installTime": false
   },
   {
@@ -431,7 +460,7 @@
   {
    "rule": "threat-runtime-enumeration",
    "maliciousHits": 2,
-   "benignHits": 1,
+   "benignHits": 2,
    "installTime": false
   },
   {
@@ -484,17 +513,17 @@
   }
  ],
  "durationsSec": {
-  "p50": 1.18,
-  "p95": 6.39
+  "p50": 1.25,
+  "p95": 5.59
  },
  "limits": [
-  "정상 세트는 PyPI 만이다 — npm 은 탐지율만 있고 오탐률은 재지 않았다(정밀도 npm 100%는 정상 표본이 없어서다).",
-  "주 정상 세트는 wheel 이라 setup.py 가 없다. 같은 300개를 레지스트리 sdist 로 받은 보조 세트(지표 제외)는 악성 판정 4.7% · 악성+주의 7.0% 로 wheel(2.7% · 4.3%)보다 높다.",
-  "DataDog 세트는 2026-10-12 에 생태계별 300개만 받은 일부(경로 정렬 상위)다. 같은 패키지의 다른 버전이 섞여 있다(packageGroup 으로 묶음, PyPI 273 · npm 283 묶음).",
+  "npm 정상(benign-npm)은 월간 다운로드 상위 300개(@types 제외)를 레지스트리 tarball 로 검사했고, npm 악성은 DataDog zip 을 다시 묶은 파일 검사라 입력 경로가 다르다. 인기 상위 패키지는 작은 유틸이 많아 실제 사용 분포보다 오탐률이 낮게 나올 수 있다.",
+  "PyPI 주 정상 세트는 wheel 이라 setup.py 가 없다. 같은 300개를 레지스트리 sdist 로 받은 보조 세트(지표 제외)는 악성 판정 4.7% · 악성+주의 7.0% 로 wheel(2.7% · 4.3%)보다 높다.",
+  "DataDog 세트는 2026-10-12 에 생태계별 300개만 받은 일부(경로 정렬 상위)다. 같은 패키지의 다른 버전이 섞여 있다(packageGroup 으로 묶음, PyPI 273 · npm 283 묶음). 원본 zip 은 측정 뒤 sg-vm 에서 지웠다(2026-11-04) — 다시 재려면 real-capstone 원본을 다시 옮겨야 한다.",
   "악성 zip 은 공통 경로 접두를 걷어 tar.gz 로 다시 묶은 파일 검사다 — 레지스트리 패키지 검사와 달리 자기 버전 OSV 조회가 없다.",
   "GuardDog 과 데이터셋이 모두 DataDog 것이라 규칙이 이 데이터에 맞춰져 있을 수 있다 — 낙관적인 탐지율일 수 있다.",
   "오류(error)는 지표 분모에서 뺐다. 건너뜀: 메타데이터만 있는 zip 3 · 50MB 초과 3(PyPI 보조 세트의 50MB 초과 sdist 1건은 백엔드가 오류로 끝냄).",
-  "정밀도는 세트 크기 비율(악성 594 : 정상 300)에 좌우된다. 실제 레지스트리의 악성 비율에서는 훨씬 낮다.",
+  "정밀도는 세트 크기 비율(악성 594 : 정상 600)에 좌우된다. 실제 레지스트리의 악성 비율에서는 훨씬 낮다.",
   "검사 시간은 백엔드 기록(시작~끝)이며 SCAN_CONCURRENCY=1 · sg-vm(arm64 4코어 8GB) 기준이다."
  ]
 }
