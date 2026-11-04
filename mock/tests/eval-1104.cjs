@@ -11,6 +11,7 @@
    10 다크: 토큰 색(배경 · 막대 · 글자) · 대비
    11 768 미만(390): 넘침 0 · 1열 · 지표 칸 2열 / 1440 넘침 0
    12 조회자도 같은 화면(읽기 전용)
+   13 [11/04b] 격리 지연 지표 = 격리된 공격 전체(runtime.killLatencyMs) · 지연 카드 단계별 막대(killStagesMs + 시나리오 matchLatencyMs · evidenceMs · killApiMs p50, 툴팁 p95) · 옛 파일(키 없음) 폴백
    콘솔 오류 0(9번의 의도한 404 한 줄만 허용)
    실행: (mock/ 에서) python3 -m http.server 8767 --bind 127.0.0.1 → BASE=http://127.0.0.1:8767/index.html PLAYWRIGHT=<playwright 경로> node tests/eval-1104.cjs  (VERBOSE=1 · ONLY · SHOTS=1 → screenshots/eval-1104-*.png) */
 const fs = require('fs');
@@ -49,7 +50,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     if (!SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true });
     const vp = pg.viewportSize(), need = await pg.evaluate(() => { const p = document.querySelector('#page'), w = p && p.firstElementChild; return w ? Math.ceil(w.scrollHeight + w.getBoundingClientRect().top + 24) : 0; });
     if (vp.width >= 768 && need > vp.height) { await pg.setViewportSize({ width: vp.width, height: need }); await pg.waitForTimeout(300); }
-    await pg.screenshot({ path: path.join(SHOT_DIR, `eval-1104-${name}.png`), fullPage: true });
+    await pg.screenshot({ path: path.join(SHOT_DIR, `eval-1104b-${name}.png`), fullPage: true }); // 11/04b 피드백 반영본은 새 이름(1차 eval-1104-* 는 남긴다)
     if (vp.width >= 768 && need > vp.height) await pg.setViewportSize(vp);
   };
   const overflow = (pg) => pg.evaluate(() => { const d = document.documentElement, m = document.querySelector('main'), p = document.querySelector('#page'); return { doc: d.scrollWidth - innerWidth, main: m ? m.scrollWidth - m.clientWidth : 0, page: p ? p.scrollWidth - p.clientWidth : 0 }; });
@@ -88,7 +89,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await go(pg, '/evaluation'); await ready(pg);
     const k = await pg.$$eval('[data-part="kpis"] [data-kpi]', (els) => els.map((e) => [e.dataset.kpi, e.querySelector('.kpi-value').textContent, e.querySelector('.kpi-hint').textContent.replace(/\u00a0/g, ' ')]));
     ok(same(k.map((x) => x[0]), ['static-detection', 'static-fpr', 'runtime-detection', 'runtime-fpr', 'latency', 'model-f1']), `칸 ${JSON.stringify(k.map((x) => x[0]))}`);
-    ok(same(k.map((x) => x[1]), ['80.0%', '1.0%', '98.0%', '2.0%', '200 / 400 ms', '0.92']), `값 ${JSON.stringify(k.map((x) => x[1]))}`);
+    // 11/04b 격리 지연 지표는 시나리오 최댓값이 아니라 격리된 공격 전체(killLatencyMs) 기준 — 200 / 400 → 100 / 300
+    ok(same(k.map((x) => x[1]), ['80.0%', '1.0%', '98.0%', '2.0%', '100 / 300 ms', '0.92']), `값 ${JSON.stringify(k.map((x) => x[1]))}`);
     ok(k[0][2] === '악성 80 / 100 · 주의 포함 90.0%' && k[1][2] === '인기 패키지 3 / 300', `정적 보조 ${k[0][2]} | ${k[1][2]}`);
     ok(k[2][2] === '공격 49 / 50회 · 5종' && k[3][2] === '위반 1 / 50건 · pip 30, npm 20', `런타임 보조 ${k[2][2]} | ${k[3][2]}`);
     ok(k[5][2] === 'HGB · 운영 미적용', `모델 보조 ${k[5][2]}`);
@@ -101,7 +103,8 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     const pg = await newPage();
     await go(pg, '/evaluation'); await ready(pg);
     const charts = await pg.$$eval(`${W} [data-chart]`, (els) => els.map((e) => e.dataset.chart));
-    ok(same(charts, ['verdict-dist', 'rule-hits', 'scenario-rate', 'latency']), `차트 ${JSON.stringify(charts)}`);
+    // 11/04b 지연 카드에 단계별 막대(kill-stages) 추가
+    ok(same(charts, ['verdict-dist', 'rule-hits', 'scenario-rate', 'latency', 'kill-stages']), `차트 ${JSON.stringify(charts)}`);
     // 두 열: 왼쪽 정적 · 오른쪽 런타임, 모델 비교는 그 아래 전체 폭
     const cols = await pg.$$eval(`${W} .ev-col`, (els) => els.map((e) => [e.dataset.col, [...e.children].map((c) => c.dataset.part)]));
     ok(same(cols, [['static', ['dist', 'rules', 'confusion']], ['runtime', ['scenarios', 'latency', 'benign']]]), `열 ${JSON.stringify(cols)}`);
@@ -195,7 +198,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     ok((await pg.textContent(`${W} [data-part="error"] b`)).includes('평가 결과을(를) 불러오지 못했습니다'), '오류 제목');
     await pg.click(`${W} [data-action="retry"]`);
     await ready(pg);
-    ok(await pg.locator(`${W} [data-chart]`).count() === 4, '다시 시도 뒤 차트');
+    ok(await pg.locator(`${W} [data-chart]`).count() === 5, '다시 시도 뒤 차트'); // 11/04b 단계별 막대 추가로 4 → 5
     // 다른 화면으로 가면 머리 버튼이 남지 않는다
     await pg.click('.nav-link[data-to="/scans"]'); await pg.waitForTimeout(300);
     ok(await pg.locator('[data-action="download-json"]').count() === 0, '다른 화면에 내려받기 버튼');
@@ -277,8 +280,47 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   await T('12 조회자도 같은 화면(읽기 전용 — 내려받기는 된다)', async () => {
     const pg = await newPage();
     await pg.goto(`${BASE}?source=sim&as=viewer#/evaluation`); await pg.waitForSelector('.page-title'); await ready(pg);
-    ok(await pg.locator(`${W} [data-chart]`).count() === 4, '차트 4개');
+    ok(await pg.locator(`${W} [data-chart]`).count() === 5, '차트 5개'); // 11/04b 단계별 막대 추가로 4 → 5
     ok(await pg.locator('[data-action="download-json"]').count() === 1, '내려받기 버튼');
+    await pg.closeAll();
+  });
+
+  await T('13 [11/04b] 격리 지연: 격리된 공격 전체 기준 · 단계별 막대(판정 → 증거 수집 → kill 호출) · 옛 파일 폴백', async () => {
+    const pg = await newPage();
+    await go(pg, '/evaluation'); await ready(pg);
+    const d = await sample(pg);
+    ok(d.runtime.killLatencyMs && d.runtime.killStagesMs, '예시 데이터에 killLatencyMs · killStagesMs 없음');
+    ok(same(d.runtime.killLatencyMs.scenarios, ['shell-download', 'read-secrets', 'egress', 'dns-exfil']) && d.runtime.killLatencyMs.n === 39, `killLatencyMs ${JSON.stringify(d.runtime.killLatencyMs)}`);
+    const kpi = async () => pg.$eval('[data-kpi="latency"]', (e) => [e.querySelector('.kpi-value').textContent, e.querySelector('.kpi-hint').textContent.replace(/ /g, ' ')]);
+    const k = await kpi();
+    ok(same(k, ['100 / 300 ms', '격리된 공격 39회 기준 · 백엔드 수신→격리']), `지표 ${JSON.stringify(k)}`);
+    // 단계 막대는 지연 카드 안, 범위 그림 아래
+    const C = '[data-part="latency"] [data-chart="kill-stages"]';
+    ok(await pg.locator(C).count() === 1, '지연 카드에 단계 막대 없음');
+    ok(await pg.$eval('[data-part="latency"]', (e) => { const a = e.querySelector('[data-chart="latency"]'), b = e.querySelector('[data-chart="kill-stages"]'); return !!(a && b && (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)); }), '단계 막대가 범위 그림 아래가 아님');
+    // 행: 격리된 공격 전체(killStagesMs) → 격리한 시나리오(연쇄 · 대조 빠짐), 조각은 p50 · 판정 → 증거 수집 → kill 호출 순서
+    const rows = await pg.$$eval(`${C} g[data-row]`, (gs) => gs.map((g) => [g.dataset.row, [...g.querySelectorAll('rect.ev-seg')].map((r) => [r.dataset.key, Number(r.dataset.v)]), g.querySelector('text.ev-value').textContent]));
+    const st = (m, e, k) => [['match', m], ['evidence', e], ['killApi', k]];
+    ok(same(rows, [['all', st(0.1, 40, 60), '합계 100 ms'], ['shell-download', st(0.1, 40, 60), '합계 100 ms'], ['read-secrets', st(0.1, 40, 60), '합계 100 ms'], ['egress', st(0.1, 40, 60), '합계 100 ms'], ['dns-exfil', st(0.1, 100, 100), '합계 200 ms']]), `단계 행 ${JSON.stringify(rows)}`);
+    ok((await pg.$eval(`${C} g[data-row="all"] text.ev-label`, (e) => e.textContent)) === '격리된 공격 전체', '전체 행 이름');
+    const leg = await pg.$$eval(`${C} [data-part="legend"] span`, (els) => els.map((e) => e.textContent));
+    ok(same(leg, ['판정', '증거 수집', 'kill 호출']), `범례 ${JSON.stringify(leg)}`);
+    ok((await pg.textContent('[data-part="latency"]')).includes('증거를 먼저 모으고(≤0.7초) 격리합니다'), '캡션');
+    // 툴팁: 단계마다 p50 · p95
+    await (await pg.$(`${C} g[data-row="all"] rect.ev-hit`)).hover(); await pg.waitForTimeout(150);
+    const tip = await pg.$eval(`${C} [data-part="chart-tip"]`, (e) => [e.hidden, [...e.children].map((c) => c.textContent)]);
+    ok(!tip[0] && same(tip[1], ['격리된 공격 전체', '판정 p50 0.1 ms · p95 0.2 ms', '증거 수집 p50 40 ms · p95 100 ms', 'kill 호출 p50 60 ms · p95 200 ms', '격리 39회 기준']), `툴팁 ${JSON.stringify(tip)}`);
+    // 빨강은 위험에만 — 단계 조각은 빨강(--danger)이 아니다
+    const fills = await pg.$$eval(`${C} rect.ev-seg`, (els) => [...new Set(els.map((e) => getComputedStyle(e).fill))]);
+    const danger = await pg.evaluate(() => { const n = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--danger').trim().slice(1), 16); return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`; });
+    ok(fills.length === 3 && !fills.includes(danger), `조각 색 ${JSON.stringify(fills)}`);
+    // 옛 파일(두 키 없음): 지표는 시나리오 중 가장 큰 값 + 그 기준, 단계 막대는 숨김
+    await pg.evaluate(() => { delete window.EVAL_SAMPLE.runtime.killLatencyMs; delete window.EVAL_SAMPLE.runtime.killStagesMs; UI.remount(); });
+    await pg.waitForTimeout(200); await ready(pg);
+    const k2 = await kpi();
+    ok(same(k2, ['200 / 400 ms', '공격 시나리오 중 가장 느린 값']), `폴백 지표 ${JSON.stringify(k2)}`);
+    ok(await pg.locator(C).count() === 0 && await pg.locator('[data-part="latency"] [data-chart="latency"]').count() === 1, '옛 파일인데 단계 막대');
+    ok(!(await pg.textContent('[data-part="latency"]')).includes('증거를 먼저 모으고'), '옛 파일인데 캡션');
     await pg.closeAll();
   });
 

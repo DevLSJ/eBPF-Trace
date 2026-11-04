@@ -1,7 +1,7 @@
 // SupplyGuard 목업 — 「평가」 화면 [11/04 U1 1단계 — 목업 먼저, 확정 뒤 React]. 경로 #/evaluation, 읽기 전용(조회자도 본다).
 // 데이터: U.api.evaluation() → { static, runtime, model }(bench/reports 의 static.json · runtime.json · model.json 그대로, 없는 쪽은 null)
 //   sim = shared/eval-data.js 예시(sample: true → 「예시 데이터」 배지) · ?fresh=1 이면 없음 · live = GET /api/evaluation(404 → 「평가 결과 없음」)
-// 순서: 머리(결론 한 줄 · 출처 태그) → 지표 6칸 → 두 열(정적: 판정 분포 · 규칙 적중 상위 10 · 혼동 행렬 / 런타임: 시나리오 탐지율 · 지연 분포 · 정상 설치 위반) → 모델 비교 → 결과의 한계
+// 순서: 머리(결론 한 줄 · 출처 태그) → 지표 6칸 → 두 열(정적: 판정 분포 · 규칙 적중 상위 10 · 혼동 행렬 / 런타임: 시나리오 탐지율 · 지연 분포(+ 단계별 막대 [11/04b]) · 정상 설치 위반) → 모델 비교 → 결과의 한계
 // 차트는 React 에서 Recharts 로 옮길 모양(점선 격자 · 아래 축 · 범례 · 마우스 올리면 툴팁)을 SVG 로 그린다 — 외부 라이브러리 없음
 (function () {
   'use strict';
@@ -42,13 +42,13 @@
   const legendEl = (items) => h('div', { class: 'chart-legend', 'data-part': 'legend' }, items.map(([ko, cls]) => h('span', null, h('i', { class: `sw ${cls}` }), ko)));
 
   // 가로 막대(쌓기 · 묶음): rows = [{ id, label, mono?, bars: [[{ key, v, cls }]], value, tip: [[cls, text]] }] — 한 행에 막대 bars.length 개, 막대마다 조각을 쌓는다(조각 사이 2px)
-  function hbars({ name, label, rows, ticks, tickFmt, legend, labelW, nBars }) {
+  function hbars({ name, label, rows, ticks, tickFmt, legend, labelW, nBars, valueW }) {
     const root = h('div', { class: 'chart ev-chart', 'data-chart': name });
     const box = h('div', { class: 'ev-box' });
     if (legend) root.append(legendEl(legend));
     root.append(box);
     const tip = tipLayer(root);
-    const BAR = 10, n = nBars || 1, stackH = n * BAR + (n - 1) * 3, rowH = Math.max(30, stackH + 16), m = { t: 4, r: 64, b: 22 };
+    const BAR = 10, n = nBars || 1, stackH = n * BAR + (n - 1) * 3, rowH = Math.max(30, stackH + 16), m = { t: 4, r: valueW || 64, b: 22 }; // valueW: 오른쪽 값 글자 칸(11/04b 단계 막대 「합계 N ms」)
     const H = m.t + rows.length * rowH + m.b, max = ticks[ticks.length - 1] || 1;
     box.style.height = `${H}px`; // 높이는 너비와 무관 — 다시 그려도 상자 크기가 바뀌지 않게
     function draw() {
@@ -60,7 +60,7 @@
       rows.forEach((r, i) => {
         const y0 = m.t + i * rowH;
         const g = s('g', { 'data-row': r.id }, s('rect', { x: 0, y: y0, width: W, height: rowH, class: 'ev-row-bg' }),
-          s('text', { x: lw - 8, y: y0 + rowH / 2 + 4, 'text-anchor': 'end', class: `tick ev-label ${r.mono ? 'ev-mono' : ''}` }, fitText(r.label, lw - 10, r.mono)));
+          s('text', { x: lw - 8, y: y0 + rowH / 2 + 4, 'text-anchor': 'end', class: `tick ev-label ${r.mono ? 'ev-mono' : ''} ${r.strong ? 'ev-strong' : ''}` }, fitText(r.label, lw - 10, r.mono)));
         let by = y0 + (rowH - stackH) / 2;
         for (const segs of r.bars) {
           const on = segs.filter((sg) => sg.v > 0); let acc = 0;
@@ -126,9 +126,12 @@
 
   // ── 계산 ──
   function attacks(rt) { const a = ((rt && rt.scenarios) || []).filter((x) => x.kind === 'attack'); return { list: a, runs: a.reduce((n, x) => n + x.runs, 0), detected: a.reduce((n, x) => n + x.detected, 0) }; }
-  function latencyHead(rt) { // 지표 칸: 격리까지 잰 공격 시나리오의 p50 · p95 중 가장 큰 값(가장 느린 쪽)
+  // 지표 칸 [11/04b]: 격리된 공격 전체(runtime.killLatencyMs — 백엔드 수신 → 격리). 키가 없는 옛 파일이면 격리까지 잰 공격 시나리오의 p50 · p95 중 가장 큰 값(가장 느린 쪽)
+  function latencyHead(rt) {
+    const k = rt && rt.killLatencyMs;
+    if (k && k.p50 != null) return { p50: k.p50, p95: k.p95, hint: hint(`격리된 공격 ${fmt.num(k.n)}회 기준`, '백엔드 수신→격리') };
     const l = attacks(rt).list.map((x) => x.latencyMs).filter((x) => x && x.p50 != null);
-    return l.length ? { p50: Math.max(...l.map((x) => x.p50)), p95: Math.max(...l.map((x) => x.p95)) } : null;
+    return l.length ? { p50: Math.max(...l.map((x) => x.p50)), p95: Math.max(...l.map((x) => x.p95)), hint: '공격 시나리오 중 가장 느린 값' } : null;
   }
   function conclusion(d) {
     const out = [];
@@ -159,7 +162,7 @@
       U.kpi({ key: 'static-fpr', label: '정상 오탐률', value: st ? pct(mt.falsePositiveRate) : '—', hint: c ? `인기 패키지 ${fmt.num(c.fp)} / ${fmt.num(c.fp + c.tn)}` : '정적 결과 없음' }),
       U.kpi({ key: 'runtime-detection', label: '런타임 공격 탐지율', value: a.runs ? pct(a.detected / a.runs) : '—', hint: a.runs ? hint(`공격 ${fmt.num(a.detected)} / ${fmt.num(a.runs)}회`, `${a.list.length}종`) : '런타임 결과 없음' }),
       U.kpi({ key: 'runtime-fpr', label: '정상 설치 오탐률', value: b ? pct(b.falsePositiveRate) : '—', hint: b ? hint(`위반 ${fmt.num(b.violations)} / ${fmt.num(b.installs)}건`, by) : '런타임 결과 없음' }),
-      U.kpi({ key: 'latency', label: '탐지 → 격리 p50 / p95', value: lat ? [fmt.num(lat.p50), h('span', { class: 'kpi-unit' }, ` / ${fmt.num(lat.p95)} ms`)] : '—', hint: lat ? '공격 시나리오 중 가장 느린 값' : '격리한 시나리오 없음' }),
+      U.kpi({ key: 'latency', label: '탐지 → 격리 p50 / p95', value: lat ? [fmt.num(lat.p50), h('span', { class: 'kpi-unit' }, ` / ${fmt.num(lat.p95)} ms`)] : '—', hint: lat ? lat.hint : '격리한 시나리오 없음' }),
       U.kpi({ key: 'model-f1', label: '모델 시험 F1', value: pref ? dec(pref.test.f1) : '—', hint: pref ? `${pref.label}${md.deploymentApproved ? '' : ' · 운영 미적용'}` : '모델 결과 없음' }));
   }
 
@@ -190,7 +193,30 @@
     const rows = list.map((x) => ({ id: x.id, label: x.label, lat: x.latencyMs, tip: [[null, x.label], ['ev-p50-sw', `p50 ${ms(x.latencyMs.p50)}`], ['ev-band', `p95 ${ms(x.latencyMs.p95)}`], ['ev-max-sw', `max ${ms(x.latencyMs.max)}`], [null, `격리 ${fmt.num(x.killed)}회 기준`]] }));
     const skipped = ((rt && rt.scenarios) || []).filter((x) => x.kind === 'attack' && !(x.latencyMs && x.latencyMs.p50 != null));
     return card('latency', '탐지 → 격리 지연 (ms)', [rangeChart({ name: 'latency', label: '시나리오별 탐지에서 격리까지 지연 범위', rows }),
-      skipped.length ? h('p', { class: 'small muted' }, `격리하지 않아 빠짐: ${skipped.map((x) => x.label).join(' · ')}`) : null]);
+      skipped.length ? h('p', { class: 'small muted' }, `격리하지 않아 빠짐: ${skipped.map((x) => x.label).join(' · ')}`) : null,
+      ...stagesBlock(rt)]);
+  }
+  // [11/04b] 단계별 막대 — p50 가로 누적(판정 → 증거 수집 → kill 호출, 합계), 첫 행은 격리된 실행 전체(runtime.killStagesMs) · 그 아래 격리한 시나리오별(matchLatencyMs · evidenceMs · killApiMs). 툴팁에 p95
+  //   killStagesMs 가 없는 옛 파일이면 칸을 숨긴다
+  const STAGES = [['match', '판정', 'ev-st-match'], ['evidence', '증거 수집', 'ev-st-evidence'], ['killApi', 'kill 호출', 'ev-st-kill']];
+  const msv = (x) => (x >= 10 ? Math.round(x) : Math.round(x * 10) / 10); // 막대 글자 — 10ms 이상은 정수, 그 아래는 소수 한 자리
+  function stagesBlock(rt) {
+    const all = rt && rt.killStagesMs;
+    if (!all) return [];
+    const row = (id, label, st, n, strong) => {
+      const p = (k) => (st[k] && st[k].p50 != null ? st[k].p50 : 0), sum = STAGES.reduce((a, [k]) => a + p(k), 0);
+      return { id, label, strong, sum, value: `합계 ${fmt.num(msv(sum))} ms`,
+        bars: [STAGES.map(([k, , cls]) => ({ key: k, v: p(k), cls }))],
+        tip: [[null, label], ...STAGES.map(([k, ko, cls]) => [cls, st[k] ? `${ko} p50 ${fmt.num(msv(st[k].p50))} ms · p95 ${fmt.num(msv(st[k].p95))} ms` : `${ko} —`]), ...(n ? [[null, `격리 ${fmt.num(n)}회 기준`]] : [])] };
+    };
+    const lead = (st) => STAGES.map(([k]) => st[k]).find((x) => x && x.n);
+    const rows = [row('all', '격리된 공격 전체', all, (lead(all) || {}).n || (rt.killLatencyMs && rt.killLatencyMs.n), true),
+      ...(rt.scenarios || []).filter((x) => (x.evidenceMs && x.evidenceMs.p50 != null) || (x.killApiMs && x.killApiMs.p50 != null))
+        .map((x) => { const st = { match: x.matchLatencyMs, evidence: x.evidenceMs, killApi: x.killApiMs }; return row(x.id, x.label, st, (lead(st) || {}).n || x.killed); })];
+    const ticks = niceTicks(Math.max(1, ...rows.map((r) => r.sum)));
+    return [h('p', { class: 'small ev-sub', 'data-part': 'stages-title' }, '단계별 시간 (p50)'),
+      hbars({ name: 'kill-stages', label: '탐지에서 격리까지 단계별 시간 누적 막대', rows, ticks, tickFmt: (t) => fmt.num(t), legend: STAGES.map(([, ko, cls]) => [ko, cls]), labelW: 150, valueW: 88 }),
+      h('p', { class: 'small muted', 'data-part': 'stages-caption' }, '증거를 먼저 모으고(≤0.7초) 격리합니다')];
   }
   function rulesCard(st) {
     if (!st) return card('rules', 'GuardDog 규칙 적중 상위 10', none('정적'));

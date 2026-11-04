@@ -1037,6 +1037,10 @@ body { font-size: 14px; }
 .ev-band { fill: var(--accent-line); background: var(--accent-line); }
 .ev-p50 { fill: var(--accent); stroke: var(--surface); stroke-width: 2; } .ev-p50-sw { background: var(--accent); border-radius: 50% !important; }
 .ev-max { stroke: var(--text-2); stroke-width: 2; } .ev-max-sw { width: 2px !important; background: var(--text-2); }
+/* 11/04b 단계별 막대(판정 → 증거 수집 → kill 호출) — 빨강 없이 회색 · 정보 · 강조 */
+.ev-st-match { fill: var(--text-3); background: var(--text-3); } .ev-st-evidence { fill: var(--info); background: var(--info); } .ev-st-kill { fill: var(--accent); background: var(--accent); }
+.ev-strong { fill: var(--text); font-weight: 600; }
+.ev-sub { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border); font-weight: 600; color: var(--text-2); }
 .ev-confusion { width: auto; min-width: 280px; }
 .ev-confusion th:first-child, .ev-confusion tbody th { text-align: left; font-size: 12px; font-weight: 600; color: var(--text-3); }
 .ev-confusion td b { font-size: 18px; font-weight: 600; margin-right: 6px; }
