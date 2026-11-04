@@ -9,7 +9,12 @@ import { KpiCard } from "../../components/KpiCard";
 import { Empty, LoadError, Panel } from "../../components/Panel";
 import { useSortable } from "../../hooks/useSortable";
 import { fmtNum } from "../../lib/format";
-import { kpiDelta, type KpiDelta, type Stripe } from "../../lib/kpi";
+import {
+  kpiDelta,
+  type DeltaTone,
+  type KpiDelta,
+  type Stripe,
+} from "../../lib/kpi";
 import { dest, type Dest } from "../../lib/nav";
 import type { Summary, SummaryRange, SummaryTop } from "../../lib/types";
 import { RANGE_KO, RANGES } from "./summary";
@@ -68,11 +73,11 @@ const KPI_IDS = [
 function kpiDefs(s: Summary, range: string): KpiDef[] {
   const P = s.previous ?? null;
   const note = `지난 ${RANGE_KO[range] ?? range} 대비`;
-  // 위반 · 격리 증가만 danger, 나머지는 중립(사용자 결정 R2 11/04)
+  // 위반 · 격리 증가 = danger, 수집 감소 · 격리 지연 증가 = warn, 나머지 중립(사용자 결정 R2 · 9dafb90 11/04)
   const D = (
     cur: number | null | undefined,
     prev: number | null | undefined,
-    o: { up?: "danger"; unit?: string } = {},
+    o: { up?: DeltaTone; down?: DeltaTone; unit?: string } = {},
   ) => kpiDelta(cur, P ? prev : null, { note, ...o });
   const k = s.collected.byKind;
   const iso = s.isolation;
