@@ -134,7 +134,7 @@ export function ProposalDetail({
               <ul className="grid gap-1" data-testid="proposal-changes">
                 {p.changes.map((x, i) => (
                   <li key={i} className="flex items-center gap-2 rounded-md bg-slate-50 px-3 py-1.5 font-mono text-xs">
-                    <span className={`rounded px-1.5 py-0.5 font-sans text-[11px] ${x.op === 'block' ? 'bg-red-100 text-red-800' : 'bg-sky-100 text-sky-800'}`}>
+                    <span className={`rounded px-1.5 py-0.5 font-sans text-xs ${x.op === 'block' ? 'bg-red-100 text-red-800' : 'bg-sky-100 text-sky-800'}`}>
                       {x.op === 'block' ? '차단' : '예외'}
                     </span>
                     {changeText(x)}

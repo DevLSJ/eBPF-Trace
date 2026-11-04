@@ -204,10 +204,10 @@ export function PoliciesPage() {
                       {/* 쉬운 말 우선: 설명(없으면 이름) + 영문 이름은 작게 (10/16) */}
                       <span className={`grid min-w-0 flex-1 ${r.disabled ? 'text-slate-400' : 'text-slate-800'}`} title={r.description || r.id}>
                         <span className="truncate font-medium">{r.description || r.id}</span>
-                        <small className="truncate font-mono text-[11px] text-slate-400">{r.id}</small>
+                        <small className="truncate font-mono text-xs text-slate-400">{r.id}</small>
                       </span>
                       {SYSTEM_RULES.has(r.id) ? (
-                        <span className="flex shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600" data-system>
+                        <span className="flex shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600" data-system>
                           <Lock className="size-3" aria-hidden /> 차단 목록
                         </span>
                       ) : (
@@ -319,7 +319,7 @@ function Templates({ onPick }: { onPick: (key: string) => void }) {
             onClick={() => onPick(t.key)}
             className={`grid gap-1 rounded-lg border p-3.5 text-left hover:border-indigo-500 hover:bg-indigo-50 ${t.key === 'blank' ? 'border-dashed border-slate-300' : 'border-slate-200'}`}
           >
-            <span className="justify-self-start rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">{KIND_TEXT[t.rule.kind][0]}</span>
+            <span className="justify-self-start rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">{KIND_TEXT[t.rule.kind][0]}</span>
             <b className="text-sm font-semibold text-slate-800">{t.title}</b>
             <small className="text-xs text-slate-500">{t.desc}</small>
           </button>

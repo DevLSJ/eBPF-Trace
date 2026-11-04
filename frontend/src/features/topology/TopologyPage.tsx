@@ -59,7 +59,7 @@ function NodeLabel({ n }: { n: TopoNode }) {
   return (
     <div className="flex items-center gap-2 text-left" title={`${n.label}\n${n.count}회${n.violations ? ` · 위반 ${n.violations}` : ''}${n.reason ? `\n${n.reason}` : ''}`}>
       {isLeaf(n.type) ? (
-        <span className={`w-14 shrink-0 rounded px-1 text-center font-mono text-[10.5px] font-semibold ${chipTone ?? chipStyle[leafKind(n)]}`}>
+        <span className={`w-14 shrink-0 rounded px-1 text-center font-mono text-xs font-semibold ${chipTone ?? chipStyle[leafKind(n)]}`}>
           {leafKind(n)}
         </span>
       ) : n.type === 'container' ? (
@@ -67,13 +67,13 @@ function NodeLabel({ n }: { n: TopoNode }) {
       ) : (
         <Cpu className="size-3.5 shrink-0" aria-hidden />
       )}
-      <span className={`min-w-0 flex-1 truncate ${isLeaf(n.type) ? 'font-mono text-[11px]' : 'font-medium'}`}>
+      <span className={`min-w-0 flex-1 truncate ${isLeaf(n.type) ? 'font-mono text-xs' : 'font-medium'}`}>
         {isLeaf(n.type) ? ellipsize(n.label, 30) : n.label}
       </span>
       {n.type === 'container' && n.level !== 'normal' && (
-        <span className={`shrink-0 rounded-full px-2 text-[10.5px] font-semibold ${statusChip[n.level]}`}>{LEVEL_LABEL[n.level]}</span>
+        <span className={`shrink-0 rounded-full px-2 text-xs font-semibold ${statusChip[n.level]}`}>{LEVEL_LABEL[n.level]}</span>
       )}
-      {n.count > 1 && <span className="num shrink-0 font-mono text-[11px] opacity-75">×{fmtNum(n.count)}</span>}
+      {n.count > 1 && <span className="num shrink-0 font-mono text-xs opacity-75">×{fmtNum(n.count)}</span>}
     </div>
   );
 }
@@ -371,7 +371,7 @@ function NodeDetail({ n, onClose, children }: { n: TopoNode; onClose: () => void
           <ul className="mt-1.5 flex flex-wrap gap-1.5">
             {rules.map(([id, cnt]) => (
               <li key={id}>
-                <Link to={`/policies?id=${encodeURIComponent(id)}`} className="rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-[11px] text-indigo-700 hover:underline">
+                <Link to={`/policies?id=${encodeURIComponent(id)}`} className="rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-xs text-indigo-700 hover:underline">
                   {id} ×{cnt}
                 </Link>
               </li>

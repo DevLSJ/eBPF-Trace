@@ -194,7 +194,7 @@ function ChipGroup({
             data-new={fresh && fresh.field === c.field && fresh.value === c.value ? '' : undefined}
             className={`inline-flex items-center gap-1.5 rounded-full py-0.5 pr-1 pl-2 text-xs ring-1 ${fresh && fresh.field === c.field && fresh.value === c.value ? 'bg-emerald-50 ring-2 ring-emerald-600' : 'bg-slate-50 ring-slate-200'}`}
           >
-            <small className="text-[10px] text-slate-500">{TYPE_LABEL[c.type]}</small>
+            <small className="text-xs text-slate-500">{TYPE_LABEL[c.type]}</small>
             <span className="font-mono">{c.value}</span>
             <button
               type="button"

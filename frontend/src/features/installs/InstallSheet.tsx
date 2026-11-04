@@ -154,7 +154,7 @@ function OsvCompare({ s }: { s: InstallSession }) {
             <b className={`num text-lg ${kernel ? 'text-red-700' : 'text-slate-900'}`}>{fmtNum(kernel)}</b>
             <span className="text-slate-600">건 위반 행위</span>
           </div>
-          <div className="text-[11px] text-slate-400">설치 중 실제로 한 일</div>
+          <div className="text-xs text-slate-400">설치 중 실제로 한 일</div>
         </div>
       </div>
       {note && (
@@ -183,7 +183,7 @@ function StaticCell({ s, sc }: { s: InstallSession; sc: InstallScan }) {
           </span>
         )}
       </div>
-      <div className="text-[11px] break-words break-keep text-slate-400" data-part="static-target">
+      <div className="text-xs break-words break-keep text-slate-400" data-part="static-target">
         <span className="font-mono">{sc.label}</span>
         {sc.version && ` · ${sc.version}`}
         {sc.reused && ' · 24시간 안 검사 결과 재사용'}
@@ -219,10 +219,10 @@ function OsvCell({ s, why }: { s: InstallSession; why: string }) {
         <div data-osv={osv.data.vulns}>
           <b className="num text-lg text-slate-900">{fmtNum(osv.data.vulns)}</b>
           <span className="text-slate-600">건 알려진 취약점</span>
-          {osv.data.ids.length > 0 && <div className="truncate font-mono text-[11px] text-slate-400">{osv.data.ids.slice(0, 3).join(', ')}</div>}
+          {osv.data.ids.length > 0 && <div className="truncate font-mono text-xs text-slate-400">{osv.data.ids.slice(0, 3).join(', ')}</div>}
         </div>
       )}
-      <div className={`font-mono text-[11px] text-slate-400 ${why ? 'break-words break-keep' : 'truncate'}`}>
+      <div className={`font-mono text-xs text-slate-400 ${why ? 'break-words break-keep' : 'truncate'}`}>
         {eco} · {name}
         {why && <span className="font-sans"> · {why}</span>}
       </div>

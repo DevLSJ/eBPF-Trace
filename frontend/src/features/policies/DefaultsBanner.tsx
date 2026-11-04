@@ -42,12 +42,12 @@ export function DefaultsBanner({ data, canWrite, onPreview }: { data: PolicyDefa
         <ul data-fill="" className="grid max-h-48 gap-1 overflow-y-auto border-t border-indigo-100 px-4 py-2">
           {items.map((x) => (
             <li key={`${x.kind}:${x.id}`} data-default={x.id} className="flex items-center gap-2">
-              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] ${x.kind === 'missing' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}`}>
+              <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${x.kind === 'missing' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}`}>
                 {x.kind === 'missing' ? '새 규칙' : '바뀐 규칙'}
               </span>
               <span className="grid min-w-0 flex-1">
                 <span className="truncate text-slate-800">{x.rule.description || x.id}</span>
-                <small className="truncate font-mono text-[11px] text-slate-500" title={x.current ? diffText(x.current, x.rule) : x.id}>
+                <small className="truncate font-mono text-xs text-slate-500" title={x.current ? diffText(x.current, x.rule) : x.id}>
                   {x.kind === 'missing' || !x.current ? x.id : `${x.id} — ${diffText(x.current, x.rule)}`}
                 </small>
               </span>

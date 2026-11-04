@@ -77,7 +77,7 @@ function Report({ d, author, at }: { d: ReportData; author: string; at: Date }) 
     <article data-testid="report" className="sg-card mx-auto grid max-w-3xl gap-5 p-5 text-sm text-slate-800 md:p-8 print:max-w-none print:border-0 print:p-0 print:shadow-none">
       <header data-section="title" className="grid gap-2 border-b border-slate-200 pb-4">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-medium text-indigo-700">{SOURCE_LABEL[d.source]}</span>
+          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs font-medium text-indigo-700">{SOURCE_LABEL[d.source]}</span>
           {s ? <StatusBadge status={s.status} /> : c ? <LevelBadge level={c.level} /> : null}
           {c && <DecisionBadge decision={c.decision} />}
         </div>
@@ -162,7 +162,7 @@ function Report({ d, author, at }: { d: ReportData; author: string; at: Date }) 
           <p>
             로그 {counts.logs}줄 · 파일 변경 {counts.changes} · 프로세스 {counts.processes} <span className="text-xs text-slate-500">— {fmtDateTime(ev.collectedAt)} · {ev.durationMs}ms</span>
             {ev.partial && (
-              <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800" data-part="evidence-partial">
+              <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800" data-part="evidence-partial">
                 일부만 모음{ev.error ? ` — ${ev.error}` : ''}
               </span>
             )}

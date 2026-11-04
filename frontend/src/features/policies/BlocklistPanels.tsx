@@ -109,7 +109,7 @@ export function ChangesPanel({ data, error }: { data: Change[] | undefined; erro
           {data.map((c) => (
             <li key={c.id} className="border-b border-slate-100 py-1.5 last:border-b-0" data-change={c.id}>
               <div className="flex items-center gap-2">
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">{CHANGE_KIND_LABEL[c.kind] ?? c.kind}</span>
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">{CHANGE_KIND_LABEL[c.kind] ?? c.kind}</span>
                 <span className="num text-slate-400">{fmtDateTime(c.at)}</span>
                 <span className="ml-auto text-slate-500">{c.by}</span>
               </div>
