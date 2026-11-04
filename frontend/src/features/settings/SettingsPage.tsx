@@ -1,10 +1,12 @@
 import { KeyRound, Plus, Send } from 'lucide-react';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { KeyBoxes } from '../../components/KeyBoxes';
 import { AppliedFilters } from '../../components/list/ListStates';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { Empty, LoadError } from '../../components/Panel';
+import { SortHead } from '../../components/DataTable';
+import { useTableKit, type Column } from '../../hooks/useTableKit';
 import { useAuth } from '../../hooks/auth-context';
 import { useToast } from '../../hooks/toast-context';
 import { PageActions } from '../../components/PageActions';
@@ -91,7 +93,7 @@ function Row({ label, value, env, desc }: { label: string; value: ReactNode; env
       </div>
       <div className="grid justify-items-end gap-0.5">
         <span className="text-sm font-semibold text-slate-800">{value}</span>
-        <code className="text-[11px] text-slate-500">{env}</code>
+        <code className="text-xs text-slate-500">{env}</code>
       </div>
     </div>
   );
@@ -148,12 +150,12 @@ function ServerTab() {
           </p>
         ) : (
           <>
-            <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs text-slate-500">
+            <div className="max-md:overflow-x-auto">
+            <table className="sg-table" data-table="notify">
+              <thead>
                 <tr>
                   {['채널', '호스트', '보냄', '실패', '마지막 성공', '마지막 오류'].map((t) => (
-                    <th key={t} className="py-1 font-semibold">
+                    <th key={t} className={t === '보냄' || t === '실패' ? 'num-col' : undefined}>
                       {t}
                     </th>
                   ))}
@@ -161,15 +163,15 @@ function ServerTab() {
               </thead>
               <tbody>
                 {n.channels.map((c) => (
-                  <tr key={c.name} data-channel={c.name} className="border-t border-slate-100">
-                    <td className="py-1.5">{c.name}</td>
-                    <td className="py-1.5 font-mono text-xs">{c.host}</td>
-                    <td className="num py-1.5" data-sent="">
+                  <tr key={c.name} data-channel={c.name}>
+                    <td className="tk-short">{c.name}</td>
+                    <td className="tk-short font-mono text-xs">{c.host}</td>
+                    <td className="num num-col tk-short" data-sent="">
                       {fmtNum(c.sent)}
                     </td>
-                    <td className={`num py-1.5 ${c.failed ? 'text-red-600' : ''}`}>{fmtNum(c.failed)}</td>
-                    <td className="num py-1.5 text-xs text-slate-500">{c.lastAt ? fmtDateTime(c.lastAt) : '—'}</td>
-                    <td className="max-w-0 truncate py-1.5 text-xs text-red-600" title={c.lastError}>
+                    <td className={`num num-col tk-short ${c.failed ? 'text-red-600' : ''}`}>{fmtNum(c.failed)}</td>
+                    <td className="num tk-short text-xs text-slate-500">{c.lastAt ? fmtDateTime(c.lastAt) : '—'}</td>
+                    <td className="tk-fill text-xs text-red-600" title={c.lastError}>
                       {c.lastError || '—'}
                     </td>
                   </tr>
@@ -221,6 +223,20 @@ function AccountsTab() {
   const status = (u: UserView): [string, string] =>
     u.disabled ? ['비활성', 'text-slate-400'] : u.locked ? ['잠김(5분)', 'text-amber-700'] : u.mustChangePassword ? ['첫 로그인 대기', 'text-indigo-700'] : ['활성', 'text-emerald-700'];
   const who = (u: UserView) => `${u.username} (${u.displayName})`;
+  // 계정 표 칸(R4 11/04) — 머리 클릭 정렬, 기본은 받은 순서(정렬 없음). 버튼 칸은 정렬하지 않는다
+  const userCols = useMemo<Column<UserView>[]>(
+    () => [
+      { key: 'username', label: '아이디', sort: (u) => u.username, short: true },
+      { key: 'name', label: '이름', sort: (u) => u.displayName },
+      { key: 'role', label: '역할', sort: (u) => ROLE_KO[u.role], short: true },
+      { key: 'status', label: '상태', sort: (u) => (u.disabled ? 3 : u.locked ? 0 : u.mustChangePassword ? 1 : 2), short: true },
+      { key: 'otp', label: 'OTP', sort: (u) => (u.otpEnabled ? 1 : 0), short: true },
+      { key: 'last', label: '마지막 로그인', sort: (u) => (u.lastLoginAt ? Date.parse(u.lastLoginAt) : null), short: true },
+      { key: 'actions', label: '', short: true },
+    ],
+    [],
+  );
+  const userKit = useTableKit({ columns: userCols });
   const act = (label: string, onClick: () => void, danger = false) => (
     <button type="button" onClick={onClick} className={`rounded px-1.5 py-0.5 text-xs hover:bg-slate-100 ${danger ? 'text-red-600' : 'text-slate-600'}`}>
       {label}
@@ -293,30 +309,22 @@ function AccountsTab() {
         users.error ? <LoadError error={users.error} what="계정" /> : <Empty>불러오는 중…</Empty>
       ) : (
         <>
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm" data-table="users">
-            <thead className="bg-slate-50 text-left text-xs text-slate-500">
-              <tr>
-                {['아이디', '이름', '역할', '상태', 'OTP', '마지막 로그인', ''].map((t, i) => (
-                  <th key={i} className="px-4 py-2 font-semibold">
-                    {t}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+          <div className="max-md:overflow-x-auto">
+          <table className="sg-table" data-table="users">
+            <SortHead columns={userCols} sort={userKit.sort} onSort={userKit.sortBy} />
             <tbody>
-              {users.data.map((u) => {
+              {userKit.sorted(users.data).map((u) => {
                 const last = u.role === 'admin' && !u.disabled && admins === 1;
                 const self = u.id === me?.user.id;
                 const [st, tone] = status(u);
                 return (
-                  <tr key={u.id} data-user={u.username} className="border-t border-slate-100">
-                    <td className="px-4 py-2 font-mono">
+                  <tr key={u.id} data-user={u.username}>
+                    <td data-col="username" className="tk-short font-mono">
                       {u.username}
                       {self && <span className="text-xs text-slate-400"> (나)</span>}
                     </td>
-                    <td className="px-4 py-2">{u.displayName}</td>
-                    <td className="px-4 py-2">
+                    <td data-col="name">{u.displayName}</td>
+                    <td data-col="role" className="tk-short">
                       <span className={`rounded px-1.5 py-0.5 text-xs ${u.role === 'admin' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>{ROLE_KO[u.role]}</span>
                       {last && (
                         <span className="text-xs text-slate-400" title={AUTH_MSG.lastAdmin}>
@@ -325,10 +333,10 @@ function AccountsTab() {
                         </span>
                       )}
                     </td>
-                    <td className={`px-4 py-2 text-xs ${tone}`}>{st}</td>
-                    <td className="px-4 py-2 text-xs">{u.otpEnabled ? '등록됨' : '미등록'}</td>
-                    <td className="num px-4 py-2 text-xs whitespace-nowrap text-slate-500">{u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : '—'}</td>
-                    <td className="px-4 py-2 whitespace-nowrap">
+                    <td data-col="status" className={`tk-short text-xs ${tone}`}>{st}</td>
+                    <td data-col="otp" className="tk-short text-xs">{u.otpEnabled ? '등록됨' : '미등록'}</td>
+                    <td data-col="last" className="num tk-short text-xs text-slate-500">{u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : '—'}</td>
+                    <td data-col="actions" className="tk-short">
                       {/* 마지막 관리자 · 자기 자신은 강등 · 비활성 버튼을 그리지 않는다(누를 수 없는 버튼 금지) */}
                       {!last && (u.role === 'admin' ? act('조회자로', () => roleChange(u, 'viewer')) : act('관리자로', () => roleChange(u, 'admin')))}
                       {!last && !self && act(u.disabled ? '활성화' : '비활성', () => toggleDisabled(u), !u.disabled)}
@@ -631,7 +639,19 @@ function AuthAuditTab() {
   );
 }
 
+// 인증 감사 표 칸(R4 11/04) — 머리 클릭 정렬(불러온 행 안), 기본은 시각 내림(받은 순서 그대로). 「더 보기」(커서)는 그대로
+const AUTH_AUDIT_COLS: Column<AuthAuditEntry>[] = [
+  { key: 'at', label: '시각', sort: (a) => Date.parse(a.at), short: true },
+  { key: 'actor', label: '계정', sort: (a) => a.actor, short: true },
+  { key: 'action', label: '동작', sort: (a) => ACTION_KO[a.action] ?? a.action, short: true },
+  { key: 'target', label: '대상', sort: (a) => a.target, short: true },
+  { key: 'ip', label: 'IP', sort: (a) => a.ip, short: true },
+  { key: 'ok', label: '결과', sort: (a) => (a.ok ? 1 : 0), short: true },
+  { key: 'detail', label: '내용', sort: (a) => a.detail },
+];
+
 function AuthAuditRows({ action, failed }: { action: string; failed: boolean }) {
+  const kit = useTableKit({ columns: AUTH_AUDIT_COLS, sort: { key: 'at', dir: 'desc' } });
   const load = useCallback(() => authApi.audit({ limit: AUDIT_PAGE, action, failed }), [action, failed]);
   const rows = useLoad(load);
   const [extra, setExtra] = useState<AuthAuditEntry[]>([]);
@@ -657,27 +677,19 @@ function AuthAuditRows({ action, failed }: { action: string; failed: boolean }) 
   if (all.length === 0) return <Empty>{action || failed ? '조건에 맞는 기록 없음' : '기록 없음'}</Empty>;
   return (
     <>
-      <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-slate-50 text-left text-xs text-slate-500">
-          <tr>
-            {['시각', '계정', '동작', '대상', 'IP', '결과', '내용'].map((t) => (
-              <th key={t} className="px-4 py-2 font-semibold">
-                {t}
-              </th>
-            ))}
-          </tr>
-        </thead>
+      <div className="max-md:overflow-x-auto">
+      <table className="sg-table" data-table="auth-audit">
+        <SortHead columns={AUTH_AUDIT_COLS} sort={kit.sort} onSort={kit.sortBy} />
         <tbody>
-          {all.map((a) => (
-            <tr key={a.id} data-audit={a.id} className="border-t border-slate-100">
-              <td className="num px-4 py-1.5 text-xs whitespace-nowrap">{fmtDateTime(a.at)}</td>
-              <td className="px-4 py-1.5 font-mono text-xs">{a.actor || '—'}</td>
-              <td className="px-4 py-1.5">{ACTION_KO[a.action] ?? a.action}</td>
-              <td className="px-4 py-1.5 font-mono text-xs">{a.target || '—'}</td>
-              <td className="px-4 py-1.5 font-mono text-xs text-slate-500">{a.ip || '—'}</td>
-              <td className={`px-4 py-1.5 text-xs ${a.ok ? 'text-emerald-700' : 'text-red-600'}`}>{a.ok ? '성공' : '실패'}</td>
-              <td className="px-4 py-1.5 text-xs text-slate-600">{a.detail}</td>
+          {kit.sorted(all).map((a) => (
+            <tr key={a.id} data-audit={a.id}>
+              <td data-col="at" className="num tk-short text-xs">{fmtDateTime(a.at)}</td>
+              <td data-col="actor" className="tk-short font-mono text-xs">{a.actor || '—'}</td>
+              <td data-col="action" className="tk-short">{ACTION_KO[a.action] ?? a.action}</td>
+              <td data-col="target" className="tk-short font-mono text-xs">{a.target || '—'}</td>
+              <td data-col="ip" className="tk-short font-mono text-xs text-slate-500">{a.ip || '—'}</td>
+              <td data-col="ok" className={`tk-short text-xs ${a.ok ? 'text-emerald-700' : 'text-red-600'}`}>{a.ok ? '성공' : '실패'}</td>
+              <td data-col="detail" className="tk-fill text-xs text-slate-600" title={a.detail}>{a.detail}</td>
             </tr>
           ))}
         </tbody>
