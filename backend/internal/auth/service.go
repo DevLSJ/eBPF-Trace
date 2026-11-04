@@ -225,9 +225,18 @@ func (s *Service) licensed(ctx context.Context) (bool, error) {
 	return l != nil && s.now().Before(l.ExpiresAt), nil
 }
 
+// licenseOK: 로그인 단계를 정할 때의 라이선스 조건. AUTH_DEV_MODE 면 등록 없이 통과(라이선스를 만들어 저장하지 않는다).
+// RegisterLicense 는 실제 등록 여부가 필요해 licensed 를 그대로 쓴다
+func (s *Service) licenseOK(ctx context.Context) (bool, error) {
+	if s.o.DevMode {
+		return true, nil
+	}
+	return s.licensed(ctx)
+}
+
 // ---------- 초기 관리자 ----------
 
-// SeedAdmin: 계정이 하나도 없을 때만 관리자 1명을 만든다(첫 로그인에서 비밀번호 변경 필수). 만들었으면 true
+// SeedAdmin: 계정이 하나도 없을 때만 관리자 1명을 만든다(첫 로그인에서 비밀번호 변경 필수 — DevMode 는 제외). 만들었으면 true
 func (s *Service) SeedAdmin(ctx context.Context, username, password string) (bool, error) {
 	n, err := s.o.Store.CountUsers(ctx)
 	if err != nil || n > 0 {
@@ -240,8 +249,12 @@ func (s *Service) SeedAdmin(ctx context.Context, username, password string) (boo
 	if password == "" {
 		return false, errors.New("계정이 없어 초기 관리자를 만들어야 하는데 ADMIN_INITIAL_PASSWORD 가 비어 있음")
 	}
-	if err := ValidatePassword(username, password); err != nil {
-		return false, fmt.Errorf("ADMIN_INITIAL_PASSWORD: %w", err)
+	pwErr := ValidatePassword(username, password)
+	if s.o.DevMode { // 개발 전용: admin/admin 을 받는다 — 길이(5자 · 72바이트)만 본다
+		pwErr = validatePasswordSize(password)
+	}
+	if pwErr != nil {
+		return false, fmt.Errorf("ADMIN_INITIAL_PASSWORD: %w", pwErr)
 	}
 	if !validUsername(username) {
 		return false, fmt.Errorf("ADMIN_USER: %q (영문 · 숫자 · . _ - 3~32자)", username)
@@ -250,6 +263,7 @@ func (s *Service) SeedAdmin(ctx context.Context, username, password string) (boo
 	if err != nil {
 		return false, err
 	}
+	u.MustChangePW = !s.o.DevMode // 개발 전용: 첫 로그인 비밀번호 변경 단계 없이 시작
 	if err := s.o.Store.CreateUser(ctx, u); err != nil {
 		if errors.Is(err, store.ErrAuthConflict) {
 			return false, nil // 다른 인스턴스가 먼저 만들었다
@@ -330,7 +344,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 		}
 		return bad("비밀번호 틀림")
 	}
-	lic, err := s.licensed(ctx)
+	lic, err := s.licenseOK(ctx)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -467,7 +481,7 @@ func (s *Service) ChangePassword(ctx context.Context, token, current, next, ip s
 	u.MustChangePW = false
 	st := sess.State
 	if st == model.StateNeedPassword {
-		lic, err := s.licensed(ctx)
+		lic, err := s.licenseOK(ctx)
 		if err != nil {
 			return "", err
 		}

@@ -28,14 +28,22 @@ const tempAlphabet = codeAlphabet + "abcdefghijkmnpqrstuvwxyz"
 
 // ValidatePassword: 5자 이상 · 72바이트 이하 · 아이디와 다름(대소문자 무시)
 func ValidatePassword(username, pw string) error {
+	if err := validatePasswordSize(pw); err != nil {
+		return err
+	}
+	if strings.EqualFold(strings.TrimSpace(pw), strings.TrimSpace(username)) {
+		return errors.New("비밀번호는 아이디와 달라야 합니다")
+	}
+	return nil
+}
+
+// validatePasswordSize: 5자 이상 · 72바이트 이하만 (AUTH_DEV_MODE 의 초기 관리자가 쓴다 — 아이디와 같아도 됨)
+func validatePasswordSize(pw string) error {
 	if utf8.RuneCountInString(pw) < minPasswordRunes {
 		return errors.New("비밀번호는 5자 이상이어야 합니다")
 	}
 	if len(pw) > maxPasswordBytes {
 		return errors.New("비밀번호가 너무 깁니다(72바이트 이하)")
-	}
-	if strings.EqualFold(strings.TrimSpace(pw), strings.TrimSpace(username)) {
-		return errors.New("비밀번호는 아이디와 달라야 합니다")
 	}
 	return nil
 }
