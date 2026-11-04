@@ -1,6 +1,6 @@
 // Package demo: 시연 실행(10/30) — 대시보드 「시연」 카드의 GET /api/demo · POST /api/demo/run.
 //
-// 가젯 소스는 Docker API 로 sg-install-demo-<unix> 컨테이너를 만들고, 임베드한 데모 패키지(reqeusts)를 PUT archive 로 올린 뒤
+// 가젯 소스는 Docker API 로 sg-install-demo-<unix> 컨테이너를 만들고, 임베드한 데모 패키지(reqeusts · 대조군 sg-demo-benign)를 PUT archive 로 올린 뒤
 // pip 설치를 돌린다 — sg-install 과 같은 설치 세션 흐름(차단 확인 → 세션 → 끝 보고)이라 화면 · 규칙 · 격리가 그대로 동작한다.
 // mock 소스는 컨테이너 없이 같은 세션에 같은 이벤트 순서를 모의 재생한다(simulated). 동시 1개. DEMO_ENABLED=true 일 때만 main 이 만든다.
 // 사용자 입력은 시나리오 이름뿐이고 컨테이너 이름 · 이미지 · 명령은 서버가 정한다.
@@ -16,6 +16,7 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,16 +25,28 @@ import (
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/review"
 )
 
-// pkgFS: 데모 패키지 사본. 정본은 deploy/demo/reqeusts — TestDemoPackageMirrorsDeploy 가 바이트 동일을 확인한다
+// pkgFS: 데모 패키지 사본. 정본은 deploy/demo/<패키지> — TestDemoPackageMirrorsDeploy 가 바이트 동일을 확인한다
 //
-//go:embed reqeusts/setup.py reqeusts/README.md
+//go:embed reqeusts/setup.py reqeusts/README.md sg-demo-benign/setup.py sg-demo-benign/README.md sg-demo-benign/sg_demo_benign.py
 var pkgFS embed.FS
 
-// PackageFiles: 사본 · 정본에 있어야 하는 파일
+// 임베드 패키지(디렉터리 이름 = 컨테이너 안 /pkg/<이름> = 세션 패키지 인자 ./<이름>)
+const (
+	attackPkg = "reqeusts"       // 타이포스쿼팅 흉내(무해 시뮬) — 시나리오 all · shell · revshell · direct-ip · domain · dns-exfil
+	benignPkg = "sg-demo-benign" // 정상 설치 대조군(11/04) — 시나리오 benign
+)
+
+// PackageFiles: reqeusts 사본 · 정본에 있어야 하는 파일
 var PackageFiles = []string{"setup.py", "README.md"}
 
-// Scenarios: 허용 시나리오(순서는 화면 선택 목록과 같다)
-var Scenarios = []string{"all", "shell", "revshell", "direct-ip", "domain", "dns-exfil"}
+// packageFiles: 임베드 패키지별 파일 — 사본 · 정본에 있어야 하고 PUT archive 로 올린다
+var packageFiles = map[string][]string{
+	attackPkg: PackageFiles,
+	benignPkg: {"setup.py", "README.md", "sg_demo_benign.py"},
+}
+
+// Scenarios: 허용 시나리오(순서는 화면 선택 목록과 같다). 11/04 benign(정상 설치 대조군)은 끝에 붙는다 — all 에는 들지 않는다
+var Scenarios = []string{"all", "shell", "revshell", "direct-ip", "domain", "dns-exfil", "benign"}
 
 // Run 상태
 const (
@@ -48,8 +61,7 @@ const (
 	DefaultImage   = "python:3.12-slim"
 	DefaultTimeout = 90 * time.Second
 	manager        = "pip"
-	packageArg     = "./reqeusts"       // 세션 라벨 「pip ./reqeusts」 · 정규화 pip:reqeusts (sg-install pip ./deploy/demo/reqeusts 와 같다)
-	containerPath  = "/pkg/reqeusts"    // PUT archive 로 올린 패키지 위치
+	pkgRoot        = "/pkg/"            // PUT archive 로 올린 패키지 위치 /pkg/<패키지>
 	demoLabel      = "supplyguard.demo" // 컨테이너 라벨 supplyguard.demo=install
 	exitKilled     = 137                // SIGKILL 로 격리된 컨테이너(mock 재생이 kill 로 끝났을 때)
 	exitTimeout    = 124                // 시간 초과(timeout(1) 관례)
@@ -61,7 +73,7 @@ const (
 // Run: 시연 실행 1건 — GET /api/demo 의 running · last, POST 의 202 본문
 type Run struct {
 	ID         string     `json:"id"`        // demo-<unix>
-	Scenario   string     `json:"scenario"`  // all | shell | revshell | direct-ip | domain | dns-exfil
+	Scenario   string     `json:"scenario"`  // all | shell | revshell | direct-ip | domain | dns-exfil | benign
 	Container  string     `json:"container"` // sg-install-demo-<unix>
 	InstallID  string     `json:"installId"`
 	StartedAt  time.Time  `json:"startedAt"`
@@ -81,7 +93,7 @@ type Status struct {
 
 var (
 	// ErrScenario: 400
-	ErrScenario = errors.New("scenario: all | shell | revshell | direct-ip | domain | dns-exfil")
+	ErrScenario = errors.New("scenario: " + strings.Join(Scenarios, " | "))
 	// ErrDocker: 503 — 가젯 소스에서 Docker 데몬에 닿지 못함(세션을 만들기 전에 확인한다)
 	ErrDocker = errors.New("Docker 에 연결할 수 없습니다")
 	// ErrClosed: 503 — 서버 종료 중(Shutdown 뒤에는 새 시연을 받지 않는다)
@@ -159,6 +171,29 @@ func New(o Options) *Service {
 
 func ValidScenario(s string) bool { return slices.Contains(Scenarios, s) }
 
+// plan: 시나리오가 정하는 실행 — 세션 패키지 인자 · 임베드 패키지 · 이미지 · 명령 · 환경. 모두 서버 상수(사용자 입력 아님)
+type plan struct {
+	pkgArg string   // 세션 패키지 인자 — 라벨 「pip ./<패키지>」 · 차단 확인 키 pip:<패키지> (sg-install pip ./deploy/demo/<패키지> 와 같다)
+	pkgDir string   // PUT archive 로 올릴 임베드 패키지
+	image  string   // 컨테이너 이미지
+	cmd    []string // 컨테이너 명령
+	env    []string
+}
+
+func (s *Service) planFor(scenario string) plan {
+	if scenario == "benign" {
+		// 정상 설치 대조군: 공격 패키지와 다른 패키지라 pip:reqeusts 차단과 상관없이 돈다. 시나리오 환경 변수는 없다
+		return plan{pkgArg: "./" + benignPkg, pkgDir: benignPkg, image: s.o.Image, cmd: pipInstall(benignPkg),
+			env: []string{"PIP_DISABLE_PIP_VERSION_CHECK=1"}}
+	}
+	return plan{pkgArg: "./" + attackPkg, pkgDir: attackPkg, image: s.o.Image, cmd: pipInstall(attackPkg),
+		env: []string{"SG_DEMO_SCENARIOS=" + scenario, "PIP_DISABLE_PIP_VERSION_CHECK=1"}}
+}
+
+func pipInstall(pkg string) []string {
+	return []string{"pip", "install", "--no-cache-dir", "--progress-bar", "off", pkgRoot + pkg}
+}
+
 // Status: 진행 중 · 마지막 실행 (사본)
 func (s *Service) Status() Status {
 	s.mu.Lock()
@@ -202,7 +237,7 @@ func (s *Service) Shutdown(ctx context.Context) error {
 	}
 }
 
-// Start: ① 차단 목록(pip:reqeusts 가 막혀 있으면 거부 세션 · status refused) ② Docker 연결 확인(가젯) ③ 설치 세션(demo)
+// Start: ① 차단 목록(시나리오의 패키지 — pip:reqeusts · pip:sg-demo-benign — 가 막혀 있으면 거부 세션 · status refused) ② Docker 연결 확인(가젯) ③ 설치 세션(demo)
 // ④ 변경 이력 demo_run ⑤ 뒤에서 컨테이너 생성 → 패키지 업로드 → 시작 → 종료 대기 → 세션 finish → 제거(또는 mock 재생).
 // 동시 1개 — 실행 중이면 *RunningError.
 func (s *Service) Start(ctx context.Context, scenario string) (Run, error) {
@@ -224,14 +259,15 @@ func (s *Service) Start(ctx context.Context, scenario string) (Run, error) {
 	unix := max(now.Unix(), s.lastID+1)
 	run := Run{ID: fmt.Sprintf("demo-%d", unix), Scenario: scenario, Container: fmt.Sprintf("sg-install-demo-%d", unix),
 		StartedAt: now, Status: StatusRunning, Simulated: s.o.Simulator != nil}
+	p := s.planFor(scenario)
 
-	chk, err := s.o.Review.CheckPackage(manager, packageArg)
+	chk, err := s.o.Review.CheckPackage(manager, p.pkgArg)
 	if err != nil {
 		return Run{}, err
 	}
 	if chk.Blocked {
 		// sg-install 처럼 컨테이너 없이 거부 세션만 남긴다 — 화면은 「차단 목록에 있어 설치 전 거부됨 — 차단 해제 후 다시」
-		sess, err := s.o.Review.RefusedInstall(ctx, review.RefusedInput{Manager: manager, Packages: []string{packageArg}, Value: chk.Value, Demo: true})
+		sess, err := s.o.Review.RefusedInstall(ctx, review.RefusedInput{Manager: manager, Packages: []string{p.pkgArg}, Value: chk.Value, Demo: true})
 		if err != nil {
 			return Run{}, err
 		}
@@ -247,7 +283,7 @@ func (s *Service) Start(ctx context.Context, scenario string) (Run, error) {
 			return Run{}, fmt.Errorf("%w: %v", ErrDocker, err)
 		}
 	}
-	sess, err := s.o.Review.StartInstall(ctx, review.StartInput{Manager: manager, Packages: []string{packageArg}, Container: run.Container, Image: s.o.Image, Demo: true})
+	sess, err := s.o.Review.StartInstall(ctx, review.StartInput{Manager: manager, Packages: []string{p.pkgArg}, Container: run.Container, Image: p.image, Demo: true})
 	if err != nil {
 		return Run{}, err
 	}
@@ -296,11 +332,10 @@ func (s *Service) execute(run Run, sess model.InstallSession) {
 		end(StatusFinished, code)
 		return
 	}
+	p := s.planFor(run.Scenario)
 	cctx, cancel := context.WithTimeout(ctx, createTimeout)
 	cid, err := s.o.Docker.CreateContainer(cctx, dockerapi.CreateSpec{
-		Name: run.Container, Image: s.o.Image,
-		Cmd:    []string{"pip", "install", "--no-cache-dir", "--progress-bar", "off", containerPath},
-		Env:    []string{"SG_DEMO_SCENARIOS=" + run.Scenario, "PIP_DISABLE_PIP_VERSION_CHECK=1"},
+		Name: run.Container, Image: p.image, Cmd: p.cmd, Env: p.env,
 		Labels: map[string]string{demoLabel: "install"},
 	})
 	cancel()
@@ -327,13 +362,13 @@ func (s *Service) execute(run Run, sess model.InstallSession) {
 		}
 		return true
 	}
-	tarb, err := Archive()
+	tarb, err := archivePackage(p.pkgDir)
 	if err != nil {
 		slog.Error("demo: package archive", "err", err)
 		end(StatusFailed, exitFailed)
 		return
 	}
-	// 시작 전에 패키지를 컨테이너 안 /pkg/reqeusts 로 올린다 — 호스트 경로 의존 없음. tar 는 pkg/reqeusts/… 라 '/' 에 푼다
+	// 시작 전에 패키지를 컨테이너 안 /pkg/<패키지> 로 올린다 — 호스트 경로 의존 없음. tar 는 pkg/<패키지>/… 라 '/' 에 푼다
 	if !step("put archive", func(c context.Context) error { return s.o.Docker.PutArchive(c, cid, "/", bytes.NewReader(tarb)) }) ||
 		!step("start container", func(c context.Context) error { return s.o.Docker.StartContainer(c, cid) }) {
 		end(StatusFailed, exitFailed)
@@ -373,21 +408,28 @@ func (s *Service) finish(run Run, status string, code int) {
 }
 
 // Archive: PUT /containers/{id}/archive 용 tar — pkg/reqeusts/{setup.py,README.md} (컨테이너 '/' 에 풀면 /pkg/reqeusts)
-func Archive() ([]byte, error) {
+func Archive() ([]byte, error) { return archivePackage(attackPkg) }
+
+// archivePackage: 임베드 패키지 하나의 tar — pkg/<pkg>/<파일> (컨테이너 '/' 에 풀면 /pkg/<pkg>)
+func archivePackage(pkg string) ([]byte, error) {
+	files, ok := packageFiles[pkg]
+	if !ok {
+		return nil, fmt.Errorf("demo: unknown package %q", pkg)
+	}
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 	mod := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
-	for _, d := range []string{"pkg/", "pkg/reqeusts/"} {
+	for _, d := range []string{"pkg/", "pkg/" + pkg + "/"} {
 		if err := tw.WriteHeader(&tar.Header{Typeflag: tar.TypeDir, Name: d, Mode: 0o755, ModTime: mod}); err != nil {
 			return nil, err
 		}
 	}
-	for _, name := range PackageFiles {
-		b, err := pkgFS.ReadFile("reqeusts/" + name)
+	for _, name := range files {
+		b, err := pkgFS.ReadFile(pkg + "/" + name)
 		if err != nil {
 			return nil, err
 		}
-		if err := tw.WriteHeader(&tar.Header{Typeflag: tar.TypeReg, Name: "pkg/reqeusts/" + name, Mode: 0o644, Size: int64(len(b)), ModTime: mod}); err != nil {
+		if err := tw.WriteHeader(&tar.Header{Typeflag: tar.TypeReg, Name: "pkg/" + pkg + "/" + name, Mode: 0o644, Size: int64(len(b)), ModTime: mod}); err != nil {
 			return nil, err
 		}
 		if _, err := tw.Write(b); err != nil {

@@ -38,6 +38,17 @@ EC2·sg-vm(가젯 소스)에서 탐지·격리를 눈으로 확인하는 스크�
 
 목적지는 RFC 5737 TEST-NET 과 IANA 예약 도메인 `example.com` · 예약 TLD `*.example`(RFC 2606) 뿐이다. 실제 악성 코드·실데이터는 없다.
 
+## 대시보드 시연(`POST /api/demo/run`, `DEMO_ENABLED=true`)
+
+시연 서비스는 위 시나리오를 `sg-install-demo-<unix>` 컨테이너(설치 세션)로 재현한다. 시나리오 `all|shell|revshell|direct-ip|domain|dns-exfil` 은
+`reqeusts` 를 pip 로 설치하고, 11/04 부터 아래가 더 있다(둘 다 `all` 에는 없다).
+
+| id | 패키지 · 이미지 | 행위 | 기대 판정(기본 정책) |
+| --- | --- | --- | --- |
+| `benign` | `sg-demo-benign` · python:3.12-slim | 정상 설치 대조군 — 순수 파이썬 모듈 하나, setuptools 빌드만(pip 가 pypi.org · files.pythonhosted.org 에서 빌드 도구를 받는다) | **위반 0 · 통과** |
+
+`sg-demo-benign` 은 `reqeusts` 와 다른 패키지라 `pip:reqeusts` 가 차단 목록에 있어도 거부되지 않는다.
+
 ## 판정 끄고 전부 보기
 
 `ENFORCE_KILL=true` 면 각 시나리오가 첫 위반에서 종료된다. 판정만 보고 싶으면 대시보드 정책 화면에서 해당 정책을

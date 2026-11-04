@@ -8,31 +8,53 @@ import (
 	"testing"
 )
 
-// 임베드한 데모 패키지 사본은 정본 deploy/demo/reqeusts 와 바이트가 같아야 한다(10/30).
-// 정본 경로가 없거나 아직 dns-exfil 이 없는 옛 정본이면 건너뛴다 — 머지 때 메인이 정본을 사본에 복사해 맞춘다.
+// 임베드한 데모 패키지 사본은 정본 deploy/demo/<패키지> 와 바이트가 같아야 한다(10/30 reqeusts · 11/04 sg-demo-benign).
+// 정본 경로가 없거나 아직 dns-exfil 이 없는 옛 reqeusts 정본이면 건너뛴다 — 머지 때 메인이 정본을 사본에 복사해 맞춘다.
 func TestDemoPackageMirrorsDeploy(t *testing.T) {
-	dir := filepath.Join("..", "..", "..", "deploy", "demo", "reqeusts")
-	if _, err := os.Stat(dir); err != nil {
-		t.Skipf("정본 없음: %v", err)
+	for pkg, files := range packageFiles {
+		t.Run(pkg, func(t *testing.T) {
+			dir := filepath.Join("..", "..", "..", "deploy", "demo", pkg)
+			if _, err := os.Stat(dir); err != nil {
+				t.Skipf("정본 없음: %v", err)
+			}
+			canon, err := os.ReadFile(filepath.Join(dir, "setup.py"))
+			if err != nil {
+				t.Skipf("정본 setup.py 없음: %v", err)
+			}
+			if pkg == attackPkg && !strings.Contains(string(canon), "dns-exfil") {
+				t.Skip("deploy/demo/reqeusts 정본에 아직 dns-exfil 이 없음(10/30 이전) — 머지 때 메인이 맞춘다")
+			}
+			for _, name := range files {
+				want, err := os.ReadFile(filepath.Join(dir, name))
+				if err != nil {
+					t.Fatalf("정본 %s: %v", name, err)
+				}
+				got, err := pkgFS.ReadFile(pkg + "/" + name)
+				if err != nil {
+					t.Fatalf("사본 %s: %v", name, err)
+				}
+				if !bytes.Equal(got, want) {
+					t.Errorf("%s: 사본이 정본과 다름 (사본 %d바이트 · 정본 %d바이트)", name, len(got), len(want))
+				}
+			}
+		})
 	}
-	canon, err := os.ReadFile(filepath.Join(dir, "setup.py"))
-	if err != nil {
-		t.Skipf("정본 setup.py 없음: %v", err)
-	}
-	if !strings.Contains(string(canon), "dns-exfil") {
-		t.Skip("deploy/demo/reqeusts 정본에 아직 dns-exfil 이 없음(10/30 이전) — 머지 때 메인이 맞춘다")
-	}
-	for _, name := range PackageFiles {
-		want, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			t.Fatalf("정본 %s: %v", name, err)
+}
+
+// 대조군 패키지(11/04)는 무해 원칙 그대로 — 프로그램 실행 · 소켓 · 파일 열기 · 예약 대역 주소가 없다(setuptools 빌드만)
+func TestBenignPackageIsInert(t *testing.T) {
+	for _, name := range packageFiles[benignPkg] {
+		if !strings.HasSuffix(name, ".py") {
+			continue
 		}
-		got, err := pkgFS.ReadFile("reqeusts/" + name)
+		b, err := pkgFS.ReadFile(benignPkg + "/" + name)
 		if err != nil {
-			t.Fatalf("사본 %s: %v", name, err)
+			t.Fatal(err)
 		}
-		if !bytes.Equal(got, want) {
-			t.Errorf("%s: 사본이 정본과 다름 (사본 %d바이트 · 정본 %d바이트)", name, len(got), len(want))
+		for _, bad := range []string{"subprocess", "socket", "os.system", "open(", "urllib", "http", "203.0.113", "exec(", "eval("} {
+			if strings.Contains(string(b), bad) {
+				t.Errorf("%s: 대조군에 %q 가 있음", name, bad)
+			}
 		}
 	}
 }

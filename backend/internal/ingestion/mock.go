@@ -197,19 +197,20 @@ var demoScenarios = map[string][]model.Event{
 		{Kind: model.KindConnect, Comm: "python3", DstIP: "93.184.216.34", DstPort: 443, DstHost: "example.com"},
 	},
 	"dns-exfil": dnsExfil,
+	"benign":    nil, // 정상 설치 대조군(11/04) — 세션 패키지(./sg-demo-benign)의 pip 정상 설치 이벤트만
 }
 
 // demoOrder: all 의 순서
 var demoOrder = []string{"shell", "revshell", "direct-ip", "domain", "dns-exfil"}
 
-// PlayDemo: 시연 세션(10/30)을 컨테이너 없이 재생한다 — 시작 → pip 설치 정상 이벤트 → 시나리오 이벤트를 한 건씩(실제처럼 첫 kill 에서 멈춘다) → 종료.
+// PlayDemo: 시연 세션(10/30)을 컨테이너 없이 재생한다 — 시작 → pip 설치 정상 이벤트(세션의 패키지) → 시나리오 이벤트를 한 건씩(실제처럼 첫 kill 에서 멈춘다) → 종료.
 // 끝날 때까지 막히고, 격리(kill)로 끝났으면 true. 소스가 아직 돌지 않으면 바로 false
 func (m *Mock) PlayDemo(ctx context.Context, s model.InstallSession, scenario string) bool {
 	c, out := m.installContainer(s)
 	if out == nil {
 		return false
 	}
-	steps, _ := installScript("pip", []string{"./reqeusts"})
+	steps, _ := installScript("pip", s.Packages)
 	names := []string{scenario}
 	if scenario == "all" {
 		names = demoOrder

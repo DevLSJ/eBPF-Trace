@@ -295,7 +295,7 @@ func TestDemoRunConflict409(t *testing.T) {
 	}
 	if r := b.must(200, "GET", "/api/demo", ""); r.body["running"] == nil || r.body["last"] != nil {
 		t.Fatalf("status while running: %v", r.body)
-	} else if sc, _ := r.body["scenarios"].([]any); len(sc) != 6 || sc[0] != "all" || sc[5] != "dns-exfil" {
+	} else if sc, _ := r.body["scenarios"].([]any); len(sc) != len(demo.Scenarios) || sc[0] != "all" || sc[5] != "dns-exfil" || sc[6] != "benign" {
 		t.Fatalf("scenarios: %v", sc)
 	}
 	if sim.count() != 1 {
@@ -309,7 +309,7 @@ func TestDemoRunConflict409(t *testing.T) {
 		t.Fatalf("after finish: %v", r.body)
 	}
 	b.must(400, "POST", "/api/demo/run", `{"scenario":""}`)
-	if r := b.must(400, "POST", "/api/demo/run", `{"scenario":"nope"}`); str(r.body, "error") != "scenario: all | shell | revshell | direct-ip | domain | dns-exfil" {
+	if r := b.must(400, "POST", "/api/demo/run", `{"scenario":"nope"}`); str(r.body, "error") != demo.ErrScenario.Error() || !strings.HasPrefix(str(r.body, "error"), "scenario: all | shell | revshell | direct-ip | domain | dns-exfil | benign") {
 		t.Fatalf("bad scenario: %v", r.body)
 	}
 	b.must(202, "POST", "/api/demo/run", `{"scenario":"shell"}`) // 끝난 뒤에는 다시 실행할 수 있다(같은 초라도 컨테이너 이름이 겹치지 않는다)
