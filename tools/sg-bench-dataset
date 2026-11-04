@@ -1,0 +1,537 @@
+#!/usr/bin/env -S python3 -I
+"""sg-bench-dataset — 공급망 검사의 실제 악성 탐지율 · 정상 오탐률 측정(11/04, sg-bench 의 짝 도구).
+
+sg-bench 는 레지스트리 이름 목록으로 「인기 패키지가 악성이 되지 않는가」만 본다. 이 도구는 로컬에 둔 데이터셋
+(DataDog 실제 악성 암호 zip · 인기 PyPI wheel)을 실제 백엔드 파일 검사(POST /api/scans multipart)로 돌려
+판정 분포 · 탐지율 · 오탐률을 낸다. sg-vm 의 ~/sg/datasets 안에서만 돈다.
+
+안전:
+  - 악성 zip 은 디스크에 풀지 않는다 — 메모리에서 읽어 tar.gz 로 다시 묶어 올린다. 어떤 파일도 실행하지 않는다.
+  - 올리는 파일 이름 · 결과 기록에는 패키지 이름을 넣지 않는다(sgb-<해시 접두 8자>). 경로 ↔ id 표는 VM 에만(<out>.paths.tsv).
+  - 토큰은 환경 변수 ADMIN_TOKEN 또는 -t 파일의 ADMIN_TOKEN= 줄 — 출력하지 않는다.
+
+  scan:   sg-bench-dataset scan -s datadog-pypi -r <dir> -o raw.jsonl [-a http://127.0.0.1/api] [-t ~/sg/.tokens] [-n 개수] [--ids 파일]
+          같은 -o 로 다시 돌리면 끝난 것은 건너뛴다(이어 하기). 순서는 경로 정렬 — 같은 입력이면 같은 순서 · 같은 id
+  report: sg-bench-dataset report -i raw.jsonl [-i …] -o static.json [-m static.md] [-j static-items.jsonl] [--commit sha]
+  diff:   sg-bench-dataset diff a.jsonl b.jsonl   — 두 실행의 같은 id 판정 · 점수 · 규칙이 같은지(재현성)
+"""
+import argparse
+import datetime as dt
+import hashlib
+import io
+import json
+import os
+import posixpath
+import re
+import sys
+import tarfile
+import time
+import urllib.error
+import urllib.request
+import zipfile
+
+ZIP_PASSWORD = b"infected"  # DataDog 데이터셋 공개 암호(README)
+MAX_UPLOAD = 50 << 20      # 백엔드 상한(scan/fetch.go maxDownload)
+MAX_EXTRACT = 200 << 20    # maxExtract
+MAX_FILES = 20000          # maxFiles
+ARCHIVE_RE = re.compile(r"\.(tar\.gz|tgz|whl|zip)$", re.I)
+
+# 데이터셋 정의 — 출처 · 커밋은 real-capstone/data/SOURCES.tsv(2026-10-12 받은 것)
+DATASETS = {
+    "datadog-pypi": dict(label="DataDog 실제 악성 (PyPI)", kind="malicious", ecosystem="pypi", fmt="datadog-zip",
+                         source="https://github.com/DataDog/malicious-software-packages-dataset", sourceCommit="805fcd72"),
+    "datadog-npm": dict(label="DataDog 실제 악성 (npm)", kind="malicious", ecosystem="npm", fmt="datadog-zip",
+                        source="https://github.com/DataDog/malicious-software-packages-dataset", sourceCommit="805fcd72"),
+    "benign-pypi": dict(label="인기 PyPI wheel 300 (정상)", kind="benign", ecosystem="pypi", fmt="wheel",
+                        source="https://pypi.org (top-pypi-packages 30일, 2026-10-12)", sourceCommit=None),
+    # 보조 세트: 같은 300개를 이름 · 버전으로 패키지 검사(백엔드가 PyPI 에서 sdist 우선으로 받는다 — sg-install 자동 검사와 같은 길).
+    # wheel 에는 setup.py 가 없어 설치 시점 규칙이 걸릴 수 없으므로, 악성(대부분 sdist)과 같은 조건의 오탐률을 보려고 둔다. 지표(metrics)에는 넣지 않는다
+    "benign-pypi-sdist": dict(label="인기 PyPI 300 — 레지스트리 sdist (정상, 보조)", kind="benign", ecosystem="pypi", fmt="registry",
+                              source="https://pypi.org (benign-pypi 와 같은 이름 · 버전, 검사 시점에 받음)", sourceCommit=None, primary=False),
+}
+VERDICT = {"malicious": "malicious", "vulnerable": "vulnerable", "caution": "suspicious", "clean": "clean"}
+INSTALL_TIME = ("threat-setup-", "threat-npm-preinstall-script", "threat-npm-dependency-confusion", "threat-npm-http-dependency",
+                "threat-network-exfil", "threat-network-dns-exfil", "threat-network-reverse-shell", "threat-process-download-exec",
+                "threat-runtime-self-propagation")  # scan/verdict.go installTimeRules 의 사본(표시용)
+
+
+def sha256(b):
+    return hashlib.sha256(b).hexdigest()
+
+
+def norm_name(eco, name):
+    name = name.lower()
+    if eco == "pypi":
+        return re.sub(r"[-_.]+", "-", name)
+    return name.replace("@", "/").lstrip("/") if name.startswith("@") else name
+
+
+def list_inputs(root, fmt):
+    """(상대 경로, 패키지 이름) 목록 — 경로 정렬"""
+    out = []
+    for d, _, fs in os.walk(root):
+        for f in fs:
+            p = os.path.join(d, f)
+            rel = os.path.relpath(p, root)
+            if fmt == "datadog-zip" and f.endswith(".zip"):
+                parts = rel.split(os.sep)  # <category>/<name>/[<version>/]<file>.zip
+                out.append((rel, parts[1] if len(parts) >= 3 else parts[0]))
+            elif fmt in ("wheel", "registry") and f.endswith(".whl"):
+                out.append((rel, f.split("-", 1)[0]))
+    return sorted(out)
+
+
+def safe_path(name):
+    parts = [x for x in posixpath.normpath("/" + name.replace("\\", "/")).split("/") if x not in ("", ".", "..")]
+    return "/".join(parts)
+
+
+def is_symlink(info):
+    return (info.external_attr >> 16) & 0o170000 == 0o120000
+
+
+def nested_members(data, name):
+    """안쪽 압축(.tgz · .tar.gz · .whl · .zip)을 메모리에서 한 단계 연다 — 일반 파일만"""
+    out = []
+    try:
+        if name.lower().endswith((".tgz", ".tar.gz")):
+            with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
+                for m in tf.getmembers():
+                    if m.isreg():
+                        f = tf.extractfile(m)
+                        if f:
+                            out.append((m.name, f.read()))
+        else:
+            with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                for i in zf.infolist():
+                    if not i.is_dir() and not is_symlink(i):
+                        out.append((i.filename, zf.read(i)))
+    except (tarfile.TarError, zipfile.BadZipFile, OSError, EOFError, RuntimeError):
+        return None
+    return out
+
+
+def pack_datadog(path):
+    """암호 zip → (tar.gz 바이트, 파일 수, 원래 크기) 또는 (None, 건너뜀 사유). 디스크에 풀지 않는다.
+    DataDog zip 은 tmp/…/<패키지 루트>/… 처럼 깊은 경로라 공통 접두를 걷어 패키지 루트를 tar 의 최상위 폴더 하나 아래에 둔다
+    — 레지스트리 sdist · npm tarball 과 같은 모양(백엔드 exists(src, package.json) 가 루트 · 한 단계 아래만 본다)."""
+    try:
+        zf = zipfile.ZipFile(path)
+    except zipfile.BadZipFile:
+        return None, "zip 손상"
+    with zf:
+        infos = [i for i in zf.infolist() if not i.is_dir() and not is_symlink(i)
+                 and not i.filename.rsplit("/", 1)[-1].startswith("package_info-")]  # DataDog 이 붙인 레지스트리 메타데이터
+        if not infos:
+            return None, "내용 없음(메타데이터만)"
+        if sum(i.file_size for i in infos) > MAX_EXTRACT:
+            return None, "풀면 200MB 초과"
+        files = []
+        for i in infos:
+            try:
+                data = zf.read(i, pwd=ZIP_PASSWORD)
+            except (RuntimeError, NotImplementedError, zipfile.BadZipFile):
+                return None, "zip 해제 실패"
+            if ARCHIVE_RE.search(i.filename):
+                inner = nested_members(data, i.filename)
+                if inner is not None:
+                    base = ARCHIVE_RE.sub("", i.filename)
+                    files += [(base + "/" + n, d) for n, d in inner]
+                    continue
+            files.append((i.filename, data))
+    files = [(safe_path(n), d) for n, d in files]
+    files = [(n, d) for n, d in files if n]
+    if len(files) > MAX_FILES:
+        return None, "파일 2만 개 초과"
+    if sum(len(d) for _, d in files) > MAX_EXTRACT:
+        return None, "풀면 200MB 초과"
+    names = [n for n, _ in files]
+    common = posixpath.commonpath(names) if len(names) > 1 else posixpath.dirname(names[0])
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=6) as tf:
+        for n, d in sorted(files):
+            rel = n[len(common) + 1:] if common else n
+            ti = tarfile.TarInfo("pkg/" + rel)
+            ti.size, ti.mode, ti.mtime = len(d), 0o644, 0
+            tf.addfile(ti, io.BytesIO(d))
+    out = buf.getvalue()
+    if len(out) > MAX_UPLOAD:
+        return None, "업로드 50MB 초과"
+    return (out, len(files), sum(len(d) for _, d in files)), None
+
+
+def read_token(args):
+    t = os.environ.get("ADMIN_TOKEN", "")
+    if not t and args.token_file:
+        with open(os.path.expanduser(args.token_file)) as f:
+            for line in f:
+                if line.startswith("ADMIN_TOKEN="):
+                    t = line.strip().split("=", 1)[1]
+                    break
+    if not t:
+        sys.exit("ADMIN_TOKEN 이 없습니다 (환경 변수 또는 -t 파일)")
+    return t
+
+
+class API:
+    def __init__(self, base, token):
+        self.base, self.h = base.rstrip("/"), {"Authorization": "Bearer " + token}
+
+    def _req(self, method, path, body=None, ctype=None, timeout=120):
+        h = dict(self.h)
+        if ctype:
+            h["Content-Type"] = ctype
+        r = urllib.request.Request(self.base + path, data=body, method=method, headers=h)
+        try:
+            with urllib.request.urlopen(r, timeout=timeout) as res:
+                return res.status, json.loads(res.read() or b"null")
+        except urllib.error.HTTPError as e:
+            try:
+                return e.code, json.loads(e.read() or b"null")
+            except ValueError:
+                return e.code, None
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            return 0, {"error": str(e)}
+
+    def upload(self, filename, data):
+        b = "sgbench" + sha256(data)[:16]
+        body = (f"--{b}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
+                f"Content-Type: application/octet-stream\r\n\r\n").encode() + data + f"\r\n--{b}--\r\n".encode()
+        return self._req("POST", "/scans", body, "multipart/form-data; boundary=" + b, timeout=300)
+
+    def start_package(self, body):
+        return self._req("POST", "/scans", body, "application/json")
+
+    def get(self, sid):
+        return self._req("GET", "/scans/" + sid, timeout=30)
+
+
+def wait_scan(api, sid, limit):
+    t0, misses = time.time(), 0
+    while time.time() - t0 < limit:
+        code, d = api.get(sid)
+        if code == 200 and d and d.get("status") != "running":
+            return d
+        if code in (0, 404, 502, 503):  # 백엔드 재시작 중
+            misses += 1
+            if misses > 60:
+                return None
+        time.sleep(1.5)
+    return None
+
+
+def iso(s):
+    """Go RFC3339Nano(소수 9자리) → datetime — 파이썬 3.10 fromisoformat 은 6자리까지만"""
+    m = re.match(r"(.*?T\d\d:\d\d:\d\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)$", s)
+    frac = (m.group(2) or "0")[:6].ljust(6, "0")
+    return dt.datetime.fromisoformat(f"{m.group(1)}.{frac}{'+00:00' if m.group(3) == 'Z' else m.group(3)}")
+
+
+def summarize(d):
+    """백엔드 검사 기록 → 원시 결과(이름 · 코드 원문 없이)"""
+    fs = [f for f in d.get("findings") or [] if not f.get("test")]
+    rules = sorted({f["rule"] for f in fs})
+    secs = None
+    try:
+        secs = round((iso(d["finishedAt"]) - iso(d["startedAt"])).total_seconds(), 2)
+    except (KeyError, TypeError, ValueError, AttributeError):
+        pass
+    if d.get("status") != "done":
+        return dict(verdict="error", error=(d.get("error") or "")[:200], seconds=secs)
+    risk = d.get("risk") or {}
+    return dict(verdict=VERDICT.get(d.get("verdict"), d.get("verdict") or "error"), score=risk.get("score"), rules=rules,
+                threats=d.get("threats", 0), capabilities=d.get("capabilities", 0), installThreats=d.get("installThreats", 0),
+                testFindings=d.get("testFindings", 0), vulns=d.get("vulnCount", 0), seconds=secs,
+                engines={e["name"]: e.get("version", "") for e in d.get("engines") or []})
+
+
+def skip_reason(code, d):
+    msg = (d or {}).get("error", "") if isinstance(d, dict) else ""
+    if code == 413:
+        return "업로드 50MB 초과"
+    if "너무 많" in msg:
+        return "파일 2만 개 초과"
+    if "200MB" in msg:
+        return "풀면 200MB 초과"
+    if "잘못된 경로" in msg:
+        return "백엔드: 잘못된 경로"
+    if "압축을 풀 수 없" in msg:
+        return "백엔드: 압축 해제 실패"
+    return f"백엔드 {code}"
+
+
+def cmd_scan(args):
+    ds = DATASETS[args.set]
+    root = os.path.expanduser(args.root)
+    inputs = list_inputs(root, ds["fmt"])
+    if not inputs:
+        sys.exit(f"입력 없음: {root}")
+    api = API(args.api, read_token(args))
+    out = os.path.expanduser(args.out)
+    done = {}
+    if os.path.exists(out):
+        with open(out) as f:
+            for line in f:
+                r = json.loads(line)
+                if r.get("set") == args.set and (r.get("verdict") not in (None, "error") or r.get("skip") or r.get("final")):
+                    done[r["id"]] = r
+    want = None
+    if args.ids:
+        with open(args.ids) as f:
+            want = {x.strip() for x in f if x.strip()}
+    # 매니페스트: 파일 수 · 목록 해시(입력 파일 sha256 정렬 목록의 sha256) — 같은 입력인지 확인용
+    hashes, rows = [], []
+    for rel, name in inputs:
+        with open(os.path.join(root, rel), "rb") as f:
+            raw = f.read()
+        h = sha256(raw)
+        hashes.append(h)
+        rows.append((rel, name, h))
+    ids = [h[:8] for h in hashes]
+    if len(set(ids)) != len(ids):
+        sys.exit("id(해시 접두 8자) 충돌 — 접두 길이를 늘려야 합니다")
+    manifest = dict(set=args.set, files=len(inputs), listSha256=sha256("\n".join(sorted(hashes)).encode()))
+    with open(out + "." + args.set + ".manifest.json", "w") as f:
+        json.dump(manifest, f)
+    with open(out + ".paths.tsv", "a") as f:  # VM 전용 — 패키지 이름이 든 경로, 복사 · 커밋하지 않는다
+        for rel, _, h in rows:
+            f.write(f"{args.set}\t{h[:8]}\t{rel}\n")
+    print(f"{args.set}: 입력 {len(inputs)}개 · 목록 해시 {manifest['listSha256'][:12]} · 이미 끝남 {len(done)}개", flush=True)
+    n = 0
+    with open(out, "a") as fo:
+        for rel, name, h in rows:
+            iid = h[:8]
+            if iid in done or (want is not None and iid not in want):
+                continue
+            if args.limit and n >= args.limit:
+                break
+            n += 1
+            base = dict(id=iid, set=args.set, kind=ds["kind"], ecosystem=ds["ecosystem"],
+                        packageGroup=sha256((ds["ecosystem"] + ":" + norm_name(ds["ecosystem"], name)).encode())[:8])
+            t0 = time.time()
+            if ds["fmt"] == "datadog-zip":
+                packed, why = pack_datadog(os.path.join(root, rel))
+                if why:
+                    rec = dict(base, skip=why)
+                    fo.write(json.dumps(rec, ensure_ascii=False) + "\n"); fo.flush()
+                    print(f"{iid} 건너뜀 {why}", flush=True)
+                    continue
+                data, nfiles, size = packed
+                fname = f"sgb-{iid}.tar.gz"
+            elif ds["fmt"] == "wheel":
+                with open(os.path.join(root, rel), "rb") as f:
+                    data = f.read()
+                with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                    nfiles, size = len(zf.infolist()), sum(i.file_size for i in zf.infolist())
+                fname = f"sgb-{iid}.whl"
+            else:  # registry — 정상 패키지만(이름 · 버전을 레지스트리에서 받는다)
+                parts = os.path.basename(rel).split("-")
+                data = json.dumps({"kind": "package", "manager": "pip", "name": parts[0], "version": parts[1]}).encode()
+                nfiles = size = None
+            if nfiles is not None:
+                base.update(files=nfiles, bytes=size)
+            for attempt in range(6):
+                code, resp = api.start_package(data) if ds["fmt"] == "registry" else api.upload(fname, data)
+                if code in (0, 502, 503, 504):
+                    time.sleep(10 * (attempt + 1))
+                    continue
+                break
+            del data
+            if code != 202:
+                rec = dict(base, skip=skip_reason(code, resp)) if code in (400, 413) else dict(base, verdict="error", error=f"시작 실패 {code}")
+                fo.write(json.dumps(rec, ensure_ascii=False) + "\n"); fo.flush()
+                print(f"{iid} {rec.get('skip') or rec.get('error')}", flush=True)
+                continue
+            sid = resp["id"]
+            d = wait_scan(api, sid, args.timeout)
+            if d is None:
+                rec = dict(base, scanId=sid, verdict="error", error="결과 대기 시간 초과")
+            else:
+                rec = dict(base, scanId=sid, **summarize(d))
+                if rec["verdict"] == "error":
+                    rec["final"] = True  # 백엔드가 failed 로 끝낸 것 — 이어 하기에서 다시 돌리지 않는다
+            fo.write(json.dumps(rec, ensure_ascii=False) + "\n"); fo.flush()
+            print(f"{iid} {rec['verdict']:<10} 점수 {rec.get('score')} 설치시점 {rec.get('installThreats')} {round(time.time() - t0, 1)}s", flush=True)
+
+
+def load(paths):
+    """같은 (set, id) 는 마지막 줄이 이긴다"""
+    recs, mans = {}, {}
+    for p in paths:
+        with open(p) as f:
+            for line in f:
+                r = json.loads(line)
+                recs[(r["set"], r["id"])] = r
+        d = os.path.dirname(os.path.abspath(p))
+        for fn in os.listdir(d):
+            if fn.startswith(os.path.basename(p) + ".") and fn.endswith(".manifest.json"):
+                with open(os.path.join(d, fn)) as f:
+                    m = json.load(f)
+                mans[m["set"]] = m
+    return list(recs.values()), mans
+
+
+def pct(xs, q):
+    if not xs:
+        return None
+    xs = sorted(xs)
+    k = (len(xs) - 1) * q
+    lo, hi = int(k), min(int(k) + 1, len(xs) - 1)
+    return round(xs[lo] + (xs[hi] - xs[lo]) * (k - lo), 2)
+
+
+def ratio(a, b):
+    return round(a / b, 4) if b else None
+
+
+def metrics_of(rs):
+    pos = [r for r in rs if r["kind"] == "malicious" and r.get("verdict") not in (None, "error")]
+    neg = [r for r in rs if r["kind"] == "benign" and r.get("verdict") not in (None, "error")]
+    tp = sum(r["verdict"] == "malicious" for r in pos); fn = len(pos) - tp
+    fp = sum(r["verdict"] == "malicious" for r in neg); tn = len(neg) - fp
+    sus_pos = sum(r["verdict"] in ("malicious", "suspicious") for r in pos)
+    sus_neg = sum(r["verdict"] in ("malicious", "suspicious") for r in neg)
+    prec, rec = ratio(tp, tp + fp), ratio(tp, tp + fn)
+    f1 = round(2 * prec * rec / (prec + rec), 4) if prec and rec else None
+    return (dict(detectionRate=rec, detectionRateWithSuspicious=ratio(sus_pos, len(pos)), falsePositiveRate=ratio(fp, len(neg)),
+                 falsePositiveRateWithSuspicious=ratio(sus_neg, len(neg)), precision=prec, recall=rec, f1=f1),
+            dict(tp=tp, fn=fn, fp=fp, tn=tn))
+
+
+def cmd_report(args):
+    recs, mans = load(args.input)
+    order = [s for s in DATASETS if any(r["set"] == s for r in recs)]
+    engines = {}
+    for r in recs:
+        engines.update(r.get("engines") or {})
+    datasets, sets = [], []
+    for s in order:
+        ds, m = DATASETS[s], mans.get(s, {})
+        rs = [r for r in recs if r["set"] == s]
+        datasets.append(dict(id=s, label=ds["label"], kind=ds["kind"], source=ds["source"], sourceCommit=ds["sourceCommit"],
+                             files=m.get("files", len(rs)), listSha256=m.get("listSha256")))
+        skipped = {}
+        for r in rs:
+            if r.get("skip"):
+                skipped[r["skip"]] = skipped.get(r["skip"], 0) + 1
+        v = {k: 0 for k in ("malicious", "vulnerable", "suspicious", "clean", "error")}
+        for r in rs:
+            if not r.get("skip"):
+                v[r.get("verdict") if r.get("verdict") in v else "error"] += 1
+        notrun = m.get("files", len(rs)) - len(rs)
+        if notrun > 0:
+            skipped["미실행"] = notrun
+        ok = sum(v.values()) - v["error"]
+        sets.append(dict(id=s, kind=ds["kind"], ecosystem=ds["ecosystem"], primary=ds.get("primary", True), total=m.get("files", len(rs)),
+                         scanned=sum(v.values()), skipped=skipped, verdicts=v,
+                         rates=dict(malicious=ratio(v["malicious"], ok), maliciousOrSuspicious=ratio(v["malicious"] + v["suspicious"], ok))))
+    scanned = [r for r in recs if not r.get("skip") and DATASETS[r["set"]].get("primary", True)]
+    every = [r for r in recs if not r.get("skip")]
+    metrics, confusion = metrics_of(scanned)
+    by_eco = {}
+    for eco in sorted({r["ecosystem"] for r in scanned}):
+        mm, cc = metrics_of([r for r in scanned if r["ecosystem"] == eco])
+        by_eco[eco] = dict(metrics=mm, confusion=cc)
+    hits = {}
+    for r in scanned:  # 규칙 집계도 주 세트만
+        if r.get("verdict") == "error":
+            continue
+        for rule in r.get("rules") or []:
+            h = hits.setdefault(rule, [0, 0])
+            h[0 if r["kind"] == "malicious" else 1] += 1
+    rules = [dict(rule=k, maliciousHits=a, benignHits=b, installTime=k.startswith(INSTALL_TIME))
+             for k, (a, b) in sorted(hits.items(), key=lambda kv: (-kv[1][0], kv[1][1], kv[0]))]
+    secs = [r["seconds"] for r in every if r.get("verdict") != "error" and r.get("seconds") is not None]
+    out = {
+        "schema": 1,
+        "generatedAt": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "scanner": {"guarddog": engines.get("GuardDog"), "osv": engines.get("OSV-Scanner"), "backendCommit": args.commit},
+        "datasets": datasets, "sets": sets, "metrics": metrics, "confusion": confusion, "metricsByEcosystem": by_eco,
+        "rules": rules, "durationsSec": {"p50": pct(secs, 0.5), "p95": pct(secs, 0.95)}, "limits": args.limit_note or [],
+    }
+    with open(args.out, "w") as f:
+        json.dump(out, f, ensure_ascii=False, indent=1)
+        f.write("\n")
+    if args.items:
+        with open(args.items, "w") as f:
+            for r in sorted(every, key=lambda r: (list(DATASETS).index(r["set"]), r["id"])):
+                keep = {k: r.get(k) for k in ("id", "set", "ecosystem", "packageGroup", "verdict", "score", "rules", "vulns", "seconds",
+                                              "installThreats", "threats", "capabilities", "testFindings", "files", "bytes")}
+                f.write(json.dumps(keep, ensure_ascii=False) + "\n")
+    if args.markdown:
+        with open(args.markdown, "w") as f:
+            f.write(table(out))
+    print(table(out))
+
+
+def table(o):
+    pc = lambda x: "-" if x is None else f"{x * 100:.1f}%"
+    L = [f"# 공급망 검사 실측 ({o['generatedAt']})", "",
+         f"GuardDog {o['scanner']['guarddog']} · OSV-Scanner {o['scanner']['osv']} · 백엔드 {o['scanner']['backendCommit']}", "",
+         "| 세트 | 종류 | 전체 | 검사 | 건너뜀 | 악성 | 취약 | 주의 | 정상 | 오류 | 악성 비율 | 악성+주의 |", "|---|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|"]
+    for s in o["sets"]:
+        v, rt = s["verdicts"], s["rates"]
+        sk = ", ".join(f"{k} {n}" for k, n in s["skipped"].items()) or "0"
+        L.append(f"| {s['id']}{'' if s['primary'] else ' (보조)'} | {s['kind']} | {s['total']} | {s['scanned']} | {sk} | {v['malicious']} | {v['vulnerable']} | {v['suspicious']} | {v['clean']} | {v['error']} | {pc(rt['malicious'])} | {pc(rt['maliciousOrSuspicious'])} |")
+    m, c = o["metrics"], o["confusion"]
+    L += ["", "| 지표 | 전체 | " + " | ".join(o["metricsByEcosystem"]) + " |", "|---|---:|" + "---:|" * len(o["metricsByEcosystem"])]
+    for k, name in (("detectionRate", "탐지율(악성 판정)"), ("detectionRateWithSuspicious", "탐지율(악성+주의)"),
+                    ("falsePositiveRate", "오탐률(악성 판정)"), ("falsePositiveRateWithSuspicious", "오탐률(악성+주의)"),
+                    ("precision", "정밀도"), ("f1", "F1")):
+        L.append(f"| {name} | {pc(m[k])} | " + " | ".join(pc(e["metrics"][k]) for e in o["metricsByEcosystem"].values()) + " |")
+    L += ["", f"혼동 행렬(양성 = 악성 판정): TP {c['tp']} · FN {c['fn']} · FP {c['fp']} · TN {c['tn']} · 검사 시간 p50 {o['durationsSec']['p50']}s · p95 {o['durationsSec']['p95']}s",
+          "", "| 규칙 | 설치 시점 | 악성 세트 | 정상 세트 |", "|---|---|---:|---:|"]
+    for r in o["rules"][:40]:
+        L.append(f"| {r['rule']} | {'예' if r['installTime'] else ''} | {r['maliciousHits']} | {r['benignHits']} |")
+    if o["limits"]:
+        L += ["", "한계:"] + [f"- {x}" for x in o["limits"]]
+    return "\n".join(L) + "\n"
+
+
+def cmd_diff(args):
+    a, _ = load([args.a])
+    b, _ = load([args.b])
+    A = {(r["set"], r["id"]): r for r in a}
+    same = diff = 0
+    for k, r in {(r["set"], r["id"]): r for r in b}.items():
+        if k not in A:
+            continue
+        x, y = A[k], r
+        key = lambda z: (z.get("skip"), z.get("verdict"), z.get("score"), tuple(z.get("rules") or ()), z.get("vulns"))
+        if key(x) == key(y):
+            same += 1
+        else:
+            diff += 1
+            print(f"다름 {k[0]} {k[1]}: {key(x)} → {key(y)}")
+    print(f"같은 id {same + diff}개 중 일치 {same} · 불일치 {diff}")
+    sys.exit(1 if diff else 0)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sp = ap.add_subparsers(dest="cmd", required=True)
+    s = sp.add_parser("scan")
+    s.add_argument("-s", "--set", required=True, choices=list(DATASETS))
+    s.add_argument("-r", "--root", required=True)
+    s.add_argument("-o", "--out", required=True)
+    s.add_argument("-a", "--api", default=os.environ.get("API", "http://127.0.0.1/api"))
+    s.add_argument("-t", "--token-file")
+    s.add_argument("-n", "--limit", type=int, default=0)
+    s.add_argument("--ids", help="이 id(줄마다 하나)만 — 재현성 확인용")
+    s.add_argument("--timeout", type=int, default=900, help="검사 한 건 결과 대기 상한(초)")
+    r = sp.add_parser("report")
+    r.add_argument("-i", "--input", action="append", required=True)
+    r.add_argument("-o", "--out", required=True)
+    r.add_argument("-m", "--markdown")
+    r.add_argument("-j", "--items")
+    r.add_argument("--commit")
+    r.add_argument("--limit-note", action="append", help="limits 에 넣을 문장(여러 번)")
+    d = sp.add_parser("diff")
+    d.add_argument("a")
+    d.add_argument("b")
+    a = ap.parse_args()
+    {"scan": cmd_scan, "report": cmd_report, "diff": cmd_diff}[a.cmd](a)
+
+
+if __name__ == "__main__":
+    main()
