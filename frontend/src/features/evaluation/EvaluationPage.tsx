@@ -671,7 +671,7 @@ export function EvaluationPage() {
             <Head d={d} />
             <Kpis d={d} />
           </div>
-          <div data-fill="" data-part="eval-body" className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 max-md:overflow-visible">
+          <div data-fill="" data-part="eval-body" className="min-h-0 flex-1 overflow-y-auto max-md:overflow-visible">
           <div className="mx-auto grid max-w-[var(--content-max)] content-start gap-4">
           {/* 두 열 = 정적(왼쪽) · 런타임(오른쪽) — 열마다 위로 붙는다(Pinterest 식). 768 미만은 정적 → 런타임 한 열 */}
           <div data-part="eval-grid" className="grid items-start gap-4 md:grid-cols-2">
