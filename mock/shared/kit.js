@@ -274,5 +274,38 @@
     return root;
   }
 
-  Object.assign(U, { kpiCard, kpiDelta: delta, tableKit, lineChart, stackBars, donut, tipLayer });
+  // ── 코드 창(11/04f) — macOS 창 모양 카드: 머리줄(점 3개 · 파일명 · 종류 태그) + 어두운 코드 영역(.cw-body = 스크롤 요소) ──
+  // o = { name?(파일명 — 없으면 종류만), lang?(없으면 파일명 확장자에서), body(문자열 → <pre> · 요소 → 그 요소가 코드 영역 · 배열 → <div> 로 감쌈),
+  //       wrap?(로그 · 원문만 true — pre-wrap), fill?(남은 높이 채움 — 정책 YAML), href? · onClick?(눌러서 여는 카드일 때만 → hover 떠오름 + pointer), attrs? }
+  // 점 색은 창 장식(위험 의미 아님) — 「빨강은 위험에만」의 예외, 채도를 낮춘 --win-* 토큰
+  const LANGS = [[/\.py$/i, 'python'], [/\.ya?ml$/i, 'YAML'], [/\.json$/i, 'JSON'], [/\.(sh|bash)$/i, 'shell'], [/\.log$/i, 'log'], [/\.[cm]?js$/i, 'javascript'], [/\.tsx?$/i, 'typescript'], [/\.toml$/i, 'TOML'], [/\.rs$/i, 'rust'], [/\.(cfg|ini)$/i, 'ini'], [/\.txt$/i, 'text']];
+  const LANG_ALIAS = { py: 'python', python: 'python', yaml: 'YAML', yml: 'YAML', json: 'JSON', sh: 'shell', bash: 'shell', shell: 'shell', log: 'log', js: 'javascript', javascript: 'javascript', ts: 'typescript', toml: 'TOML', text: 'text', txt: 'text' };
+  function codeLang(name, lang) {
+    if (lang) return LANG_ALIAS[String(lang).toLowerCase()] || lang;
+    const hit = name ? LANGS.find(([re]) => re.test(name)) : null;
+    return hit ? hit[1] : 'text';
+  }
+  function codeWin(o) {
+    const lang = codeLang(o.name, o.lang);
+    let body = o.body;
+    if (typeof body === 'string' || body == null) body = h('pre', null, body || '');
+    else if (Array.isArray(body)) body = h('div', null, body);
+    body.classList.add('cw-body');
+    if (body.tagName === 'TEXTAREA') body.setAttribute('wrap', o.wrap ? 'soft' : 'off');
+    const head = h('div', { class: 'cw-head' },
+      h('span', { class: 'cw-dots', 'aria-hidden': 'true' }, h('i', { class: 'cw-dot cw-close' }), h('i', { class: 'cw-dot cw-min' }), h('i', { class: 'cw-dot cw-max' })),
+      o.name ? h('span', { class: 'cw-name', title: o.name }, o.name) : null,
+      h('span', { class: 'cw-tag' }, lang));
+    const click = !!(o.href || o.onClick);
+    const attrs = Object.assign({ class: `code-win${o.fill ? ' cw-fill' : ''}`, 'data-codewin': '', 'data-lang': lang, 'data-wrap': o.wrap ? '1' : '0', 'data-click': click ? '1' : null, 'aria-label': o.name ? `${o.name} (${lang})` : lang }, o.attrs || {});
+    if (o.href) return h('a', Object.assign(attrs, U.to(o.href)), head, body);
+    if (o.onClick) {
+      const el = h('div', Object.assign(attrs, { role: 'button', tabindex: '0', onclick: o.onClick }), head, body);
+      el.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === el) { e.preventDefault(); o.onClick(e); } });
+      return el;
+    }
+    return h('figure', Object.assign(attrs, { role: 'group' }), head, body);
+  }
+
+  Object.assign(U, { kpiCard, kpiDelta: delta, tableKit, lineChart, stackBars, donut, tipLayer, codeWin, codeLang });
 })();

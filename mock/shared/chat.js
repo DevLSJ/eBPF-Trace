@@ -25,7 +25,8 @@
       if (!rows.length) return { text: `「${ctr}」 에 대한 위반 기록을 찾지 못했습니다. 컨테이너 이름을 확인해 주세요.`, links: [['감사 로그', '#/audit']] };
       const rules = [...new Set(rows.map((a) => a.ruleId))];
       const c = state.cases.find((x) => x.container === rows[0].event.containerName && x.state !== 'closed');
-      return { text: `${rows[0].event.containerName} 은(는) ${rules.join(', ')} 정책에 걸려 ${rows.some((a) => a.enforced) ? '격리됐습니다' : '경고가 났습니다'}. 예: ${U.detailOf(rows[0].event)}. ${c ? `지금 ${c.decision === 'pending' ? '판정 대기' : '판정됨'} 상태입니다 — 공격 체인을 보고 판정하세요.` : ''}`,
+      // 11/04f: 답 끝에 그 이벤트 원본을 코드 블록(```json event.json)으로 — 모델 답의 코드 블록은 코드 창(U.codeWin)으로 그린다
+      return { text: `${rows[0].event.containerName} 은(는) ${rules.join(', ')} 정책에 걸려 ${rows.some((a) => a.enforced) ? '격리됐습니다' : '경고가 났습니다'}. 예: ${U.detailOf(rows[0].event)}. ${c ? `지금 ${c.decision === 'pending' ? '판정 대기' : '판정됨'} 상태입니다 — 공격 체인을 보고 판정하세요.` : ''}\n\`\`\`json event.json\n${JSON.stringify(rows[0].event, null, 2)}\n\`\`\``,
         links: [['감사 로그에서 보기', '#/audit', { container: rows[0].event.containerName }], ['토폴로지', U.topoLink(rows[0].event.containerName).href, { container: rows[0].event.containerName }]] };
     }
     if (/정책|규칙|위반/.test(q)) {
@@ -63,9 +64,25 @@
   // toggle(true) = 도우미 패널을 AI 탭으로 연다(guide.js 가 있을 때). 탭이 보일 때 draw() 와 입력 포커스
   function toggle(on) { if (on && U.assistant) U.assistant.open('chat'); else if (!on && U.assistant) U.assistant.close(); }
   function shown() { draw(); setTimeout(() => inp.focus(), 0); }
+  // 11/04f: 답 속 코드 블록(```종류 [파일명] … ```)은 코드 창으로. 흘려보내는 중 닫히지 않은 블록도 그때까지의 코드를 창에 둔다
+  const FENCE = /```([^\n`]*)\n([\s\S]*?)(?:\n?```|$)/g;
+  function rich(text) {
+    if (!text.includes('```')) return text;
+    const out = []; let at = 0, m;
+    FENCE.lastIndex = 0;
+    while ((m = FENCE.exec(text))) {
+      if (m.index > at) out.push(text.slice(at, m.index).replace(/\n$/, ''));
+      const [lang, name] = m[1].trim().split(/\s+/);
+      out.push(U.codeWin({ name: name || null, lang: lang || null, body: m[2] }));
+      at = FENCE.lastIndex;
+      if (!m[0].length) break;
+    }
+    if (at < text.length) out.push(text.slice(at));
+    return out;
+  }
   function draw() {
     list.replaceChildren(...(msgs.length ? msgs : [{ role: 'assistant', text: '무엇이든 물어보세요. 판정 대기 · 위반 기록 · 정책 · 공급망 검사 결과를 찾아 답합니다.', links: [] }]).map((m) =>
-      h('div', { class: `chat-msg ${m.role}`, 'data-role': m.role }, h('div', { class: 'bubble' }, m.text || (m.pending ? h('span', { class: 'muted' }, '생각하는 중…') : '')),
+      h('div', { class: `chat-msg ${m.role}`, 'data-role': m.role }, h('div', { class: 'bubble' }, m.text ? (m.role === 'assistant' ? rich(m.text) : m.text) : (m.pending ? h('span', { class: 'muted' }, '생각하는 중…') : '')),
         m.links && m.links.length ? h('div', { class: 'chat-links', 'data-part': 'chat-links' }, h('span', { class: 'small muted' }, '관련 화면'), m.links.map(([t, href, st]) => h('a', { ...U.to(href, st), class: 'link small' }, t + ' →'))) : null)));
     list.scrollTop = list.scrollHeight;
     sugg.hidden = msgs.length > 0;

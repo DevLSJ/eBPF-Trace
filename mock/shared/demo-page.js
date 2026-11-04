@@ -187,7 +187,8 @@
           whyBody = [h('div', { class: 'why-rule-line' }, h('code', { class: 'mono why-rule', 'data-part': 'why-rule' }, d.ruleId), h('span', { class: `badge ${VERDICT_CLS[m.lv]}` }, VERDICT_KO[m.lv])),
             d.description ? h('p', { class: 'small muted' }, d.description) : null,
             h('p', { class: 'why-cond', 'data-part': 'why-condition' }, d.condition ? d.condition : none('조건 — 정보 없음')),
-            ev ? h('div', { class: 'why-event', 'data-part': 'why-event' }, U.kindBadge(ev.kind), h('code', { class: 'mono' }, markRaw(raw, d.reason)), ev.timestamp ? h('span', { class: 'small muted num' }, ms3(ev.timestamp)) : null) : none(),
+            // 11/04f 코드 창 — 원문은 줄바꿈(pre-wrap), 파일명 없음 · 종류는 실행이면 shell, 그 밖은 log
+            ev ? U.codeWin({ lang: ev.kind === 'exec' ? 'shell' : 'log', wrap: true, body: h('div', { class: 'why-event', 'data-part': 'why-event' }, U.kindBadge(ev.kind), h('code', { class: 'mono' }, markRaw(raw, d.reason)), ev.timestamp ? h('span', { class: 'small muted num' }, ms3(ev.timestamp)) : null) }) : none(),
             d.reason ? h('p', { class: 'small muted mono why-reason' }, d.reason) : null];
         }
         const seq = m.seq;

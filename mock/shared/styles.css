@@ -1319,3 +1319,58 @@ small { font-size: 12px; } /* 11/04e: 브라우저 기본 smaller(11.7px) 대신
   .demo-col-body { overflow: visible; } .ev-lines li { grid-template-columns: auto auto minmax(0, 1fr); } .ev-lines li .ev-comm, .ev-lines li .badge-level { display: none; }
 }
 .demo-outcome { margin-top: 4px; } .why-links { margin-top: 4px; }
+
+/* ── 11/04f 코드 창(U.codeWin) — macOS 창 모양 카드. 6곳(공급망 검사 코드 · 이벤트 원본 JSON · 증거 로그 · 시연 「왜」 원문 · 정책 YAML · AI 도우미 코드 블록)
+   카드 = 1px 테두리 · 반경 12 · 옅은 그림자, 머리줄 = 점 3개(12px · 간격 8) + 파일명(고정폭 · 말줄임) + 종류 태그, 코드 영역 = 두 테마 모두 어두운 바탕(--code-*) · 13/1.5 · 패딩 14 · 반경 6 · 스크롤바 8px 둥근 손잡이
+   점 색(--win-*)은 창 장식 — 「빨강은 위험에만」 규칙의 예외. 위험 배지 빨강(--danger)과 구분되게 채도를 낮췄다
+   hover: 읽기 전용은 그림자만 한 단계, 눌러서 여는 카드([data-click="1"])만 translateY(-5px) + --sh-hover + pointer(--t-base). reduced-motion 이면 이동 없음 */
+:root {
+  --code-bg:#0F172A; --code-fg:#E2E8F0; --code-muted:#94A3B8; --code-border:#1E293B; --code-scroll:#475569; --code-scroll-hover:#64748B;
+  --win-close:#D9827B; --win-min:#D8B567; --win-max:#86B985;
+}
+:root[data-theme="dark"] {
+  --code-bg:#0A0C11; --code-fg:#E6E8EE; --code-muted:#9AA3B2; --code-border:#262B36; --code-scroll:#4A5263; --code-scroll-hover:#626B7E;
+  --win-close:#B8746E; --win-min:#B89D5E; --win-max:#729F71;
+}
+.code-win { display: flex; flex-direction: column; min-width: 0; max-width: 100%; margin: 0; padding: 0 8px 8px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--sh-1);
+  transition: box-shadow var(--t-base) var(--ease), transform var(--t-base) var(--ease); }
+.code-win:hover { box-shadow: var(--sh-2); }
+.code-win[data-click="1"] { cursor: pointer; }
+.code-win[data-click="1"]:hover { transform: translateY(-5px); box-shadow: var(--sh-hover); }
+.code-win[data-click="1"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .code-win[data-click="1"]:hover { transform: none; } }
+.cw-head { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 36px; padding: 0 4px; }
+.cw-dots { display: inline-flex; gap: 8px; flex-shrink: 0; }
+.cw-dot { display: block; width: 12px; height: 12px; border-radius: 50%; background: var(--win-close); }
+.cw-dot.cw-min { background: var(--win-min); } .cw-dot.cw-max { background: var(--win-max); }
+.cw-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 12.5px var(--mono); color: var(--text-2); }
+.cw-tag { flex-shrink: 0; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font-size: 12px; line-height: 20px; }
+/* 코드 영역 — 스크롤 요소. 전역 thin 스크롤바(* 규칙)를 풀어야 ::-webkit-scrollbar 8px 이 먹는다(Chromium 121+) */
+.code-win .cw-body { flex: 1 1 auto; min-width: 0; min-height: 0; margin: 0; padding: 14px; border: 1px solid var(--code-border); border-radius: 6px; background: var(--code-bg); color: var(--code-fg);
+  font: 13px/1.5 var(--mono); white-space: pre; overflow: auto; scrollbar-width: auto; scrollbar-color: auto; }
+.code-win .cw-body pre, .code-win .cw-body code { margin: 0; font: inherit; color: inherit; white-space: inherit; }
+.code-win .cw-body::-webkit-scrollbar { width: 8px; height: 8px; }
+.code-win .cw-body::-webkit-scrollbar-track, .code-win .cw-body::-webkit-scrollbar-corner { background: transparent; }
+.code-win .cw-body::-webkit-scrollbar-thumb { background: var(--code-scroll); border-radius: var(--r-pill); }
+.code-win .cw-body::-webkit-scrollbar-thumb:hover { background: var(--code-scroll-hover); }
+@supports not selector(::-webkit-scrollbar) { .code-win .cw-body { scrollbar-width: thin; scrollbar-color: var(--code-scroll) transparent; } }
+.code-win[data-wrap="1"] .cw-body, .code-win[data-wrap="1"] .cw-body code, .code-win[data-wrap="1"] .cw-body pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* 자리별: 공급망 검사 코드(줄 번호 · 위협 줄 강조 그대로) */
+.code-win .code-view { max-height: 300px; }
+.code-win .code-view .code-line { grid-template-columns: 44px minmax(0, 1fr); }
+.code-win .code-view .code-line .ln, .code-win .code-view .ln { color: var(--code-muted); background-color: transparent; padding-right: 12px; }
+.code-win .code-view .code-line code { white-space: pre; padding-right: 14px; }
+/* 이벤트 원본 JSON · 증거 로그(옛 .json 모양을 덮음) */
+.code-win .cw-body.json { margin: 0; padding: 14px; background: var(--code-bg); color: var(--code-fg); font: 13px/1.5 var(--mono); border-radius: 6px; }
+.code-win .cw-body.ev-logs { max-height: 240px; }
+/* 시연 「왜」 원문 */
+.code-win .cw-body.why-event { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 14px; border-radius: 6px; background: var(--code-bg); color: var(--code-fg); }
+.code-win .cw-body.why-event code { font-size: 13px; } .code-win .cw-body.why-event .muted { color: var(--code-muted); }
+/* 정책 YAML(편집 가능) — 입력칸이 곧 코드 영역. 가로 스크롤 유지(wrap=off) · 포커스 링 */
+.code-win textarea.cw-body { width: 100%; height: auto; min-height: 320px; resize: none; font: 13px/1.5 var(--mono); padding: 14px; border: 1px solid var(--code-border); border-radius: 6px; background: var(--code-bg); color: var(--code-fg); }
+.code-win textarea.cw-body:focus { border-color: var(--code-border); outline: 2px solid var(--accent); outline-offset: 1px; }
+.code-win textarea.cw-body:disabled { background: var(--code-bg); color: var(--code-muted); }
+.code-win.cw-fill { height: 100%; }
+/* AI 도우미 답변 속 코드 블록 */
+.bubble .code-win { margin: 6px 0; white-space: normal; }
+.bubble .code-win .cw-body { max-height: 260px; }

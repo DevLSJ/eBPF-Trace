@@ -468,7 +468,8 @@
           return h('div', { class: `code-line ${t ? 'hl-threat' : c ? 'hl-cap' : ''} ${n === focusLine ? 'focus' : ''}`, 'data-line': n, title: t ? `${t.rule} — ${t.message}` : c ? `${c.rule} — ${c.message}` : null },
             h('span', { class: 'ln' }, n), h('code', null, mark(ln || ' ', t || c))); })));
         if (focusLine) setTimeout(() => { const el = box.querySelector(`[data-line="${focusLine}"]`); if (el) el.scrollIntoView({ block: 'center' }); }, 0);
-        return [paths.length > 1 ? h('div', { class: 'chips' }, paths.map((p) => h('button', { type: 'button', class: `chip-btn ${p === cur ? 'on' : ''}`, onclick: () => { focusLoc = `${p}:0`; draw(); } }, p))) : h('div', { class: 'small mono muted' }, cur), box];
+        // 11/04f 코드 창 — 파일 이름은 창 머리줄에(아래 옛 「파일 이름 한 줄」은 머리줄과 겹쳐 뺐다)
+        return [paths.length > 1 ? h('div', { class: 'chips' }, paths.map((p) => h('button', { type: 'button', class: `chip-btn ${p === cur ? 'on' : ''}`, onclick: () => { focusLoc = `${p}:0`; draw(); } }, p))) : null, U.codeWin({ name: cur, body: box })];
       }
       // 패키지 골라 차단 [10/20 G · 10/21 React 맞춤 — features/scans/ScanPackages.tsx] — 잠금 파일마다 한 행인 패키지를 (매니저, 이름, 버전)으로 묶어 한 줄, 출처 파일을 나열.
       //   키 = 매니저:이름@버전(생태계 미지원은 생태계:이름@버전). 정렬 취약 수 → 이름 → 버전. 「차단됨」은 매니저:이름 소문자(blockKey — 차단은 버전과 무관)
@@ -621,7 +622,7 @@
           policyStarts(v),
           v.ruleId ? h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('b', null, '관련 정책'), h('a', { href: `#/policies?id=${encodeURIComponent(v.ruleId)}`, class: 'link small' }, '정책 편집')), h('div', { class: 'mono small' }, v.ruleId), rule ? h('p', { class: 'muted small' }, rule.description) : h('p', { class: 'muted small' }, '현재 정책 목록에 없음 (삭제·변경됨)')) : null,
           !isInstall ? h('div', { class: 'row-actions' }, h('a', { ...U.to(U.topoLink(name)), class: 'btn btn-primary btn-xs' }, '토폴로지에서 보기 →')) : null,
-          h('div', null, h('b', null, '원본 JSON'), h('pre', { class: 'json' }, JSON.stringify(json, null, 2)))] }));
+          h('div', null, h('b', null, '원본 JSON'), U.codeWin({ name: 'event.json', body: h('pre', { class: 'json' }, JSON.stringify(json, null, 2)) }))] })); // 11/04f 코드 창
       }
       let chipSig = '', shownErr, shownReady;
       function update() {
@@ -1120,7 +1121,7 @@
           try { const doc = parseYaml(ta.value); if (!doc || !Array.isArray(doc.rules)) throw new Error('400 · 최상위 rules: 목록이 필요함'); const rs = doc.rules.map((r) => validateRule(r)); const ids = new Set(); for (const r of rs) { if (ids.has(r.id)) throw new Error(`400 · 중복 id: ${r.id}`); ids.add(r.id); } done(U.api.replaceRules(rs)); }
           catch (e) { fail(e); }
         };
-        return h('div', { class: 'col' }, h('div', { class: 'grow pad' }, ta), h('div', { class: 'foot' }, msg, apply));
+        return h('div', { class: 'col' }, h('div', { class: 'grow pad' }, U.codeWin({ name: 'policies.yaml', fill: true, body: ta })), h('div', { class: 'foot' }, msg, apply)); // 11/04f 코드 창
       }
       // 정책 편집 — 「쉬운 설정」(기본, U.policyEasy) · 「고급 · 폼」 · 「고급 · YAML」이 같은 draft 를 고친다.
       // 저장은 늘 「저장 전 확인」(한 줄 요약 + 최근 감사 로그 재평가 미리보기)을 거친다 [10/16 정책 개편]
@@ -1156,7 +1157,7 @@
           const upd = (patch) => { Object.assign(draft, patch); saved = false; render(); };
           const body = mode === 'easy' ? U.policyEasy.render(draft, ctx)
             : mode === 'yaml'
-              ? h('textarea', { class: 'ctl mono yaml grow', spellcheck: 'false', 'aria-label': '정책 YAML', value: yamlText, oninput: (e) => { yamlText = e.target.value; saved = false; } }, yamlText)
+              ? U.codeWin({ name: draft.id ? `${draft.id}.yaml` : null, lang: 'YAML', fill: true, body: h('textarea', { class: 'ctl mono yaml grow', spellcheck: 'false', 'aria-label': '정책 YAML', value: yamlText, oninput: (e) => { yamlText = e.target.value; saved = false; } }, yamlText) }) // 11/04f 코드 창(편집 가능)
               : h('div', { class: 'form' },
                 field('id', '소문자·숫자·하이픈', h('input', { class: 'ctl', value: draft.id, disabled: !isNew, oninput: (e) => { draft.id = e.target.value; saved = false; } })),
                 field('설명', null, h('input', { class: 'ctl', value: draft.description, oninput: (e) => { draft.description = e.target.value; saved = false; } })),
@@ -1376,7 +1377,7 @@
             h('div', { class: 'row-inline' }, h('span', { class: 'small muted num' }, `${fmt.dateTime(ev.collectedAt)} · ${ev.durationMs}ms 동안 모음 · ${ev.image}`),
               ev.partial ? h('span', { class: 'badge badge-alert', 'data-part': 'evidence-partial', title: ev.error }, '일부만 모음') : h('span', { class: 'badge badge-level-normal' }, '모두 모음')),
             ev.partial && ev.error ? h('p', { class: 'small tone-warn' }, ev.error) : null,
-            h('section', { class: 'sheet-section' }, h('h3', null, '로그 ', h('span', { class: 'small muted' }, '— 마지막 200줄')), h('pre', { class: 'json ev-logs', 'data-part': 'evidence-logs' }, ev.logs || '(비어 있음)')),
+            h('section', { class: 'sheet-section' }, h('h3', null, '로그 ', h('span', { class: 'small muted' }, '— 마지막 200줄')), U.codeWin({ lang: 'log', wrap: true, body: h('pre', { class: 'json ev-logs', 'data-part': 'evidence-logs' }, ev.logs || '(비어 있음)') })), // 11/04f 코드 창 — 파일명 없음(종류만)
             h('section', { class: 'sheet-section' }, h('h3', null, `파일 변경 ${ev.changes.length}`, h('span', { class: 'small muted' }, ' — docker diff (A 추가 · C 변경 · D 삭제)')),
               ev.changes.length ? h('table', { class: 'table compact', 'data-part': 'evidence-changes' }, h('thead', null, h('tr', null, h('th', null, '종류'), h('th', null, '경로'))), h('tbody', null, ev.changes.map((x) => h('tr', null, h('td', { class: `mono ev-${x.kind}` }, x.kind), h('td', { class: 'mono small' }, x.path)))))
                 : h('p', { class: 'small muted', 'data-part': 'evidence-changes' }, '없음')),
