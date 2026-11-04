@@ -1107,7 +1107,7 @@ html.sg-sorting, html.sg-sorting * { cursor: grabbing !important; -webkit-user-s
 .ov-kpi.kpi-card > .kpi-sub, .kpi.kpi-card > .kpi-hint { grid-column: 1 / -1; font-size: 12.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
 .kpi.kpi-card > .kpi-hint { white-space: normal; }
 .kpi-val.tone-default { color: var(--text); } .kpi-val.tone-danger { color: var(--danger); }
-.kpi-ring { animation: kpi-ring 700ms var(--ease); }
+.kpi-ring { animation: kpi-ring calc(var(--t-slow) * 2) var(--ease); } /* 11/04f 애니메이션 원칙 — 길이는 모션 토큰에서(700ms → 640ms) */
 @keyframes kpi-ring { 0% { box-shadow: 0 0 0 0 var(--stripe-soft), var(--sh-1); } 35% { box-shadow: 0 0 0 4px var(--stripe-soft), var(--sh-1); } 100% { box-shadow: 0 0 0 8px transparent, var(--sh-1); } }
 
 /* 대시보드: 머리 한 줄 → KPI 줄 → 차트 줄 → 아래 3칸(남은 높이). 간격: 칸 사이 12 · 줄 사이 16 */
@@ -1165,12 +1165,12 @@ tr.needs-action.bar-warn { box-shadow: none; } tr.needs-action.bar-warn td:first
 .chart-tip.tip-inverse { background: var(--ink); color: var(--ink-text); border: 0; box-shadow: var(--sh-2); z-index: 5; white-space: nowrap; font-size: 12px; }
 .tip-title { font-weight: 600; margin-bottom: 2px; } .tip-row { display: flex; align-items: center; }
 .chart-tip.tip-inverse i.sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; border: 0; }
-/* 첫 렌더에만 그리기 애니메이션 */
-.lines.draw-in .line { stroke-dasharray: 1; stroke-dashoffset: 1; animation: line-draw 700ms var(--ease) forwards; }
+/* 첫 렌더에만 그리기 애니메이션 — 11/04f 애니메이션 원칙: 길이는 모션 토큰에서(선 · 도넛 700 · 600ms → --t-slow×2 = 640ms, 막대 520ms = --t-slow + --t-base) */
+.lines.draw-in .line { stroke-dasharray: 1; stroke-dashoffset: 1; animation: line-draw calc(var(--t-slow) * 2) var(--ease) forwards; }
 @keyframes line-draw { to { stroke-dashoffset: 0; } }
-.buckets.draw-in .bar { transform-box: fill-box; transform-origin: bottom; animation: bars-in 520ms var(--ease); }
+.buckets.draw-in .bar { transform-box: fill-box; transform-origin: bottom; animation: bars-in calc(var(--t-slow) + var(--t-base)) var(--ease); }
 @keyframes bars-in { from { transform: scaleY(0); } }
-.slices.draw-in { transform-box: fill-box; transform-origin: center; animation: donut-in 600ms var(--ease); }
+.slices.draw-in { transform-box: fill-box; transform-origin: center; animation: donut-in calc(var(--t-slow) * 2) var(--ease); }
 @keyframes donut-in { from { opacity: 0; transform: rotate(-40deg) scale(.92); } }
 
 /* 표 — 행 46 · 머리 sticky 12/700 · 줄 선 한 단계 옅게 · 숫자 오른쪽 · 짧은 칸은 내용 폭, 긴 글 칸 하나만 남는 폭 + 말줄임 */
@@ -1404,4 +1404,30 @@ small { font-size: 12px; } /* 11/04e: 브라우저 기본 smaller(11.7px) 대신
 .code-split { display: grid; grid-template-columns: minmax(140px, 32%) minmax(0, 1fr); gap: 10px; align-items: start; min-width: 0; }
 .code-split > .ftree { max-height: 352px; }
 @media (max-width: 767px) { .code-split { grid-template-columns: minmax(0, 1fr); } .code-split > .ftree { max-height: 200px; } }
+/* ── 11/04f AI 도우미 채팅 화면 — 사용자가 준 Uiverse.io 채팅 카드 CSS 는 구조 · 원리만(색은 테마 토큰, 라이트 · 다크)
+   ⓐ 패널 머리줄 40px: 제목(보조색 · 말줄임) · 닫기 40×40 = 2px 선 두 개(45° · 135°, 둥근 끝) — hover 진해짐
+   ⓑ 대화: 말풍선 대신 한 턴 한 줄 띠 — 사용자 --surface-2 · 도우미 --surface(한 단계씩 번갈아), 행 패딩 11/12, 긴 글 줄바꿈. 새 줄만 아래 6px 에서 올라오며 등장(--t-base)
+   ⓒ 보내는 칸: 반경 7 입력칸(1px · --surface-2 · placeholder --text-3 · 말줄임 · 포커스 링) + 30×30 보내기(➤, 못 보낼 때 흐림). 패널을 채우고 대화 칸만 스크롤 */
+.assist-panel .assist-head { height: 40px; min-height: 40px; flex-shrink: 0; gap: 8px; padding: 0 0 0 14px; }
+.assist-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-size: 13.5px; font-weight: 600; }
+.assist-close { position: relative; flex: 0 0 40px; width: 40px; height: 40px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.assist-close .x-line { position: absolute; left: 50%; top: 50%; width: 16px; height: 2px; margin: -1px 0 0 -8px; border-radius: 2px; background: var(--text-3); transform: rotate(45deg); transition: background var(--t-fast) var(--ease); }
+.assist-close .x-line + .x-line { transform: rotate(135deg); }
+.assist-close:hover .x-line { background: var(--text); }
+.assist-close:focus-visible { outline: 2px solid var(--accent); outline-offset: -6px; border-radius: 10px; }
+.chat-body .chat-list { display: block; gap: 0; padding: 0; overflow-y: auto; overflow-x: hidden; }
+.chat-list .chat-msg { display: grid; gap: 6px; max-width: none; width: 100%; padding: 11px 12px; background: var(--surface); border-bottom: 1px solid var(--line-soft); }
+.chat-list .chat-msg.user { justify-self: stretch; background: var(--surface-2); }
+.chat-list .chat-msg .bubble, .chat-list .chat-msg.user .bubble { padding: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.chat-list .chat-msg.is-new { animation: chat-in var(--t-base) var(--ease) both; }
+@keyframes chat-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.chat-body .chat-sugg { padding: 10px 12px 8px; }
+.chat-body .chat-form { grid-template-columns: minmax(0, 1fr) 30px; align-items: center; gap: 8px; padding: 10px 12px; }
+.chat-form .chat-input { height: 34px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-2); color: var(--text); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-form .chat-input::placeholder { color: var(--text-3); opacity: 1; }
+.chat-form .chat-input:focus { border-color: var(--accent); outline: 2px solid var(--accent-line); outline-offset: 1px; }
+.chat-send { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px; background: var(--accent); color: var(--text-inverse); font-size: 13px; line-height: 1; cursor: pointer; transition: opacity var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.chat-send:hover:not(:disabled) { background: var(--accent-hover); }
+.chat-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-send:disabled { opacity: .4; cursor: not-allowed; }
 .finding > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 폴더 안 파일이면 「경로:줄」이 110px 를 넘어 설명과 겹쳤다 — 말줄임(전체는 트리 · 코드 창 이름) */

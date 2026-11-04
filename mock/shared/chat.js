@@ -52,8 +52,10 @@
   const save = () => { try { sessionStorage.setItem(KEY, JSON.stringify(msgs.slice(-30))); } catch { /* 저장 차단 */ } };
   let busy = false;
   const list = h('div', { class: 'chat-list', 'data-part': 'chat-list', 'aria-live': 'polite' });
-  const inp = h('textarea', { class: 'ctl chat-input', rows: 2, placeholder: '예: pkg-reqeusts 는 왜 격리됐어?', 'aria-label': '질문' });
-  const send = h('button', { type: 'button', class: 'btn btn-primary btn-xs', 'aria-label': '보내기' }, '보내기');
+  // 11/04f 보내는 칸 — 한 줄 입력칸(반경 7 · 긴 글 말줄임) + 30×30 보내기(글리프 아이콘, 비었거나 답 기다리는 중이면 흐림)
+  const inp = h('input', { type: 'text', class: 'ctl chat-input', placeholder: '예: pkg-reqeusts 는 왜 격리됐어?', 'aria-label': '질문', autocomplete: 'off' });
+  const send = h('button', { type: 'button', class: 'chat-send', 'aria-label': '보내기', title: '보내기 (Enter)' }, h('span', { 'aria-hidden': 'true' }, '➤'));
+  const syncSend = () => { send.disabled = busy || !inp.value.trim(); send.toggleAttribute('data-busy', busy); };
   const sugg = h('div', { class: 'chat-sugg' }, SUGGEST.map((q) => h('button', { type: 'button', class: 'sugg', onclick: () => ask(q) }, q)));
   // 10/20 도우미: 떠 있는 창 · 💬 버튼은 guide.js 의 「도우미」 패널이 맡는다. 여기서는 「AI 도우미」 탭에 들어갈 본문만 만든다(동작은 그대로)
   const panel = h('section', { class: 'chat-body', 'data-part': 'chat', 'aria-label': 'AI 도우미' },
@@ -80,13 +82,16 @@
     if (at < text.length) out.push(text.slice(at));
     return out;
   }
+  // 11/04f 한 턴 한 줄 띠 — 새로 붙은 줄만 등장 애니메이션(.is-new). 흘려보내며 다시 그리는 줄 · 저장돼 있던 줄은 움직이지 않는다
+  let drawnCount = msgs.length;
   function draw() {
-    list.replaceChildren(...(msgs.length ? msgs : [{ role: 'assistant', text: '무엇이든 물어보세요. 판정 대기 · 위반 기록 · 정책 · 공급망 검사 결과를 찾아 답합니다.', links: [] }]).map((m) =>
-      h('div', { class: `chat-msg ${m.role}`, 'data-role': m.role }, h('div', { class: 'bubble' }, m.text ? (m.role === 'assistant' ? rich(m.text) : m.text) : (m.pending ? h('span', { class: 'muted' }, '생각하는 중…') : '')),
+    const from = Math.min(drawnCount, msgs.length); drawnCount = msgs.length;
+    list.replaceChildren(...(msgs.length ? msgs : [{ role: 'assistant', text: '무엇이든 물어보세요. 판정 대기 · 위반 기록 · 정책 · 공급망 검사 결과를 찾아 답합니다.', links: [] }]).map((m, i) =>
+      h('div', { class: `chat-msg ${m.role}${msgs.length && i >= from ? ' is-new' : ''}`, 'data-role': m.role }, h('div', { class: 'bubble' }, m.text ? (m.role === 'assistant' ? rich(m.text) : m.text) : (m.pending ? h('span', { class: 'muted' }, '생각하는 중…') : '')),
         m.links && m.links.length ? h('div', { class: 'chat-links', 'data-part': 'chat-links' }, h('span', { class: 'small muted' }, '관련 화면'), m.links.map(([t, href, st]) => h('a', { ...U.to(href, st), class: 'link small' }, t + ' →'))) : null)));
     list.scrollTop = list.scrollHeight;
     sugg.hidden = msgs.length > 0;
-    send.disabled = busy;
+    syncSend();
   }
   function ask(q) {
     q = String(q || inp.value).trim(); if (!q || busy) return;
@@ -105,6 +110,7 @@
   }
   send.addEventListener('click', () => ask());
   inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(); } });
+  inp.addEventListener('input', syncSend);
   draw();
   U.chat = { ask, toggle, el: panel, shown };
 })();

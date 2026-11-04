@@ -139,7 +139,8 @@
   const tabBtn = (id, label) => h('button', { type: 'button', role: 'tab', id: `assist-tab-${id}`, 'data-tab': id, 'aria-selected': String(tab === id), 'aria-controls': `assist-${id}`, class: 'assist-tab', onclick: () => show(id) }, label);
   const tabs = h('div', { class: 'assist-tabs', role: 'tablist', 'aria-label': '도우미' }, tabBtn('guide', '대응 가이드'), tabBtn('chat', 'AI 도우미'));
   const panel = h('section', { class: 'assist-panel', 'data-part': 'assistant', role: 'dialog', 'aria-label': 'SupplyGuard 도우미', hidden: true },
-    h('header', { class: 'assist-head' }, h('b', null, '🛡 도우미'), h('button', { type: 'button', class: 'btn btn-ghost btn-xs push-right', 'aria-label': '닫기', onclick: () => close() }, '✕')),
+    // 11/04f 머리줄 40px — 제목(보조색 · 말줄임) · 닫기 40×40(2px 선 두 개를 45° · 135° 로 교차한 X — 글꼴 · 이미지 아님)
+    h('header', { class: 'assist-head' }, h('b', { class: 'assist-title' }, '🛡 도우미'), h('button', { type: 'button', class: 'assist-close', 'aria-label': '닫기', onclick: () => close() }, h('i', { class: 'x-line', 'aria-hidden': 'true' }), h('i', { class: 'x-line', 'aria-hidden': 'true' }))),
     tabs, guideEl, chatEl);
   const badge = h('span', { class: 'assist-badge num', 'data-part': 'assistant-badge', hidden: true });
   const fab = h('button', { type: 'button', class: 'assist-fab', 'data-part': 'assistant-fab', 'aria-label': '도우미 열기', 'aria-expanded': 'false', 'aria-haspopup': 'dialog', onclick: () => (panel.hidden ? open() : close()) }, h('span', { 'aria-hidden': true }, '🛡'), badge);

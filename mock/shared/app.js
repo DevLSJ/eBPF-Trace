@@ -1118,14 +1118,15 @@
     const title = level === 'held' ? (v.enforceError ? `격리 실패: ${v.enforceError}` : 'dry-run — 알림만 보냄') : null;
     return h('span', { class: `badge badge-level badge-level-${level}`, title }, LEVEL_LABEL[level]);
   }
-  // 숫자 카운트업(600ms) [10/30 계약 §7 모션] — el.textContent 를 from → to 로. prefers-reduced-motion 이면 바로 쓴다
+  // 숫자 카운트업(--t-slow × 2 = 640ms, 11/04f 전 600ms) [10/30 계약 §7 모션] — el.textContent 를 from → to 로. prefers-reduced-motion 이면 바로 쓴다
   const reducedMotion = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   function countUp(el, to, format) {
     const f = format || ((n) => fmt.num(n)); const from = Number(el.dataset.countup || 0);
     if (!Number.isFinite(to)) { el.textContent = String(to); return; }
     el.dataset.countup = String(to);
     if (reducedMotion() || from === to || Math.abs(to - from) > 1e6) { el.textContent = f(to); return; }
-    const t0 = performance.now(), dur = 600;
+    // 11/04f 애니메이션 원칙 — 길이는 모션 토큰에서(--t-slow × 2 = 640ms). 글자 숫자(천 단위 쉼표)를 바꾸는 일이라 CSS 만으로는 못 해 JS 그대로(의존성 없음)
+    const slow = parseFloat(cssVar('--t-slow', '320ms')) || 320, t0 = performance.now(), dur = slow * 2;
     const tick = (now) => { const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3); el.textContent = f(Math.round(from + (to - from) * e)); if (p < 1) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
   }
