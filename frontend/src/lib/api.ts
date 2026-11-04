@@ -1,5 +1,6 @@
 import type {
   AuditEntry,
+  AuditPage,
   AuthAuditEntry,
   Blocklist,
   BlockList,
@@ -115,6 +116,8 @@ export interface AuditParams {
   until?: string;
   before?: number;
   limit?: number;
+  // 쪽 번호(11/04): offset 이 있으면 {items, total, offset, limit}. before 와 함께 쓰지 않는다
+  offset?: number;
 }
 
 const qs = (p: object) => {
@@ -147,6 +150,8 @@ export const api = {
   // 새 기본 규칙(10/20): 기본 정책 파일에는 있는데 지금 없는 규칙 · 조건이 다른 규칙(읽기 전용)
   policyDefaults: () => request<PolicyDefaults>('/policies/defaults'),
   audit: (p: AuditParams) => request<AuditEntry[]>(`/audit${qs(p)}`),
+  // 감사 로그 쪽 번호(R4 11/04, backend api.AuditPage) — offset 을 보내면 {items, total, offset, limit}. 옛 백엔드는 offset 을 모르고 배열(첫 쪽)을 준다
+  auditPage: (p: AuditParams) => request<AuditPage | AuditEntry[]>(`/audit${qs(p)}`),
 
   // 설치 검사
   installs: (p: { status?: string; manager?: string; limit?: number } = {}) =>

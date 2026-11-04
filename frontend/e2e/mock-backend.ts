@@ -210,6 +210,20 @@ export class MockBackend {
   private demoTimers: number[] = [];
   // 10/30: 수집량에 dns 를 넣을지(enableDns) — 기본은 옛 백엔드처럼 없음
   dnsCollected = false;
+  // R4 11/04: 감사 로그 쪽 번호 — offset 이 있으면 {items, total, offset, limit}(backend api.AuditPage). auditLegacy 면 옛 백엔드처럼 늘 배열(offset 무시) · auditDelayMs 만큼 늦게 답한다(진행 띠)
+  auditLegacy = false;
+  auditDelayMs = 0;
+  // 감사 행을 n 개 더(쪽 번호 확인용) — 기존 행보다 오래된 alert/kill 을 번갈아
+  seedAudit(n: number) {
+    const low = Math.min(...this.audit.map((a) => a.id));
+    const last = this.audit[this.audit.length - 1];
+    const t0 = new Date(last.event.timestamp).getTime();
+    for (let i = 1; i <= n; i++) {
+      const at = new Date(t0 - i * 60_000).toISOString();
+      const e = { ...last.event, timestamp: at, containerName: `svc-${String(i).padStart(2, '0')}` };
+      this.audit.push({ ...last, id: low - i, event: e, action: (i % 3 ? 'alert' : 'kill') as AuditEntry['action'], dryRun: false, enforced: i % 3 === 0, enforceError: undefined, caseId: null, install: null });
+    }
+  }
   dropWs() {
     void this.ws?.close({ code: 1006, reason: 'drop' });
   }
@@ -847,7 +861,13 @@ export class MockBackend {
           a.id < before
         );
       });
-      return json(rows.slice(0, Number(q.get('limit') ?? 100)));
+      const limit = Math.min(500, Number(q.get('limit') ?? 100) || 100);
+      if (this.auditDelayMs) await new Promise((r) => setTimeout(r, this.auditDelayMs));
+      if (q.has('offset') && !this.auditLegacy) {
+        const offset = Number(q.get('offset'));
+        return json({ items: rows.slice(offset, offset + limit), total: rows.length, offset, limit });
+      }
+      return json(rows.slice(0, limit));
     }
 
     // 설치 검사

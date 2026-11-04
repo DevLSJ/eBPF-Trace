@@ -75,6 +75,14 @@ export interface AuditEntry extends Verdict {
   install?: { id: string; label: string } | null; // 설치 검사 위반이면 세션 · 패키지 이름
 }
 
+// GET /api/audit?offset=&limit= 응답(11/04, backend api.AuditPage) — total 은 필터 뒤 전체 건수
+export interface AuditPage {
+  items: AuditEntry[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export interface Rule {
   id: string;
   description?: string;

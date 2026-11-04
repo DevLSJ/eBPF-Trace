@@ -42,11 +42,15 @@ test.describe('감사 로그 — 언제 무엇이 걸렸고, 어떻게 닫혔나
     const base = backend.audit[0];
     backend.audit = Array.from({ length: 100 }, (_, i) => ({ ...base, id: 1000 - i }));
     await page.goto('/audit');
+    // R4 11/04: 「더 보기」(100행씩) 대신 쪽 번호 바닥줄(페이지당 20 · 50 · 100) — 100행을 보려면 페이지당 100
+    await expect(page.locator('tr[data-audit]')).toHaveCount(20);
+    await page.locator('[data-table-foot="audit"] select[data-part="page-size"]').selectOption('100');
     await expect(page.locator('tr[data-audit]')).toHaveCount(100);
     const s = await page.getByTestId('audit-scroll').evaluate((el) => ({ sh: el.scrollHeight, ch: el.clientHeight }));
     expect(s.sh).toBeGreaterThan(s.ch);
     const doc = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
     expect(doc).toBe(0);
-    await expect(page.getByRole('button', { name: '더 보기' })).toBeAttached();
+    await expect(page.getByRole('button', { name: '더 보기' })).toHaveCount(0);
+    await expect(page.locator('[data-table-foot="audit"] [data-part="range"]')).toHaveText('1–100 / 100');
   });
 });

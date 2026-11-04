@@ -1,12 +1,14 @@
-import { Download, History as HistoryIcon, RotateCw, ScrollText, SearchX } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Download, History as HistoryIcon, ScrollText, SearchX } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DecisionBadge } from '../../components/Badges';
 import { DnsRow } from '../../components/DnsRow';
 import { SequenceRow } from '../../components/SequenceRow';
 import { downloadCSV } from '../../components/list/csv';
-import { rowKeys, useAutoRetry } from '../../components/list/hooks';
-import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
+import { barStyle, rowKeys, useAutoRetry, useBusy } from '../../components/list/hooks';
+import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, PagerSlot, Skeleton } from '../../components/list/ListStates';
+import { BusyBar, SortHead, TablePager } from '../../components/DataTable';
+import { useTableKit, type Column } from '../../hooks/useTableKit';
 import { KindBadge } from '../../components/KindBadge';
 import { PageActions } from '../../components/PageActions';
 import { Empty, LoadError, Panel } from '../../components/Panel';
@@ -24,7 +26,6 @@ import { isInstallContainer } from '../../lib/topology';
 import { caseLabel, CHANGE_KIND_LABEL, DECISION_LABEL, detailOf, KIND_LONG, KINDS, LEVEL_LABEL, levelOf, type AuditEntry, type Case } from '../../lib/types';
 import { EvidenceView } from './EvidenceView';
 
-const PAGE = 100;
 const ctl = 'h-8 rounded-md border border-slate-300 bg-white px-2 text-sm focus:border-indigo-500 focus:outline-none';
 const FILTERS = ['kind', 'action', 'rule', 'container', 'since', 'until'] as const;
 type FilterKey = (typeof FILTERS)[number];
@@ -34,6 +35,24 @@ type Filters = Record<FilterKey, string>;
 const toIso = (v: string) => (v ? new Date(v).toISOString() : '');
 const fdt = (v: string) => v.replace('T', ' ');
 const ACTION_KO: Record<string, string> = { alert: '경고', kill: '격리' };
+const LEVEL_RANK: Record<string, number> = { killed: 0, held: 1, alert: 2, normal: 3 };
+// 판정 · 변경 이력 한 줄 — 표 칸(R4 11/04): 머리 클릭 정렬, 기본은 시각 내림(받은 목록 안)
+interface HistoryItem {
+  key: string;
+  at: string;
+  kind: string;
+  badge: ReactNode;
+  text: string;
+  href: string | null;
+  by: string;
+  reason: string;
+}
+const HISTORY_COLUMNS: Column<HistoryItem>[] = [
+  { key: 'at', label: '시각', sort: (x) => x.at, short: true },
+  { key: 'kind', label: '종류', sort: (x) => x.kind, short: true },
+  { key: 'text', label: '내용', sort: (x) => x.text },
+  { key: 'by', label: '처리자', sort: (x) => x.by, short: true },
+];
 // CSV 내보내기(10/20 D): 백엔드 한 번에 최대 500행(store.MaxAuditLimit) — 나눠 받아 최대 10,000행
 const CSV_PAGE = 500;
 const CSV_MAX = 10_000;
@@ -167,6 +186,7 @@ export function AuditPage() {
               filters={debounced}
               caseOf={caseOf}
               selectedId={id}
+              edge={!id}
               filtered={filtered}
               autoOpen={tab === 'evidence' && !id}
               onClear={() => clearKeys(FILTERS)}
@@ -187,10 +207,26 @@ export function AuditPage() {
 // 시트는 목록에서 찾는다(목록 상태를 공유하려고 전역 캐시에 둔다)
 const rowCache = new Map<number, AuditEntry>();
 
+// 쪽 번호(R4 11/04 — 목업 11/04e 감사 로그): offset + total 로 쪽을 받는다(GET /api/audit?offset=&limit= → {items, total}).
+// total 이 없는 옛 응답(배열)이면 이전/다음만 — before 커서(쪽마다 마지막 id). 정렬은 받은 쪽 안에서만(사용자 결정). 「더 보기」 단추는 없앴다
+interface Req {
+  filters: Filters;
+  page: number;
+  size: number;
+}
+interface Got {
+  rows: AuditEntry[];
+  total: number | null;
+  page: number;
+  size: number;
+  hasNext: boolean;
+}
+
 function Violations({
   filters,
   caseOf,
   selectedId,
+  edge,
   filtered,
   autoOpen,
   onClear,
@@ -199,119 +235,150 @@ function Violations({
   filters: Filters;
   caseOf: Map<string, Case>;
   selectedId: string | null;
+  // 표 패널이 화면 오른쪽 끝인가(시트 닫힘) — 바닥줄이 도우미 단추를 비켜 간다
+  edge: boolean;
   filtered: boolean;
   // 「증거 보기」 링크(?tab=evidence + state 의 컨테이너 필터)로 들어오면 격리된 첫 행(없으면 첫 행)을 연다
   autoOpen: boolean;
   onClear: () => void;
   onOpen: (id: number, auto?: boolean) => void;
 }) {
-  const [rows, setRows] = useState<AuditEntry[]>([]);
-  const [hasMore, setHasMore] = useState(false);
+  // 필터가 바뀌면 첫 쪽부터(렌더 중 맞춤)
+  const [req, setReq] = useState<Req>({ filters, page: 1, size: 20 });
+  if (req.filters !== filters) setReq({ filters, page: 1, size: req.size });
+  const [got, setGot] = useState<Got | null>(null);
   const [loading, setLoading] = useState(false);
-  // 첫 페이지를 한 번이라도 받았나(스켈레톤) · 마지막 오류
-  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const loaded = got !== null;
+  const seq = useRef(0);
+  // 옛 백엔드(배열)로 확인되면 커서 방식 — cursors[p-1] = p쪽 마지막 id(다음 쪽 before)
+  const legacy = useRef(false);
+  const cursors = useRef<number[]>([]);
 
-  const fetchPage = useCallback(
-    async (before?: number) => {
-      setLoading(true);
-      try {
-        const p: AuditParams = { ...filters, since: toIso(filters.since), until: toIso(filters.until), limit: PAGE, before };
-        const page = await api.audit(p);
-        page.forEach((r) => rowCache.set(r.id, r));
-        setRows((prev) => (before ? [...prev, ...page] : page));
-        setHasMore(page.length === PAGE);
-        setLoaded(true);
-        setError(null);
-      } catch (e) {
-        setError(e);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [filters],
-  );
+  const run = useCallback(async (r: Req) => {
+    const my = ++seq.current;
+    setLoading(true);
+    try {
+      const base: AuditParams = { ...r.filters, since: toIso(r.filters.since), until: toIso(r.filters.until), limit: r.size };
+      const q: AuditParams = legacy.current ? { ...base, before: r.page > 1 ? cursors.current[r.page - 2] : undefined } : { ...base, offset: (r.page - 1) * r.size };
+      const res = await api.auditPage(q);
+      if (my !== seq.current) return;
+      const old = Array.isArray(res);
+      if (old) legacy.current = true;
+      const items = old ? res : res.items;
+      items.forEach((x) => rowCache.set(x.id, x));
+      if (items.length) cursors.current[r.page - 1] = items[items.length - 1].id;
+      setGot({ rows: items, total: old ? null : res.total, page: r.page, size: r.size, hasNext: old ? items.length === r.size : (r.page - 1) * r.size + items.length < res.total });
+      setError(null);
+    } catch (e) {
+      if (my === seq.current) setError(e);
+    } finally {
+      if (my === seq.current) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const t = window.setTimeout(() => void fetchPage(), 0);
+    const t = window.setTimeout(() => void run(req), 0);
     return () => window.clearTimeout(t);
-  }, [fetchPage]);
+  }, [req, run]);
 
   const failing = !!error && !loaded;
-  const retry = useCallback(() => void fetchPage(), [fetchPage]);
+  const retry = useCallback(() => void run(req), [run, req]);
   useAutoRetry(failing, error, retry);
+  // 재조회: 이전 행은 그대로, 머리 위 2px 진행 띠
+  const busy = useBusy(loading && loaded);
+
+  const columns = useMemo<Column<AuditEntry>[]>(
+    () => [
+      { key: 'id', label: '#', num: true, sort: (a) => a.id, short: true },
+      { key: 'time', label: '시각', sort: (a) => Date.parse(a.event.timestamp), short: true },
+      { key: 'container', label: '컨테이너 · 패키지', sort: (a) => (a.install ? a.install.label : a.event.containerName), short: true },
+      { key: 'kind', label: '종류', sort: (a) => a.event.kind, short: true },
+      { key: 'detail', label: '상세', sort: (a) => detailOf(a.event) },
+      { key: 'rule', label: '규칙', sort: (a) => a.ruleId, short: true },
+      { key: 'level', label: '탐지 결과', sort: (a) => LEVEL_RANK[levelOf(a)], short: true },
+      { key: 'decision', label: '판정', sort: (a) => (a.caseId ? (caseOf.get(a.caseId)?.decision ?? null) : null), short: true },
+    ],
+    [caseOf],
+  );
+  const kit = useTableKit({ columns, sort: { key: 'id', dir: 'desc' } });
+  const { sorted } = kit;
+  const rows = useMemo(() => (got ? sorted(got.rows) : []), [got, sorted]);
 
   const opened = useRef(false);
   useEffect(() => {
-    if (!autoOpen || opened.current || !loaded || !rows.length) return;
+    if (!autoOpen || opened.current || !got || !got.rows.length) return;
     opened.current = true;
-    const first = rows.find((r) => levelOf(r) === 'killed') ?? rows[0];
+    const first = got.rows.find((r) => levelOf(r) === 'killed') ?? got.rows[0];
     onOpen(first.id, true);
-  }, [autoOpen, loaded, rows, onOpen]);
+  }, [autoOpen, got, onOpen]);
+
+  const from = got && got.rows.length ? (got.page - 1) * got.size + 1 : 0;
+  const to = got ? (got.page - 1) * got.size + got.rows.length : 0;
 
   return (
     <>
       {!!error && loaded && <LoadError error={error} what="감사 로그" compact />}
+      <BusyBar on={busy} />
       <div data-fill="" className="min-h-0 flex-1 overflow-auto" data-testid="audit-scroll">
         {failing ? (
           <ListError error={error} what="감사 로그" onRetry={retry} retrying={loading} />
-        ) : !loaded ? (
+        ) : !got ? (
           <Skeleton rows={8} />
-        ) : rows.length === 0 ? (
+        ) : got.rows.length === 0 ? (
           filtered ? (
             <EmptyState icon={SearchX} title="조건에 맞는 기록 없음" actions={<ClearFiltersButton onClick={onClear} />} />
           ) : (
             <EmptyState icon={ScrollText} title="아직 위반 기록이 없습니다" hint="정책에 걸린 행동이 있으면 여기에 쌓입니다. 정상 이벤트는 저장하지 않습니다." />
           )
         ) : (
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs text-slate-500">
-              <tr>
-                {['#', '시각', '컨테이너 · 패키지', '종류', '상세', '규칙', '탐지 결과', '판정'].map((h) => (
-                  <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+          <table className="sg-table" data-table="audit">
+            <SortHead columns={columns} sort={kit.sort} onSort={kit.sortBy} />
             <tbody>
               {rows.map((a) => {
                 const c = a.caseId ? caseOf.get(a.caseId) : undefined;
                 const install = a.install ?? null;
+                const level = levelOf(a);
                 return (
                   <tr
                     key={a.id}
                     {...rowKeys(() => onOpen(a.id))}
                     data-audit={a.id}
+                    data-level={level}
                     aria-selected={String(a.id) === selectedId}
                     onClick={() => onOpen(a.id)}
-                    className={`cursor-pointer border-b border-slate-100 hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${
-                      String(a.id) === selectedId ? 'bg-indigo-50' : ''
-                    }`}
+                    className={`cursor-pointer hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${String(a.id) === selectedId ? 'bg-indigo-50' : ''}`}
                   >
-                    <td className="num px-3 py-2 text-right text-xs text-slate-400">{a.id}</td>
-                    <td className="num px-3 py-2 font-mono text-xs whitespace-nowrap text-slate-600">{fmtDateTime(a.event.timestamp)}</td>
-                    <td className="max-w-52 truncate px-3 py-2 whitespace-nowrap" title={a.event.containerName}>
+                    {/* 11/04e 막대: 격리된 행만(위험색) */}
+                    <td data-col="id" className="num num-col tk-short text-xs text-slate-400" style={barStyle(level === 'killed' && 'danger')}>
+                      {a.id}
+                    </td>
+                    <td data-col="time" className="num tk-short font-mono text-xs text-slate-600">
+                      {fmtDateTime(a.event.timestamp)}
+                    </td>
+                    <td data-col="container" className="tk-short max-w-52 truncate" title={a.event.containerName}>
                       {install ? (
                         <span className="flex items-center gap-1.5">
-                          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] text-indigo-700">설치 검사</span>
+                          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-700">설치 검사</span>
                           <span className="truncate font-mono text-slate-800">{install.label}</span>
                         </span>
                       ) : (
                         <span className="font-medium text-slate-800">{a.event.containerName}</span>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td data-col="kind" className="tk-short">
                       <KindBadge kind={a.event.kind} />
                     </td>
-                    <td className="w-full max-w-0 truncate px-3 py-2 font-mono text-xs text-slate-600" title={detailOf(a.event)}>
+                    <td data-col="detail" className="tk-fill font-mono text-xs text-slate-600" title={detailOf(a.event)}>
                       {detailOf(a.event)}
                     </td>
-                    <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{a.ruleId}</td>
-                    <td className="px-3 py-2">
+                    <td data-col="rule" className="tk-short font-mono text-xs">
+                      {a.ruleId}
+                    </td>
+                    <td data-col="level" className="tk-short">
                       <VerdictBadge v={a} />
                     </td>
-                    <td className="px-3 py-2" data-col="decision">
+                    <td data-col="decision" className="tk-short">
                       {c ? <DecisionBadge decision={c.decision} /> : <span className="text-xs text-slate-300">—</span>}
                     </td>
                   </tr>
@@ -320,19 +387,23 @@ function Violations({
             </tbody>
           </table>
         )}
-        {hasMore && (
-          <div className="p-3 text-center">
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => void fetchPage(rows[rows.length - 1]?.id)}
-              className="rounded-md border border-slate-300 px-4 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              <RotateCw className={`mr-1 inline size-3.5 ${loading ? 'sg-spin' : ''}`} aria-hidden />더 보기
-            </button>
-          </div>
-        )}
       </div>
+      {got && (
+        <PagerSlot edge={edge}>
+          <TablePager
+            name="audit"
+            total={got.total}
+            from={from}
+            to={to}
+            page={got.page}
+            size={got.size}
+            hasPrev={got.page > 1}
+            hasNext={got.hasNext}
+            onPage={(page) => setReq((r) => ({ ...r, page: Math.max(1, page) }))}
+            onSize={(size) => setReq((r) => ({ ...r, page: 1, size }))}
+          />
+        </PagerSlot>
+      )}
     </>
   );
 }
@@ -483,13 +554,14 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
   const changes = useLoad(load);
   const failing = !!changes.error && !changes.data;
   useAutoRetry(failing, changes.error, changes.reload);
+  const kit = useTableKit({ columns: HISTORY_COLUMNS, sort: { key: 'at', dir: 'desc' } });
   const s = since ? new Date(since).getTime() : -Infinity;
   const u = until ? new Date(until).getTime() : Infinity;
   const inRange = (iso: string) => {
     const t = new Date(iso).getTime();
     return t >= s && t <= u;
   };
-  const items = [
+  const items: HistoryItem[] = [
     ...(cases ?? [])
       .filter((c) => c.decidedAt && c.decision !== 'pending')
       .map((c) => ({
@@ -498,7 +570,7 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
         kind: '판정',
         badge: <DecisionBadge decision={c.decision} />,
         text: `${SOURCE_LABEL[c.source] ?? c.source} ${caseLabel(c)} — ${DECISION_LABEL[c.decision]}${c.note ? ` · ${c.note}` : ''}`,
-        href: scanHref(c),
+        href: scanHref(c) as string | null,
         by: c.decidedBy ?? '—',
         reason: '',
       })),
@@ -531,27 +603,21 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
             <EmptyState icon={HistoryIcon} title="판정 · 변경 기록 없음" hint="판정 · 제안 적용 · 정책 편집 · 차단 해제가 여기에 남습니다." />
           )
         ) : (
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs text-slate-500">
-              <tr>
-                {['시각', '종류', '내용', '처리자'].map((h) => (
-                  <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+          <table className="sg-table" data-table="history">
+            <SortHead columns={HISTORY_COLUMNS} sort={kit.sort} onSort={kit.sortBy} />
             <tbody>
-              {items.map((x) => (
-                <tr key={x.key} className="border-b border-slate-100" data-history={x.key}>
-                  <td className="num px-3 py-2 font-mono text-xs whitespace-nowrap text-slate-600">{fmtDateTime(x.at)}</td>
-                  <td className="px-3 py-2 text-xs whitespace-nowrap">
+              {kit.sorted(items).map((x) => (
+                <tr key={x.key} data-history={x.key}>
+                  <td data-col="at" className="num tk-short font-mono text-xs text-slate-600">
+                    {fmtDateTime(x.at)}
+                  </td>
+                  <td data-col="kind" className="tk-short text-xs">
                     <span className="flex items-center gap-1.5">
                       <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">{x.kind}</span>
                       {x.badge}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-slate-700">
+                  <td data-col="text" className="text-slate-700">
                     {x.text}
                     {x.href && (
                       <>
@@ -567,7 +633,9 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-xs whitespace-nowrap text-slate-500">{x.by}</td>
+                  <td data-col="by" className="tk-short text-xs text-slate-500">
+                    {x.by}
+                  </td>
                 </tr>
               ))}
             </tbody>

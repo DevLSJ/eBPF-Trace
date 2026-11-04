@@ -45,7 +45,7 @@ export function EvidenceView({ a }: { a: AuditEntry }) {
             title={
               <span className="flex items-center gap-2">
                 컨테이너 <span className="font-mono">{shortId(cid)}</span>
-                {current ? <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] text-indigo-700">이 기록</span> : <span className="text-[11px] font-normal text-slate-400">같은 이름 · 다른 실행</span>}
+                {current ? <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-700">이 기록</span> : <span className="text-xs font-normal text-slate-400">같은 이름 · 다른 실행</span>}
               </span>
             }
           >
