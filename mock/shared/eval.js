@@ -249,11 +249,15 @@
   function modelCard(md) {
     if (!md) return card('model', '모델 비교', none('모델'));
     const p = md.protocol || {};
+    // 11/04c — 선택 모델은 보정 기준으로 고른 것. 시험 F1 이 그보다 높은 규칙 후보(id 가 rule 로 시작)가 있으면 표 아래 한 줄
+    const pref = (md.candidates || []).find((x) => x.id === md.preferredId);
+    const ruleWins = !!pref && (md.candidates || []).some((x) => /^rule/.test(x.id) && x.id !== md.preferredId && x.test.f1 > pref.test.f1);
     return card('model', '모델 비교', [h('div', { class: 'grid-scroll' }, h('table', { class: 'table compact', 'data-table': 'models' },
       h('thead', null, h('tr', null, ['후보', '보정 F1', '시험 F1', '정밀도', '재현율', '오탐률'].map((t, i) => h('th', { class: i ? 'right' : null }, t)))),
       h('tbody', null, (md.candidates || []).map((x) => { const pick = x.id === md.preferredId; return h('tr', { 'data-model': x.id, class: pick ? 'ev-pick' : null, 'aria-current': pick ? 'true' : null },
-        h('td', null, x.label, pick ? h('span', { class: 'badge badge-info ev-pick-badge' }, '선택') : null),
+        h('td', null, x.label, pick ? h('span', { class: 'badge badge-info ev-pick-badge', title: '보정 구간에서 고른 모델 — 시험 구간은 선택에 쓰지 않았습니다' }, '보정 기준 선택') : null), // 11/04c
         ...[x.calibration.f1, x.test.f1].map((v) => h('td', { class: 'num right' }, dec(v))), ...[x.test.precision, x.test.recall, x.test.fpr].map((v) => h('td', { class: 'num right' }, pct(v)))); })))),
+      ruleWins ? h('p', { class: 'small', 'data-part': 'rule-wins' }, '시험에서는 규칙 판정이 우세 — 운영은 규칙') : null, // 11/04c
       h('p', { class: 'small muted', title: (md.features || []).join(', ') }, `seed ${p.seed} · ${p.split} · 선택 기준: ${p.selection} · 특징 ${fmt.num((md.features || []).length)}개`)],
     { actions: md.deploymentApproved ? null : h('span', { class: 'badge badge-level-normal', 'data-part': 'not-deployed', title: '선택 모델은 비교용이고 판정은 지금도 규칙으로 합니다' }, '운영 미적용') });
   }

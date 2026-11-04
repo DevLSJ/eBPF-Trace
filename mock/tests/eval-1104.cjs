@@ -12,6 +12,7 @@
    11 768 미만(390): 넘침 0 · 1열 · 지표 칸 2열 / 1440 넘침 0
    12 조회자도 같은 화면(읽기 전용)
    13 [11/04b] 격리 지연 지표 = 격리된 공격 전체(runtime.killLatencyMs) · 지연 카드 단계별 막대(killStagesMs + 시나리오 matchLatencyMs · evidenceMs · killApiMs p50, 툴팁 p95) · 옛 파일(키 없음) 폴백
+   14 [11/04c] 모델 비교: 시험 F1 이 선택 모델보다 높은 규칙 후보가 있으면 표 아래 「시험에서는 규칙 판정이 우세 — 운영은 규칙」(예시 값에는 없음)
    콘솔 오류 0(9번의 의도한 404 한 줄만 허용)
    실행: (mock/ 에서) python3 -m http.server 8767 --bind 127.0.0.1 → BASE=http://127.0.0.1:8767/index.html PLAYWRIGHT=<playwright 경로> node tests/eval-1104.cjs  (VERBOSE=1 · ONLY · SHOTS=1 → screenshots/eval-1104-*.png) */
 const fs = require('fs');
@@ -149,7 +150,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     ok((await pg.textContent('[data-part="confusion"]')).includes('정밀도 96.4% · 재현율 80.0% · F1 0.87'), '정밀도 줄');
     const models = await pg.$$eval('[data-table="models"] tbody tr', (els) => els.map((e) => [e.dataset.model, e.classList.contains('ev-pick'), [...e.querySelectorAll('td')].map((td) => td.textContent)]));
     ok(same(models.map((m) => [m[0], m[1]]), [['rules', false], ['logreg', false], ['hgb', true]]), `모델 ${JSON.stringify(models)}`);
-    ok(same(models[2][2], ['HGB선택', '0.90', '0.92', '94.7%', '90.0%', '1.7%']), `선택 행 ${JSON.stringify(models[2][2])}`);
+    ok(same(models[2][2], ['HGB보정 기준 선택', '0.90', '0.92', '94.7%', '90.0%', '1.7%']), `선택 행 ${JSON.stringify(models[2][2])}`); // 11/04c 배지 「선택」 → 「보정 기준 선택」
     ok(same(models[0][2], ['규칙 판정', '0.86', '0.86', '94.1%', '80.0%', '1.7%']), `규칙 행 ${JSON.stringify(models[0][2])}`);
     const head = await pg.$$eval('[data-table="models"] thead th', (els) => els.map((e) => e.textContent));
     ok(same(head, ['후보', '보정 F1', '시험 F1', '정밀도', '재현율', '오탐률']), `열 ${JSON.stringify(head)}`);
@@ -321,6 +322,19 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     ok(same(k2, ['200 / 400 ms', '공격 시나리오 중 가장 느린 값']), `폴백 지표 ${JSON.stringify(k2)}`);
     ok(await pg.locator(C).count() === 0 && await pg.locator('[data-part="latency"] [data-chart="latency"]').count() === 1, '옛 파일인데 단계 막대');
     ok(!(await pg.textContent('[data-part="latency"]')).includes('증거를 먼저 모으고'), '옛 파일인데 캡션');
+    await pg.closeAll();
+  });
+
+  // 11/04c — 선택(보정 기준) 모델보다 시험 F1 이 높은 규칙 후보(id 가 rule 로 시작)가 있으면 표 아래 한 줄. 예시 값은 HGB 가 가장 높아 없음
+  await T('14 [11/04c] 모델 비교: 규칙 후보가 시험 F1 에서 앞서면 「규칙 우세」 한 줄', async () => {
+    const pg = await newPage();
+    await go(pg, '/evaluation'); await ready(pg);
+    ok(await pg.locator('[data-part="model"] [data-part="rule-wins"]').count() === 0, '예시 값인데 규칙 우세 줄');
+    await pg.evaluate(() => { window.EVAL_SAMPLE.model.candidates[0].test.f1 = 0.95; UI.remount(); });
+    await pg.waitForTimeout(200); await ready(pg);
+    const line = await pg.locator('[data-part="model"] [data-part="rule-wins"]');
+    ok(await line.count() === 1 && (await line.textContent()).trim() === '시험에서는 규칙 판정이 우세 — 운영은 규칙', '규칙 우세 줄');
+    ok((await pg.textContent('[data-table="models"] tr[data-model="hgb"] .ev-pick-badge')).trim() === '보정 기준 선택', '선택 배지는 그대로 HGB');
     await pg.closeAll();
   });
 
