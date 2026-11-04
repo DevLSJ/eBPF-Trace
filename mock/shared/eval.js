@@ -240,7 +240,7 @@
   }
   function benignCard(rt) {
     if (!rt || !rt.benign) return card('benign', '정상 설치 위반', none('런타임'));
-    const b = rt.benign, rows = (b.items || []).filter((x) => x.result !== 'passed' || x.rule);
+    const b = rt.benign, rows = (b.items || []).filter((x) => !['pass', 'passed'].includes(x.result) || x.rule);
     return card('benign', `정상 설치 위반 ${fmt.num(rows.length)}건`, rows.length ? h('div', { class: 'grid-scroll' }, h('table', { class: 'table compact', 'data-table': 'benign-violations' },
       h('thead', null, h('tr', null, ['생태계', '패키지', '결과', '규칙', '걸린 시간'].map((t) => h('th', null, t)))),
       h('tbody', null, rows.map((x) => h('tr', { 'data-pkg': `${x.ecosystem}:${x.name}` }, h('td', null, x.ecosystem), h('td', { class: 'mono' }, x.name), h('td', null, U.INSTALL_STATUS[x.result] ? U.statusBadge(x.result) : x.result), h('td', { class: 'mono small' }, x.rule || '—'), h('td', { class: 'num' }, `${fmt.num(x.seconds)}초`))))))

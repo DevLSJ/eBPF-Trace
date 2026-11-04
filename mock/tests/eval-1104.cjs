@@ -338,6 +338,22 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     await pg.closeAll();
   });
 
+  await T('15 [11/04d] 실측 runtime.json(result pass/violation): 통과는 위반 목록에 넣지 않는다', async () => {
+    const pg = await newPage();
+    await go(pg, '/scans');
+    const real = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'bench', 'reports', 'runtime.json'), 'utf8'));
+    const d = await sample(pg); delete d.sample; d.runtime = real;
+    const origin = new URL(BASE).origin;
+    await pg.route(`${FAKE_API}/**`, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Credentials': 'true' }, body: JSON.stringify(d) }));
+    await pg.evaluate((api) => { UI.state.source = 'live'; UI.state.apiBase = api; }, FAKE_API);
+    await pg.evaluate(() => UI.go('#/evaluation'));
+    await ready(pg);
+    const want = real.benign.items.filter((x) => x.result !== 'pass').length;
+    ok((await pg.textContent('[data-part="benign"] .panel-head h2')).trim() === `정상 설치 위반 ${want}건`, `위반 제목(기대 ${want}건)`);
+    ok(await pg.locator('[data-table="benign-violations"] tbody tr').count() === want, '위반 목록 행 수');
+    await pg.closeAll();
+  });
+
   await br.close();
   const pass = results.filter((r) => r[0]).length;
   if (!process.env.VERBOSE) for (const r of results) if (!r[0]) console.log(`FAIL  ${r[1]}  — ${r[2]}`);
