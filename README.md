@@ -32,7 +32,7 @@ macOS/Windows 에서는 eBPF 를 못 돌리므로 `EVENT_SOURCE=mock` 이 데모
 make dev        # 백엔드(mock, :8000) + Vite(:5173) → http://127.0.0.1:5173
 ```
 
-- 로그인은 켜져 있다. 개발용 관리자 계정은 `admin` / Makefile `DEV_ADMIN_PW`(개발 전용 값), OTP 는 꺼져 있다(`DEV_AUTH`). 첫 로그인에서 비밀번호 변경 → 라이선스(숫자 16자리) 순서
+- 로그인은 켜져 있다. 개발용 관리자 계정은 `admin` / `admin`(Makefile `DEV_ADMIN_PW`)으로 바로 대시보드에 들어간다 — `DEV_AUTH` 가 OTP 를 끄고 `AUTH_DEV_MODE=true` 로 첫 로그인 비밀번호 변경 · 라이선스 단계를 건너뛴다. `AUTH_DEV_MODE` 는 `EVENT_SOURCE=mock` 에서만 켜진다(가젯 소스면 백엔드가 시작하지 않는다). `make sandbox-up`(실제 가젯)은 개발 모드 없이 원래 단계 그대로
 - 목업: `make mock` → http://127.0.0.1:8766 (`?source=sim&as=admin` 로 로그인 건너뜀)
 
 전체 스택을 컨테이너로 보려면 (nginx 경유, 실제 Postgres·Redis):

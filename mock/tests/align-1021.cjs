@@ -12,7 +12,7 @@
    3 패키지 묶기(ScanPackages.tsx): 키 매니저:이름@버전 · 버전 칸 하나 · 정렬 취약 → 이름 → 버전 · 「차단됨」은 매니저:이름(버전 무관) · 선택 수는 고를 수 있는 것만 · 확인 문구
    4 인증 감사 이름 = 서버(model.AuthAudit): action · actor · target · ok, 쿼리 action · failed=1 · before=<id>. 필터는 주소에 남기지 않는다(화면 상태만, 10/21 결정)
    실행: (mock/ 에서) python3 -m http.server 8767 --bind 127.0.0.1 → BASE=http://127.0.0.1:8767/index.html PLAYWRIGHT=<playwright 경로> [API=http://127.0.0.1:8011] node tests/align-1021.cjs   (VERBOSE=1 · ONLY · SHOTS=1)
-   live 백엔드: backend 에서 EVENT_SOURCE=mock BACKEND_PORT=8011 ALLOWED_ORIGINS=http://127.0.0.1:8767 AUTH_OTP_REQUIRED=false ADMIN_INITIAL_PASSWORD=<Makefile DEV_ADMIN_PW> go run ./cmd/server */
+   live 백엔드: backend 에서 EVENT_SOURCE=mock BACKEND_PORT=8011 ALLOWED_ORIGINS=http://127.0.0.1:8767 AUTH_OTP_REQUIRED=false AUTH_DEV_MODE=true ADMIN_INITIAL_PASSWORD=<Makefile DEV_ADMIN_PW> go run ./cmd/server */
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');

@@ -60,7 +60,7 @@ tools/     sg-install
 
 | 명령 | 내용 |
 |---|---|
-| `make dev` | 백엔드(mock 이벤트, :8000, 로그인 켜짐 · OTP만 끔 · 개발용 관리자 비밀번호는 Makefile `DEV_AUTH`) + Vite(:5173) |
+| `make dev` | 백엔드(mock 이벤트, :8000, 로그인 켜짐 · `admin`/`admin` 으로 바로 대시보드 — Makefile `DEV_AUTH` 가 OTP 를 끄고 `AUTH_DEV_MODE=true`(mock 소스 전용)로 비밀번호 변경 · 라이선스 단계를 건너뜀) + Vite(:5173) |
 | `make mock` | 목업 :8766 (**8765는 참고 제품 목업 — 끄지 않는다**). 병렬 회귀는 8767 · 8768 |
 | `make test` | 백엔드 vet · race 테스트 + 프론트 lint · build |
 | `cd frontend && npx playwright test` | React e2e(가짜 백엔드, CI 에도 있음) |
