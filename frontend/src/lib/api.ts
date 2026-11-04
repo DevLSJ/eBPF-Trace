@@ -13,6 +13,7 @@ import type {
   DemoRun,
   DemoScenario,
   DemoState,
+  Evaluation,
   Evidence,
   Info,
   InstallSession,
@@ -161,6 +162,12 @@ export const api = {
   previewDecision: (id: string, decision: Exclude<Decision, 'pending'>) => request<DecisionPreview>(`/cases/${enc(id)}/preview`, json('POST', { decision })),
   proposals: (state?: string) => request<Proposal[]>(`/proposals${qs({ state })}`),
   preview: (id: string) => request<Preview>(`/proposals/${enc(id)}/preview`, { method: 'POST' }),
+  // 평가(11/04): bench 결과 {static, runtime, model, modelAll} — 결과가 없으면 404 → null(빈 상태). 조회자도 읽는다
+  evaluation: () =>
+    request<Evaluation>('/evaluation').catch((e: unknown) => {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }),
   // 공급망 검사(10/16): 시작 · 차단은 관리자
   scans: () => request<Scan[]>('/scans'),
   scan: (id: string) => request<Scan>(`/scans/${enc(id)}`),

@@ -1,4 +1,4 @@
-import { ChevronsLeft, ChevronsRight, CircleHelp, FileClock, LayoutDashboard, ListTree, Menu, Network, PackageSearch, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
+import { ChartColumn, ChevronsLeft, ChevronsRight, CircleHelp, FileClock, LayoutDashboard, ListTree, Menu, Network, PackageSearch, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useCases } from '../hooks/cases-context';
@@ -30,6 +30,7 @@ const groups: { label?: string; items: NavItem[] }[] = [
     items: [
       { to: '/installs', label: '설치 검사', icon: PackageSearch },
       { to: '/scans', label: '공급망 검사', icon: ScanSearch },
+      { to: '/evaluation', label: '평가', icon: ChartColumn }, // 11/04 — 공급망 검사 · 설치 검사를 재는 화면이라 같은 묶음 끝
     ],
   },
   {
@@ -53,6 +54,7 @@ const TITLES: Record<string, string> = {
   '/': '대시보드',
   '/installs': '설치 검사',
   '/scans': '공급망 검사',
+  '/evaluation': '평가',
   '/events': '이벤트',
   '/topology': '토폴로지',
   '/policies': '정책',

@@ -1,0 +1,238 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-11-04T01:33:01Z",
+  "dataset": {
+    "source": "bench/reports/static-items.jsonl",
+    "sha256": "078a77e4cb10a9f5701fc394e13bc3aba09c7c128069bbc2d486afbdd0ada567",
+    "rows": 1194,
+    "used": {
+      "pypiMalicious": 297,
+      "pypiBenign": 599,
+      "npmMalicious": 297
+    },
+    "excluded": "verdict == error 행(검사 실패)"
+  },
+  "protocol": {
+    "seed": 42,
+    "split": "packageGroup 그룹 분할 60/20/20 (PyPI)",
+    "selection": "보정 FPR≤5% 에서 F1 최대 · 시험은 선택에 쓰지 않음",
+    "sha256": "20eeeea90907df2642c4e45a819fff7de4b2d45753ba7d5bd7e4e9399d76cfa0",
+    "selectionSha256": "c2808d54827f57981bdc6ef89f32f44af576413014d241693ffd6a241944e91b",
+    "scope": "pypi",
+    "partitions": {
+      "train": {
+        "malicious": 172,
+        "benign": 360
+      },
+      "calibration": {
+        "malicious": 66,
+        "benign": 119
+      },
+      "test": {
+        "malicious": 59,
+        "benign": 120
+      }
+    },
+    "groups": {
+      "train": 344,
+      "calibration": 114,
+      "test": 115
+    }
+  },
+  "features": [
+    "score",
+    "installThreats",
+    "threats",
+    "capabilities",
+    "rule:capability-filesystem-browser",
+    "rule:capability-filesystem-delete",
+    "rule:capability-filesystem-read",
+    "rule:capability-filesystem-write-executable",
+    "rule:capability-network-download",
+    "rule:capability-network-lolbas",
+    "rule:capability-network-outbound",
+    "rule:capability-process-hooks",
+    "rule:capability-process-schedule",
+    "rule:capability-process-spawn",
+    "rule:capability-runtime-clipboard",
+    "rule:threat-filesystem-autostart",
+    "rule:threat-filesystem-read",
+    "rule:threat-network-exfil-messenger",
+    "rule:threat-network-exfil-sysinfo",
+    "rule:threat-network-exfiltration",
+    "rule:threat-network-outbound-shady-links",
+    "rule:threat-process-download-exec",
+    "rule:threat-process-hooks",
+    "rule:threat-process-injection-dll",
+    "rule:threat-process-memory",
+    "rule:threat-process-powershell-encoded",
+    "rule:threat-process-spawn-silent",
+    "rule:threat-runtime-dynamic-loader",
+    "rule:threat-runtime-environment-read",
+    "rule:threat-runtime-obfuscation",
+    "rule:threat-runtime-obfuscation-base64exec",
+    "rule:threat-runtime-obfuscation-chr",
+    "rule:threat-runtime-obfuscation-steganography",
+    "rule:threat-runtime-obfuscation-unicode",
+    "rule:threat-runtime-system-info",
+    "rule:threat-setup-import-aliasing",
+    "rule:threat-setup-network-in-install",
+    "rule:threat-setup-suspicious-imports"
+  ],
+  "candidates": [
+    {
+      "id": "rule-malicious",
+      "label": "규칙 판정 (악성)",
+      "calibration": {
+        "f1": 0.7478,
+        "fpr": 0.0504,
+        "precision": 0.8776,
+        "recall": 0.6515
+      },
+      "test": {
+        "f1": 0.8991,
+        "precision": 0.98,
+        "recall": 0.8305,
+        "fpr": 0.0083
+      },
+      "confusion": {
+        "tp": 49,
+        "fn": 10,
+        "fp": 1,
+        "tn": 119
+      }
+    },
+    {
+      "id": "rule-suspicious",
+      "label": "규칙 판정 (악성+주의)",
+      "calibration": {
+        "f1": 0.7967,
+        "fpr": 0.0672,
+        "precision": 0.8596,
+        "recall": 0.7424
+      },
+      "test": {
+        "f1": 0.9381,
+        "precision": 0.9815,
+        "recall": 0.8983,
+        "fpr": 0.0083
+      },
+      "confusion": {
+        "tp": 53,
+        "fn": 6,
+        "fp": 1,
+        "tn": 119
+      }
+    },
+    {
+      "id": "logreg",
+      "label": "로지스틱 회귀",
+      "calibration": {
+        "f1": 0.8819,
+        "fpr": 0.042,
+        "precision": 0.918,
+        "recall": 0.8485
+      },
+      "test": {
+        "f1": 0.855,
+        "precision": 0.7778,
+        "recall": 0.9492,
+        "fpr": 0.1333
+      },
+      "confusion": {
+        "tp": 56,
+        "fn": 3,
+        "fp": 16,
+        "tn": 104
+      },
+      "threshold": 0.26815
+    },
+    {
+      "id": "hgb",
+      "label": "HistGradientBoosting",
+      "calibration": {
+        "f1": 0.8871,
+        "fpr": 0.0252,
+        "precision": 0.9483,
+        "recall": 0.8333
+      },
+      "test": {
+        "f1": 0.8661,
+        "precision": 0.8088,
+        "recall": 0.9322,
+        "fpr": 0.1083
+      },
+      "confusion": {
+        "tp": 55,
+        "fn": 4,
+        "fp": 13,
+        "tn": 107
+      },
+      "threshold": 0.351307
+    }
+  ],
+  "preferredId": "hgb",
+  "deploymentApproved": false,
+  "npmReference": {
+    "note": "정상 표본 없음 — 재현율만",
+    "rows": 297,
+    "recall": {
+      "rule-malicious": 0.6532,
+      "rule-suspicious": 0.771,
+      "logreg": 0.8316,
+      "hgb": 0.7205
+    }
+  },
+  "topFeatures": [
+    {
+      "feature": "score",
+      "weight": 2.026
+    },
+    {
+      "feature": "rule:capability-process-hooks",
+      "weight": 1.2584
+    },
+    {
+      "feature": "rule:threat-runtime-obfuscation-base64exec",
+      "weight": 1.0961
+    },
+    {
+      "feature": "rule:capability-filesystem-read",
+      "weight": -1.0551
+    },
+    {
+      "feature": "rule:threat-process-powershell-encoded",
+      "weight": 0.8435
+    },
+    {
+      "feature": "rule:threat-setup-suspicious-imports",
+      "weight": 0.7778
+    },
+    {
+      "feature": "rule:capability-network-outbound",
+      "weight": -0.7556
+    },
+    {
+      "feature": "rule:threat-network-exfil-sysinfo",
+      "weight": 0.7474
+    },
+    {
+      "feature": "rule:capability-process-spawn",
+      "weight": 0.6842
+    },
+    {
+      "feature": "rule:capability-process-schedule",
+      "weight": -0.6695
+    }
+  ],
+  "limits": [
+    "표본이 작다 — 시험 구간은 악성 59행 · 정상 120행(그룹 115개)뿐이라 후보 간 F1 차이 몇 %p 는 우연 범위 안일 수 있다.",
+    "악성 데이터셋(malicious-software-packages-dataset)과 입력을 만든 GuardDog 이 모두 DataDog 제작이다 — GuardDog 규칙이 이 표본에 맞춰져 있을 수 있어 규칙 · 모델 모두 낙관적이다.",
+    "정상 표본은 인기 PyPI 300개(wheel + 같은 패키지 sdist)뿐이다 — 덜 알려진 정상 패키지 · npm 정상에서의 오탐률은 재지 않았다.",
+    "모델은 운영에 적용하지 않는다(deploymentApproved=false) — 서버 판정 · kill 은 그대로 scan/verdict.go 규칙이다.",
+    "입력이 GuardDog 결과(점수 · 규칙 · 개수)라 GuardDog 이 못 보는 악성은 모델도 못 본다 — 모델은 GuardDog 신호의 재가중일 뿐이다.",
+    "같은 정상 패키지의 wheel · sdist 는 같은 구간에 묶었다 — 정상 행 수는 패키지 수의 약 2배라 정상 쪽 표본이 서로 독립이 아니다.",
+    "npm 은 정상 표본이 없어 학습에서 뺐다 — npmReference 는 PyPI 모델을 그대로 적용한 재현율(악성 297행)이고, npm 전용 규칙은 PyPI 학습 어휘에 없어 모델 입력에서 빠진다.",
+    "files · bytes(파일 수 · 크기)와 testFindings 는 입력에서 뺐다 — sdist 행에 값이 없거나 포장 형식 단서라서(프로토콜 2판, 결과를 보기 전 수정)."
+  ]
+}

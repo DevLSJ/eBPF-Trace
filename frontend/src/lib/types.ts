@@ -609,3 +609,108 @@ export interface AuthAuditEntry {
   ok: boolean;
   detail: string;
 }
+
+// ── 11/04 평가(GET /api/evaluation) — bench/reports 의 static.json · runtime.json · model.json 그대로(없는 쪽 null, 결과 없음 404) ──
+export interface EvalStat {
+  p50: number;
+  p95: number;
+  max?: number;
+  n?: number;
+}
+export type EvalVerdict = 'malicious' | 'suspicious' | 'vulnerable' | 'clean' | 'error';
+export interface EvalMetrics {
+  detectionRate?: number | null;
+  detectionRateWithSuspicious?: number | null;
+  falsePositiveRate?: number | null;
+  falsePositiveRateWithSuspicious?: number | null;
+  precision?: number | null;
+  recall?: number | null;
+  f1?: number | null;
+}
+export interface EvalConfusion {
+  tp: number;
+  fn: number;
+  fp: number;
+  tn: number;
+}
+export interface EvalStatic {
+  schema: number;
+  generatedAt: string;
+  scanner?: { guarddog?: string; osv?: string; backendCommit?: string };
+  datasets?: { id: string; label: string; kind: string; source?: string; sourceCommit?: string | null; files?: number; listSha256?: string }[];
+  sets?: {
+    id: string;
+    kind: string;
+    ecosystem?: string;
+    primary?: boolean;
+    total: number;
+    scanned: number;
+    skipped?: Record<string, number>;
+    verdicts: Partial<Record<EvalVerdict, number>>;
+    rates?: Record<string, number>;
+  }[];
+  metrics?: EvalMetrics;
+  confusion?: EvalConfusion;
+  metricsByEcosystem?: Record<string, { metrics: EvalMetrics; confusion?: EvalConfusion }>;
+  rules?: { rule: string; maliciousHits: number; benignHits: number; installTime?: boolean }[];
+  durationsSec?: { p50: number; p95: number };
+  limits?: string[];
+}
+export interface EvalScenario {
+  id: string;
+  label: string;
+  kind: string; // attack | control
+  runs: number;
+  detected: number;
+  killed: number;
+  rule?: string | null;
+  latencyMs?: EvalStat | null;
+  matchLatencyMs?: EvalStat | null;
+  evidenceMs?: EvalStat | null;
+  killApiMs?: EvalStat | null;
+  dryRun?: boolean | null;
+}
+export interface EvalRuntime {
+  schema: number;
+  generatedAt: string;
+  host?: { name: string; kernel: string; discovery: string; igVersion?: string; backendCommit?: string };
+  benign?: {
+    installs: number;
+    byEcosystem?: Record<string, number>;
+    violations: number;
+    falsePositiveRate: number;
+    items?: { ecosystem: string; name: string; result: string; rule?: string | null; seconds?: number }[];
+  };
+  scenarios?: EvalScenario[];
+  killLatencyMs?: (EvalStat & { scenarios?: string[] }) | null;
+  killStagesMs?: { match?: EvalStat | null; evidence?: EvalStat | null; killApi?: EvalStat | null } | null;
+  limits?: string[];
+}
+export interface EvalCandidate {
+  id: string;
+  label: string;
+  threshold?: number | null;
+  calibration: { f1: number; fpr?: number; precision?: number; recall?: number };
+  test: { f1: number; precision: number; recall: number; fpr: number };
+  confusion?: EvalConfusion;
+}
+export interface EvalModel {
+  schema: number;
+  generatedAt?: string;
+  protocol?: { seed?: number; split?: string; selection?: string; scope?: string; partitions?: Record<string, { malicious: number; benign: number }> };
+  features?: string[];
+  candidates?: EvalCandidate[];
+  preferredId?: string;
+  deploymentApproved?: boolean;
+  npmReference?: { note?: string; rows?: number; recall?: Record<string, number> };
+  topFeatures?: { feature: string; weight: number }[];
+  limits?: string[];
+  // model-all.json(PyPI + npm) — 시험 구간을 생태계별로 나눈 지표
+  byEcosystem?: Record<string, { test?: { malicious: number; benign: number }; candidates?: Record<string, { test: EvalCandidate['test'] }> }>;
+}
+export interface Evaluation {
+  static: EvalStatic | null;
+  runtime: EvalRuntime | null;
+  model: EvalModel | null;
+  modelAll?: EvalModel | null;
+}

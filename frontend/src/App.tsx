@@ -6,6 +6,7 @@ import { StreamProvider } from './hooks/stream-context';
 import { ToastProvider } from './hooks/toast-context';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { ScansPage } from './features/scans/ScansPage';
+import { EvaluationPage } from './features/evaluation/EvaluationPage';
 import { InstallsPage } from './features/installs/InstallsPage';
 import { EventsPage } from './features/events/EventsPage';
 import { TopologyPage } from './features/topology/TopologyPage';
@@ -26,6 +27,7 @@ export default function App() {
                 <Route index element={<DashboardPage />} />
                 <Route path="installs" element={<InstallsPage />} />
                 <Route path="scans" element={<ScansPage />} />
+                <Route path="evaluation" element={<EvaluationPage />} />
                 <Route path="events" element={<EventsPage />} />
                 <Route path="topology" element={<TopologyPage />} />
                 <Route path="policies" element={<PoliciesPage />} />
