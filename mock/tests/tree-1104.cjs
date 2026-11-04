@@ -233,6 +233,19 @@ const EXTRA_FINDINGS = [
     }
   });
 
+  await T('9b [11/04f] 위협 목록: 폴더 안 파일은 「파일이름:줄」만 보이고 전체 경로는 툴팁 · 줄 번호가 잘리지 않는다', async () => {
+    const pg = await newPage();
+    await openScan(pg);
+    const rows = await pg.$$eval('[data-part="findings"] [data-finding]', (els) => els.map((e) => { const a = e.firstElementChild; return { loc: e.dataset.loc, text: a.textContent, title: a.title, clipped: a.scrollWidth > a.clientWidth + 1 }; }));
+    const deep = rows.filter((r) => r.loc.includes('/'));
+    ok(deep.length > 0, '폴더 안 위협 행이 없음');
+    for (const r of deep) {
+      const base = r.loc.split('/').pop();
+      ok(r.text === base && r.title === r.loc && !r.clipped, `행 ${JSON.stringify(r)}`);
+    }
+    await pg.done();
+  });
+
   await T('콘솔 오류 0', async () => { ok(consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | ')); });
 
   await br.close();

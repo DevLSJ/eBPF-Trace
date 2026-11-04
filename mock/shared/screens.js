@@ -545,7 +545,7 @@
         const vulnN = d.vulns.reduce((n, v) => n + v.count, 0);
         const cmd = t.kind === 'package' ? `sg-install ${t.manager} ${t.name}${t.version ? (t.manager === 'pip' ? '==' : '@') + t.version : ''}` : null;
         const finding = (f) => h('li', null, h('button', { type: 'button', class: `finding f-${f.test ? 'test' : f.category} ${focusLoc === `${f.file}:${f.line}` ? 'on' : ''}`, 'data-finding': '', 'data-category': f.category, 'data-test': f.test ? 'true' : null, 'data-loc': `${f.file}:${f.line}`, onclick: () => { focusLoc = `${f.file}:${f.line}`; draw(); } },
-          h('span', { class: 'mono small', title: `${f.file}:${f.line}` }, `${f.file}:${f.line}`), h('b', null, f.message), h('span', { class: 'mono small muted' }, f.rule, f.test ? h('span', { class: 'badge badge-test' }, '테스트 코드') : null)));
+          h('span', { class: 'mono small', title: `${f.file}:${f.line}` }, `${f.file.split('/').pop()}:${f.line}`) /* 11/04f: 폴더 안 파일은 이름:줄만(줄 번호가 잘리지 않게) — 전체 경로는 툴팁 · 트리 */, h('b', null, f.message), h('span', { class: 'mono small muted' }, f.rule, f.test ? h('span', { class: 'badge badge-test' }, '테스트 코드') : null)));
         return U.sheet({ kind: 'scan', title: t.label, onClose: () => select(''), body: [
           h('section', { class: `sheet-section scan-verdict sv-box-${tone}`, 'data-part': 'verdict' },
             h('div', { class: 'row-inline' }, h('span', { class: `badge sv-${tone}` }, vk), d.risk ? h('span', { class: 'small' }, '위험 점수 ', h('b', { class: 'num' }, d.risk.score.toFixed(1)), ` / 10 · ${RISK_LABEL[d.risk.label] || d.risk.label}`) : null),
