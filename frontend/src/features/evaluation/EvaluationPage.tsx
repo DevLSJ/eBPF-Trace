@@ -1,6 +1,8 @@
 import { ChartColumn, Download } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { StatusBadge } from '../../components/Badges';
+import { KpiCard } from '../../components/KpiCard';
+import type { Stripe } from '../../lib/kpi';
 import { useAutoRetry } from '../../components/list/hooks';
 import { EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
 import { PageActions } from '../../components/PageActions';
@@ -103,19 +105,9 @@ function Tag({ id, k, v, title }: { id: string; k: string; v: string; title?: st
     </span>
   );
 }
-function Kpi({ k, label, value, unit, sub }: { k: string; label: string; value: string; unit?: string; sub: string }) {
-  return (
-    <div data-kpi={k} className="sg-card grid min-w-0 content-start gap-0.5 rounded-[var(--r-md)] px-3.5 py-3 shadow-none">
-      <span className="truncate text-xs text-text-3">{label}</span>
-      <b data-value="" className="num text-2xl leading-tight font-semibold tracking-tight text-text">
-        {value}
-        {unit && <span className="text-base font-normal text-text-3">{unit}</span>}
-      </b>
-      <span data-hint="" className="text-[11px] text-text-3 [word-break:keep-all]">
-        {sub}
-      </span>
-    </div>
-  );
+// 지표 칸 — 11/04e KPI 카드 모양(띠 · 아이콘 칩 · 28/700, R1 11/04). 글자 값(퍼센트 · 「—」)이라 카운트업은 없다
+function Kpi({ k, label, value, unit, sub, icon, stripe }: { k: string; label: string; value: string; unit?: string; sub: string; icon: string; stripe: Stripe }) {
+  return <KpiCard k={k} label={label} icon={icon} stripe={stripe} text={value} unit={unit} sub={sub} wrapSub className="eval-kpi" />;
 }
 
 // ── 머리 ──
@@ -172,17 +164,19 @@ function Kpis({ d }: { d: Evaluation }) {
   const by = b?.byEcosystem ? Object.entries(b.byEcosystem).map(([k, v]) => `${k} ${fmtNum(v)}`).join(', ') : '';
   return (
     <div data-part="kpis" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-      <Kpi k="static-detection" label="정적 악성 탐지율" value={st ? pct(mt.detectionRate) : '—'} sub={c ? hint(`악성 ${fmtNum(c.tp)} / ${fmtNum(c.tp + c.fn)}`, `주의 포함 ${pct(mt.detectionRateWithSuspicious)}`) : '정적 결과 없음'} />
+      <Kpi k="static-detection" icon="⌕" stripe="accent" label="정적 악성 탐지율" value={st ? pct(mt.detectionRate) : '—'} sub={c ? hint(`악성 ${fmtNum(c.tp)} / ${fmtNum(c.tp + c.fn)}`, `주의 포함 ${pct(mt.detectionRateWithSuspicious)}`) : '정적 결과 없음'} />
       <Kpi
         k="static-fpr"
+        icon="✓"
+        stripe="info"
         label="정상 오탐률"
         value={st ? pct(mt.falsePositiveRate) : '—'}
         sub={c ? hint(`인기 패키지 ${fmtNum(c.fp)} / ${fmtNum(c.fp + c.tn)}`, mt.falsePositiveRateWithSuspicious != null && `주의 포함 ${pct(mt.falsePositiveRateWithSuspicious)}`) : '정적 결과 없음'}
       />
-      <Kpi k="runtime-detection" label="런타임 공격 탐지율" value={a.runs ? pct(a.detected / a.runs) : '—'} sub={a.runs ? hint(`공격 ${fmtNum(a.detected)} / ${fmtNum(a.runs)}회`, `${a.list.length}종`) : '런타임 결과 없음'} />
-      <Kpi k="runtime-fpr" label="정상 설치 오탐률" value={b ? pct(b.falsePositiveRate) : '—'} sub={b ? hint(`위반 ${fmtNum(b.violations)} / ${fmtNum(b.installs)}건`, by) : '런타임 결과 없음'} />
-      <Kpi k="latency" label="탐지 → 격리 p50 / p95" value={lat ? fmtNum(lat.p50) : '—'} unit={lat ? ` / ${fmtNum(lat.p95)} ms` : undefined} sub={lat ? lat.hint : '격리한 시나리오 없음'} />
-      <Kpi k="model-f1" label="모델 시험 F1" value={pref ? dec(pref.test.f1) : '—'} sub={pref ? `${pref.label}${md?.deploymentApproved ? '' : ' · 운영 미적용'}` : '모델 결과 없음'} />
+      <Kpi k="runtime-detection" icon="▣" stripe="accent" label="런타임 공격 탐지율" value={a.runs ? pct(a.detected / a.runs) : '—'} sub={a.runs ? hint(`공격 ${fmtNum(a.detected)} / ${fmtNum(a.runs)}회`, `${a.list.length}종`) : '런타임 결과 없음'} />
+      <Kpi k="runtime-fpr" icon="✓" stripe="info" label="정상 설치 오탐률" value={b ? pct(b.falsePositiveRate) : '—'} sub={b ? hint(`위반 ${fmtNum(b.violations)} / ${fmtNum(b.installs)}건`, by) : '런타임 결과 없음'} />
+      <Kpi k="latency" icon="◷" stripe="warn" label="탐지 → 격리 p50 / p95" value={lat ? fmtNum(lat.p50) : '—'} unit={lat ? ` / ${fmtNum(lat.p95)} ms` : undefined} sub={lat ? lat.hint : '격리한 시나리오 없음'} />
+      <Kpi k="model-f1" icon="◔" stripe="ok" label="모델 시험 F1" value={pref ? dec(pref.test.f1) : '—'} sub={pref ? `${pref.label}${md?.deploymentApproved ? '' : ' · 운영 미적용'}` : '모델 결과 없음'} />
     </div>
   );
 }
