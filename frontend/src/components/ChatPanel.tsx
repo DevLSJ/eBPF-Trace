@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { api, ApiError, errorText } from '../lib/api';
 import { splitHref } from '../lib/nav';
 import type { ChatLink } from '../lib/types';
+import { CodeWindow } from './CodeWindow';
 
 // 「AI 도우미」 탭 본문 (10/20 W13, 목업 mock/shared/chat.js). POST /api/chat → 로컬 모델(Ollama qwen2.5:3b)의 답을 SSE 로 받아 흘려 보인다.
 // - 판정 상태(facts.status) · 관련 화면(links)은 모델이 아니라 서버가 붙인 값 — 상태 칩은 모델 문장보다 우선이라고 표시한다
@@ -59,7 +60,9 @@ export function ChatPanel({ active }: { active: boolean }) {
   const [elapsed, setElapsed] = useState(0);
   const ctl = useRef<AbortController | null>(null);
   const gen = useRef(0); // 지우기마다 올린다 — 지운 뒤 늦게 온 조각이 새 대화에 붙지 않게
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // 새로 붙은 줄만 등장 애니메이션(.is-new) — 이 번호부터가 새 줄. 저장돼 있던 줄 · 흘려보내며 다시 그리는 줄은 움직이지 않는다
+  const [newFrom, setNewFrom] = useState(() => msgs.length);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -101,6 +104,7 @@ export function ChatPanel({ active }: { active: boolean }) {
       setText('');
       setElapsed(0);
       setBusy(true);
+      setNewFrom(msgs.length);
       setMsgs((ms) => [...ms, { role: 'user', text: q }, { role: 'assistant', text: '', pending: true }]);
       try {
         const r = await api.chat(
@@ -134,6 +138,7 @@ export function ChatPanel({ active }: { active: boolean }) {
     gen.current++;
     ctl.current?.abort();
     setMsgs([]);
+    setNewFrom(0);
     setNotice(null);
   };
 
@@ -145,17 +150,18 @@ export function ChatPanel({ active }: { active: boolean }) {
           지우기
         </button>
       </header>
-      <div ref={listRef} data-part="chat-list" aria-live="polite" className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+      {/* 11/04f 채팅 화면 ⓑ(R1 11/04) — 말풍선 대신 한 턴 한 줄 띠(사용자 --surface-2 · 도우미 --surface), 대화 칸만 스크롤 */}
+      <div ref={listRef} data-part="chat-list" aria-live="polite" className="chat-list min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         {msgs.length === 0 ? (
-          <div data-part="chat-greeting" className="max-w-[85%] rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">
-            무엇이든 물어보세요. 판정 대기 · 위반 기록 · 정책 · 공급망 검사 결과를 찾아 답합니다.
+          <div data-part="chat-greeting" className="chat-msg assistant">
+            <div className="bubble">무엇이든 물어보세요. 판정 대기 · 위반 기록 · 정책 · 공급망 검사 결과를 찾아 답합니다.</div>
           </div>
         ) : (
-          msgs.map((m, i) => <Message key={i} m={m} elapsed={elapsed} />)
+          msgs.map((m, i) => <Message key={i} m={m} elapsed={elapsed} fresh={i >= newFrom} />)
         )}
       </div>
       {msgs.length === 0 && (
-        <div data-part="chat-sugg" className="flex shrink-0 flex-wrap gap-1.5 px-3 pb-2">
+        <div data-part="chat-sugg" className="flex shrink-0 flex-wrap gap-1.5 px-3 pt-2.5 pb-2">
           {SUGGEST.map((q) => (
             <button
               key={q}
@@ -173,30 +179,32 @@ export function ChatPanel({ active }: { active: boolean }) {
           {notice}
         </p>
       )}
-      <div className="flex shrink-0 items-end gap-2 border-t border-slate-100 px-3 pt-2">
-        <textarea
+      {/* 11/04f 채팅 화면 ⓒ — 한 줄 입력칸(반경 7 · 말줄임 · Enter 로 보내기, Shift+Enter 줄바꿈은 없어짐 — 사용자 승인) + 30×30 보내기(빈 입력이면 잠김 · 흐림).
+          답을 기다리는 동안 같은 자리가 「멈추기」(React 기존 기능 유지) */}
+      <div className="chat-form shrink-0 border-t border-slate-100">
+        <input
           ref={inputRef}
-          rows={2}
+          type="text"
           maxLength={500}
           aria-label="질문"
           placeholder="예: pkg-reqeusts 는 왜 격리됐어?"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
               e.preventDefault();
               void ask();
             }
           }}
-          className="min-w-0 flex-1 resize-none rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+          className="chat-input"
         />
         {busy ? (
-          <button type="button" onClick={() => ctl.current?.abort()} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
-            멈추기
+          <button type="button" onClick={() => ctl.current?.abort()} aria-label="멈추기" title="멈추기" className="chat-send chat-stop">
+            ■
           </button>
         ) : (
-          <button type="button" onClick={() => void ask()} className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700">
-            보내기
+          <button type="button" onClick={() => void ask()} aria-label="보내기" title="보내기 (Enter)" disabled={!text.trim()} className="chat-send">
+            ➤
           </button>
         )}
       </div>
@@ -205,27 +213,49 @@ export function ChatPanel({ active }: { active: boolean }) {
   );
 }
 
-function Message({ m, elapsed }: { m: Msg; elapsed: number }) {
+// 답 속 코드 블록(```종류 [파일명] … ```) → 코드 창. 흘려보내는 중 안 닫힌 블록도 그때까지의 코드를 창에 둔다(11/04f)
+const FENCE = /```([^\n`]*)\n([\s\S]*?)(?:\n?```|$)/g;
+function rich(text: string) {
+  if (!text.includes('```')) return text;
+  const out: ReactNode[] = [];
+  let at = 0;
+  FENCE.lastIndex = 0;
+  for (let m = FENCE.exec(text); m; m = FENCE.exec(text)) {
+    if (m.index > at) out.push(text.slice(at, m.index).replace(/\n$/, ''));
+    const [lang, name] = m[1].trim().split(/\s+/);
+    out.push(
+      <CodeWindow key={m.index} name={name || null} lang={lang || null}>
+        {m[2]}
+      </CodeWindow>,
+    );
+    at = FENCE.lastIndex;
+    if (!m[0].length) break;
+  }
+  if (at < text.length) out.push(text.slice(at).replace(/^\n/, ''));
+  return out;
+}
+
+function Message({ m, elapsed, fresh }: { m: Msg; elapsed: number; fresh: boolean }) {
   if (m.role === 'user')
     return (
-      <div data-part="chat-msg" data-role="user" className="flex justify-end">
-        <div data-part="chat-bubble" className="max-w-[85%] rounded-lg bg-indigo-600 px-3 py-2 text-sm whitespace-pre-wrap text-white">
+      <div data-part="chat-msg" data-role="user" className={`chat-msg user${fresh ? ' is-new' : ''}`}>
+        <div data-part="chat-bubble" className="bubble">
           {m.text}
         </div>
       </div>
     );
   const facts = m.error && m.facts?.length ? m.facts : null;
   return (
-    <div data-part="chat-msg" data-role="assistant" className="max-w-[92%]">
+    <div data-part="chat-msg" data-role="assistant" className={`chat-msg assistant${fresh ? ' is-new' : ''}`}>
       {m.status && (
-        <div data-part="chat-status" title={STATUS_TITLE} className="mb-1 inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-xs text-slate-800">
+        <div data-part="chat-status" title={STATUS_TITLE} className="inline-flex w-fit items-center gap-1.5 rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-xs text-slate-800">
           <span className="rounded bg-indigo-100 px-1 text-[10px] font-semibold text-indigo-700">서버 확정</span>
           {m.status}
         </div>
       )}
       {(m.text || m.pending) && (
-        <div data-part="chat-bubble" className="rounded-lg bg-slate-100 px-3 py-2 text-sm whitespace-pre-wrap text-slate-800">
-          {m.text || (
+        <div data-part="chat-bubble" className="bubble">
+          {rich(m.text) || (
             <span data-part="chat-thinking" className="text-slate-500">
               생각하는 중… {elapsed}초
             </span>

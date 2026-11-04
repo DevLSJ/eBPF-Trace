@@ -147,7 +147,7 @@ test.describe('도우미 · AI 도우미 탭 (10/20 W13)', () => {
     await expect(chat(page).getByRole('button', { name: '멈추기' })).toBeVisible();
     await push(page, 'done', {});
     await page.evaluate(() => (window as unknown as { __sse: Sse }).__sse.close());
-    await expect(chat(page).getByRole('button', { name: '보내기' })).toBeEnabled();
+    await expect(chat(page).getByRole('button', { name: '보내기' })).toBeVisible(); // R1 11/04: 보내기 복귀 — 빈 입력이면 잠김(11/04f 채팅 결정)
     await expect(chat(page).getByRole('button', { name: '멈추기' })).toHaveCount(0);
     await expect(last(page).locator('[data-part="chat-error"]')).toHaveCount(0);
   });
@@ -165,7 +165,7 @@ test.describe('도우미 · AI 도우미 탭 (10/20 W13)', () => {
     await expect(last(page).locator('[data-part="chat-stopped"]')).toHaveText('멈췄습니다');
     await expect(last(page).locator('[data-part="chat-bubble"]')).toHaveText('정책은 ');
     expect(await page.evaluate(() => (window as unknown as { __sse: Sse }).__sse.aborted)).toBe(true);
-    await expect(chat(page).getByRole('button', { name: '보내기' })).toBeEnabled();
+    await expect(chat(page).getByRole('button', { name: '보내기' })).toBeVisible(); // R1 11/04: 보내기 복귀 — 빈 입력이면 잠김(11/04f 채팅 결정)
     await expect(last(page).locator('[data-part="chat-error"]')).toHaveCount(0);
   });
 
@@ -244,7 +244,7 @@ test.describe('도우미 · AI 도우미 탭 (10/20 W13)', () => {
 
     await ask(page, '다시 알려 줘');
     await expect(msgs(page)).toHaveCount(4);
-    await expect(chat(page).getByRole('button', { name: '보내기' })).toBeEnabled();
+    await expect(chat(page).getByRole('button', { name: '보내기' })).toBeVisible(); // R1 11/04: 보내기 복귀 — 빈 입력이면 잠김(11/04f 채팅 결정)
     expect(chatBodies(backend).at(-1).history).toEqual([
       { role: 'user', text: '판정 대기 요약해 줘' },
       { role: 'assistant', text: '판정 대기 건이 3개 있습니다. 각 건을 열어 판정하세요.' },
@@ -260,7 +260,7 @@ test.describe('도우미 · AI 도우미 탭 (10/20 W13)', () => {
     await openChat(page);
     await expect(msgs(page)).toHaveCount(30);
     await ask(page, '세 번째 질문');
-    await expect(chat(page).getByRole('button', { name: '보내기' })).toBeEnabled();
+    await expect(chat(page).getByRole('button', { name: '보내기' })).toBeVisible(); // R1 11/04: 보내기 복귀 — 빈 입력이면 잠김(11/04f 채팅 결정)
     const h = chatBodies(backend).at(-1).history as { role: string; text: string }[];
     expect(h).toHaveLength(6);
     expect(h.at(-1)).toEqual({ role: 'assistant', text: 'm39' });
@@ -274,7 +274,7 @@ test.describe('도우미 · AI 도우미 탭 (10/20 W13)', () => {
     await openChat(page);
     await ask(page, '판정 대기 요약해 줘');
     await expect(msgs(page)).toHaveCount(2);
-    await expect(chat(page).getByRole('button', { name: '보내기' })).toBeEnabled();
+    await expect(chat(page).getByRole('button', { name: '보내기' })).toBeVisible(); // R1 11/04: 보내기 복귀 — 빈 입력이면 잠김(11/04f 채팅 결정)
     await chat(page).getByRole('button', { name: '대화 지우기' }).click();
     await expect(msgs(page)).toHaveCount(0);
     await expect(chat(page).locator('[data-part="chat-greeting"]')).toBeVisible();

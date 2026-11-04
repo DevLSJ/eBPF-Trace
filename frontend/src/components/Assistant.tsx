@@ -1,4 +1,4 @@
-import { ShieldCheck, X } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useCases } from '../hooks/cases-context';
@@ -155,11 +155,15 @@ export function Assistant() {
         hidden={!open}
         className={`fixed right-6 bottom-[88px] z-[60] h-[min(600px,calc(100vh-112px))] w-[min(400px,calc(100vw-3rem))] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[var(--sh-hover)] ${open ? 'flex' : 'hidden'}`}
       >
-        <header className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-2.5">
-          <ShieldCheck className="size-4 text-indigo-600" aria-hidden />
-          <b className="text-sm text-slate-900">도우미</b>
-          <button type="button" className="ml-auto rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기" onClick={() => close()}>
-            <X className="size-4" />
+        {/* 11/04f 채팅 화면 ⓐ(R1 11/04) — 머리줄 40px(두 탭 공통): 제목(보조색 · 말줄임) · 닫기 40×40 = 2px 선 두 개(45° · 135°) */}
+        <header className="assist-head flex shrink-0 items-center border-b border-slate-100">
+          <span className="assist-title">
+            <ShieldCheck className="mr-1.5 inline size-4 align-[-3px] text-accent" aria-hidden />
+            도우미
+          </span>
+          <button type="button" className="assist-close" aria-label="닫기" onClick={() => close()}>
+            <span className="x-line" />
+            <span className="x-line" />
           </button>
         </header>
         <div role="tablist" aria-label="도우미" className="grid shrink-0 border-b border-slate-200" style={{ gridTemplateColumns: `repeat(${TABS.length}, 1fr)` }}>
