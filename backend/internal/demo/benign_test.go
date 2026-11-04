@@ -64,11 +64,11 @@ func eventKey(ev model.Event) string {
 
 // 11/04 — 시나리오 목록 끝에 새 시나리오가 붙는다(기존 순서 유지), 400 문구도 함께
 func TestDemoScenarioList1104(t *testing.T) {
-	want := "all shell revshell direct-ip domain dns-exfil benign"
+	want := "all shell revshell direct-ip domain dns-exfil benign chain"
 	if got := strings.Join(demo.Scenarios, " "); got != want {
 		t.Fatalf("scenarios: %q, want %q", got, want)
 	}
-	if demo.ErrScenario.Error() != "scenario: all | shell | revshell | direct-ip | domain | dns-exfil | benign" {
+	if demo.ErrScenario.Error() != "scenario: all | shell | revshell | direct-ip | domain | dns-exfil | benign | chain" {
 		t.Fatalf("ErrScenario: %q", demo.ErrScenario)
 	}
 }

