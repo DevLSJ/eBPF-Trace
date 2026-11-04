@@ -51,7 +51,7 @@ export function EventFeed({ verdicts, selectedKey, onSelect, empty = '이벤트 
   return (
     <div className="@container flex h-full flex-col">
       {full && (
-        <div className="flex h-9 shrink-0 items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 text-xs font-medium text-slate-500">
+        <div data-part="feed-head" className="flex h-9 shrink-0 items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 text-xs font-bold text-slate-500">
           <span className={`w-16 shrink-0 ${MID_ONLY}`}>시각</span>
           <span className={CTR_COL}>컨테이너</span>
           {showImage && <span className={`w-40 shrink-0 ${WIDE_ONLY}`}>이미지</span>}

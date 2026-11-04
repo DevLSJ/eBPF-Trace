@@ -499,6 +499,14 @@ test.describe('D 다른 표 — 변경 이력 · 설정 · 이벤트', () => {
     await expect(page.locator('li[data-key]').first()).toBeVisible();
     expect(await rowH(page, 'li[data-key]')).toBe(40);
   });
+
+  test('이벤트 피드: 머리줄 굵기 700(표 머리 규칙, 11/04 메인)', async ({ page, backend }) => {
+    void backend;
+    await page.goto('/events');
+    await expect(page.locator('li[data-key]').first()).toBeVisible();
+    const w = await page.locator('[data-part="feed-head"]').evaluate((e) => getComputedStyle(e).fontWeight);
+    expect(w).toBe('700');
+  });
 });
 
 // ── E 평가 ──
