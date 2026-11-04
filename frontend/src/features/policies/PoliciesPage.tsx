@@ -5,6 +5,7 @@ import { DecisionBadge, ScopeChip } from '../../components/Badges';
 import { KindBadge } from '../../components/KindBadge';
 import { ConfirmDialog } from '../../components/Modal';
 import { Empty, LoadError, Panel } from '../../components/Panel';
+import { CodeWindow, CW_BODY } from '../../components/CodeWindow';
 import { PolicyEditor } from '../../components/PolicyEditor';
 import { useCases } from '../../hooks/cases-context';
 import { useStream } from '../../hooks/stream-context';
@@ -359,15 +360,19 @@ function BulkYaml({ canWrite, ruleCount, onApplied }: { canWrite: boolean; ruleC
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 p-4">
-        <textarea
-          className="h-full w-full rounded-md border border-slate-300 p-3 font-mono text-xs leading-relaxed focus:border-indigo-500 focus:outline-none"
-          value={text ?? '불러오는 중…'}
-          disabled={text === null}
-          spellCheck={false}
-          onChange={(e) => setText(e.target.value)}
-          readOnly={!canWrite}
-          aria-label="전체 정책 YAML"
-        />
+        {/* 11/04f 코드 창(R1 11/04) — policies.yaml · 입력칸이 곧 코드 영역 */}
+        <CodeWindow name="policies.yaml" body="raw" fill>
+          <textarea
+            className={CW_BODY}
+            wrap="off"
+            value={text ?? '불러오는 중…'}
+            disabled={text === null}
+            spellCheck={false}
+            onChange={(e) => setText(e.target.value)}
+            readOnly={!canWrite}
+            aria-label="전체 정책 YAML"
+          />
+        </CodeWindow>
       </div>
       <div className="flex shrink-0 items-center gap-3 border-t border-slate-100 px-5 py-3">
         {msg && <span className={`min-w-0 flex-1 truncate text-sm ${msg.ok ? 'text-emerald-600' : 'text-red-600'}`}>{msg.text}</span>}

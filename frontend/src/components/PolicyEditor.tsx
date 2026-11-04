@@ -7,6 +7,7 @@ import { ID_PATTERN, NUM_FIELDS, summarize, toDraft, toRule, type Draft, type Li
 import { SEQ_KILL_WARN, SEQ_NO_PREVIEW, SEQ_YAML_ONLY, seqSummary } from '../lib/sequence';
 import { ConfirmDialog } from './Modal';
 import { PolicyEasy } from './PolicyEasy';
+import { CodeWindow, CW_BODY } from './CodeWindow';
 import { isSingleRule, KINDS, type DirectIp, type Kind, type Level, type Preview, type Rule } from '../lib/types';
 
 // 고급 폼의 조건 필드 이름 · 설명(쉬운 설정은 components/PolicyEasy.tsx)
@@ -210,16 +211,20 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
         {mode === 'easy' ? (
           <PolicyEasy draft={draft} onChange={change} isNew={isNew} enforceKill={enforceKill} fresh={freshMark} />
         ) : mode === 'yaml' ? (
-          <textarea
-            className={`${input} h-full min-h-80 font-mono text-xs leading-relaxed`}
-            value={yamlText}
-            spellCheck={false}
-            onChange={(e) => {
-              setYamlText(e.target.value);
-              setSaved(false);
-            }}
-            aria-label="정책 YAML"
-          />
+          // 11/04f 코드 창(R1 11/04) — <id>.yaml · 입력칸이 곧 코드 영역(wrap off · 포커스 링 · 422 표시 그대로) · 남은 높이 채움
+          <CodeWindow name={draft.id ? `${draft.id}.yaml` : null} lang="YAML" body="raw" fill>
+            <textarea
+              className={CW_BODY}
+              wrap="off"
+              value={yamlText}
+              spellCheck={false}
+              onChange={(e) => {
+                setYamlText(e.target.value);
+                setSaved(false);
+              }}
+              aria-label="정책 YAML"
+            />
+          </CodeWindow>
         ) : (
           <div className="grid max-w-2xl gap-4 text-sm">
             <Field label="id" hint="소문자·숫자·하이픈">

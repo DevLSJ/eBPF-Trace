@@ -389,7 +389,7 @@ test.describe('I 증거 · 도메인 조회 없는 IP 직접 연결', () => {
     await expect(ev3.locator('[data-part="evidence-partial"]')).toHaveText('일부만 모음');
     await expect(ev3.locator('[data-part="evidence-error"]')).toContainText('docker top: 컨테이너가 이미 멈춤');
     await expect(ev3.locator('[data-part="evidence-logs"]')).toContainText('Running setup.py');
-    await expect(ev3.locator('[data-part="evidence-changes"] [data-change-kind]')).toHaveText(['A', 'C', 'D']);
+    await expect(ev3.locator('[data-part="evidence-changes"] [data-change-kind]')).toHaveText(['C', 'A', 'D']); // R1 11/04: 여러 폴더(/root · /tmp · /var)라 파일 트리 — 폴더 이름순
     await expect(groups.first().locator('[data-evidence="ev-2"] [data-part="evidence-procs"]')).toContainText('pip install ./reqeusts');
     await expect(groups.nth(1)).toContainText('older run');
     await noPageOverflow(page);

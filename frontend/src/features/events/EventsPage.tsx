@@ -8,6 +8,7 @@ import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } f
 import { useAutoRetry } from '../../components/list/hooks';
 import { PageActions } from '../../components/PageActions';
 import { Panel } from '../../components/Panel';
+import { CodeWindow } from '../../components/CodeWindow';
 import { PolicyStarts } from '../../components/PolicyStarts';
 import { Section, Sheet } from '../../components/Sheet';
 import { VerdictBadge } from '../../components/VerdictBadge';
@@ -248,7 +249,8 @@ function EventDetail({ v }: { v: StreamVerdict }) {
       )}
       {v.matched && <PolicyStarts event={v.event} ruleId={v.ruleId} />}
       <Section title="원본 JSON">
-        <pre className="sg-code overflow-x-auto p-3 font-mono text-xs leading-relaxed">{JSON.stringify(verdict, null, 2)}</pre>
+        {/* 11/04f 코드 창(R1 11/04) — event.json · JSON · 가로 스크롤 */}
+        <CodeWindow name="event.json">{JSON.stringify(verdict, null, 2)}</CodeWindow>
       </Section>
     </div>
   );

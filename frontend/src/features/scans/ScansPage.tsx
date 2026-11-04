@@ -1,11 +1,13 @@
 import { OctagonX, Play, ScanSearch, SearchX } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFilters } from '../../hooks/useFilters';
 import { dest } from '../../lib/nav';
 import { FilterChips } from '../../components/FilterChips';
 import { rowKeys, useAutoRetry } from '../../components/list/hooks';
 import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
+import { CodeWindow, CW_BODY } from '../../components/CodeWindow';
+import { FileTree, type TreeItem } from '../../components/FileTree';
 import { ConfirmDialog } from '../../components/Modal';
 import { Empty, LoadError, Panel } from '../../components/Panel';
 import { Section, Sheet } from '../../components/Sheet';
@@ -268,7 +270,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
       <li key={`${f.rule}:${loc}`}>
         <button type="button" data-finding="" data-category={f.category} data-test={f.test ? 'true' : undefined} data-loc={loc} onClick={() => setFocus(loc)}
           className={`grid w-full grid-cols-[minmax(0,12rem)_minmax(0,1fr)] gap-x-2 rounded-md border border-l-4 px-2.5 py-1.5 text-left text-xs hover:bg-slate-50 ${f.test ? 'border-l-slate-300' : f.category === 'threat' ? 'border-l-red-500' : 'border-l-amber-400'} ${focus === loc ? 'bg-slate-50' : ''}`}>
-          <span className="truncate font-mono" title={loc}>{loc}</span>
+          <span className="truncate font-mono" title={loc}>{`${f.file.split('/').pop()}:${f.line}`}</span>{/* 11/04f: 폴더 안 파일은 이름:줄만(줄 번호가 잘리지 않게) — 전체 경로는 툴팁 · 트리 · 코드 창 이름 */}
           <b className="font-medium text-slate-800" title={f.message}>{RULE_KO[f.rule] ?? f.message}</b>
           <span className="col-start-2 font-mono text-slate-400">
             {f.rule}
@@ -376,12 +378,18 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
   );
 }
 
+// 코드 보기(11/04f, R1 11/04) — 왼쪽 위협 파일 트리 · 오른쪽 코드 창(파일명 = 경로, 줄 번호 · 위협 줄 · 기능 줄 · mark 그대로). 768 미만은 트리가 위
+// 위협 파일이 든 폴더는 처음부터 펼침, 파일마다 위협 개수 배지. 위협 목록 → 그 파일 · 그 줄(딥링크)이면 부모 폴더를 펼친다
+const NO_FILES: Record<string, string> = {};
 function CodeView({ s, focus, setFocus }: { s: Scan; focus: string; setFocus: (v: string) => void }) {
-  const files = s.files ?? {};
+  const files = s.files ?? NO_FILES;
   const paths = Object.keys(files);
   const box = useRef<HTMLDivElement>(null);
   const cur = paths.includes(focus.split(':')[0]) ? focus.split(':')[0] : paths[0];
   const focusLine = focus.startsWith(`${cur}:`) ? Number(focus.split(':')[1]) : 0;
+  const findings = s.findings;
+  const threatsIn = useCallback((p: string) => (findings ?? []).filter((f) => f.file === p && f.category === 'threat').length, [findings]);
+  const items = useMemo<TreeItem[]>(() => Object.keys(files).map((p) => { const n = threatsIn(p); return { path: p, badge: n ? { text: String(n), cls: 'ft-threat', title: `위협 ${n}곳` } : undefined }; }), [files, threatsIn]);
   useEffect(() => { box.current?.querySelector(`[data-line="${focusLine}"]`)?.scrollIntoView({ block: 'center' }); }, [focusLine, cur]);
   if (!paths.length) return <p className="text-xs text-slate-500" data-part="code">{s.status !== 'done' ? '검사 중…' : '위협이 나온 파일이 없어 코드를 보관하지 않았습니다(걸린 파일만 30일 보관).'}</p>;
   const at = (cat: string) => new Map((s.findings ?? []).filter((f) => f.file === cur && f.category === cat).map((f) => [f.line, f]));
@@ -390,31 +398,27 @@ function CodeView({ s, focus, setFocus }: { s: Scan; focus: string; setFocus: (v
   const mark = (text: string, f?: ScanFinding) => {
     const i = f?.match ? text.indexOf(f.match) : -1;
     if (!f || i < 0) return text;
-    return (<>{text.slice(0, i)}<mark className="rounded-sm bg-red-500 px-px text-white">{f.match}</mark>{text.slice(i + f.match.length)}</>);
+    return (<>{text.slice(0, i)}<mark>{f.match}</mark>{text.slice(i + f.match.length)}</>);
   };
   return (
-    <div data-part="code" className="grid gap-1.5">
-      {paths.length > 1 ? (
-        <div className="flex flex-wrap gap-1">{paths.map((p) => <button key={p} type="button" onClick={() => setFocus(`${p}:0`)} className={`rounded-full border px-2 py-0.5 font-mono text-[11px] ${p === cur ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'}`}>{p}</button>)}</div>
-      ) : (
-        <span className="font-mono text-[11px] text-slate-500">{cur}</span>
-      )}
-      <div ref={box} className="max-h-80 overflow-auto rounded-md bg-slate-900 text-xs leading-relaxed text-slate-200" role="region" aria-label={`${cur} 코드`}>
-        <pre className="m-0">
+    <div data-part="code" className="code-split">
+      <FileTree label="위협 파일" items={items} selected={cur} defaultOpen={(dir) => paths.some((p) => p.startsWith(`${dir}/`) && threatsIn(p) > 0)} onSelect={(p) => p !== cur && setFocus(`${p}:0`)} />
+      <CodeWindow name={cur} body="raw">
+        <div ref={box} className={`${CW_BODY} code-view`} role="region" aria-label={`${cur} 코드`}>
           {files[cur].split('\n').map((ln, i) => {
             const n = i + 1;
             const tf = thr.get(n);
             const cf = cap.get(n);
             return (
               <div key={n} data-line={n} title={tf ? `${tf.rule} — ${tf.message}` : cf ? `${cf.rule} — ${cf.message}` : undefined}
-                className={`grid grid-cols-[2.5rem_minmax(0,1fr)] ${tf ? 'hl-threat bg-red-600/35 shadow-[inset_3px_0_0_#ef4444]' : cf ? 'hl-cap bg-amber-500/20' : ''} ${n === focusLine ? 'focus outline-2 -outline-offset-2 outline-amber-400' : ''}`}>
-                <span className="pr-2.5 text-right text-slate-500 select-none">{n}</span>
-                <code className="pr-3 whitespace-pre">{mark(ln || ' ', tf ?? cf)}</code>
+                className={`code-line ${tf ? 'hl-threat' : cf ? 'hl-cap' : ''} ${n === focusLine ? 'focus' : ''}`}>
+                <span className="ln">{n}</span>
+                <code>{mark(ln || ' ', tf ?? cf)}</code>
               </div>
             );
           })}
-        </pre>
-      </div>
+        </div>
+      </CodeWindow>
     </div>
   );
 }

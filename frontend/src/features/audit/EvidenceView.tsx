@@ -6,6 +6,8 @@ import { Section } from '../../components/Sheet';
 import { useLoad } from '../../hooks/useLoad';
 import { api } from '../../lib/api';
 import { fmtDateTime, shortId } from '../../lib/format';
+import { CodeWindow } from '../../components/CodeWindow';
+import { FileTree } from '../../components/FileTree';
 import type { AuditEntry, Evidence } from '../../lib/types';
 
 const CHANGE_TONE: Record<string, [string, string]> = {
@@ -86,15 +88,24 @@ function EvidenceCard({ ev }: { ev: Evidence }) {
         <h4 className="mb-1 text-xs font-semibold text-slate-700">
           로그 <span className="font-normal text-slate-400">— 마지막 200줄</span>
         </h4>
-        <pre className="sg-code max-h-48 overflow-auto p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap" data-part="evidence-logs">
-          {ev.logs || '(비어 있음)'}
-        </pre>
+        {/* 11/04f 코드 창(R1 11/04) — 파일명 없음 · log · 줄바꿈 */}
+        <CodeWindow lang="log" wrap bodyClassName="ev-logs">
+          <span data-part="evidence-logs">{ev.logs || '(비어 있음)'}</span>
+        </CodeWindow>
       </div>
       <div>
         <h4 className="mb-1 text-xs font-semibold text-slate-700">
           파일 변경 <span className="font-normal text-slate-400">— docker diff (A 추가 · C 변경 · D 삭제)</span>
         </h4>
-        {changes.length ? (
+        {/* 11/04f 파일 트리(R1 11/04) — 여러 폴더에 걸치면 트리 + A · C · D 배지(폴더 모두 펼침 · 선택 없음), 1개이거나 한 폴더면 예전 표 */}
+        {changes.length > 1 && new Set(changes.map((c) => c.path.slice(0, c.path.lastIndexOf('/')))).size > 1 ? (
+          <FileTree
+            label="파일 변경"
+            part="evidence-changes"
+            selectable={false}
+            items={changes.map((c) => ({ path: c.path, diff: c.kind, badge: { text: c.kind, cls: `ev-${c.kind}`, title: CHANGE_TONE[c.kind]?.[1] ?? c.kind, attrs: { 'data-change-kind': '' } } }))}
+          />
+        ) : changes.length ? (
           <table className="w-full text-xs" data-part="evidence-changes">
             <tbody>
               {changes.map((c, i) => (

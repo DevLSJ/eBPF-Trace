@@ -463,6 +463,83 @@ th[aria-sort="descending"] .th-sort::after { content: '↓'; opacity: 1; color: 
 .slices.draw-in { transform-box: fill-box; transform-origin: center; animation: donut-in calc(var(--t-slow) * 2) var(--ease); }
 @keyframes donut-in { from { opacity: 0; transform: rotate(-40deg) scale(.92); } }
 
+/* ── 코드 창(11/04f 목업 U.codeWin, R1 11/04 — components/CodeWindow.tsx) ──
+   카드 = 1px 테두리 · 반경 12 · 옅은 그림자, 머리줄 = 점 3개(12px · 간격 8) + 파일명(고정폭 · 말줄임) + 종류 태그,
+   코드 영역 = 두 테마 모두 어두운 바탕(--code-*) · 13/1.5 · 패딩 14 · 반경 6 · 스크롤바 8px 둥근 손잡이.
+   hover: 읽기 전용은 그림자만 한 단계, 눌러서 여는 카드([data-click="1"])만 translateY(-5px) + --sh-hover + pointer(--t-base). reduced-motion 이면 이동 없음 */
+.code-win { display: flex; flex-direction: column; min-width: 0; max-width: 100%; margin: 0; padding: 0 8px 8px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--sh-1);
+  transition: box-shadow var(--t-base) var(--ease), transform var(--t-base) var(--ease); }
+.code-win:hover { box-shadow: var(--sh-2); }
+.code-win[data-click="1"] { cursor: pointer; }
+.code-win[data-click="1"]:hover { transform: translateY(-5px); box-shadow: var(--sh-hover); }
+.code-win[data-click="1"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cw-head { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 36px; padding: 0 4px; }
+.cw-dots { display: inline-flex; gap: 8px; flex-shrink: 0; }
+.cw-dot { display: block; width: 12px; height: 12px; border-radius: 50%; background: var(--win-close); }
+.cw-dot.cw-min { background: var(--win-min); } .cw-dot.cw-max { background: var(--win-max); }
+.cw-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 12.5px var(--mono); color: var(--text-2); }
+.cw-tag { flex-shrink: 0; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font-size: 12px; line-height: 20px; }
+/* 코드 영역 — 스크롤 요소. 전역 thin 스크롤바를 이 칸만 풀어 ::-webkit-scrollbar 8px 을 쓴다(Chromium 121+), Firefox 는 thin + 토큰 색 */
+.code-win .cw-body { flex: 1 1 auto; min-width: 0; min-height: 0; margin: 0; padding: 14px; border: 1px solid var(--code-border); border-radius: 6px; background: var(--code-bg); color: var(--code-fg);
+  font: 13px/1.5 var(--mono); white-space: pre; overflow: auto; scrollbar-width: auto; scrollbar-color: auto; }
+.code-win .cw-body pre, .code-win .cw-body code { margin: 0; font: inherit; color: inherit; white-space: inherit; }
+.code-win .cw-body::-webkit-scrollbar { width: 8px; height: 8px; }
+.code-win .cw-body::-webkit-scrollbar-track, .code-win .cw-body::-webkit-scrollbar-corner { background: transparent; }
+.code-win .cw-body::-webkit-scrollbar-thumb { background: var(--code-scroll); border-radius: var(--r-pill); }
+.code-win .cw-body::-webkit-scrollbar-thumb:hover { background: var(--code-scroll-hover); }
+@supports not selector(::-webkit-scrollbar) { .code-win .cw-body { scrollbar-width: thin; scrollbar-color: var(--code-scroll) transparent; } }
+.code-win[data-wrap="1"] .cw-body, .code-win[data-wrap="1"] .cw-body code, .code-win[data-wrap="1"] .cw-body pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.code-win mark { background: var(--danger); color: #fff; border-radius: 2px; padding: 0 1px; }
+/* 자리별: 공급망 검사 코드(줄 번호 · 위협 줄 강조) */
+.code-win .code-view { max-height: 300px; padding: 10px 0; white-space: normal; }
+.code-line { display: grid; grid-template-columns: 44px minmax(0, 1fr); }
+.code-line .ln { color: var(--code-muted); text-align: right; padding-right: 12px; user-select: none; }
+.code-line code { white-space: pre; padding-right: 14px; }
+.code-line.hl-threat { background: color-mix(in srgb, var(--danger) 30%, transparent); box-shadow: inset 3px 0 0 var(--danger); }
+.code-line.hl-cap { background: color-mix(in srgb, var(--warn) 20%, transparent); }
+.code-line.focus { outline: 2px solid var(--warn); outline-offset: -2px; }
+.code-win .cw-body.ev-logs { max-height: 240px; }
+/* 정책 YAML(편집 가능) — 입력칸이 곧 코드 영역. 가로 스크롤 유지(wrap=off) · 포커스 링 */
+.code-win textarea.cw-body { width: 100%; min-height: 320px; resize: none; }
+.code-win textarea.cw-body:focus { border-color: var(--code-border); outline: 2px solid var(--accent); outline-offset: 1px; }
+.code-win textarea.cw-body:disabled, .code-win textarea.cw-body:read-only { color: var(--code-muted); }
+.code-win.cw-fill { height: 100%; }
+/* AI 도우미 답 속 코드 블록 */
+.chat-msg .code-win { margin: 6px 0; white-space: normal; }
+.chat-msg .code-win .cw-body { max-height: 260px; }
+
+/* ── 파일 트리(11/04f 목업 U.fileTree, R1 11/04 — components/FileTree.tsx) ──
+   카드 = 1px · 반경 8 · 패딩 6 · 옅은 그림자. 하위 그룹 = 들여쓰기 11 + 세로 연결선 1px, 항목 앞 가로 연결선 11px. 행 28 · 패딩 4/8 · 반경 4 · 14px
+   펼침/접힘 = grid-template-rows 0fr ↔ 1fr(--t-slow), 접힌 그룹은 전환이 끝난 뒤 visibility hidden. reduced-motion 이면 즉시 */
+.ftree { min-width: 0; padding: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: var(--sh-1); overflow: auto; }
+.ft-tree, .ft-tree [role="group"] { margin: 0; padding: 0; list-style: none; }
+.ft-item { position: relative; outline: none; }
+.ft-row { display: flex; align-items: center; gap: 6px; height: 28px; min-width: 0; padding: 4px 8px; border-radius: 4px; font-size: 14px; line-height: 20px; color: var(--text); cursor: pointer; user-select: none;
+  transition: background var(--t-fast) var(--ease); }
+.ft-row:hover { background: var(--surface-2); }
+.ft-item[aria-selected="true"] > .ft-row { background: var(--accent-soft); color: var(--accent-text); font-weight: 500; }
+.ft-item:focus-visible > .ft-row { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ft-ico { flex: 0 0 16px; width: 16px; height: 16px; font-size: 16px; line-height: 16px; font-style: normal; text-align: center; color: var(--text-3); }
+.ft-ico::before { content: attr(data-icon); }
+.ft-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ft-badge { flex-shrink: 0; margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font: 600 12px/18px var(--mono); text-align: center; }
+.ft-badge.ft-threat { background: var(--danger-soft); color: var(--danger-text); }
+.ft-badge.ev-A { color: var(--ok); } .ft-badge.ev-C { color: var(--warn); } .ft-badge.ev-D { color: var(--danger); }
+.ft-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--t-slow) var(--ease); }
+.ft-item[aria-expanded="false"] > .ft-kids { grid-template-rows: 0fr; }
+.ft-kids > [role="group"] { min-height: 0; overflow: hidden; margin-left: 11px; border-left: 1px solid var(--border); visibility: visible; transition: visibility 0s; }
+.ft-item[aria-expanded="false"] > .ft-kids > [role="group"] { visibility: hidden; transition: visibility 0s linear var(--t-slow); }
+.ft-kids > [role="group"] > .ft-item { padding-left: 11px; }
+.ft-kids > [role="group"] > .ft-item::before { content: ''; position: absolute; left: 0; top: 14px; width: 11px; height: 1px; background: var(--border); }
+/* 공급망 검사: 왼쪽 트리 · 오른쪽 코드 창, 768 미만은 트리가 위 */
+.code-split { display: grid; grid-template-columns: minmax(140px, 32%) minmax(0, 1fr); gap: 10px; align-items: start; min-width: 0; }
+.code-split > .ftree { max-height: 352px; }
+@media (max-width: 767px) { .code-split { grid-template-columns: minmax(0, 1fr); } .code-split > .ftree { max-height: 200px; } }
+@media (prefers-reduced-motion: reduce) {
+  .code-win[data-click="1"]:hover { transform: none; }
+  .ft-item[aria-expanded="false"] > .ft-kids > [role="group"] { transition-delay: 0s; } /* 전역 규칙은 transition 을 끄지만 지연 값은 남는다 */
+}
+
 /* 움직임 줄이기: 전부 끔 */
 @media (prefers-reduced-motion: reduce) {
   *,
