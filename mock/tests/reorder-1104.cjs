@@ -13,7 +13,7 @@
    12 다크: 자리 표시 · 집힌 칸 색이 토큰(다크 accent · surface)
    13 390 터치: 서랍 사이드바에서 길게 눌러 끌기(서랍 열린 채 · 이동 없음 · 스크롤 없음) · KPI 2열 끌기 · 짧은 탭은 이동
    14 prefers-reduced-motion: 다른 항목 이동 애니메이션(transform) 없음
-   15 [EVAL_SORT=1] 평가 지표 6칸 끌기 · Alt+→ · 유지 · 기본 순서로
+   15 평가 지표 6칸 끌기 · Alt+→ · 유지 · 기본 순서로
    콘솔 오류 0
    실행: (mock/ 에서) python3 -m http.server 8768 --bind 127.0.0.1 → BASE=http://127.0.0.1:8768/index.html PLAYWRIGHT=<playwright 경로> node tests/reorder-1104.cjs
          (VERBOSE=1 · ONLY=정규식 · SHOTS=1 → screenshots/reorder-1104-{desktop,dark,mobile}.png · EVAL_SORT=1 → 15번) */
@@ -206,7 +206,8 @@ const EVAL_DEFAULT = ['static-detection', 'static-fpr', 'runtime-detection', 'ru
     const pg = await newPage();
     await go(pg, '/');
     await drag(pg, '.nav-link[data-to="/topology"]', '.nav-link[data-to="/events"]', { dy: -6 });
-    await pg.locator('.ov-kpis > [data-kpi="isolation"]').scrollIntoViewIfNeeded();
+    // 시뮬 데이터가 주기적으로 숫자 칸을 다시 그려 잡아 둔 요소가 교체될 수 있다 — 매번 새로 찾아 스크롤(11/04d 흔들림 수정)
+    await pg.evaluate(() => document.querySelector('.ov-kpis > [data-kpi="isolation"]').scrollIntoView({ block: 'center' }));
     const c = await center(pg, '.ov-kpis > [data-kpi="collected"]');
     await drag(pg, '.ov-kpis > [data-kpi="isolation"]', '.ov-kpis > [data-kpi="collected"]', { dx: -c.w / 4 });
     const nav = await navOrder(pg), kpi = await kpiOrder(pg);
@@ -371,7 +372,7 @@ const EVAL_DEFAULT = ['static-detection', 'static-fpr', 'runtime-detection', 'ru
     await pg.done();
   });
 
-  if (process.env.EVAL_SORT === '1') {
+  if (process.env.EVAL_SORT !== '0') { // 11/04d: eval.js 연결이 main 에 합쳐져 기본으로 켠다(끄기 EVAL_SORT=0)
     await T('15 [EVAL_SORT] 평가 지표 6칸 끌기 · Alt+→ · 새로고침 유지 · 기본 순서로', async () => {
       const pg = await newPage();
       await go(pg, '/evaluation');
@@ -394,7 +395,7 @@ const EVAL_DEFAULT = ['static-detection', 'static-fpr', 'runtime-detection', 'ru
       ok(same(await evalOrder(pg), EVAL_DEFAULT), `기본 순서로 뒤 ${await evalOrder(pg)}`);
       await pg.done();
     });
-  } else console.log('SKIP  15 [EVAL_SORT] 평가 지표 6칸 — eval.js 연결 패치를 넣은 뒤 EVAL_SORT=1 로 켠다');
+  } else console.log('SKIP  15 [EVAL_SORT=0] 평가 지표 6칸');
 
   await br.close();
   const failed = results.filter((r) => !r[0]);

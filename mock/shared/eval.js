@@ -157,13 +157,16 @@
     const mt = (st && st.metrics) || {}, c = (st && st.confusion) || null, a = attacks(rt), b = (rt && rt.benign) || null, lat = latencyHead(rt);
     const pref = md && (md.candidates || []).find((x) => x.id === md.preferredId);
     const by = b && b.byEcosystem ? Object.entries(b.byEcosystem).map(([k, v]) => `${k} ${fmt.num(v)}`).join(', ') : '';
-    return h('div', { class: 'eval-kpis', 'data-part': 'kpis' },
+    const el = h('div', { class: 'eval-kpis', 'data-part': 'kpis' },
       U.kpi({ key: 'static-detection', label: '정적 악성 탐지율', value: st ? pct(mt.detectionRate) : '—', hint: c ? hint(`악성 ${fmt.num(c.tp)} / ${fmt.num(c.tp + c.fn)}`, `주의 포함 ${pct(mt.detectionRateWithSuspicious)}`) : '정적 결과 없음' }),
       U.kpi({ key: 'static-fpr', label: '정상 오탐률', value: st ? pct(mt.falsePositiveRate) : '—', hint: c ? `인기 패키지 ${fmt.num(c.fp)} / ${fmt.num(c.fp + c.tn)}` : '정적 결과 없음' }),
       U.kpi({ key: 'runtime-detection', label: '런타임 공격 탐지율', value: a.runs ? pct(a.detected / a.runs) : '—', hint: a.runs ? hint(`공격 ${fmt.num(a.detected)} / ${fmt.num(a.runs)}회`, `${a.list.length}종`) : '런타임 결과 없음' }),
       U.kpi({ key: 'runtime-fpr', label: '정상 설치 오탐률', value: b ? pct(b.falsePositiveRate) : '—', hint: b ? hint(`위반 ${fmt.num(b.violations)} / ${fmt.num(b.installs)}건`, by) : '런타임 결과 없음' }),
       U.kpi({ key: 'latency', label: '탐지 → 격리 p50 / p95', value: lat ? [fmt.num(lat.p50), h('span', { class: 'kpi-unit' }, ` / ${fmt.num(lat.p95)} ms`)] : '—', hint: lat ? lat.hint : '격리한 시나리오 없음' }),
       U.kpi({ key: 'model-f1', label: '모델 시험 F1', value: pref ? dec(pref.test.f1) : '—', hint: pref ? `${pref.label}${md.deploymentApproved ? '' : ' · 운영 미적용'}` : '모델 결과 없음' }));
+    // 길게 눌러 순서 바꾸기 [11/04d] — 지표 6칸 순서는 localStorage supplyguard.layout.evaluationKpi(shared/sortable.js)
+    if (U.sortable) U.sortable.attach(el, { scope: 'evaluationKpi', selector: '.kpi[data-kpi]', layout: 'grid', labelOf: (x) => x.querySelector('.kpi-label').textContent });
+    return el;
   }
 
   function distCard(st) {
