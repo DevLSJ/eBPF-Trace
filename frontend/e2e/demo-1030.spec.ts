@@ -5,94 +5,95 @@ import { demoRun } from './mock-backend';
 
 // 10/30 F2 시연 패널(계약 §4) · F3 격리 타임라인(§3) · F4 상태 신호등(§5) · F5 건 보고서 1장(§5)
 
-const DEMO = '[data-testid="demo"]';
+// R3 11/04: 시연은 대시보드 카드 → 독립 페이지 /demo(11/04e B). 카드 선택자 대신 페이지 선택자 · 단계 레일 6단계 → 흐름 5단계(번호 대신 키)
+const DEMO = '[data-part="demo-page"]';
 const PILLS = '[data-testid="signal-pills"]';
-const step = (page: Page, n: number) => page.locator(`${DEMO} [data-testid="demo-rail"] [data-step="${n}"]`);
+const step = (page: Page, k: string) => page.locator(`${DEMO} [data-part="demo-steps"] [data-step="${k}"]`);
+const result = (page: Page) => page.locator(`${DEMO} [data-part="demo-outcome"]`);
 
 test.describe('시연 패널', () => {
-  test('관리자 + /api/info.demo 일 때만 대시보드 맨 위 「시연」 카드 — 조회자 · demo false 면 카드 없음', async ({ page, backend }) => {
+  test('관리자 + /api/info.demo 일 때만 「시연」 — 조회자 · demo false 면 없음', async ({ page, backend }) => {
+    // R3 11/04: 대시보드 맨 위 카드 → 사이드바 「시연」(대시보드 바로 아래) · 페이지 /demo. 조건이 안 맞으면 메뉴가 없고 주소로 오면 안내
+    const link = page.locator('aside[data-part="sidebar"] nav a[href="/demo"]');
     await page.goto('/');
     await expect(page.getByTestId('pending')).toBeVisible();
-    await expect(page.locator(DEMO)).toHaveCount(0);
+    await expect(link).toHaveCount(0);
     backend.enableDemo();
     await page.reload();
+    await expect(link).toBeVisible();
+    await link.click();
     await expect(page.locator(DEMO)).toBeVisible();
-    const [d, p] = await Promise.all([page.locator(DEMO).boundingBox(), page.getByTestId('pending').boundingBox()]);
-    expect(d!.y).toBeLessThan(p!.y);
     backend.auth.asViewer();
     await page.reload();
-    await expect(page.getByTestId('pending')).toBeVisible();
+    await expect(page.locator('[data-part="demo-denied"]')).toBeVisible();
     await expect(page.locator(DEMO)).toHaveCount(0);
+    await expect(link).toHaveCount(0);
   });
 
   test('시나리오 8개(기본 all · 11/04 benign · chain 추가) · 한 줄 설명 · 시작 → POST {scenario}', async ({ page, backend }) => {
     backend.enableDemo();
     backend.demoStepMs = 5000; // 진행 전 상태를 본다
-    await page.goto('/');
-    const sel = page.locator(`${DEMO} [data-testid="demo-scenario"]`);
-    await expect(sel).toBeVisible();
-    expect(await sel.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))).toEqual(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil', 'benign', 'chain']); // 11/04: 정상 대조군 · 연쇄 시연 추가
-    await expect(sel).toHaveValue('all');
+    await page.goto('/demo');
+    // R3 11/04: 고르기 목록(select) → 시나리오 단추 8개 + 예상 결과, 기본 선택은 목업 시연 페이지처럼 shell
+    const items = page.locator(`${DEMO} [data-scenario]`);
+    await expect(items.first()).toBeVisible();
+    expect(await items.evaluateAll((os) => os.map((o) => (o as HTMLElement).dataset.scenario))).toEqual(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil', 'benign', 'chain']); // 11/04: 정상 대조군 · 연쇄 시연 추가
+    await expect(page.locator(`${DEMO} [data-scenario="shell"]`)).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator(DEMO)).toContainText('전부 순서대로');
-    await sel.selectOption('dns-exfil');
+    await page.locator(`${DEMO} [data-scenario="dns-exfil"]`).click();
     await expect(page.locator(DEMO)).toContainText('DNS 질의로 데이터 실어 보내기');
     await page.locator(DEMO).getByRole('button', { name: '시연 시작' }).click();
     const w = backend.writes().find((r) => r.path === '/demo/run')!;
     expect(JSON.parse(w.body!)).toEqual({ scenario: 'dns-exfil' });
     expect(w.auth).toBeNull();
-    await expect(step(page, 1)).toHaveAttribute('data-state', 'done');
-    await expect(step(page, 2)).toHaveAttribute('data-state', 'done'); // 설치 세션 생김
-    await expect(step(page, 3)).toHaveAttribute('data-state', 'active');
-    await expect(page.locator(`${DEMO} [data-part="demo-elapsed"]`)).toContainText(/\d+초/);
-    await expect(page.locator(DEMO).getByRole('link', { name: '설치 검사에서 보기' })).toHaveAttribute('href', `/installs?id=${backend.demo.running!.installId}`);
+    await expect(step(page, 'start')).toHaveAttribute('data-state', 'done');
+    await expect(step(page, 'events')).toHaveAttribute('data-state', /active|done/); // R3 11/04: 세션 생김 = 설치 시작(1단계)
+    await expect(result(page)).toContainText(/실행 중 · \d+초 경과/);
+    // R3 11/04: 「설치 검사에서 보기」 링크 → 「왜」 카드의 「건 보고서 열기」(세션 · 건)
+    await expect(page.locator(`${DEMO} [data-action="open-report"]`)).toHaveAttribute('href', `/report?install=${backend.demo.running!.installId}`);
     await page.screenshot({ path: `${SHOTS}/1030-demo.png` });
   });
 
-  test('시작 → 단계 레일 진행 → 첫 위반에 설치 시트 자동 열림 → 돌아오면 결과 한 줄 · 타임라인 막대 · 다시 실행', async ({ page, backend }) => {
+  test('시작 → 단계 진행 → 첫 위반에도 자리 유지 → 결과 한 줄 · 증거 · 탐지→kill ms · 다시 시작', async ({ page, backend }) => {
     backend.enableDemo();
     backend.demoStepMs = 700;
-    await page.goto('/');
+    await page.goto('/demo');
     await expect(page.getByText('실시간 연결됨')).toBeVisible();
     await page.locator(DEMO).getByRole('button', { name: '시연 시작' }).click();
-    await expect(step(page, 3)).toHaveAttribute('data-state', 'done'); // 커널 이벤트 1건
-    await expect(step(page, 4)).toHaveAttribute('data-state', 'active');
-    const run = backend.demo.running!;
-    await expect(page).toHaveURL(new RegExp(`/installs\\?id=${run.installId}$`)); // 첫 위반 → 설치 시트
-    await expect(page.locator('[data-sheet="install"]')).toBeVisible();
-    await expect(page.locator('[data-sheet="install"] [data-status="isolated"]').first()).toBeVisible();
-    // 시트의 결과 칸에도 타임라인 막대
+    await expect(step(page, 'events')).toHaveAttribute('data-state', 'done'); // 커널 이벤트 1건
+    // R3 11/04: 첫 위반에 설치 시트로 자동 이동하지 않는다(녹화 중 페이지 고정 — 11/04e B)
+    await expect(step(page, 'match')).toHaveAttribute('data-state', 'done');
+    await expect(page).toHaveURL(/\/demo$/);
+    await expect(page.locator('[data-sheet="install"]')).toHaveCount(0);
+    for (const k of ['start', 'events', 'match', 'evidence', 'outcome']) await expect(step(page, k)).toHaveAttribute('data-state', 'done');
+    // R3 11/04: 결과 한 줄 「격리됨 — 규칙 · 탐지→kill N ms」, 타임라인 막대 대신 「왜」 카드의 증거 수집 ms · 탐지→kill ms
+    await expect(result(page)).toContainText('격리됨 — pipe-to-shell · 탐지→kill 420 ms');
+    await expect(page.locator(`${DEMO} [data-part="kill-ms"]`)).toContainText('420 ms');
+    await expect(page.locator(`${DEMO} [data-part="evidence-ms"]`)).toContainText('295 ms');
+    await expect(page.locator(DEMO).getByRole('button', { name: '시연 시작' })).toBeEnabled();
+    expect(backend.demo.last?.status).toBe('finished');
+    // 설치 시트의 결과 칸에는 타임라인 막대(그대로)
+    await page.goto(`/installs?id=${backend.demo.last!.installId}`);
     const bar = page.locator('[data-sheet="install"] [data-testid="timeline-bar"]');
     await expect(bar).toBeVisible();
     await expect(bar.locator('[data-part="timeline-total"]')).toHaveText('격리까지 0.42초');
-    await page.goto('/');
-    await expect(page.locator(DEMO)).toBeVisible();
-    for (let i = 1; i <= 6; i++) await expect(step(page, i)).toHaveAttribute('data-state', 'done');
-    const result = page.locator(`${DEMO} [data-part="demo-result"]`);
-    await expect(result).toContainText('격리됨 — 규칙 1개 · 0.42초');
-    await expect(page.locator(`${DEMO} [data-testid="timeline-bar"] [data-seg="kill"]`)).toContainText(/\d+ ms/);
-    await expect(page.locator(DEMO).getByRole('button', { name: '다시 실행' })).toBeVisible();
-    expect(backend.demo.last?.status).toBe('finished');
-    // 실행 중이 아니면 2초 폴링은 멈춘다
-    const before = backend.requests.filter((r) => r.path === '/demo').length;
-    await page.waitForTimeout(2600);
-    expect(backend.requests.filter((r) => r.path === '/demo').length).toBe(before);
     await page.screenshot({ path: `${SHOTS}/1030-timeline.png` });
   });
 
-  test('409 「이미 실행 중」 안내(실행 중인 Run 을 보인다) · 503 은 오류 띠 + 다시 시도 · 거부됨(차단 목록)', async ({ page, backend, allowConsole }) => {
+  test('409 「이미 실행 중」 안내(실행 중인 Run 을 보인다) · 503 은 오류 띠 · 거부됨(차단 목록)', async ({ page, backend, allowConsole }) => {
     allowConsole(/Failed to load resource: the server responded with a status of (409|503)/);
     backend.enableDemo();
-    await page.goto('/');
+    await page.goto('/demo');
     const startBtn = page.locator(DEMO).getByRole('button', { name: '시연 시작' });
     await expect(startBtn).toBeVisible();
-    // 다른 사람이 먼저 시작했다(세션은 진행 중인 ins-0013) — 화면은 아직 모른다
-    const other = demoRun('shell', 'ins-0013');
+    // 다른 사람이 먼저 시작했다(세션은 진행 중인 ins-0012) — 화면은 아직 모른다
+    const other = demoRun('shell', 'ins-0012');
     backend.demo.running = other;
     await startBtn.click();
     const err = page.locator(`${DEMO} [data-part="demo-error"]`);
     await expect(err).toContainText('이미 실행 중');
-    await expect(page.locator(`${DEMO} [data-run="${other.id}"]`)).toBeVisible(); // 409 본문의 running 을 보인다
-    await expect(page.locator(DEMO)).toContainText('shell');
+    await expect(page.locator(`${DEMO} [data-why="what"]`)).toContainText(other.container); // 409 본문의 running 을 보인다
+    await expect(page.locator(DEMO)).toContainText('외부 스크립트 실행 + 비밀 파일 접근');
     await expect(page.locator(DEMO).getByRole('button', { name: '실행 중…' })).toBeDisabled();
     // 503
     backend.demo.running = null;
@@ -102,10 +103,11 @@ test.describe('시연 패널', () => {
     await expect(err).toContainText('Docker 에 연결할 수 없습니다');
     backend.demoDown = false;
     backend.demoRefused = true;
-    await err.getByRole('button', { name: '다시 시도' }).click();
+    // R3 11/04: 띠의 「다시 시도」 → 시작 단추(잠기지 않음)를 다시 누른다
+    await page.locator(DEMO).getByRole('button', { name: '시연 시작' }).click();
     await expect(err).toHaveCount(0);
-    await expect(page.locator(`${DEMO} [data-part="demo-result"]`)).toContainText('거부됨(차단 목록)');
-    await expect(page.locator(`${DEMO} [data-part="demo-result"]`)).toContainText('차단 해제 후 다시');
+    await expect(result(page)).toContainText('거부됨(차단 목록)');
+    await expect(result(page)).toContainText('차단 해제 후 다시');
   });
 });
 
