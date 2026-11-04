@@ -58,7 +58,7 @@ export function DashboardPage() {
             <span className="text-sm">설치 검사 · 런타임 감시가 계속 돌고 있습니다.</span>
           </div>
         ) : (
-          <ul className="h-full overflow-y-auto" data-testid="pending-list">
+          <ul data-fill="" className="h-full overflow-y-auto" data-testid="pending-list">
             {pending.map((c) => (
               <PendingRow key={c.id} c={c} />
             ))}

@@ -252,7 +252,7 @@ function Violations({
   return (
     <>
       {!!error && loaded && <LoadError error={error} what="감사 로그" compact />}
-      <div className="min-h-0 flex-1 overflow-auto" data-testid="audit-scroll">
+      <div data-fill="" className="min-h-0 flex-1 overflow-auto" data-testid="audit-scroll">
         {failing ? (
           <ListError error={error} what="감사 로그" onRetry={retry} retrying={loading} />
         ) : !loaded ? (
@@ -519,7 +519,7 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
   return (
     <>
       {!!changes.error && !!changes.data && <LoadError error={changes.error} what="변경 이력" compact />}
-      <div className="min-h-0 flex-1 overflow-auto" data-testid="history">
+      <div data-fill="" className="min-h-0 flex-1 overflow-auto" data-testid="history">
         {failing ? (
           <ListError error={changes.error} what="변경 이력" onRetry={changes.reload} retrying={changes.loading} />
         ) : !changes.data ? (

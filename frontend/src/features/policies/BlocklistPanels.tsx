@@ -47,7 +47,7 @@ export function BlocklistPanel({ data, error, canWrite, onChanged }: { data: Blo
       ) : total === 0 ? (
         <p className="px-4 py-3 text-xs text-slate-400">{data ? '차단한 패키지 · 이미지 · 도메인 없음' : '불러오는 중…'}</p>
       ) : (
-        <ul className="h-full overflow-y-auto px-4 py-2 text-xs">
+        <ul data-fill="" className="h-full overflow-y-auto px-4 py-2 text-xs">
           {LISTS.flatMap((l) =>
             (data?.[l.key] ?? []).map((e) => (
               <li key={`${l.key}:${e.value}`} className="flex items-center gap-2 border-b border-slate-100 py-1.5 last:border-b-0" data-block={`${l.key}:${e.value}`}>
@@ -105,7 +105,7 @@ export function ChangesPanel({ data, error }: { data: Change[] | undefined; erro
       ) : !data?.length ? (
         <p className="px-4 py-3 text-xs text-slate-400">{data ? '변경 기록 없음' : '불러오는 중…'}</p>
       ) : (
-        <ul className="h-full overflow-y-auto px-4 py-2 text-xs">
+        <ul data-fill="" className="h-full overflow-y-auto px-4 py-2 text-xs">
           {data.map((c) => (
             <li key={c.id} className="border-b border-slate-100 py-1.5 last:border-b-0" data-change={c.id}>
               <div className="flex items-center gap-2">

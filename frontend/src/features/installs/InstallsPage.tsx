@@ -121,7 +121,7 @@ export function InstallsPage() {
               <EmptyState icon={SearchX} title="조건에 맞는 세션 없음" actions={<ClearFiltersButton onClick={clearFilters} />} />
             )
           ) : (
-            <div className="min-h-0 flex-1 overflow-auto">
+            <div data-fill="" className="min-h-0 flex-1 overflow-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs text-slate-500">
                   <tr>

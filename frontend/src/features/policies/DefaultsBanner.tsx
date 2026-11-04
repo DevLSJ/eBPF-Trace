@@ -39,7 +39,7 @@ export function DefaultsBanner({ data, canWrite, onPreview }: { data: PolicyDefa
         </button>
       </div>
       {open && (
-        <ul className="grid max-h-48 gap-1 overflow-y-auto border-t border-indigo-100 px-4 py-2">
+        <ul data-fill="" className="grid max-h-48 gap-1 overflow-y-auto border-t border-indigo-100 px-4 py-2">
           {items.map((x) => (
             <li key={`${x.kind}:${x.id}`} data-default={x.id} className="flex items-center gap-2">
               <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] ${x.kind === 'missing' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}`}>

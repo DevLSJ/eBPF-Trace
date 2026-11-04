@@ -116,7 +116,7 @@ export function PoliciesPage() {
         onPreview={(x) => select(x.kind === 'differs' ? { id: x.id, default: x.id } : { default: x.id })}
       />
       {/* 768 미만(10/30): 1열로 쌓고 화면 안에서 스크롤 */}
-      <div className="grid min-h-0 flex-1 gap-4 max-md:content-start max-md:overflow-y-auto md:grid-cols-[21rem_minmax(0,1fr)]">
+      <div data-fill="" className="grid min-h-0 flex-1 gap-4 max-md:content-start max-md:overflow-y-auto md:grid-cols-[21rem_minmax(0,1fr)]">
 
         <div className="flex min-h-0 flex-col gap-4">
           <Panel
@@ -133,7 +133,7 @@ export function PoliciesPage() {
             ) : drafts.length === 0 ? (
               <p className="px-4 py-3 text-xs text-slate-400">적용 대기 제안 없음 — 설치 검사 · 토폴로지에서 판정하면 여기에 생깁니다</p>
             ) : (
-              <ul className="h-full overflow-y-auto">
+              <ul data-fill="" className="h-full overflow-y-auto">
                 {drafts.map((p) => {
                   const c = cases?.find((x) => x.id === p.caseId);
                   return (
@@ -187,7 +187,7 @@ export function PoliciesPage() {
             <div className="flex h-full flex-col">
               {!!rules.error && <p className="p-4 text-sm text-red-600">불러오기 실패: {errorText(rules.error)}</p>}
               {rules.data?.length === 0 && <Empty>정책 없음</Empty>}
-              <ul className="min-h-0 flex-1 overflow-y-auto">
+              <ul data-fill="" className="min-h-0 flex-1 overflow-y-auto">
                 {rules.data?.map((r) => (
                   <li key={r.id}>
                     <button
@@ -307,7 +307,7 @@ export function PoliciesPage() {
 // 새 정책 — 목적별 템플릿에서 시작(10/16)
 function Templates({ onPick }: { onPick: (key: string) => void }) {
   return (
-    <div className="h-full overflow-y-auto px-5 py-4" data-view="templates">
+    <div data-fill="" className="h-full overflow-y-auto px-5 py-4" data-view="templates">
       <p className="text-sm text-slate-500">무엇을 막고 싶은지 고르면 값이 채워진 채로 시작합니다. 저장 전에 모두 고칠 수 있습니다.</p>
       <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3">
         {TEMPLATES.map((t) => (

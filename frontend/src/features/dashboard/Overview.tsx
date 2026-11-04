@@ -72,7 +72,7 @@ export function Overview() {
       ) : !s ? (
         <p className="p-4 text-sm text-slate-400">불러오는 중…</p>
       ) : (
-        <div className="grid min-h-0 gap-3 overflow-y-auto px-4 py-3" data-part="overview-body">
+        <div data-fill="" className="grid min-h-0 gap-3 overflow-y-auto px-4 py-3" data-part="overview-body">
           <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
             {/* 10/30: byKind.dns 는 선택(옛 백엔드 없음) — 있을 때만 「조회 N」 */}
             <Kpi

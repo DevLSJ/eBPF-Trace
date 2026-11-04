@@ -101,7 +101,7 @@ export function ProposalDetail({
       actions={<span className="text-xs text-slate-400">{p.state === 'draft' ? '초안' : p.state === 'applied' ? '적용됨' : '버림'}</span>}
     >
       <div className="flex h-full flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-sm">
+        <div data-fill="" className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-sm">
           <section className="mb-4">
             <h3 className="mb-1.5 text-xs font-semibold text-slate-700">근거</h3>
             <p className="text-slate-600">

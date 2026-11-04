@@ -111,7 +111,7 @@ export function ScansPage() {
           ) : !rows.length ? (
             <EmptyState icon={SearchX} title="조건에 맞는 검사 없음" actions={<ClearFiltersButton onClick={() => setQ('verdict', '')} />} />
           ) : (
-            <div className="min-h-0 flex-1 overflow-auto">
+            <div data-fill="" className="min-h-0 flex-1 overflow-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-slate-50 text-left text-xs text-slate-500">
                   <tr>{['시작', '대상', '결과', '위험 점수', '위협', '취약점'].map((t) => <th key={t} className={`px-3 py-2 font-semibold ${t === '대상' ? 'w-[38%]' : ''}`}>{t}</th>)}</tr>

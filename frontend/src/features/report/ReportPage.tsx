@@ -44,7 +44,7 @@ export function ReportPage() {
   };
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto" data-part="report-scroll">
+    <div data-fill="" className="h-full min-h-0 overflow-y-auto" data-part="report-scroll">
       <PageActions>
         <button type="button" onClick={() => window.print()} disabled={!d} className="flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50">
           <Printer className="size-3.5" aria-hidden /> 인쇄

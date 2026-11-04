@@ -212,7 +212,7 @@ export function TopologyPage() {
   const selectedCase = selectedContainer ? caseFor(selectedContainer) : undefined;
 
   return (
-    <div className="flex h-full min-h-0 gap-4 max-md:flex-col max-md:overflow-y-auto">
+    <div data-fill="" className="flex h-full min-h-0 gap-4 max-md:flex-col max-md:overflow-y-auto">
       <PageActions>
         <label className="flex items-center gap-1.5 text-sm text-slate-500">
           컨테이너
@@ -339,7 +339,7 @@ function Legend() {
 function NodeDetail({ n, onClose, children }: { n: TopoNode; onClose: () => void; children?: ReactNode }) {
   const rules = [...n.rules.entries()].sort((a, b) => b[1] - a[1]);
   return (
-    <section className="sg-card max-h-[68%] shrink-0 overflow-y-auto p-4 text-sm" data-testid="node-detail">
+    <section data-fill="" className="sg-card max-h-[68%] shrink-0 overflow-y-auto p-4 text-sm" data-testid="node-detail">
       <div className="mb-2 flex items-center justify-between">
         <b>선택한 노드</b>
         <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="선택 해제">
@@ -412,7 +412,7 @@ function ChainPanel({
           최근 {windowMin}분 · {chains.length}개 컨테이너
         </span>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div data-fill="" className="min-h-0 flex-1 overflow-y-auto p-3">
         {chains.length === 0 ? (
           <Empty>이 창에 위반 없음</Empty>
         ) : (

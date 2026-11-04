@@ -43,7 +43,7 @@ export function SettingsPage() {
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div data-fill="" className="min-h-0 flex-1 overflow-y-auto">
         {tab === 'server' && <ServerTab />}
         {tab === 'accounts' && <AccountsTab />}
         {tab === 'license' && <LicenseTab />}

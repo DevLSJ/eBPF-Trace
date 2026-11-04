@@ -621,7 +621,7 @@ export function EvaluationPage() {
   const empty = d === null || (d !== undefined && !d.static && !d.runtime && !d.model && !d.modelAll);
   const state = failing ? 'error' : d === undefined ? 'loading' : empty ? 'empty' : 'ready';
   return (
-    <div className="h-full min-h-0 overflow-y-auto" data-part="evaluation" data-state={state}>
+    <div data-fill="" className="h-full min-h-0 overflow-y-auto" data-part="evaluation" data-state={state}>
       {state === 'ready' && d && (
         <PageActions>
           <button

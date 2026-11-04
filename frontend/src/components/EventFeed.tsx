@@ -61,7 +61,7 @@ export function EventFeed({ verdicts, selectedKey, onSelect, empty = '이벤트 
           <span className="w-20 shrink-0">탐지 결과</span>
         </div>
       )}
-    <div ref={ref} className="min-h-0 flex-1 overflow-y-auto" onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
+    <div ref={ref} data-fill="" className="min-h-0 flex-1 overflow-y-auto" onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
       <ul className="relative" aria-label="이벤트" style={{ height: verdicts.length * ROW }}>
         {verdicts.slice(start, end).map((v, i) => {
           const level = levelOf(v);

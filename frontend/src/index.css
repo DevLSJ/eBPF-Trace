@@ -319,6 +319,30 @@
   }
 }
 
+/* ── 스크롤 없는 페이지 틀(11/04e, R1 11/04) — components/Page.tsx ──
+   Page = 남은 높이를 채우는 몸통(자식 flex 1 · min-height 0). 스크롤은 채움 칸([data-fill])에서만, 스크롤바는 얇게 · 숨기지 않음(휠 · 관성은 브라우저 기본) */
+@layer base {
+  /* base 층 — Tailwind 유틸리티([scrollbar-width:none] 등)가 이긴다 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+}
+.sg-page {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sg-page > * {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+[data-fill] {
+  min-height: 0;
+}
+
 /* 움직임 줄이기: 전부 끔 */
 @media (prefers-reduced-motion: reduce) {
   *,
