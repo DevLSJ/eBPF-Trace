@@ -86,7 +86,7 @@ function Card({ part, title, actions, children }: { part: string; title: ReactNo
   return (
     <section data-part={part} className="sg-card min-w-0">
       <header className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-4 py-2">
-        <h2 className="text-sm font-semibold text-text">{title}</h2>
+        <h2 className="text-[14.5px] font-semibold text-text">{title}</h2>
         {actions}
       </header>
       <div className="grid min-w-0 gap-2 px-4 pt-3 pb-3.5">{children}</div>
@@ -514,7 +514,7 @@ function ModelCard({ model, modelAll }: { model: EvalModel | null; modelAll?: Ev
                   <td className={`px-3 py-1.5 ${pick ? 'font-semibold shadow-[inset_3px_0_0_var(--accent)]' : ''}`} title={x.threshold != null ? `임계값 ${x.threshold}` : undefined}>
                     {x.label}
                     {pick && (
-                      <span data-part="pick-badge" title="보정 구간에서 고른 모델 — 시험 구간은 선택에 쓰지 않았습니다" className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-[11px] font-medium text-indigo-800">
+                      <span data-part="pick-badge" title="보정 구간에서 고른 모델 — 시험 구간은 선택에 쓰지 않았습니다" className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-800">
                         보정 기준 선택
                       </span>
                     )}
@@ -599,12 +599,12 @@ function Limits({ d }: { d: Evaluation }) {
   for (const t of d.modelAll?.limits ?? []) if (!seen.has(t)) items.push(['modelAll', t] as const);
   return (
     <section data-part="limits" className="sg-card grid gap-2 border-l-4 border-l-warn px-4 py-3.5 md:px-5">
-      <h2 className="text-sm font-semibold text-text">결과의 한계</h2>
+      <h2 className="text-[14.5px] font-semibold text-text">결과의 한계</h2>
       {items.length ? (
         <ul className="grid gap-1.5">
           {items.map(([k, t], i) => (
             <li key={i} data-src={k} className="flex items-baseline gap-2 text-[13px] text-text-2">
-              <span className="inline-flex h-5 shrink-0 items-center rounded-md border border-border bg-surface-2 px-1.5 text-[11px] text-text-2">{SOURCE[k]}</span>
+              <span className="inline-flex h-5 shrink-0 items-center rounded-md border border-border bg-surface-2 px-1.5 text-xs text-text-2">{SOURCE[k]}</span>
               <span className="min-w-0">{t}</span>
             </li>
           ))}
@@ -637,7 +637,9 @@ export function EvaluationPage() {
   const empty = d === null || (d !== undefined && !d.static && !d.runtime && !d.model && !d.modelAll);
   const state = failing ? 'error' : d === undefined ? 'loading' : empty ? 'empty' : 'ready';
   return (
-    <div data-fill="" className="h-full min-h-0 overflow-y-auto" data-part="evaluation" data-state={state}>
+    // R4 11/04(목업 11/04e .eval-body): 768 이상은 머리 · 지표 6칸이 제자리, 아래 몸통(두 열 · 모델 비교 · 한계)만 채움 칸으로 스크롤.
+    // 768 미만은 예전처럼 화면 전체가 한 칸으로 스크롤(몸통은 그대로 펼침)
+    <div className="flex h-full min-h-0 flex-col gap-4 max-md:block max-md:overflow-y-auto" data-part="evaluation" data-state={state}>
       {state === 'ready' && d && (
         <PageActions>
           <button
@@ -664,9 +666,13 @@ export function EvaluationPage() {
           <EmptyState icon={ChartColumn} title="평가 결과 없음" hint="아직 평가를 돌린 결과가 없습니다 — 정적 · 런타임 · 모델 평가 결과가 서버에 올라오면 여기에 보입니다." />
         </div>
       ) : (
-        <div className="mx-auto grid max-w-[var(--content-max)] content-start gap-4">
-          <Head d={d} />
-          <Kpis d={d} />
+        <>
+          <div className="mx-auto grid w-full max-w-[var(--content-max)] shrink-0 gap-4 max-md:mb-4">
+            <Head d={d} />
+            <Kpis d={d} />
+          </div>
+          <div data-fill="" data-part="eval-body" className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 max-md:overflow-visible">
+          <div className="mx-auto grid max-w-[var(--content-max)] content-start gap-4">
           {/* 두 열 = 정적(왼쪽) · 런타임(오른쪽) — 열마다 위로 붙는다(Pinterest 식). 768 미만은 정적 → 런타임 한 열 */}
           <div data-part="eval-grid" className="grid items-start gap-4 md:grid-cols-2">
             <div data-col="static" className="flex min-w-0 flex-col gap-4">
@@ -682,7 +688,9 @@ export function EvaluationPage() {
           </div>
           <ModelCard model={d.model} modelAll={d.modelAll} />
           <Limits d={d} />
-        </div>
+          </div>
+          </div>
+        </>
       )}
     </div>
   );

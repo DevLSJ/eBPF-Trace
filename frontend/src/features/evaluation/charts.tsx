@@ -77,7 +77,7 @@ export function Legend({ items }: { items: [string, ColorKey | 'p50' | 'band' | 
   const sw = (c: ColorKey | 'p50' | 'band' | 'max') =>
     c === 'p50' ? 'size-2 rounded-full bg-accent' : c === 'band' ? 'h-2 w-3 rounded-[2px] bg-indigo-300' : c === 'max' ? 'h-2.5 w-0.5 bg-text-2' : `size-2 rounded-[2px] ${COLOR[c][1]}`;
   return (
-    <div data-part="legend" className="flex flex-wrap gap-x-2.5 gap-y-1 text-[11px] text-text-3">
+    <div data-part="legend" className="flex flex-wrap gap-x-2.5 gap-y-1 text-xs text-text-3">
       {items.map(([label, c]) => (
         <span key={label} className="inline-flex items-center gap-1">
           <i className={`inline-block ${sw(c)}`} aria-hidden />
@@ -94,7 +94,7 @@ function Grid({ ticks, x, H, fmt }: { ticks: number[]; x: (v: number) => number;
   return ticks.map((t) => (
     <g key={t}>
       <line x1={x(t)} x2={x(t)} y1={AXIS.t} y2={H - AXIS.b} className={t ? 'stroke-surface-3' : 'stroke-border'} strokeDasharray={t ? '3 3' : undefined} />
-      <text data-part="tick" x={x(t)} y={H - 6} textAnchor="middle" className="fill-text-3 text-[11px]">
+      <text data-part="tick" x={x(t)} y={H - 6} textAnchor="middle" className="fill-text-3 text-xs">
         {fmt(t)}
       </text>
     </g>
@@ -148,7 +148,7 @@ export function HBars({
               return (
                 <g key={r.id} data-row={r.id}>
                   <rect x={0} y={y0} width={W} height={rowH} className={`fill-surface-2 transition-opacity ${on === r.id ? 'opacity-100' : 'opacity-0'}`} />
-                  <text data-part="row-label" x={lw - 8} y={y0 + rowH / 2 + 4} textAnchor="end" className={`text-[11px] ${r.strong ? 'fill-text font-semibold' : 'fill-text-2'} ${r.mono ? 'font-mono' : ''}`}>
+                  <text data-part="row-label" x={lw - 8} y={y0 + rowH / 2 + 4} textAnchor="end" className={`text-xs ${r.strong ? 'fill-text font-semibold' : 'fill-text-2'} ${r.mono ? 'font-mono' : ''}`}>
                     {fitText(r.label, lw - 10, r.mono)}
                   </text>
                   {r.bars.map((segs, bi) => {
@@ -164,7 +164,7 @@ export function HBars({
                       return <rect key={`${bi}-${s.key}`} data-key={s.key} data-v={s.v} x={x0} y={yb} width={Math.max(minSeg, x1 - x0 - (j < live.length - 1 ? 2 : 0))} height={BAR} rx={2} className={COLOR[s.color][0]} />;
                     });
                   })}
-                  <text data-part="row-value" x={W - valueW + 8} y={y0 + rowH / 2 + 4} className="num fill-text-2 text-[11px]">
+                  <text data-part="row-value" x={W - valueW + 8} y={y0 + rowH / 2 + 4} className="num fill-text-2 text-xs">
                     {r.value}
                   </text>
                   <rect
@@ -229,14 +229,14 @@ export function RangeChart({ name, label, rows }: { name: string; label: string;
               return (
                 <g key={r.id} data-row={r.id} data-p50={L.p50} data-p95={L.p95} data-max={mx}>
                   <rect x={0} y={y0} width={W} height={rowH} className={`fill-surface-2 transition-opacity ${on === r.id ? 'opacity-100' : 'opacity-0'}`} />
-                  <text data-part="row-label" x={lw - 8} y={cy + 4} textAnchor="end" className="fill-text-2 text-[11px]">
+                  <text data-part="row-label" x={lw - 8} y={cy + 4} textAnchor="end" className="fill-text-2 text-xs">
                     {fitText(r.label, lw - 10)}
                   </text>
                   <line x1={x(0)} x2={x(mx)} y1={cy} y2={cy} className="stroke-border-strong" />
                   <rect x={x(L.p50)} y={cy - 4} width={Math.max(2, x(L.p95) - x(L.p50))} height={8} rx={2} className="fill-indigo-300" />
                   <line x1={x(mx)} x2={x(mx)} y1={cy - 6} y2={cy + 6} strokeWidth={2} className="stroke-text-2" />
                   <circle cx={x(L.p50)} cy={cy} r={4.5} strokeWidth={2} className="fill-accent stroke-surface" />
-                  <text data-part="row-value" x={W - valueW + 8} y={cy + 4} className="num fill-text-2 text-[11px]">
+                  <text data-part="row-value" x={W - valueW + 8} y={cy + 4} className="num fill-text-2 text-xs">
                     p95 {fmtNum(L.p95)}
                   </text>
                   <rect
