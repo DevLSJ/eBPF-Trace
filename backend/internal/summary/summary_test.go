@@ -174,3 +174,105 @@ func TestIsolationStats(t *testing.T) {
 		t.Fatalf("empty isolation json: %s", b)
 	}
 }
+
+// R2 11/04: previous — 바로 앞 같은 길이 기간(KPI 증감 줄). 기존 필드 이름 · 계산 그대로, 경계 시각은 지금 기간 쪽.
+// 직전 기간에 저장된 기록(수집량 · 감사 로그 · 설치 세션 · 판정)이 하나도 없으면 null
+func TestPrevious(t *testing.T) {
+	ctx := t.Context()
+	now := time.Date(2026, 11, 4, 9, 30, 0, 0, time.UTC)
+	// 24h: 지금 기간 [11/03 10:00, 11/04 10:00) · 직전 기간 [11/02 10:00, 11/03 10:00)
+	from := time.Date(2026, 11, 3, 10, 0, 0, 0, time.UTC)
+	mem := store.NewMemory()
+	save := func(at time.Time, ctr string, action model.Action, enforced bool, killAfter time.Duration) {
+		t.Helper()
+		v := model.Verdict{Matched: true, RuleID: "sensitive-files", Action: action, Enforced: enforced,
+			Event: model.Event{Kind: model.KindOpen, ContainerName: ctr, Timestamp: at}}
+		if killAfter > 0 {
+			k := at.Add(killAfter)
+			v.Timeline = &model.Timeline{DetectedAt: at, MatchedAt: at, KilledAt: &k}
+		}
+		if _, err := mem.SaveAudit(ctx, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save(now.Add(-10*time.Minute), "cur", model.ActionKill, true, 200*time.Millisecond) // 지금
+	save(from, "edge", model.ActionAlert, false, 0)                                     // 경계 = 지금 기간
+	save(from.Add(-time.Hour), "p1", model.ActionKill, true, 300*time.Millisecond)      // 직전
+	save(from.Add(-2*time.Hour), "p2", model.ActionKill, true, 500*time.Millisecond)    // 직전
+	save(from.Add(-3*time.Hour), "p2", model.ActionAlert, false, 0)                     // 직전
+	save(from.Add(-25*time.Hour), "older", model.ActionKill, true, 50*time.Millisecond) // 직전보다 앞 — 세지 않는다
+	_ = mem.AddCollected(ctx, []model.MinuteCount{
+		{Minute: now.Add(-time.Minute).Truncate(time.Minute), Open: 7},
+		{Minute: from, Exec: 1}, // 경계 = 지금 기간
+		{Minute: from.Add(-time.Minute), Exec: 2, Open: 3, DNS: 1}, // 직전
+		{Minute: from.Add(-25 * time.Hour), Open: 999},             // 더 앞
+	})
+	rv := fakeReview{
+		installs: []model.InstallSession{
+			{ID: "ins-1", StartedAt: now.Add(-10 * time.Minute), Status: model.InstallPassed},
+			{ID: "ins-2", StartedAt: from.Add(-time.Hour), Status: model.InstallIsolated},
+			{ID: "ins-3", StartedAt: from.Add(-5 * time.Hour), Status: model.InstallPassed},
+			{ID: "ins-4", StartedAt: from.Add(-30 * time.Hour), Status: model.InstallPassed},
+		},
+		cases: []model.Case{
+			{ID: "c1", State: model.CaseClosed, Decision: model.DecisionMalicious, DecidedAt: ptr(now.Add(-10 * time.Minute))},
+			{ID: "c2", State: model.CaseClosed, Decision: model.DecisionFalsePositive, DecidedAt: ptr(from.Add(-time.Hour))},
+			{ID: "c3", State: model.CaseClosed, Decision: model.DecisionMalicious, DecidedAt: ptr(from.Add(-2 * time.Hour))},
+			{ID: "c4", State: model.CaseOpen, Decision: model.DecisionPending},
+		},
+	}
+	svc := New(mem, mem, rv)
+	svc.now = func() time.Time { return now }
+	s, err := svc.Build(ctx, "24h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 지금 기간은 그대로(경계 행 포함, 직전 기간 행 없음)
+	if s.Collected.Total != 8 || s.Violations.Total != 2 || s.IsolatedContainers != 1 || s.Installs.Total != 1 || s.Decisions.Malicious != 1 {
+		t.Fatalf("current: collected %d violations %d isolated %d installs %d decided %+v", s.Collected.Total, s.Violations.Total, s.IsolatedContainers, s.Installs.Total, s.Decisions)
+	}
+	p := s.Previous
+	if p == nil {
+		t.Fatal("previous must not be null when the previous window has records")
+	}
+	if p.Collected != 6 || p.Violations != 3 || p.IsolatedContainers != 2 || p.Installs != 2 || p.Decided != 2 || p.IsolationMedianMs == nil || *p.IsolationMedianMs != 400 {
+		t.Fatalf("previous: %+v (median %v)", *p, p.IsolationMedianMs)
+	}
+	b, _ := json.Marshal(s)
+	if !strings.Contains(string(b), `"previous":{"collected":6,"violations":3,"isolatedContainers":2,"installs":2,"decided":2,"isolationMedianMs":400}`) {
+		t.Fatalf("previous json: %s", b)
+	}
+
+	// 1h: 지금 [08:31, 09:31) · 직전 [07:31, 08:31) 에는 감사 로그 · 수집량 · 설치 · 판정이 없다 → null
+	h, err := svc.Build(ctx, "1h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Previous != nil {
+		t.Fatalf("1h previous should be null: %+v", *h.Previous)
+	}
+	if b, _ := json.Marshal(h); !strings.Contains(string(b), `"previous":null`) {
+		t.Fatalf("1h previous json: %s", b)
+	}
+
+	// 직전 기간에 격리가 없으면 isolationMedianMs 만 null
+	only := store.NewMemory()
+	_ = only.AddCollected(ctx, []model.MinuteCount{{Minute: from.Add(-time.Hour), Open: 4}})
+	o := New(only, only, fakeReview{})
+	o.now = svc.now
+	os, _ := o.Build(ctx, "24h")
+	if os.Previous == nil || os.Previous.Collected != 4 || os.Previous.Violations != 0 || os.Previous.IsolationMedianMs != nil {
+		t.Fatalf("previous without isolation: %+v", os.Previous)
+	}
+	if b, _ := json.Marshal(os); !strings.Contains(string(b), `"isolationMedianMs":null}`) {
+		t.Fatalf("previous null median json: %s", b)
+	}
+
+	// 빈 서버 → null
+	e := New(store.NewMemory(), store.NewMemory(), fakeReview{})
+	e.now = svc.now
+	es, _ := e.Build(ctx, "7d")
+	if es.Previous != nil {
+		t.Fatalf("empty previous: %+v", *es.Previous)
+	}
+}

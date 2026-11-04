@@ -117,6 +117,20 @@ type Summary struct {
 		Images   int `json:"images"`
 		Hosts    int `json:"hosts"`
 	} `json:"blocklist"`
+	// Previous(R2 11/04): 바로 앞 같은 길이 기간 [from − 길이, from) 의 같은 숫자(KPI 증감 줄). 계산은 지금 기간과 같다.
+	// 그 기간에 저장된 기록(수집량 · 감사 로그 · 설치 세션 · 판정)이 하나도 없으면 null(서버가 꺼져 있었거나 보관 밖 — 0 과 구별)
+	Previous *Previous `json:"previous"`
+}
+
+// Previous: 직전 기간 숫자 — 이름은 Summary 필드와 같다(collected = collected.total, violations = violations.total,
+// installs = installs.total, decided = decisions.malicious + falsePositive, isolationMedianMs = isolation.medianMs — 격리가 없으면 null)
+type Previous struct {
+	Collected          int64  `json:"collected"`
+	Violations         int64  `json:"violations"`
+	IsolatedContainers int    `json:"isolatedContainers"`
+	Installs           int    `json:"installs"`
+	Decided            int    `json:"decided"`
+	IsolationMedianMs  *int64 `json:"isolationMedianMs"`
 }
 
 // ErrRange: 모르는 기간
@@ -135,21 +149,45 @@ func (s *Service) Build(ctx context.Context, rng string) (Summary, error) {
 		return Summary{}, ErrRange{rng}
 	}
 	end := s.now().UTC().Truncate(r.step).Add(r.step) // 지금이 든 칸까지
-	from := end.Add(-time.Duration(r.n) * r.step)
-	out := Summary{Range: rng, From: from, To: end, BucketSec: int(r.step / time.Second), Series: make([]Point, r.n)}
+	out, _, err := s.window(ctx, rng, r.n, r.step, end)
+	if err != nil {
+		return Summary{}, err
+	}
+	// 직전 기간 — 실패해도 지금 기간은 그대로 보낸다(증감 줄만 「이전 기간 정보 없음」)
+	prev, has, err := s.window(ctx, rng, r.n, r.step, out.From)
+	switch {
+	case err != nil:
+		slog.Warn("summary: previous window", "range", rng, "err", err)
+	case has:
+		out.Previous = &Previous{
+			Collected:          prev.Collected.Total,
+			Violations:         prev.Violations.Total,
+			IsolatedContainers: prev.IsolatedContainers,
+			Installs:           prev.Installs.Total,
+			Decided:            prev.Decisions.Malicious + prev.Decisions.FalsePositive,
+			IsolationMedianMs:  prev.Isolation.MedianMs,
+		}
+	}
+	return out, nil
+}
+
+// window: [end − n×step, end) 한 기간의 종합. has = 그 기간에 저장된 기록이 하나라도 있는가(수집량 행 · 감사 로그 · 설치 세션 · 판정)
+func (s *Service) window(ctx context.Context, rng string, n int, step time.Duration, end time.Time) (Summary, bool, error) {
+	from := end.Add(-time.Duration(n) * step)
+	out := Summary{Range: rng, From: from, To: end, BucketSec: int(step / time.Second), Series: make([]Point, n)}
 	for i := range out.Series {
-		out.Series[i].T = from.Add(time.Duration(i) * r.step)
+		out.Series[i].T = from.Add(time.Duration(i) * step)
 	}
 	slot := func(t time.Time) *Point {
 		if t.Before(from) || !t.Before(end) {
 			return nil
 		}
-		return &out.Series[int(t.Sub(from)/r.step)]
+		return &out.Series[int(t.Sub(from)/step)]
 	}
 
 	ms, err := s.collected.CollectedRange(ctx, from, end)
 	if err != nil {
-		return Summary{}, fmt.Errorf("collected: %w", err)
+		return Summary{}, false, fmt.Errorf("collected: %w", err)
 	}
 	for _, m := range ms {
 		if p := slot(m.Minute); p != nil {
@@ -166,10 +204,10 @@ func (s *Service) Build(ctx context.Context, rng string) (Summary, error) {
 	out.Collected.Total = out.Collected.ByKind.Exec + out.Collected.ByKind.Open + out.Collected.ByKind.Connect + out.Collected.ByKind.DNS
 
 	if err := s.violations(ctx, &out, from, end, slot); err != nil {
-		return Summary{}, err
+		return Summary{}, false, err
 	}
-	s.reviewParts(&out, from)
-	return out, nil
+	reviewed := s.reviewParts(&out, from, end)
+	return out, len(ms) > 0 || out.Violations.Total > 0 || reviewed, nil
 }
 
 func (s *Service) violations(ctx context.Context, out *Summary, from, end time.Time, slot func(time.Time) *Point) error {
@@ -200,6 +238,9 @@ func (s *Service) violations(ctx context.Context, out *Summary, from, end time.T
 		}
 		for _, a := range rows {
 			scanned++
+			if !a.Event.Timestamp.Before(end) { // 끝 시각은 다음 기간(직전 기간의 끝 = 지금 기간의 시작)
+				continue
+			}
 			l := model.LevelOf(a.Verdict)
 			out.Violations.Total++
 			switch l {
@@ -278,12 +319,14 @@ func isolationStats(ms []int64) Isolation {
 	return Isolation{Count: n, MedianMs: &median, P95Ms: &p95, MaxMs: &mx}
 }
 
-func (s *Service) reviewParts(out *Summary, from time.Time) {
+// reviewParts: [from, end) 에 시작한 설치 세션 · 판정한 건(대기 · 차단 목록은 지금 값). 반환 = 그 기간에 세션 · 판정이 있었나
+func (s *Service) reviewParts(out *Summary, from, end time.Time) bool {
 	if s.review == nil {
-		return
+		return false
 	}
+	decided := 0
 	for _, x := range s.review.Installs() {
-		if x.StartedAt.Before(from) {
+		if x.StartedAt.Before(from) || !x.StartedAt.Before(end) {
 			continue
 		}
 		out.Installs.Total++
@@ -306,9 +349,10 @@ func (s *Service) reviewParts(out *Summary, from time.Time) {
 		if c.State == model.CaseOpen {
 			out.Decisions.Pending++
 		}
-		if c.DecidedAt == nil || c.DecidedAt.Before(from) {
+		if c.DecidedAt == nil || c.DecidedAt.Before(from) || !c.DecidedAt.Before(end) {
 			continue
 		}
+		decided++
 		switch c.Decision {
 		case model.DecisionMalicious:
 			out.Decisions.Malicious++
@@ -318,4 +362,5 @@ func (s *Service) reviewParts(out *Summary, from time.Time) {
 	}
 	b := s.review.Blocklist()
 	out.Blocklist.Packages, out.Blocklist.Images, out.Blocklist.Hosts = len(b.Packages), len(b.Images), len(b.Hosts)
+	return out.Installs.Total > 0 || decided > 0
 }

@@ -23,6 +23,14 @@ func TestSummaryHTTP(t *testing.T) {
 	if s.Range != "24h" || len(s.Series) != 24 || s.TopRules == nil {
 		t.Fatalf("summary: %+v", s)
 	}
+	// R2 11/04: previous 키는 늘 있다(빈 서버는 null)
+	r = do(t, "GET", srv.URL+"/api/summary?range=7d", "", "")
+	want(t, r, http.StatusOK, "7d")
+	if raw := decode[map[string]any](t, r); raw["previous"] != nil {
+		t.Fatalf("empty server previous: %v", raw["previous"])
+	} else if _, ok := raw["previous"]; !ok {
+		t.Fatalf("previous key missing: %v", raw)
+	}
 	want(t, do(t, "GET", srv.URL+"/api/summary?range=1h", "", ""), http.StatusOK, "1h")
 	want(t, do(t, "GET", srv.URL+"/api/summary?range=2y", "", ""), http.StatusBadRequest, "bad range")
 }
