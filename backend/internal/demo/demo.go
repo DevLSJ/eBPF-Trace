@@ -93,6 +93,8 @@ type Run struct {
 	Status     string     `json:"status"`   // running | finished | timeout | failed | refused
 	ExitCode   *int       `json:"exitCode"` // 끝나기 전엔 null
 	Simulated  bool       `json:"simulated"`
+	// Explain: 「왜」 보충(11/04) — GET /api/demo 가 읽을 때 세션 · 정책으로 채운다(explain.go). POST 본문 · 409 · 거부(refused)에는 없다
+	Explain *Explain `json:"explain,omitempty"`
 }
 
 // Status: GET /api/demo
@@ -228,6 +230,7 @@ func (r *Run) clone() *Run {
 		return nil
 	}
 	c := *r
+	c.Explain = nil // 읽을 때 계산하는 값 — 서비스 상태에는 두지 않는다
 	if r.FinishedAt != nil {
 		t := *r.FinishedAt
 		c.FinishedAt = &t

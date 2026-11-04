@@ -39,8 +39,18 @@ func (h *handlers) demoAdmin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// demoStatus: GET /api/demo — running · last 에 explain(11/04)을 붙인다. 세션이 있고 거부가 아닐 때만(세션 · 지금 정책으로 읽을 때 계산)
 func (h *handlers) demoStatus(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, h.Demo.Status())
+	st := h.Demo.Status()
+	for _, run := range []*demo.Run{st.Running, st.Last} {
+		if run == nil || run.InstallID == "" || run.Status == demo.StatusRefused || h.Review == nil {
+			continue
+		}
+		if sess, err := h.Review.GetInstall(run.InstallID); err == nil {
+			run.Explain = demo.BuildExplain(*run, sess, h.Engine.Rules())
+		}
+	}
+	writeJSON(w, http.StatusOK, st)
 }
 
 // demoRun: 본문 {scenario} → 202 Run | 400 시나리오 | 409 실행 중(+running) | 503 Docker 불통
