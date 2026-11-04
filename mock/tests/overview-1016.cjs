@@ -40,9 +40,10 @@ const num = (s) => Number(String(s).replace(/[^\d]/g, ''));
   await T('1 판정 대기가 맨 위, 그 아래 eBPF 수집 종합 + 기간 칩(기본 24시간)', async () => {
     const pg = await newPage();
     await go(pg, '/');
-    const [p, o] = await Promise.all(['[data-section="pending"]', OV].map((q) => pg.$eval(q, (e) => e.getBoundingClientRect().top)));
-    ok(p < o, `판정 대기 ${p} · 종합 ${o}`);
-    ok((await pg.textContent(`${OV} h2`)).includes('eBPF 수집 종합'), '제목');
+    // 11/04e 대시보드 재배치: 종합(KPI 줄 → 차트 줄 → 아래 3칸) 안에 판정 대기가 아래 줄로 — 제목 줄 대신 머리 한 줄 「eBPF 감시 중」
+    const [p, k] = await Promise.all(['[data-section="pending"]', `${OV} .ov-kpis`].map((q) => pg.$eval(q, (e) => e.getBoundingClientRect().top)));
+    ok(k < p && await pg.locator(`${OV} [data-section="pending"]`).count() === 1, `KPI ${k} · 판정 대기 ${p}`);
+    ok((await pg.textContent(`${OV} .dash-top`)).includes('eBPF 감시 중'), '머리 줄');
     const chips = await pg.$$eval(`${OV} [data-range]`, (els) => els.map((e) => [e.dataset.range, e.getAttribute('aria-pressed')]));
     ok(JSON.stringify(chips) === JSON.stringify([['1h', 'false'], ['24h', 'true'], ['7d', 'false']]), `기간 칩 ${JSON.stringify(chips)}`);
     await shot(pg, '01-dashboard-overview');
@@ -71,7 +72,7 @@ const num = (s) => Number(String(s).replace(/[^\d]/g, ''));
     await go(pg, '/');
     ok(await pg.locator(`${OV} [data-chart="collected"] [data-bucket]`).count() === 24, `수집 칸 ${await pg.locator(`${OV} [data-chart="collected"] [data-bucket]`).count()}`);
     ok(await pg.locator(`${OV} [data-chart="violations"] [data-bucket]`).count() === 24, '위반 칸');
-    const kinds = await pg.$$eval(`${OV} [data-chart="collected"] rect[data-kind]`, (els) => [...new Set(els.map((e) => e.dataset.kind))].sort());
+    const kinds = await pg.$$eval(`${OV} [data-chart="collected"] path[data-kind]`, (els) => [...new Set(els.map((e) => e.dataset.kind))].sort()); // 11/04e 선 차트
     ok(JSON.stringify(kinds) === JSON.stringify(['connect', 'dns', 'exec', 'open']), `종류 ${JSON.stringify(kinds)}`); // 10/30: 조회(dns) 조각 추가
     const legend = await pg.textContent(`${OV} [data-chart="violations"]`);
     ok(legend.includes('격리') && legend.includes('경고'), '위반 범례');

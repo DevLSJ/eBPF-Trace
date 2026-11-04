@@ -236,11 +236,11 @@ const ED = '[data-view="rule-editor"]';
     await go(pg, '/');
     const txt = await pg.textContent('[data-section="overview"] [data-kpi="collected"]');
     ok(/조회 [\d,]+/.test(txt) && /통신 [\d,]+/.test(txt), `수집한 이벤트 "${txt}"`);
-    const kinds = await pg.$$eval('[data-section="overview"] [data-chart="collected"] rect[data-kind]', (els) => [...new Set(els.map((e) => e.dataset.kind))].sort());
+    const kinds = await pg.$$eval('[data-section="overview"] [data-chart="collected"] path[data-kind]', (els) => [...new Set(els.map((e) => e.dataset.kind))].sort()); // 11/04e 수집량 추이 = 선 차트(종류마다 선 하나)
     ok(kinds.includes('dns'), `차트 종류 ${JSON.stringify(kinds)}`);
-    const fill = await pg.$eval('[data-section="overview"] [data-chart="collected"] rect[data-kind="dns"]', (e) => getComputedStyle(e).fill);
+    const fill = await pg.$eval('[data-section="overview"] [data-chart="collected"] path[data-kind="dns"]', (e) => getComputedStyle(e).stroke); // 11/04e 선 색(stroke)
     ok(fill === 'rgb(251, 146, 60)', `조회 색 ${fill}`);
-    ok((await pg.$$eval('[data-section="overview"] [data-chart="collected"] .chart-legend span', (els) => els.map((e) => e.textContent))).includes('조회'), '범례 조회');
+    ok((await pg.textContent('[data-section="overview"] [data-chart="collected"] [data-end-label="dns"]')).startsWith('조회 '), '범례 조회'); // 11/04e 선 차트는 범례 대신 선 끝 「이름 값」 라벨
     await go(pg, '/settings', '&dns=off');
     const dns = await pg.textContent('[data-ss="dns"]');
     ok(dns.includes('DNS 질의 규칙(kind: dns)이 통과 처리됩니다'), `설정 문구 "${dns}"`);

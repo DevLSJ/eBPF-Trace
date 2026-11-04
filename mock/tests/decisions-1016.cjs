@@ -55,10 +55,10 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     await pg.evaluate(() => UI.runAttackNow());
     await pg.waitForTimeout(600);
     const [pend, main] = await Promise.all([pg.$eval('[data-section="pending"]', (e) => e.getBoundingClientRect().toJSON()), pg.$eval('#page', (e) => e.getBoundingClientRect().toJSON())]);
-    ok(pend.width > main.width - 80, `판정 대기 폭 ${pend.width} / 본문 ${main.width}`);
-    // 10/16: 아래 요약 3칸 · 감시 중 → 「eBPF 수집 종합」(tests/overview-1016.cjs)
-    const ov = await pg.$eval('[data-section="overview"]', (e) => e.getBoundingClientRect().top);
-    ok(ov > pend.top + 60, `종합 ${ov} 는 판정 대기 아래여야 함`);
+    // 11/04e 대시보드 재배치: 판정 대기는 아래 3칸의 첫 칸(1/3 폭), KPI · 차트 줄 아래
+    ok(pend.width > main.width / 3 - 60 && pend.width < main.width / 2, `판정 대기 폭 ${pend.width} / 본문 ${main.width}`);
+    const ov = await pg.$eval('[data-section="overview"] .ov-kpis', (e) => e.getBoundingClientRect().top);
+    ok(ov < pend.top - 60, `KPI 줄 ${ov} 이 판정 대기 위여야 함`);
     const keys = await pg.$$eval('[data-section="overview"] [data-kpi]', (els) => els.map((e) => e.dataset.kpi));
     ok(JSON.stringify(keys) === JSON.stringify(['collected', 'violations', 'isolated', 'installs', 'decided', 'isolation']), `종합 칸 ${JSON.stringify(keys)}`); // 10/30: 격리 지연 중앙값 칸
     const rules = await pg.textContent('[data-case][data-source="install"] [data-rules]');

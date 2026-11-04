@@ -158,12 +158,12 @@
     const pref = md && (md.candidates || []).find((x) => x.id === md.preferredId);
     const by = b && b.byEcosystem ? Object.entries(b.byEcosystem).map(([k, v]) => `${k} ${fmt.num(v)}`).join(', ') : '';
     const el = h('div', { class: 'eval-kpis', 'data-part': 'kpis' },
-      U.kpi({ key: 'static-detection', label: '정적 악성 탐지율', value: st ? pct(mt.detectionRate) : '—', hint: c ? hint(`악성 ${fmt.num(c.tp)} / ${fmt.num(c.tp + c.fn)}`, `주의 포함 ${pct(mt.detectionRateWithSuspicious)}`) : '정적 결과 없음' }),
-      U.kpi({ key: 'static-fpr', label: '정상 오탐률', value: st ? pct(mt.falsePositiveRate) : '—', hint: c ? `인기 패키지 ${fmt.num(c.fp)} / ${fmt.num(c.fp + c.tn)}` : '정적 결과 없음' }),
-      U.kpi({ key: 'runtime-detection', label: '런타임 공격 탐지율', value: a.runs ? pct(a.detected / a.runs) : '—', hint: a.runs ? hint(`공격 ${fmt.num(a.detected)} / ${fmt.num(a.runs)}회`, `${a.list.length}종`) : '런타임 결과 없음' }),
-      U.kpi({ key: 'runtime-fpr', label: '정상 설치 오탐률', value: b ? pct(b.falsePositiveRate) : '—', hint: b ? hint(`위반 ${fmt.num(b.violations)} / ${fmt.num(b.installs)}건`, by) : '런타임 결과 없음' }),
-      U.kpi({ key: 'latency', label: '탐지 → 격리 p50 / p95', value: lat ? [fmt.num(lat.p50), h('span', { class: 'kpi-unit' }, ` / ${fmt.num(lat.p95)} ms`)] : '—', hint: lat ? lat.hint : '격리한 시나리오 없음' }),
-      U.kpi({ key: 'model-f1', label: '모델 시험 F1', value: pref ? dec(pref.test.f1) : '—', hint: pref ? `${pref.label}${md.deploymentApproved ? '' : ' · 운영 미적용'}` : '모델 결과 없음' }));
+      U.kpi({ key: 'static-detection', icon: '⌕', stripe: 'accent', label: '정적 악성 탐지율', value: st ? pct(mt.detectionRate) : '—', hint: c ? hint(`악성 ${fmt.num(c.tp)} / ${fmt.num(c.tp + c.fn)}`, `주의 포함 ${pct(mt.detectionRateWithSuspicious)}`) : '정적 결과 없음' }),
+      U.kpi({ key: 'static-fpr', icon: '✓', stripe: 'info', label: '정상 오탐률', value: st ? pct(mt.falsePositiveRate) : '—', hint: c ? `인기 패키지 ${fmt.num(c.fp)} / ${fmt.num(c.fp + c.tn)}` : '정적 결과 없음' }),
+      U.kpi({ key: 'runtime-detection', icon: '▣', stripe: 'accent', label: '런타임 공격 탐지율', value: a.runs ? pct(a.detected / a.runs) : '—', hint: a.runs ? hint(`공격 ${fmt.num(a.detected)} / ${fmt.num(a.runs)}회`, `${a.list.length}종`) : '런타임 결과 없음' }),
+      U.kpi({ key: 'runtime-fpr', icon: '✓', stripe: 'info', label: '정상 설치 오탐률', value: b ? pct(b.falsePositiveRate) : '—', hint: b ? hint(`위반 ${fmt.num(b.violations)} / ${fmt.num(b.installs)}건`, by) : '런타임 결과 없음' }),
+      U.kpi({ key: 'latency', icon: '◷', stripe: 'warn', label: '탐지 → 격리 p50 / p95', value: lat ? [fmt.num(lat.p50), h('span', { class: 'kpi-unit' }, ` / ${fmt.num(lat.p95)} ms`)] : '—', hint: lat ? lat.hint : '격리한 시나리오 없음' }),
+      U.kpi({ key: 'model-f1', icon: '◔', stripe: 'ok', label: '모델 시험 F1', value: pref ? dec(pref.test.f1) : '—', hint: pref ? `${pref.label}${md.deploymentApproved ? '' : ' · 운영 미적용'}` : '모델 결과 없음' }));
     // 길게 눌러 순서 바꾸기 [11/04d] — 지표 6칸 순서는 localStorage supplyguard.layout.evaluationKpi(shared/sortable.js)
     if (U.sortable) U.sortable.attach(el, { scope: 'evaluationKpi', selector: '.kpi[data-kpi]', layout: 'grid', labelOf: (x) => x.querySelector('.kpi-label').textContent });
     return el;
@@ -244,7 +244,7 @@
   function benignCard(rt) {
     if (!rt || !rt.benign) return card('benign', '정상 설치 위반', none('런타임'));
     const b = rt.benign, rows = (b.items || []).filter((x) => !['pass', 'passed'].includes(x.result) || x.rule);
-    return card('benign', `정상 설치 위반 ${fmt.num(rows.length)}건`, rows.length ? h('div', { class: 'grid-scroll' }, h('table', { class: 'table compact', 'data-table': 'benign-violations' },
+    return card('benign', `정상 설치 위반 ${fmt.num(rows.length)}건`, rows.length ? h('div', { class: 'grid-scroll', 'data-fill': '' }, h('table', { class: 'table compact', 'data-table': 'benign-violations' },
       h('thead', null, h('tr', null, ['생태계', '패키지', '결과', '규칙', '걸린 시간'].map((t) => h('th', null, t)))),
       h('tbody', null, rows.map((x) => h('tr', { 'data-pkg': `${x.ecosystem}:${x.name}` }, h('td', null, x.ecosystem), h('td', { class: 'mono' }, x.name), h('td', null, U.INSTALL_STATUS[x.result] ? U.statusBadge(x.result) : x.result), h('td', { class: 'mono small' }, x.rule || '—'), h('td', { class: 'num' }, `${fmt.num(x.seconds)}초`))))))
       : h('p', { class: 'small muted ev-none' }, `위반 없음 — 정상 설치 ${fmt.num(b.installs)}건 모두 통과`), { actions: h('span', { class: 'small muted' }, `정상 설치 ${fmt.num(b.installs)}건 중`) });
@@ -255,7 +255,7 @@
     // 11/04c — 선택 모델은 보정 기준으로 고른 것. 시험 F1 이 그보다 높은 규칙 후보(id 가 rule 로 시작)가 있으면 표 아래 한 줄
     const pref = (md.candidates || []).find((x) => x.id === md.preferredId);
     const ruleWins = !!pref && (md.candidates || []).some((x) => /^rule/.test(x.id) && x.id !== md.preferredId && x.test.f1 > pref.test.f1);
-    return card('model', '모델 비교', [h('div', { class: 'grid-scroll' }, h('table', { class: 'table compact', 'data-table': 'models' },
+    return card('model', '모델 비교', [h('div', { class: 'grid-scroll', 'data-fill': '' }, h('table', { class: 'table compact', 'data-table': 'models' },
       h('thead', null, h('tr', null, ['후보', '보정 F1', '시험 F1', '정밀도', '재현율', '오탐률'].map((t, i) => h('th', { class: i ? 'right' : null }, t)))),
       h('tbody', null, (md.candidates || []).map((x) => { const pick = x.id === md.preferredId; return h('tr', { 'data-model': x.id, class: pick ? 'ev-pick' : null, 'aria-current': pick ? 'true' : null },
         h('td', null, x.label, pick ? h('span', { class: 'badge badge-info ev-pick-badge', title: '보정 구간에서 고른 모델 — 시험 구간은 선택에 쓰지 않았습니다' }, '보정 기준 선택') : null), // 11/04c
@@ -276,10 +276,12 @@
         h('div', { class: 'eval-tags', 'data-part': 'tags' }, tags(d))),
       kpis(d),
       // 두 열 = 정적(왼쪽) · 런타임(오른쪽) — 카드 높이가 달라도 열마다 위로 붙는다(Pinterest 식). 768 미만은 정적 → 런타임 한 열
-      h('div', { class: 'eval-grid' }, h('div', { class: 'ev-col', 'data-col': 'static' }, distCard(d.static), rulesCard(d.static), confusionCard(d.static)),
-        h('div', { class: 'ev-col', 'data-col': 'runtime' }, scenarioCard(d.runtime), latencyCard(d.runtime), benignCard(d.runtime))),
-      modelCard(d.model),
-      limitsBox(d));
+      // 11/04e 스크롤 없는 페이지: 머리 · 지표 6칸은 제자리, 그 아래 몸통(.eval-body)만 스크롤(채움 칸)
+      h('div', { class: 'eval-body', 'data-fill': '' },
+        h('div', { class: 'eval-grid' }, h('div', { class: 'ev-col', 'data-col': 'static' }, distCard(d.static), rulesCard(d.static), confusionCard(d.static)),
+          h('div', { class: 'ev-col', 'data-col': 'runtime' }, scenarioCard(d.runtime), latencyCard(d.runtime), benignCard(d.runtime))),
+        modelCard(d.model),
+        limitsBox(d)));
   }
   function download(d) {
     const at = ((d.static && d.static.generatedAt) || (d.runtime && d.runtime.generatedAt) || new Date().toISOString()).slice(0, 10);

@@ -42,11 +42,11 @@ const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)]; return (Math.max(x
     await go(pg, '/installs');
     const v = await vars(pg, Object.keys(LIGHT));
     for (const [k, want] of Object.entries(LIGHT)) ok(v[k].toLowerCase() === want.toLowerCase(), `${k} = ${v[k]} (계약 ${want})`);
-    ok(await pg.$eval('.panel', (e) => getComputedStyle(e).borderRadius) === '16px', '카드 r-lg');
+    ok(await pg.$eval('.panel', (e) => getComputedStyle(e).borderRadius) === '12px', '카드 r-md 12'); // 11/04e 패널 반경 12
     const xs = await pg.$eval('.page-actions .btn-xs', (e) => e.getBoundingClientRect().height); ok(xs >= 28 && xs < 36, `작은 버튼 ${xs}`); // 화면 머리의 「명령 복사」
     await pg.click('[data-filter="status"] button[data-value="all"]');
-    const row = await pg.$eval('table[data-table="installs"] tbody tr', (e) => e.getBoundingClientRect().height); ok(row >= 36 && row <= 44, `표 행 ${row}`);
-    ok(await pg.$eval('table[data-table="installs"] th', (e) => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight, getComputedStyle(e.closest('thead')).position].join()) === '12px,600,sticky', '표 헤더 12px/600 sticky');
+    const row = await pg.$eval('table[data-table="installs"] tbody tr', (e) => e.getBoundingClientRect().height); ok(row >= 44 && row <= 48, `표 행 ${row}`); // 11/04e 행 44~48
+    ok(await pg.$eval('table[data-table="installs"] th', (e) => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight, getComputedStyle(e.closest('thead')).position].join()) === '12px,700,sticky', '표 헤더 12px/700 sticky'); // 11/04e 머리 700
     await pg.click('table[data-table="installs"] tbody tr[data-id]'); await pg.waitForSelector('.sheet[data-sheet="install"]', W);
     { const w = await pg.$eval('.sheet[data-sheet="install"]', (e) => [e.getBoundingClientRect().width, innerWidth, document.querySelector('.shell').className, getComputedStyle(e).width]); ok(Math.round(w[0]) === 480 && w[3] === '480px', `시트 480 ${JSON.stringify(w)}`); } // 11/02: transform 모션의 소수점 오차(480.00006) — 반올림 비교
     ok(await pg.$eval('.sheet .badge', (e) => getComputedStyle(e).borderRadius) === '999px', '배지 r-pill');
@@ -108,7 +108,7 @@ const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)]; return (Math.max(x
     await pg.waitForFunction(() => { const e = document.querySelector('[data-section="overview"] .ov-kpi'); return e && e.isConnected && getComputedStyle(e).backgroundColor !== ''; }, null, { timeout: 3000 }).catch(() => {}); // 11/02: 종합이 다시 그려지는 순간(떨어진 요소 → 빈 값)을 피한다
     const kpiBg = await pg.evaluate(() => getComputedStyle(document.querySelector('[data-section="overview"] .ov-kpi')).backgroundColor);
     ok(kpiBg === 'rgb(23, 26, 33)', `스탯 타일 면 ${kpiBg}`);
-    const dns = await pg.evaluate(() => { const r = document.querySelector('[data-chart="collected"] rect[data-kind="dns"]'); return r ? getComputedStyle(r).fill : ''; });
+    const dns = await pg.evaluate(() => { const r = document.querySelector('[data-chart="collected"] path[data-kind="dns"]'); return r ? getComputedStyle(r).stroke : ''; }); // 11/04e 선 차트(stroke)
     ok(dns === 'rgb(251, 146, 60)', `조회 색 유지 ${dns}`);
     await pg.close();
   });

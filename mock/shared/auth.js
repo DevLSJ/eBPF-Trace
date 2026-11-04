@@ -354,7 +354,7 @@
       h('div', { class: 'row-actions' }, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onclick: () => { try { navigator.clipboard.writeText(temp).catch(() => {}); } catch { /* 복사 차단 */ } U.toast('임시 비밀번호를 복사했습니다', { tone: 'ok', key: 'copy', replace: true }); } }, '⧉ 복사'))) });
   }
   function accountsView() {
-    const body = h('div', { class: 'grow scroll' });
+    const body = h('div', { class: 'grow scroll', 'data-fill': '' });
     const msg = h('p', { class: 'small tone-danger', role: 'alert', hidden: true });
     const root2 = h('div', { class: 'col', 'data-view': 'accounts' },
       h('div', { class: 'acct-head' }, h('p', { class: 'small muted' }, `관리자는 모든 쓰기, 조회자는 보기만 합니다. 새 계정 · 비밀번호 초기화의 임시 비밀번호는 한 번만 보입니다. 새 비밀번호는 ${PW_MIN}자 이상, 아이디와 다르게.`),

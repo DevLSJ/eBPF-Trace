@@ -249,6 +249,7 @@ const TITLES = { '/': '대시보드', '/installs': '설치 검사', '/events': '
   });
   await T('11 감사 로그: 설치 검사 위반은 패키지 이름', async () => {
     await go(pg, '/audit');
+    await pg.selectOption('[data-table-foot="audit"] select[data-part="page-size"]', '100'); await pg.waitForTimeout(300); // 11/04e 쪽 번호(기본 20행) — 시드 설치 위반(어제)은 1쪽 밖이라 100행으로 본다
     const n = await pg.locator('table[data-table="audit"] [data-pkg]').count();
     ok(n >= 1, `패키지 표시 ${n}건`);
   });

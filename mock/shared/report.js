@@ -82,7 +82,7 @@
     title: '보고서',
     mount(page, query) {
       const caseId = query.get('case') || '', installId = query.get('install') || '';
-      const wrap = h('div', { class: 'report-wrap' }, U.skeleton(8));
+      const wrap = h('div', { class: 'report-wrap', 'data-fill': '' }, U.skeleton(8));
       page.append(wrap);
       const back = installId ? h('a', { ...U.to(`#/installs?id=${encodeURIComponent(installId)}`, { status: 'all' }), class: 'btn btn-ghost btn-xs' }, '← 설치 검사') : null;
       load(caseId, installId).then((d) => {

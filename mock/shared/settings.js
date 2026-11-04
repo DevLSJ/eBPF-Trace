@@ -49,7 +49,7 @@
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: f.failed, onchange: (e) => setF('failed', e.target.checked) }), ' 실패만'));
     // 「더 보기」(React 와 같음): 받은 수가 PAGE 이상이면 보이고, 마지막 행 id 를 before 로 다음을 붙인다. 필터가 바뀌면 처음부터
     const moreSlot = h('div');
-    const panel = U.panel({ title: ['인증 감사 ', count], class: 'grow', body: h('div', { class: 'col' }, filters, applied, h('div', { class: 'grid-scroll' }, slot, table, moreSlot)) });
+    const panel = U.panel({ title: ['인증 감사 ', count], class: 'grow', body: h('div', { class: 'col' }, filters, applied, h('div', { class: 'grid-scroll', 'data-fill': '' }, slot, table, moreSlot)) });
     let loaded = false, all = [], gen = 0;
     const row = (x) => h('tr', { 'data-auth-action': x.action, 'data-ok': String(x.ok), 'data-audit-id': x.id },
       h('td', { class: 'num mono nowrap' }, fmt.dateTime(x.at)), h('td', { class: 'mono' }, x.actor || '—'),
@@ -103,9 +103,9 @@
       if (U.sortable) U.headerActions(h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'data-action': 'layout-reset', title: '길게 눌러 바꾼 순서(사이드바 · 대시보드 숫자 칸 · 평가 지표)를 처음대로 — 이 브라우저에만 저장된 값',
         onclick: () => { U.sortable.reset(); U.toast('화면 배치를 기본 순서로 되돌렸습니다 — 사이드바 · 대시보드 숫자 칸 · 평가 지표', { tone: 'ok', key: 'layout-reset', replace: true }); } }, '화면 배치 기본 순서로'));
       const VIEWS = {
-        server: () => h('div', { class: 'settings-scroll' }, U.policyEasy.serverSettings()),
+        server: () => h('div', { class: 'settings-scroll', 'data-fill': '' }, U.policyEasy.serverSettings()),
         accounts: () => h('section', { class: 'panel grow acct-panel' }, U.auth.accountsView()),
-        license: () => h('div', { class: 'settings-scroll' }, licenseView()),
+        license: () => h('div', { class: 'settings-scroll', 'data-fill': '' }, licenseView()),
         'auth-audit': () => authAuditView(),
       };
       function draw() {

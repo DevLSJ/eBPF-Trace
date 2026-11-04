@@ -40,7 +40,7 @@ const SECTIONS = ['summary', 'timeline', 'violations', 'evidence', 'decision', '
     await go(pg, '/');
     ok(await pg.locator(DEMO).count() === 1, '카드 없음');
     const [d, p, s] = await Promise.all([pg.$eval(DEMO, (e) => e.getBoundingClientRect().top), pg.$eval('[data-section="pending"]', (e) => e.getBoundingClientRect().top), pg.$eval('[data-part="signals"]', (e) => e.getBoundingClientRect().top)]);
-    ok(s < d && d < p, `자리 신호등 ${s} < 시연 ${d} < 판정 대기 ${p}`);
+    ok(d < s && s < p, `자리 시연 ${d} < 신호등 ${s} < 판정 대기 ${p}`); // 11/04e 대시보드 재배치: 신호등은 종합 머리 줄(KPI 위), 판정 대기는 아래 3칸 — 시연 카드는 그 위(B 커밋에서 시연 페이지로 옮김)
     ok((await pg.textContent(`${DEMO} .panel-head h2`)).trim() === '시연', '제목');
     const opts = await pg.$$eval(`${DEMO} [data-part="demo-scenario"] option`, (els) => els.map((e) => [e.value, e.textContent, e.selected]));
     ok(JSON.stringify(opts.map((o) => o[0])) === JSON.stringify(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil']), `시나리오 ${JSON.stringify(opts)}`);
@@ -160,7 +160,8 @@ const SECTIONS = ['summary', 'timeline', 'violations', 'evidence', 'decision', '
   await T('⑤ 종합 「격리 지연 중앙값」: 격리 없으면 「—」(?fresh=1) · 24시간 안 격리가 생기면 N ms(p95 · 최대 · 건수) · 7일엔 시드 격리 2건', async () => {
     const pg = await newPage();
     await go(pg, '/', '&fresh=1');
-    const k = (p) => p.$eval('[data-section="overview"] [data-kpi="isolation"]', (e) => [e.querySelector('[data-value]').textContent, e.dataset.count, e.querySelector('span:last-child').textContent]);
+    // 11/04e KPI 카드: 단위(ms)는 값과 따로(.kpi-unit) — 값 + 단위를 이어 읽는다
+    const k = (p) => p.$eval('[data-section="overview"] [data-kpi="isolation"]', (e) => [e.querySelector('[data-value]').textContent + (e.querySelector('.kpi-unit') ? ` ${e.querySelector('.kpi-unit').textContent}` : ''), e.dataset.count, e.querySelector('span:last-child').textContent]);
     const a = await k(pg);
     ok(a[0] === '—' && a[1] === '0', `빈 서버 ${JSON.stringify(a)}`);
     ok((await pg.textContent('[data-section="overview"] [data-kpi="isolation"] span')).includes('격리 지연 중앙값'), '라벨');

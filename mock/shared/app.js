@@ -722,9 +722,15 @@
       return { proposalId: proposal.id, caseId: c.id };
     },
     // eBPF 수집 종합(10/16) — GET /api/summary?range=1h|24h|7d. 저장된 기록(감사 로그 · 세션 · 건 · 차단 목록) + 1분 단위 수집량
+    // 11/04e: previous — 바로 앞 같은 길이 기간의 숫자(KPI 증감 줄). 계약 추가(안): GET /api/summary 의 previous{collected, violations, isolatedContainers, installs, decided, isolationMedianMs}
     overview(range) {
+      const cur = srv.overviewAt(range, 0), p = srv.overviewAt(range, 1);
+      cur.previous = { collected: p.collected.total, violations: p.violations.total, isolatedContainers: p.isolatedContainers, installs: p.installs.total, decided: p.decisions.malicious + p.decisions.falsePositive, isolationMedianMs: p.isolation.medianMs };
+      return cur;
+    },
+    overviewAt(range, shift) {
       const R = { '1h': [60, 60], '24h': [24, 3600], '7d': [28, 21600] }[range] || [24, 3600];
-      const [n, step] = R, stepMs = step * 1000, end = Math.ceil(Date.now() / stepMs) * stepMs, from = end - n * stepMs;
+      const [n, step] = R, stepMs = step * 1000, end = Math.ceil(Date.now() / stepMs) * stepMs - (shift || 0) * n * stepMs, from = end - n * stepMs;
       // 켜기 전 수집량은 목업용 합성값(하루 주기 + 결정적 잡음), 켠 뒤는 실제로 흘러간 시뮬레이션 이벤트
       const synth = (m, k) => { const base = { exec: 18, open: 120, connect: 34, dns: 9 }[k]; const day = 0.65 + 0.35 * Math.sin(((m % 1440) / 1440) * 2 * Math.PI - 1.2); const noise = ((Math.imul(m ^ { exec: 7, open: 13, connect: 29, dns: 11 }[k], 2654435761) >>> 0) % 100) / 100; return Math.round(base * day * (0.8 + 0.4 * noise)); };
       const series = Array.from({ length: n }, (_, i) => ({ t: new Date(from + i * stepMs).toISOString(), exec: 0, open: 0, connect: 0, dns: 0, killed: 0, alert: 0 }));
@@ -734,7 +740,7 @@
         const live = sim.collectedLive.get(m);
         for (const k of KINDS) b[k] += m < sim.bootMinute ? synth(m, k) : live ? live[k] || 0 : 0;
       }
-      const rows = state.audit.filter((a) => Date.parse(a.event.timestamp) >= from);
+      const rows = state.audit.filter((a) => Date.parse(a.event.timestamp) >= from && Date.parse(a.event.timestamp) < end);
       const vio = { total: rows.length, killed: 0, alert: 0, held: 0 };
       const byRule = new Map(), byCtr = new Map(), isolated = new Set();
       for (const a of rows) {
@@ -745,9 +751,9 @@
         if (a.ruleId) top(byRule, a.ruleId); top(byCtr, a.install ? a.install.label : a.event.containerName);
       }
       const sorted = (m, key) => [...m.entries()].sort((x, y) => y[1].count - x[1].count || String(x[0]).localeCompare(String(y[0]))).slice(0, 10).map(([k, v]) => ({ [key]: k, count: v.count, level: v.level }));
-      const ins = state.installs.filter((x) => Date.parse(x.startedAt) >= from).map((x) => M.statusOf(x));
+      const ins = state.installs.filter((x) => Date.parse(x.startedAt) >= from && Date.parse(x.startedAt) < end).map((x) => M.statusOf(x));
       const st = (k) => ins.filter((x) => x === k).length;
-      const dec = state.cases.filter((c) => c.decidedAt && Date.parse(c.decidedAt) >= from);
+      const dec = state.cases.filter((c) => c.decidedAt && Date.parse(c.decidedAt) >= from && Date.parse(c.decidedAt) < end);
       const collected = { total: 0, byKind: { exec: 0, open: 0, connect: 0, dns: 0 } };
       for (const b of series) for (const k of KINDS) { collected.byKind[k] += b[k]; collected.total += b[k]; }
       // 격리 지연 [10/30 계약 §3] — 범위 안 killedAt 이 있는 행, ms = killedAt − detectedAt. 없으면 count 0 · 나머지 null
@@ -1044,15 +1050,18 @@
     // sim 의 전체 교체(화면이 YAML 을 해석한 결과) — 시스템 규칙은 그대로 둔다
     replaceRules: (rs) => { const sys = state.rules.find((x) => x.id === M.SYSTEM_RULE); state.rules = rs.filter((x) => x.id !== M.SYSTEM_RULE).concat(sys ? [sys] : []); srv.recordChange('policy_replace', `정책 ${rs.length}개 전체 교체`); return state.rules; },
     audit: (p) => {
-      if (state.source === 'live') { const q = new URLSearchParams(); for (const [k, v] of Object.entries(p)) if (v !== undefined && v !== '') q.set(k, String(v)); return fetchJSON(`/api/audit?${q}`); }
-      return simCall('audit', () => auditRows(p))();
+      // live: 옛 응답(배열 — total 없음 → 이전/다음만) · 새 응답({items, total} — 쪽 번호)을 둘 다 받는다. offset 은 total 이 있을 때만 보낸다(화면이 정함) [11/04e]
+      if (state.source === 'live') { const q = new URLSearchParams(); for (const [k, v] of Object.entries(p)) if (v !== undefined && v !== '' && v !== null) q.set(k, String(v)); return fetchJSON(`/api/audit?${q}`).then((r) => (Array.isArray(r) ? r : Object.assign((r && r.items) || [], { total: r && Number.isFinite(r.total) ? r.total : undefined }))); }
+      return simCall('audit', () => auditRows(p))(); // total 속성은 simCall 을 지나도 남는다(복사하지 않음)
     },
   };
   function auditRows(p) {
     {
       const since = p.since ? new Date(p.since).getTime() : 0, until = p.until ? new Date(p.until).getTime() : Infinity;
       let rows = state.audit.filter((a) => { const t = new Date(a.event.timestamp).getTime(); return (!p.kind || a.event.kind === p.kind) && (!p.action || a.action === p.action) && (!p.rule || (a.ruleId || '').includes(p.rule)) && (!p.container || a.event.containerName.includes(p.container)) && t >= since && t <= until && (!p.before || a.id < p.before); });
-      return clone(rows.slice(0, p.limit || 100));
+      // 11/04e 쪽 번호: offset(앞에서 건너뛸 행 수)과 total(조건에 맞는 전체 행 수)을 함께 — 계약 추가(안) GET /api/audit?offset= → {items, total}. 화면 API(api.audit)는 배열 + total 속성으로 넘긴다
+      const off = Math.max(0, Number(p.offset) || 0);
+      return Object.assign(clone(rows.slice(off, off + (p.limit || 100))), { total: rows.length });
     }
   }
 
@@ -1074,8 +1083,9 @@
     const tick = (now) => { const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3); el.textContent = f(Math.round(from + (to - from) * e)); if (p < 1) requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
   }
-  function kpi({ label, value, hint, tone, key, href }) {
-    const box = h('div', { class: 'kpi', 'data-kpi': key }, h('div', { class: 'kpi-label' }, label), h('div', { class: `kpi-value num tone-${tone || 'default'}` }, value), hint ? h('div', { class: 'kpi-hint' }, hint) : null);
+  // 지표 칸(평가 화면) — 11/04e: 왼쪽 띠(stripe) · 오른쪽 위 아이콘 칩(icon, 글자 없이 data-icon) 을 대시보드 KPI 카드와 같게
+  function kpi({ label, value, hint, tone, key, href, icon, stripe }) {
+    const box = h('div', { class: `kpi kpi-card stripe-${stripe || 'accent'}`, 'data-kpi': key }, h('div', { class: 'kpi-label' }, label), h('i', { class: 'kpi-ico', 'data-icon': icon || '◔', 'aria-hidden': 'true' }), h('div', { class: `kpi-value num tone-${tone || 'default'}` }, value), hint ? h('div', { class: 'kpi-hint' }, hint) : null);
     return href ? h('a', { href, class: 'kpi-link' }, box) : box;
   }
   const statusBadge = (st) => h('span', { class: `badge st st-${st}`, 'data-status': st }, INSTALL_STATUS[st]);
@@ -1173,8 +1183,11 @@
       h('header', { class: 'panel-head' }, h('h2', null, title), h('div', { class: 'panel-actions' }, actions, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'aria-label': '닫기', onclick: onClose }, '✕'))),
       h('div', { class: 'sheet-body' }, body), foot ? h('div', { class: 'sheet-foot', 'data-part': 'sheet-foot' }, foot) : null);
   }
-  function panel({ title, actions, body, class: cls }) {
-    return h('section', { class: `panel ${cls || ''}` }, h('header', { class: 'panel-head' }, h('h2', null, title), actions ? h('div', { class: 'panel-actions' }, actions) : null), h('div', { class: 'panel-body' }, body));
+  // 패널 머리 [11/04e]: 제목(14.5/600) + 부제 슬롯(sub) + 오른쪽 「더 보기 ›」 슬롯(more = 링크 · {href, state}) · actions. attrs 는 section 속성(data-section 등)
+  function panel({ title, sub, more, actions, body, class: cls, attrs }) {
+    const moreEl = more ? h('a', Object.assign({ class: 'panel-more', 'data-more': '' }, to(more.link || more.href || more)), `${more.label || '더 보기'} ›`) : null;
+    return h('section', Object.assign({ class: `panel ${cls || ''}` }, attrs || {}), h('header', { class: 'panel-head' }, h('h2', null, title), sub ? h('span', { class: 'panel-sub small muted' }, sub) : null,
+      actions || moreEl ? h('div', { class: 'panel-actions' }, actions, moreEl) : null), h('div', { class: 'panel-body' }, body));
   }
   const empty = (text) => h('div', { class: 'empty' }, text);
   function pauseToggle() {
@@ -1198,7 +1211,7 @@
   function feed({ full, showImage = true, onSelect, empty: emptyText }) {
     const ROW = 40, OVER = 8;
     const list = h('ul', { class: 'feed-list' });
-    const scroller = h('div', { class: 'feed-scroll' }, list);
+    const scroller = h('div', { class: 'feed-scroll', 'data-fill': '' }, list);
     const head = full ? h('div', { class: 'feed-head' }, h('span', { class: 'c-time' }, '시각'), h('span', { class: 'c-name' }, '컨테이너'), h('span', { class: 'c-img' }, '이미지'), h('span', { class: 'c-kind' }, '종류'), h('span', { class: 'c-detail' }, '상세 (인자 · 경로 · 목적지)'), h('span', { class: 'c-rule' }, '규칙'), h('span', { class: 'c-verdict' }, '탐지 결과')) : null;
     const root = h('div', { class: `feed ${full ? 'feed-full' : ''}` }, head, scroller);
     let rows = [], selectedKey = null, emptyEl = null, seenKey = -1, firstDraw = true; // seenKey: 이미 그린 가장 큰 key — 그보다 크면 새 위반 행(하이라이트 1.2초, danger-soft → 투명) [10/30 모션]
