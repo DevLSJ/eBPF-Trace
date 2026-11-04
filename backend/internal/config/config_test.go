@@ -25,6 +25,18 @@ func TestTokensMustDiffer(t *testing.T) {
 	}
 }
 
+// EVAL_REPORTS_DIR(11/04): 기본은 배포 이미지 안 경로(/bench/reports), make dev 는 저장소의 bench/reports 로 덮어쓴다
+func TestEvalReportsDir(t *testing.T) {
+	c, err := Load()
+	if err != nil || c.EvalReportsDir != "/bench/reports" {
+		t.Fatalf("default: %q %v", c.EvalReportsDir, err)
+	}
+	t.Setenv("EVAL_REPORTS_DIR", "/tmp/reports")
+	if c, err = Load(); err != nil || c.EvalReportsDir != "/tmp/reports" {
+		t.Fatalf("%q %v", c.EvalReportsDir, err)
+	}
+}
+
 // CONTAINER_DISCOVERY(10/20): 기본 auto(fanotify 먼저, 안 되면 docker-events). 세 값만 받는다
 func TestContainerDiscovery(t *testing.T) {
 	c, err := Load()

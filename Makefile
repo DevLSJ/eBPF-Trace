@@ -6,19 +6,21 @@ MOCK_ORIGINS := http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:876
 # 개발 전용 고정값 — 운영 .env 에 쓰지 않는다 (.env.example 참고)
 DEV_ADMIN_PW := sg-dev-admin-pw
 DEV_AUTH := AUTH_OTP_REQUIRED=false ADMIN_INITIAL_PASSWORD=$(DEV_ADMIN_PW)
+# 평가 결과(GET /api/evaluation): 로컬 개발은 저장소의 bench/reports 를 읽는다(이미지는 /bench/reports)
+DEV_EVAL := EVAL_REPORTS_DIR=$(CURDIR)/bench/reports
 
 .PHONY: dev backend frontend mock stack-up stack-down test build sandbox-up sandbox-down
 
 ## dev: 백엔드(mock, :8000) + Vite(:5173) 를 같이 띄운다. Ctrl-C 로 둘 다 종료.
 dev:
 	@trap 'kill 0' EXIT INT TERM; \
-	  (cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true DEMO_ENABLED=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) go run ./cmd/server) & \
+	  (cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true DEMO_ENABLED=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) $(DEV_EVAL) go run ./cmd/server) & \
 	  (cd frontend && npm run dev) & \
 	  wait
 
 ## backend: mock 소스 백엔드만 (목업 '실제 백엔드' 모드가 붙을 수 있게 CORS 출처 포함)
 backend:
-	cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true DEMO_ENABLED=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) go run ./cmd/server
+	cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true DEMO_ENABLED=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) $(DEV_EVAL) go run ./cmd/server
 
 frontend:
 	cd frontend && npm run dev

@@ -305,6 +305,7 @@ func run() error {
 		Notifier:             ntf,
 		Evidence:             evStore,
 		PolicyFile:           cfg.PolicyFile,
+		EvalReportsDir:       cfg.EvalReportsDir,
 		Auth:                 authSvc,
 		Demo:                 demoSvc,
 		Info: api.Info{Source: cfg.EventSource, Gadgets: cfg.Gadgets, EnforceKill: cfg.EnforceKill,

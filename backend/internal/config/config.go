@@ -48,6 +48,8 @@ type Config struct {
 	DatabaseURL string
 	RedisURL    string
 	PolicyFile  string
+	// EvalReportsDir: 평가 결과 JSON(bench/reports) 디렉터리 — GET /api/evaluation 이 읽는다(11/04). 기본은 배포 이미지 안 경로
+	EvalReportsDir string
 
 	AdminToken string
 	// SandboxToken: sg-install CLI 의 세션 보고 · 차단 확인 전용 (ADMIN_TOKEN 과 달라야 한다)
@@ -93,6 +95,7 @@ func Load() (Config, error) {
 		DatabaseURL:        env("DATABASE_URL", ""),
 		RedisURL:           env("REDIS_URL", ""),
 		PolicyFile:         env("POLICY_FILE", "policies/default.yaml"),
+		EvalReportsDir:     env("EVAL_REPORTS_DIR", "/bench/reports"),
 		AdminToken:         env("ADMIN_TOKEN", ""),
 		SandboxToken:       env("SANDBOX_TOKEN", ""),
 		ActorName:          env("ACTOR_NAME", "보안 담당자"),

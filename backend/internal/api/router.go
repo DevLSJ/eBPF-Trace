@@ -77,6 +77,8 @@ type Deps struct {
 	Auth *auth.Service
 	// Demo: 시연 실행(10/30, DEMO_ENABLED). nil 이면 /api/demo 경로 없음 · /api/info demo=false
 	Demo *demo.Service
+	// EvalReportsDir: 평가 결과 JSON 디렉터리(EVAL_REPORTS_DIR, 11/04) — GET /api/evaluation 이 요청마다 읽는다. 비거나 파일이 없으면 404
+	EvalReportsDir string
 }
 
 // Info: 대시보드가 표시하는 런타임 설정
@@ -131,6 +133,7 @@ func Router(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/audit", h.audit)
 	mux.HandleFunc("GET /api/policies", h.listPolicies)
 	mux.HandleFunc("GET /api/policies/export", h.exportPolicies)
+	mux.HandleFunc("GET /api/evaluation", h.evaluation) // 평가 결과(11/04) — 읽기 전용, 로그인 뒤 모든 역할
 	if d.PolicyFile != "" {
 		mux.HandleFunc("GET /api/policies/defaults", h.policyDefaults)
 	}

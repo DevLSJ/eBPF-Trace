@@ -28,6 +28,8 @@ type wiredEnv struct {
 	rv     *review.Service
 	engine *rules.Engine
 	mem    *store.Memory
+	// evalDir: GET /api/evaluation 이 읽는 디렉터리(비어 있음 — 테스트가 파일을 넣는다)
+	evalDir string
 }
 
 // newWiredEnv: main.go 와 같은 조립 — 바깥 mux(/ws/events + Router) 전체를 Secure 로 감싼다.
@@ -58,17 +60,18 @@ func newWiredEnv(t *testing.T) *wiredEnv {
 	hub := ws.NewHub([]string{devOrigin})
 	t.Cleanup(hub.Close)
 
+	evalDir := t.TempDir()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ws/events", hub.HandleWS)
 	mux.Handle("/", Router(Deps{
 		Engine: engine, Policies: mem, Audit: mem, Buffer: mem, Stats: stats.New().Snapshot,
 		AdminToken: flowAdminTok, SandboxToken: wiredSandboxTok,
 		Review: rv, Chat: chatSvc, Auth: svc, OSV: &osv.Client{URL: "http://127.0.0.1:1"},
-		AllowedOrigins: []string{devOrigin},
+		AllowedOrigins: []string{devOrigin}, EvalReportsDir: evalDir,
 	}))
 	srv := httptest.NewServer(Secure(mux, SecureOptions{Auth: svc, AdminToken: flowAdminTok, AllowedOrigins: []string{devOrigin}}))
 	t.Cleanup(srv.Close)
-	return &wiredEnv{authEnv: &authEnv{srv: srv, svc: svc, clock: c}, rv: rv, engine: engine, mem: mem}
+	return &wiredEnv{authEnv: &authEnv{srv: srv, svc: svc, clock: c}, rv: rv, engine: engine, mem: mem, evalDir: evalDir}
 }
 
 // bearer: 쿠키 없는 CLI 요청
