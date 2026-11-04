@@ -13,8 +13,22 @@ const LANGS: [RegExp, string][] = [
   [/\.txt$/i, 'text'],
 ];
 const ALIAS: Record<string, string> = {
-  py: 'python', python: 'python', yaml: 'YAML', yml: 'YAML', json: 'JSON', sh: 'shell', bash: 'shell', shell: 'shell', log: 'log',
-  js: 'javascript', javascript: 'javascript', ts: 'typescript', typescript: 'typescript', toml: 'TOML', text: 'text', txt: 'text',
+  py: 'python',
+  python: 'python',
+  yaml: 'YAML',
+  yml: 'YAML',
+  json: 'JSON',
+  sh: 'shell',
+  bash: 'shell',
+  shell: 'shell',
+  log: 'log',
+  js: 'javascript',
+  javascript: 'javascript',
+  ts: 'typescript',
+  typescript: 'typescript',
+  toml: 'TOML',
+  text: 'text',
+  txt: 'text',
 };
 export function codeLang(name?: string | null, lang?: string | null): string {
   if (lang) return ALIAS[lang.toLowerCase()] ?? lang;

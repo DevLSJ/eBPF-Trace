@@ -68,4 +68,3 @@ export function useTableKit<T>({ columns, sort, size = 20 }: { columns: Column<T
     [st, sortBy, page, per, sorted, view, reveal],
   );
 }
-

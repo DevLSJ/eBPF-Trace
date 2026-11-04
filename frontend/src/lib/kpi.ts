@@ -16,4 +16,3 @@ export function kpiDelta(cur: number | null | undefined, prev: number | null | u
   if (!d) return { dir: 'flat', text: '변화 없음', tone: 'neutral', note: o.note };
   return { dir: d > 0 ? 'up' : 'down', text: `${fmtNum(Math.abs(d))}${o.unit ?? ''}`, tone: (d > 0 ? o.up : o.down) ?? 'neutral', note: o.note };
 }
-

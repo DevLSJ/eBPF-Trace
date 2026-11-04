@@ -122,7 +122,12 @@ export function LineChart({ name, label, keys, data, step = 3600 }: { name: stri
   for (let i = 0; i < ends.length; i++) ends[i].y = Math.max(ends[i].y, i ? ends[i - 1].y + GAP : m.t + 6);
   for (let i = ends.length - 1; i >= 0; i--) ends[i].y = Math.min(ends[i].y, i < ends.length - 1 ? ends[i + 1].y - GAP : m.t + ih);
   const colW = data.length > 1 ? iw / (data.length - 1) : iw;
-  const tipFor = (e: MouseEvent, d: Point): Tip => ({ x: e.clientX, y: e.clientY, title: tickText(d.t, step), rows: keys.map(([k, ko]) => [`k-${k}`, `${ko} ${fmtNum(val(d, k))}`]) });
+  const tipFor = (e: MouseEvent, d: Point): Tip => ({
+    x: e.clientX,
+    y: e.clientY,
+    title: tickText(d.t, step),
+    rows: keys.map(([k, ko]) => [`k-${k}`, `${ko} ${fmtNum(val(d, k))}`]),
+  });
   return (
     <div ref={root} className="chart line-chart" data-chart={name}>
       <div ref={box} className="chart-box">
@@ -210,7 +215,12 @@ export function StackBars({ name, label, keys, data, step = 3600 }: { name: stri
   const grid: number[] = [];
   for (let v = 0; v <= max + 1e-9; v += gs) grid.push(v);
   const every = everyFor(data.length, iw, 54);
-  const tipFor = (e: MouseEvent, d: Point): Tip => ({ x: e.clientX, y: e.clientY, title: tickText(d.t, step), rows: keys.map(([k, ko, cls]) => [cls, `${ko} ${fmtNum(val(d, k))}`]) });
+  const tipFor = (e: MouseEvent, d: Point): Tip => ({
+    x: e.clientX,
+    y: e.clientY,
+    title: tickText(d.t, step),
+    rows: keys.map(([k, ko, cls]) => [cls, `${ko} ${fmtNum(val(d, k))}`]),
+  });
   return (
     <div ref={root} className="chart stack-bars" data-chart={name}>
       <div className="chart-legend">
@@ -316,7 +326,10 @@ export function Donut({ name, label, items, centerLabel, children }: { name: str
                 const span = (it[3] / total) * Math.PI * 2;
                 const a0 = a + pad / 2;
                 const a1 = a + span - pad / 2;
-                const d = span >= Math.PI * 2 - 1e-6 ? `${arc(R, R, r0, r1, 0, Math.PI)}${arc(R, R, r0, r1, Math.PI, Math.PI * 2 - 1e-4)}` : arc(R, R, r0, r1, a0, Math.max(a0 + 0.001, a1));
+                const d =
+                  span >= Math.PI * 2 - 1e-6
+                    ? `${arc(R, R, r0, r1, 0, Math.PI)}${arc(R, R, r0, r1, Math.PI, Math.PI * 2 - 1e-4)}`
+                    : arc(R, R, r0, r1, a0, Math.max(a0 + 0.001, a1));
                 a += span;
                 return (
                   <path

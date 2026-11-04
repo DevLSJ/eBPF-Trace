@@ -56,7 +56,8 @@ export function CodeWindow({
       <span className="cw-tag">{kind}</span>
     </div>
   );
-  const inner = body === 'raw' ? children : body === 'div' ? <div className={`${CW_BODY} ${bodyClassName}`}>{children}</div> : <pre className={`${CW_BODY} ${bodyClassName}`}>{children}</pre>;
+  const inner =
+    body === 'raw' ? children : body === 'div' ? <div className={`${CW_BODY} ${bodyClassName}`}>{children}</div> : <pre className={`${CW_BODY} ${bodyClassName}`}>{children}</pre>;
   const attrs = {
     className: `code-win${fill ? ' cw-fill' : ''} ${className}`,
     'data-codewin': '',
