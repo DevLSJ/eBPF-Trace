@@ -1,6 +1,7 @@
-import { ChartColumn, ChevronsLeft, ChevronsRight, CircleHelp, FileClock, LayoutDashboard, ListTree, Menu, Network, PackageSearch, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
+import { ChartColumn, ChevronsLeft, ChevronsRight, CircleHelp, FileClock, LayoutDashboard, ListTree, Menu, MonitorPlay, Network, PackageSearch, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useAuth } from '../hooks/auth-context';
 import { useCases } from '../hooks/cases-context';
 import { useStream } from '../hooks/stream-context';
 import { AccountMenu } from './AccountMenu';
@@ -55,8 +56,12 @@ const groups: { id?: 'install' | 'runtime' | 'records'; label?: string; items: N
   },
 ];
 
+// R3 11/04: 「시연」 — 대시보드 바로 아래 고정(home 줄 — 길게 눌러 옮기기 · 순서 저장 대상 아님), 관리자 + /api/info.demo 일 때만 groups 에 끼운다
+const DEMO_ITEM: NavItem = { to: '/demo', label: '시연', icon: MonitorPlay };
+
 const TITLES: Record<string, string> = {
   '/': '대시보드',
+  '/demo': '시연',
   '/installs': '설치 검사',
   '/scans': '공급망 검사',
   '/evaluation': '평가',
@@ -73,6 +78,8 @@ const TITLES: Record<string, string> = {
 export function AppShell() {
   const { info, stats } = useStream();
   const { cases } = useCases();
+  const { isAdmin } = useAuth();
+  const demoOn = isAdmin && info?.demo === true;
   const { pathname } = useLocation();
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const [help, setHelp] = useState(false);
@@ -138,7 +145,7 @@ export function AppShell() {
           </div>
           <nav className="flex min-h-0 flex-col gap-3 overflow-y-auto px-2 py-3" aria-label="화면">
             {groups.map((g, gi) => (
-              <NavGroup key={gi} g={g} collapsed={collapsed} pending={pending} />
+              <NavGroup key={gi} g={!g.id && demoOn ? { ...g, items: [...g.items, DEMO_ITEM] } : g} collapsed={collapsed} pending={pending} />
             ))}
           </nav>
           {!collapsed && (

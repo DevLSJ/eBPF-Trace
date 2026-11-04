@@ -15,6 +15,7 @@ import { PoliciesPage } from './features/policies/PoliciesPage';
 import { AuditPage } from './features/audit/AuditPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { ReportPage } from './features/report/ReportPage';
+import { DemoPage } from './features/demo/DemoPage';
 
 // 로그인(W16): AuthProvider 가 active 세션일 때만 아래(실시간 연결 · 건 목록 · 화면)를 그린다
 // 화면마다 공통 틀 <Page>(R1 11/04 — 스크롤 없는 페이지, 스크롤은 화면 안 채움 칸 [data-fill] 에서만)
@@ -36,6 +37,7 @@ export default function App() {
                 <Route path="audit" element={<Page><AuditPage /></Page>} />
                 <Route path="settings" element={<Page><SettingsPage /></Page>} />
                 <Route path="report" element={<Page><ReportPage /></Page>} />
+                <Route path="demo" element={<Page><DemoPage /></Page>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
             </Routes>

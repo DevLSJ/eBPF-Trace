@@ -174,6 +174,43 @@ export interface DemoRun {
   status: DemoStatus;
   exitCode: number | null;
   simulated: boolean;
+  // 11/04 「왜」 보충(backend demo/explain.go) — GET /api/demo 의 running · last 에만(POST 응답 · 거부 · 옛 백엔드는 없음)
+  explain?: DemoExplain | null;
+}
+// 결과를 정한 판정(세션 위반 중 가장 강한 것, 같으면 이른 것) + 지금 정책의 규칙 설명 · 조건 요약(규칙이 지워졌으면 "")
+export interface DemoDecider {
+  ruleId: string;
+  description: string;
+  condition: string;
+  action: Action;
+  dryRun: boolean;
+  enforced: boolean;
+  reason: string;
+  // 판정을 만든 이벤트 원문(빈 필드는 "" · 0 으로 올 수 있다)
+  event: Pick<Event, 'kind' | 'timestamp' | 'comm' | 'pid'> & Partial<Pick<Event, 'args' | 'path' | 'dstIp' | 'dstPort' | 'dstHost' | 'qtype'>>;
+  sequence?: string; // 이 판정에 연쇄가 붙었으면 그 규칙 id
+}
+export interface DemoSequenceStep {
+  kind: Kind;
+  condition: string;
+  matched: boolean;
+  event: SequenceStep | null;
+  gapMs: number | null; // 앞 단계 이벤트에서 걸린 ms(첫 단계 · 미충족은 null)
+}
+// chain 시나리오의 연쇄 규칙 진행 — 완성(판정에 sequence 기록)이 아니면 위반 이벤트로 단계를 차례로 맞춘 결과
+export interface DemoSequence {
+  ruleId: string;
+  description: string;
+  action: Action;
+  dryRun: boolean;
+  disabled: boolean;
+  windowSeconds: number;
+  completed: boolean;
+  steps: DemoSequenceStep[];
+}
+export interface DemoExplain {
+  decidedBy: DemoDecider | null; // null = 위반 없음(실행 중이면 아직 판정 없음)
+  sequence: DemoSequence | null;
 }
 export interface DemoState {
   enabled: boolean;
