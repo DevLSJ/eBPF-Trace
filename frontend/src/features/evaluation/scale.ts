@@ -31,9 +31,9 @@ export function niceTicks(maxV: number) {
 }
 export const RATE_TICKS = [0, 0.25, 0.5, 0.75, 1];
 
-// 축 이름이 칸(px)을 넘으면 끝을 말줄임 — 글자 폭 어림(한글 11px · 그 밖 6.6px, 고정폭 6.8px)
+// 축 이름이 칸(px)을 넘으면 끝을 말줄임 — 글자 폭 어림(R4 11/04: 글자 12px 기준 — 한글 12px · 그 밖 7.2px, 고정폭 7.4px)
 export function fitText(t: string, px: number, mono?: boolean) {
-  const w = (ch: string) => (mono ? 6.8 : /[ㄱ-힣]/.test(ch) ? 11 : 6.6);
+  const w = (ch: string) => (mono ? 7.4 : /[ㄱ-힣]/.test(ch) ? 12 : 7.2);
   const chars = [...t];
   if (chars.reduce((a, ch) => a + w(ch), 0) <= px) return t;
   let n = 0;
