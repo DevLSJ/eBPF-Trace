@@ -79,7 +79,7 @@
 
 ## 화면
 
-사이드바는 시나리오별 묶음이다: 대시보드 / **설치 검사** / **런타임 감시**(이벤트 · 토폴로지) / **설정 · 기록**(정책 · 감사 로그 · 설정 [10/20]). 상단에는 화면 이름과 그 화면의 주 버튼 · 입력이 있다.
+사이드바는 시나리오별 묶음이다: 대시보드 / **설치 검사**(설치 검사 · 공급망 검사 · 평가 [11/04]) / **런타임 감시**(이벤트 · 토폴로지) / **설정 · 기록**(정책 · 감사 로그 · 설정 [10/20]). 상단에는 화면 이름과 그 화면의 주 버튼 · 입력이 있다.
 
 탭 하나 = 질문 하나 [10/15 목표]. 엔진이 내리는 것은 「탐지 결과」(정상 · 경고 · 격리 대상 · 격리됨), 사람이 내리는 것은 「판정」(판정 대기 · 악성 · 오탐).
 
@@ -91,6 +91,7 @@
 | 토폴로지 | 이 컨테이너는 어디까지 손댔나? | 런타임 컨테이너만(`sg-install-*` 제외) · 아래 참고 · 격리 컨테이너를 고르면 **판정 카드**(같은 판정 버튼, 악성 = 이미지 · 도메인 차단) |
 | 정책 | 이 변경을 적용하면 무엇이 달라지나? | 왼쪽 맨 위 **제안된 변경**(있으면 처음 열 때 자동 선택) · **차단 목록**(패키지 · 이미지 · 도메인, 해제) · 정책 목록(시스템 규칙 `blocklist-hosts` 는 「차단 목록에서 관리」, 편집 불가). 오른쪽 제안: 변경 내용 · **미리보기**(감사 로그 재평가 — 바뀌는 건수 · 목록, 패키지 · 이미지 차단은 「다음 설치 · 기동부터」) · 실행 규칙 자동 예외 없음 안내 · 버림(두 번 눌러 확정) / 적용 → 적용됨(처리자 · 시각 · 건 종결). 그 밖: 폼 ↔ YAML 편집 · dry-run · 전체 YAML 교체(확인 대화상자). 쓰기는 로그인 역할만(관리자 토큰 칸 · 서버 설정 · 계정 탭은 없앴다 [10/20]) |
 | 설정 | 이 서버는 어떻게 돌고, 누가 들어왔나? | [10/20] 탭 4개 — **서버 설정**(자동 격리 · 감시 범위 · 제외 · 컨테이너 발견 방식 · 도메인 판단 · 알림 + 테스트 발송, 보기만) · **계정**(관리자) · **라이선스**(상태 칩 · 키 · 등록 · 만료) · **인증 감사**(관리자, 모의 데이터 — 로그인 성공/실패 · 잠김 · OTP · 복구 코드 · 계정 변경). 조회자는 서버 설정 · 라이선스만 |
+| 평가 | 이 탐지는 얼마나 맞고, 어디까지 믿을 수 있나? | [11/04 목업] 머리(「예시 데이터」 배지 · 결론 한 줄 · 출처 태그) · 지표 6칸 · 두 열(정적: 판정 분포 · 규칙 적중 상위 10 · 혼동 행렬 / 런타임: 시나리오 탐지율 · 지연 분포 · 정상 설치 위반) · 모델 비교 · 결과의 한계 · 결과 JSON 내려받기. 아래 11/04 평가 화면 반영 기록 |
 | 감사 로그 | 언제 무엇이 걸렸고, 어떻게 닫혔나? | **위반 기록**(탐지 결과 · **판정** 열: 판정 대기 · 악성 · 오탐 · 건 없음, 종류/대응/규칙/컨테이너/**기간** 필터, 100건씩 더 보기, 행 → 시트) ↔ **판정 · 변경 이력**(판정 · 제안 적용 · 제안 버림 · 정책 편집 · 차단 해제, 처리자 · 시각 · 건) |
 
 ### 판정 흐름 (모의 서버 — `shared/app.js` 의 `srv`, Claude Docs 「API 계약」 탭)
@@ -116,18 +117,19 @@
 
 | 파일 | 역할 |
 | --- | --- |
-| `index.html` | 진입점 — 스크립트를 순서대로 읽는다(theme → data → app → ui-kit → auth → shell-plus → policy-easy → screens → demo → report → settings → chat → guide) |
+| `index.html` | 진입점 — 스크립트를 순서대로 읽는다(theme → data → app → ui-kit → auth → shell-plus → policy-easy → screens → demo → report → eval-data → eval → settings → chat → guide) |
 | `shared/settings.js` | 「설정」 화면 [10/20 결정 2] — 탭 서버 설정(`U.policyEasy.serverSettings()` 를 화면 안 칸으로) · 계정(`U.auth.accountsView`) · 라이선스 · 인증 감사 |
 | `shared/ui-kit.js` | 공통 부품 2차 [10/20] — `modal`(포커스 트랩 · Esc · 미저장 보호) · `confirmDialog`(대상 · 함께 일어나는 일 · 사유 · 되돌리기) · `skeleton` · `errorState`(다시 시도) · `emptyState`(아이콘) · `filterChips`(모두 해제) · `rowKeys`(Enter/Space) · `downloadCSV` · `keyBoxes`(4칸 붙여넣기 분배) · `fakeQR` · `can()`(관리자인가) |
 | `shared/auth.js` | 로그인 단계(로그인 → 비밀번호 변경 → 라이선스 → OTP 등록/입력 · 복구 코드) · 모의 인증 서버(계약 그대로) · 실제 백엔드 클라이언트(쿠키) · 상단 라이선스 칩(30일 이하 노랑 · 만료 빨강, `licenseTone`) · 계정 메뉴 · 계정 탭(`accountsView`) · 모의 인증 감사 기록(`authAudit`) [10/20] |
 | `shared/shell-plus.js` | 셸 2차 [10/20] — 알림 센터(상단 종, 서버 상태 알림은 `#/settings`) · 사이드바 통합 검색(`/`, 설정 항목 포함) · 사이드바 접기(56px, 1100px 이하 자동 · 펼침은 그 화면 동안만, `[`) |
 | `shared/data.js` | 컨테이너·공격 시나리오·기본 정책 + 시스템 규칙 `blocklist-hosts` · 규칙 평가 · 시드 고정 감사 로그 · 설치 세션 시드 10건(데모 대본용 — 오늘은 통과 · 실패 · 미확인뿐, 어제 격리 2건은 악성 판정 · 적용됨) · 데모 설치 3종(정상 · 악성 · 경고) · 세션 집계(`statusOf` · `addToSession`) · 패키지 이름 정규화(`pkgName` · `pkgKey` · `ECOSYSTEM`) (`window.MOCK`) |
 | `shared/app.js` | 셸 · 해시 라우터 · 공통 컴포넌트(배지·패널·가상 스크롤 피드·막대 차트·토폴로지 SVG·토스트·확정 버튼·스위치) · **판정 흐름 공통 부품**(`attackChain` 공격 체인 · `decisionBar` 판정 버튼 · `previewView` 미리보기 표 · `decisionBadge`) · 시뮬레이션(소스+파이프라인+통계, 감사 로그 저장 · 런타임 건) · **모의 서버 `srv`**(건 · 판정 · 제안 · 미리보기 · 적용 · 버림 · 차단 목록 · 변경 이력 · 설치 전 거부) · 실제 백엔드 클라이언트(REST+WS) · 화면용 데이터 API(`UI.api` — 계약 이름 그대로, OSV 직접 조회 포함) · 안내 · 데모 제어 (`window.UI`) |
-| `shared/screens.js` | 화면 7개 (`UI.screens['/']` … `['/audit']` — 설정은 `settings.js`, 보고서는 `report.js`, 앱 전체 9개), 탭 하나 = 질문 하나. React 에 모두 있다 |
+| `shared/screens.js` | 화면 7개 (`UI.screens['/']` … `['/audit']` — 설정은 `settings.js`, 보고서는 `report.js`, 평가는 `eval.js`, 앱 전체 10개), 탭 하나 = 질문 하나. React 에 모두 있다 |
 | `shared/chat.js` · `shared/guide.js` | 우측 하단 「도우미」 — `guide.js` 가 버튼 하나(🛡) · 패널 · 탭 2개(대응 가이드 · AI 도우미)와 대응 가이드(건별 5단계 · 구축 순서)를 맡고, `chat.js` 는 AI 도우미 탭 본문(`UI.chat.el`)만 만든다 [10/20] |
 | `tests/feedback-MMDD.cjs` · `tests/goals-MMDD.cjs` | 피드백 · 목표 묶음별 회귀(Playwright 직접 호출). 판정은 N/N 완전 일치 + 콘솔 오류 0. OSV 는 `page.route` 로 응답 고정 |
 | `shared/styles.css` | 계약 §7 디자인 토큰(`:root` · `[data-theme="dark"]`) · 공통 부품 · 모션(reduced-motion 이면 끔) · 768px 미만 서랍 · 인쇄. 페이지 고정·본문만 스크롤 [10/30] |
 | `shared/theme.js` · `shared/demo.js` · `shared/report.js` | 테마(첫 그리기 전 `data-theme`, `supplyguard.theme`) · 시연 패널 + 상태 신호등 · 건 보고서 1장(`#/report`) [10/30] |
+| `shared/eval.js` · `shared/eval-data.js` | 「평가」 화면(`#/evaluation`, 차트는 SVG — Recharts 모양) · 예시 데이터 한 파일(`window.EVAL_SAMPLE`, 실측 JSON 이 생기면 이 파일만 바꾼다) [11/04] |
 
 ## 렌더 확인 (2026-09-29)
 
@@ -323,6 +325,17 @@ AI 도우미(2026-10-16, 확정 · React 반영 — 전 화면 우측 하단, `s
 11/03 sandbox-dns dryRun 해제(sg-vm 실측 — 정상 설치 27건(pip 18 · npm 9) 새 오탐 0, 유출 질의 시나리오 탐지. puppeteer 는 원래부터 sandbox-egress 로 격리 — 브라우저 다운로드 도메인이 허용 목록 밖):
 - 목업 기본 규칙도 `default.yaml` 과 같게 `sandbox-dns` dryRun 을 뺐다. 그 결정을 단정하던 `dns-1030` ①④⑥ · ② · ⑦(격리 대상 → 격리됨, 결과 경고 → 격리) · `demo-1030` ③(dns-exfil 시연 → 격리, 위반 1건 · 종료 코드 137) 기대값을 바꿨다(`// 11/04`)
 
+11/04 평가 화면(작업 U1 1단계 — 목업 먼저, 사용자 확인 뒤 React):
+- **자리** — 사이드바 「설치 검사」 묶음 끝(공급망 검사 다음) `#/evaluation` 「평가」. 재는 대상이 공급망 검사(정적)와 설치 샌드박스(런타임)라 같은 묶음에 둔다. 읽기 전용(조회자도 본다)
+- **데이터** — `UI.api.evaluation()` → `{ static, runtime, model }` = `bench/reports` 의 `static.json` · `runtime.json` · `model.json` 그대로(없는 쪽은 null — 그 칸만 「… 결과 없음」). 시뮬은 `shared/eval-data.js` 예시(`sample: true` → 머리에 「예시 데이터」 배지. 값은 둥근 수 · 커밋 `0000000` · 2026-01-01 — 실측처럼 보이지 않게), `?fresh=1` 이면 없음. live 는 `GET /api/evaluation`(계약 제안 — 아직 없음), 404 → 빈 상태 「평가 결과 없음」, 그 밖 오류는 오류 칸 + 다시 시도(`?fail=evaluation`)
+- **머리** — 결론 한 줄(혼동 행렬 · 시나리오 합에서 계산) · 출처 태그(악성 세트 · 정상 세트 · 런타임 호스트 · 생성 시각 · 백엔드 커밋, 마우스를 올리면 출처 커밋 · 목록 sha256 · IG · GuardDog/OSV 버전) · 머리 오른쪽 「⤓ 결과 JSON」(받은 값 그대로 `supplyguard-evaluation-<생성일>.json`)
+- **지표 6칸** — 정적 악성 탐지율(주의 포함 값은 보조 줄) · 정상 오탐률 · 런타임 공격 탐지율(공격 시나리오 합) · 정상 설치 오탐률 · 탐지 → 격리 p50 / p95(격리한 공격 시나리오 중 가장 큰 값) · 모델 시험 F1(선택 모델 · 「운영 미적용」). 숫자는 기본 글자색
+- **차트**(SVG — 점선 격자 · 아래 축 · 범례 · 행에 마우스 → 툴팁, 외부 라이브러리 없음) — 세트별 판정 분포(100% 쌓은 막대, 악성 → 주의 → 취약 → 정상 → 오류 순서 · 상태 색 · 조각 사이 2px) · 시나리오별 탐지율(공격 indigo · 대조 회색) · 지연 범위(0~max 선 · p50~p95 띠 · p50 점 · max 눈금, 격리 안 한 시나리오는 빠짐 안내) · GuardDog 규칙 적중 상위 10(합 → 악성 적중 → 이름 순서, 악성 빨강 · 정상 회색 막대 2개)
+- **표** — 혼동 행렬 2×2(양성 = 판정 「악성」, 정밀도 · 재현율 · F1 한 줄) · 정상 설치 위반(통과 행 제외, 결과는 설치 검사 배지) · 모델 비교(보정 F1 · 시험 F1 · 정밀도 · 재현율 · 오탐률, 선택 모델은 indigo 띠 + 「선택」, 머리에 「운영 미적용」, 아래 seed · 분할 · 선택 기준 · 특징 수) · **결과의 한계**(세 파일 limits 전부, 출처 태그 정적 · 런타임 · 모델)
+- **배치** — 카드 두 열(왼쪽 정적 · 오른쪽 런타임, 열마다 위로 붙음 — Pinterest 식) · 모델 비교 · 한계는 전체 폭. 1280 미만 지표 3열, 768 미만 한 열(정적 → 런타임) · 지표 2열
+- 하지 않음: React · 백엔드 `/api/evaluation` · 결과 업로드 경로 · 기간별 추이
+- 검증: `eval-1104` 12/12 · 기존 17묶음 N/N · 콘솔 오류 0. 사이드바 순서를 통째로 단정하던 `feedback-1015` 1번 기대값에 `/evaluation` 을 넣었다(`// 11/04`, 수정 전 실패 확인). 스크린샷 `screenshots/eval-1104-{desktop,dark,mobile,empty}.png`
+
 11/03 조회자 화면 React 맞춤 — 조회자가 일반 규칙을 열어도 편집기 + 저장 전 확인 요약 · 「저장은 관리자만 할 수 있습니다」(10/20 A 의 읽기 전용 화면 `readOnlyRule` 삭제). `feedback-1020c` 1번 기대값을 바꿈(`// 11/04 React 맞춤`, 수정 전 실패 확인)
 
-목표 회귀: `node tests/goals-1015.cjs` · 3차 `node tests/decisions-1016.cjs` · 정책 `node tests/policy-1016.cjs` · 종합 `node tests/overview-1016.cjs` · 공급망 `node tests/scan-1016.cjs` · 도우미 `node tests/guide-1020.cjs` · 2차 시안 `node tests/feedback-1020b.cjs` · 10/20 결정 `node tests/feedback-1020c.cjs` · 10/21 React 맞춤 `node tests/align-1021.cjs` · 10/21b URL 필터 제거 `node tests/url-1021.cjs` · 10/30 `node tests/dns-1030.cjs` · `node tests/demo-1030.cjs` · `node tests/theme-1030.cjs` · 11/02 `node tests/scan-1102.cjs` · 11/04 종합 판정 `node tests/combined-1104.cjs` (같은 옵션 + `SHOTS=1` 데모 대본 스크린샷 · `REAL_OSV=1` OSV 실조회 1건) · 11/04 연쇄 규칙 `node tests/sequence-1104.cjs`(`SHOTS=1` → `screenshots/1104-seq-*.png`). 12번 실제 백엔드 시나리오는 `make backend` 가 떠 있을 때만 돈다.
+목표 회귀: `node tests/goals-1015.cjs` · 3차 `node tests/decisions-1016.cjs` · 정책 `node tests/policy-1016.cjs` · 종합 `node tests/overview-1016.cjs` · 공급망 `node tests/scan-1016.cjs` · 도우미 `node tests/guide-1020.cjs` · 2차 시안 `node tests/feedback-1020b.cjs` · 10/20 결정 `node tests/feedback-1020c.cjs` · 10/21 React 맞춤 `node tests/align-1021.cjs` · 10/21b URL 필터 제거 `node tests/url-1021.cjs` · 10/30 `node tests/dns-1030.cjs` · `node tests/demo-1030.cjs` · `node tests/theme-1030.cjs` · 11/02 `node tests/scan-1102.cjs` · 11/04 종합 판정 `node tests/combined-1104.cjs` (같은 옵션 + `SHOTS=1` 데모 대본 스크린샷 · `REAL_OSV=1` OSV 실조회 1건) · 11/04 연쇄 규칙 `node tests/sequence-1104.cjs`(`SHOTS=1` → `screenshots/1104-seq-*.png`) · 11/04 평가 화면 `node tests/eval-1104.cjs`(`SHOTS=1` → `screenshots/eval-1104-*.png`). 12번 실제 백엔드 시나리오는 `make backend` 가 떠 있을 때만 돈다.

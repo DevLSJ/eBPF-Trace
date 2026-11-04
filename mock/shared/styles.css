@@ -1003,3 +1003,54 @@ body { font-size: 14px; }
 .finding.f-test { border-left-color: var(--border-strong); }
 .badge-test { margin-left: 6px; background: var(--surface-3); color: var(--text-2); }
 .assist-chat-off { display: grid; gap: 6px; padding: 16px; margin: 12px; border-radius: var(--r-md); background: var(--surface-2); border-left: 4px solid var(--warn); }
+
+/* 11/04 평가 화면(#/evaluation) — 카드 · 그리드는 Pinterest 식(둥근 카드 · 높이 제각각), 표 · 태그는 Linear 식. 빨강은 악성(위험)에만, 강조 indigo */
+.eval-wrap { overflow: auto; }
+.eval { display: grid; gap: 16px; align-content: start; max-width: var(--content-max); }
+.eval-head { padding: 16px 20px; display: grid; gap: 10px; }
+.eval-head-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.eval-conclusion { font-size: 15px; font-weight: 500; color: var(--text); min-width: 0; }
+.ev-sample { background: var(--warn-soft); color: var(--warn-text); box-shadow: inset 0 0 0 1px var(--warn-line); }
+.eval-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.ev-tag { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 24px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); font-size: 12px; color: var(--text); white-space: nowrap; }
+.ev-tag-k { color: var(--text-3); } .ev-tag-v { overflow: hidden; text-overflow: ellipsis; }
+.ev-tag-sm { height: 20px; padding: 0 6px; font-size: 11px; color: var(--text-2); flex-shrink: 0; }
+.eval-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.eval-kpis .kpi { min-width: 0; padding: 14px 16px; }
+.eval-kpis .kpi-hint { word-break: keep-all; } /* 보조 줄은 조각(nbsp) 사이에서만 줄을 바꾼다 */
+.ev-card .table th.right { text-align: right; }
+.eval-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.ev-card .panel-body { display: grid; gap: 8px; padding: 12px 16px 14px; }
+.ev-card .panel-body > * { flex: none; min-width: 0; }
+.ev-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ev-none { padding: 12px 0; }
+.chart.ev-chart { display: grid; gap: 6px; height: auto; min-height: 0; }
+.ev-box { position: relative; min-width: 0; }
+.ev-chart .chart-tip { z-index: 5; white-space: nowrap; }
+.ev-label, .ev-value { fill: var(--text-2); } .ev-mono { font-family: var(--mono); }
+.ev-hit { fill: transparent; }
+.ev-row-bg { fill: var(--surface-2); opacity: 0; transition: opacity var(--t-fast); } .ev-chart g.on .ev-row-bg { opacity: 1; }
+.ev-mal { fill: var(--danger); background: var(--danger); } .ev-sus { fill: var(--warn); background: var(--warn); } .ev-vul { fill: var(--info); background: var(--info); }
+.ev-clean { fill: var(--ok); background: var(--ok); } .ev-err, .ev-control, .ev-benign { fill: var(--text-3); background: var(--text-3); }
+.ev-attack { fill: var(--accent); background: var(--accent); } .ev-zero { fill: var(--surface-3); }
+.ev-track { stroke: var(--border-strong); stroke-width: 1; }
+.ev-band { fill: var(--accent-line); background: var(--accent-line); }
+.ev-p50 { fill: var(--accent); stroke: var(--surface); stroke-width: 2; } .ev-p50-sw { background: var(--accent); border-radius: 50% !important; }
+.ev-max { stroke: var(--text-2); stroke-width: 2; } .ev-max-sw { width: 2px !important; background: var(--text-2); }
+.ev-confusion { width: auto; min-width: 280px; }
+.ev-confusion th:first-child, .ev-confusion tbody th { text-align: left; font-size: 12px; font-weight: 600; color: var(--text-3); }
+.ev-confusion td b { font-size: 18px; font-weight: 600; margin-right: 6px; }
+.table tbody tr.ev-pick td, .table tbody tr.ev-pick:hover td { background: var(--accent-soft); }
+.ev-pick td:first-child { box-shadow: inset 3px 0 0 var(--accent); font-weight: 600; }
+.ev-pick-badge { margin-left: 8px; }
+.ev-limits { padding: 14px 18px; display: grid; gap: 8px; border-left: 4px solid var(--warn); }
+.ev-limits h2 { font-size: 14px; font-weight: 600; }
+.ev-limits ul { display: grid; gap: 6px; } .ev-limits li { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--text-2); }
+@media (max-width: 1279px) { .eval-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 767px) {
+  .eval-wrap { overflow: visible; }
+  .eval-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } /* 숫자 칸은 768 미만도 2열(종합 숫자 칸과 같게) */
+  .eval-grid { grid-template-columns: minmax(0, 1fr); }
+  .eval-head { padding: 14px 16px; } .eval-conclusion { font-size: 14px; }
+  .ev-confusion { min-width: 0; width: 100%; }
+}

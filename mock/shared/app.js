@@ -986,6 +986,9 @@
     startScan: simOr('공급망 검사 API(POST /api/scans)', (body) => { const r = srv.scanStart(body); emit(); return r; }, (body) => { if (body && body.kind === 'file') { const fd = new FormData(); fd.append('kind', 'file'); if (body.file) fd.append('file', body.file, body.fileName); return fetchJSON('/api/scans', { method: 'POST', body: fd }); } return post('/api/scans', body); }, 'startScan', WRITE),
     // body = {packages:[{manager?, name, version?}]} (저장소 · 파일 검사) · 없으면 패키지 검사의 그 패키지. reason 은 계약 추가(안)
     scanBlock: simOr('공급망 검사 API(POST /api/scans/{id}/block)', (id, body, reason) => { const r = srv.scanBlock(id, body, reason); emit(); return r; }, (id, body, reason) => post(`/api/scans/${enc(id)}/block`, Object.assign({}, body && body.packages ? { packages: body.packages } : {}, reason ? { reason } : {})), 'scanBlock', WRITE),
+    // 평가 결과 [11/04 U1 — 계약 제안] GET /api/evaluation → { static, runtime, model }(bench/reports 세 파일 그대로, 없는 쪽은 null). 결과가 없으면 404 → null(「평가 결과 없음」)
+    //   sim 은 shared/eval-data.js 의 예시(sample: true), ?fresh=1 이면 null
+    evaluation: simOr('평가 API(GET /api/evaluation)', () => (fresh || !window.EVAL_SAMPLE ? null : clone(window.EVAL_SAMPLE)), () => fetchJSON('/api/evaluation').catch((e) => { if (e.status === 404) return null; throw e; }), 'evaluation'),
     summary: (range) => (state.source === 'live' ? fetchJSON(`/api/summary?range=${encodeURIComponent(range || '24h')}`) : Promise.resolve().then(() => srv.overview(range || '24h'))),
     previewRule: (rule) => (state.source === 'live' ? fetchJSON('/api/policies/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule) }) : Promise.resolve().then(() => srv.previewRule(rule))),
     // live 응답은 {proposal, case} — 화면 토스트가 쓰는 change.summary 는 제안의 변경으로 만든다
@@ -1430,7 +1433,7 @@
   // 사이드바 = 시나리오별 묶음 [10/15 확정]. 묶음 제목이 없는 첫 줄은 두 시나리오 공통
   const NAV = [
     [null, [['/', '대시보드', '▦']]],
-    ['설치 검사', [['/installs', '설치 검사', '▣'], ['/scans', '공급망 검사', '⌕']]],
+    ['설치 검사', [['/installs', '설치 검사', '▣'], ['/scans', '공급망 검사', '⌕'], ['/evaluation', '평가', '◔']]], // 평가 [11/04 U1] — 공급망 검사 · 설치 검사를 재는 화면이라 같은 묶음 끝
     ['런타임 감시', [['/events', '이벤트', '≣'], ['/topology', '토폴로지', '⌘']]],
     ['설정 · 기록', [['/policies', '정책', '§'], ['/audit', '감사 로그', '◷'], ['/settings', '설정', '⚙']]], // 설정 화면 [10/20 결정 2]
   ];
