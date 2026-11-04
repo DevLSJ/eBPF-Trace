@@ -33,6 +33,7 @@ type Explain struct {
 type Decider struct {
 	RuleID      string       `json:"ruleId"`
 	Description string       `json:"description"` // 지금 정책의 규칙 설명(규칙이 지워졌으면 "")
+	Condition   string       `json:"condition"`   // 지금 정책의 조건 요약(RuleCondition, 규칙이 없으면 "")
 	Action      model.Action `json:"action"`
 	DryRun      bool         `json:"dryRun"`
 	Enforced    bool         `json:"enforced"`
@@ -102,7 +103,7 @@ func decidedBy(vs []model.ViolationCount, rs []rules.Rule) *Decider {
 	if best == nil {
 		return nil
 	}
-	d := &Decider{RuleID: best.RuleID, Description: ruleDesc(rs, best.RuleID), Action: best.Action, DryRun: best.DryRun,
+	d := &Decider{RuleID: best.RuleID, Description: ruleDesc(rs, best.RuleID), Condition: RuleCondition(rs, best.RuleID), Action: best.Action, DryRun: best.DryRun,
 		Enforced: best.Enforced, Reason: best.Reason, Event: best.Event}
 	if best.Sequence != nil {
 		d.Sequence = best.Sequence.RuleID
@@ -183,6 +184,24 @@ func stepMatches(st rules.Rule, ev model.Event) bool {
 	}
 	st.ID, st.Action = "demo-step", model.ActionAlert
 	return rules.New([]rules.Rule{st}).Evaluate(ev).Matched
+}
+
+// RuleCondition: 규칙 id 의 조건 요약 — 단일 규칙은 condition 그대로, 연쇄 규칙은 「10초 안: 단계 → 단계 → 단계」. 없는 규칙은 ""
+func RuleCondition(rs []rules.Rule, id string) string {
+	for _, r := range rs {
+		if r.ID != id {
+			continue
+		}
+		if r.Kind != model.KindSequence {
+			return condition(r)
+		}
+		parts := make([]string, len(r.Steps))
+		for i, st := range r.Steps {
+			parts[i] = condition(st)
+		}
+		return fmt.Sprintf("%d초 안: %s", r.WindowSeconds, strings.Join(parts, " → "))
+	}
+	return ""
 }
 
 // condition: 단계 조건 요약(화면 문구) — exec「프로세스 curl · wget」· open「경로 …」· connect「포트 …」「내부망(…) 밖 연결」· dns「질의 …」

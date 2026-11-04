@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,6 +55,16 @@ func TestExplainChainPreempted(t *testing.T) {
 	d := ex.DecidedBy
 	if d == nil || d.RuleID != "no-shell-download" || d.Action != model.ActionKill || d.DryRun || !d.Enforced || d.Event.Comm != "wget" || d.Description == "" {
 		t.Fatalf("decidedBy: %+v", d)
+	}
+	if d.Condition != "프로세스 wget · curl · nc · ncat" {
+		t.Fatalf("decidedBy.condition: %q", d.Condition)
+	}
+	// 연쇄 규칙의 조건 요약은 단계를 화살표로 잇는다
+	if got := demo.RuleCondition(eng.Rules(), "chain-download-secrets"); !strings.HasPrefix(got, "10초 안: 프로세스 curl · wget → 내부망(") || !strings.Contains(got, " → 경로 /etc/shadow") {
+		t.Fatalf("sequence condition: %q", got)
+	}
+	if demo.RuleCondition(eng.Rules(), "no-such-rule") != "" {
+		t.Fatal("unknown rule → empty condition")
 	}
 }
 
