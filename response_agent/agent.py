@@ -2,6 +2,7 @@
 
 The nftables adapter only edits its own table and never flushes existing firewall rules.
 The timed set expires in the kernel even when this agent or the backend is unavailable.
+Each policy carries exactly one source address; rate_limit is only defined for that shape.
 """
 
 import argparse
@@ -101,6 +102,10 @@ class NftablesAdapter:
         return result.returncode == 0
 
     def initialize(self):
+        # The chain names describe the traffic direction, not netfilter's netdev `ingress` hook:
+        # both are `filter` chains. Priority -10 runs ahead of the default filter table so an
+        # existing accept rule cannot shadow a policy, and sits after conntrack, so blocking a
+        # source also drops the packets of connections it has already established.
         if not self.exists():
             self.execute(
                 f"add table inet {self.table}\n"
@@ -111,13 +116,19 @@ class NftablesAdapter:
     def apply(self, run_id, policy):
         name = "p_" + UUID(run_id).hex
         protocol = "tcp" if policy["protocol"] == 6 else "udp"
+        # `limit rate` is a per-rule token bucket, so several elements in one set would share
+        # it and rate_limit would stop being a per-source limit. Keep the invariant explicit.
+        source = policy["source_ip"]
+        sources = [source] if isinstance(source, str) else list(source)
+        if len(sources) != 1:
+            raise ValueError("A response policy carries exactly one source address")
         rate = (
             f"limit rate over {policy['rate_pps']}/second "
             if policy["action"] == "rate_limit"
             else ""
         )
         script = f"add set inet {self.table} {name} {{ type ipv4_addr; flags timeout; timeout {policy['ttl_seconds']}s; }}\n"
-        script += f"add element inet {self.table} {name} {{ {policy['source_ip']} timeout {policy['ttl_seconds']}s }}\n"
+        script += f"add element inet {self.table} {name} {{ {sources[0]} timeout {policy['ttl_seconds']}s }}\n"
         for chain in ("ingress", "forwarded"):
             script += (
                 f"add rule inet {self.table} {chain} ip saddr @{name} ip daddr {policy['destination_ip']} "

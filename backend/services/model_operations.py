@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import func, select
 
 from backend.core.operator_auth import aware
-from backend.db.models import ModelDeployment, ShadowPrediction, utcnow
+from backend.db.models import ModelDeployment, OpsControl, ShadowPrediction, utcnow
 from backend.services.incidents import audit, serialize
 from ml.shadow import promotion_gates
 
@@ -190,11 +190,13 @@ async def model_overview(app, session):
                 "promotion_ready": all(g["passed"] for g in gates),
             }
         )
+    control = await session.get(OpsControl, 1)
     return {
         "runtime": await runtime_mode(app, session),
         "shadow_status": app.state.shadow_model.status,
         "sample_modulus": app.state.settings.shadow_sample_modulus,
         "collector_schema": app.state.collector_feature_schema_version,
         "items": items,
-        "automatic_response_enabled": False,
+        # Promotion never opens the automatic path; only the separate operations switch does.
+        "automatic_response_enabled": bool(control and control.auto_response),
     }

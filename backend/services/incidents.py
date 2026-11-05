@@ -382,11 +382,22 @@ async def metrics(session, source="live", days=7):
             )
         ).all()
     )
+    automatic = await session.scalar(
+        select(func.count())
+        .select_from(ActionRun)
+        .join(Incident)
+        .where(
+            Incident.source == source,
+            ActionRun.created_at >= start,
+            ActionRun.origin == "automatic",
+        )
+    )
     return {
         "source": source,
         "window_days": days,
         "window_start": utc_iso(start),
         "incidents": len(rows),
+        "automatic_actions": automatic or 0,
         "open": len(active),
         "unacknowledged_urgent": sum(
             r.priority in {"P1", "P2"} and not r.acknowledged_at for r in active

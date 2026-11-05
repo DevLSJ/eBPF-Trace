@@ -144,6 +144,18 @@ def test_kernel_policy_has_timed_set_and_never_flushes_shared_rules(config):
     assert "flush ruleset" not in options["input"] and "198.51.100.20" in options["input"]
 
 
+def test_rate_limit_rejects_a_policy_carrying_several_sources(config):
+    def runner(*args, **kwargs):
+        raise AssertionError("A rejected policy must never reach nft")
+
+    adapter = NftablesAdapter(config["point_id"], runner=runner)
+    envelope = command(config, action="rate_limit", rate_pps=50)
+    policy = dict(envelope["payload"]["policy"], source_ip=["203.0.113.5", "203.0.113.6"])
+    # `limit rate` buckets per rule, so a shared set would rate limit the sources together.
+    with pytest.raises(ValueError):
+        adapter.apply(envelope["payload"]["run_id"], policy)
+
+
 def test_release_permission_failure_is_never_reported_success(config):
     def runner(*args, **kwargs):
         return SimpleNamespace(returncode=1, stdout="", stderr="Operation not permitted")

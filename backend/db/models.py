@@ -25,6 +25,84 @@ class Base(DeclarativeBase):
     pass
 
 
+class DemoSession(Base):
+    __tablename__ = "supply_demo_sessions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stage: Mapped[int] = mapped_column(Integer, default=2)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    active_version: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class DemoVersion(Base):
+    __tablename__ = "supply_demo_versions"
+    __table_args__ = (UniqueConstraint("session_id", "number"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("supply_demo_sessions.id"), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    artifact: Mapped[dict] = mapped_column(JSON)
+    digest: Mapped[str] = mapped_column(String(71))
+    signature: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DemoScan(Base):
+    __tablename__ = "supply_demo_scans"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("supply_demo_sessions.id"), index=True)
+    version_id: Mapped[str] = mapped_column(ForeignKey("supply_demo_versions.id"))
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    stage: Mapped[str] = mapped_column(String(80), default="검사 대기")
+    checks: Mapped[list] = mapped_column(JSON, default=list)
+    findings: Mapped[list] = mapped_column(JSON, default=list)
+    artifact_digest: Mapped[str] = mapped_column(String(71))
+    policy_revision: Mapped[str] = mapped_column(String(40))
+    error: Mapped[str | None] = mapped_column(String(240))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DemoActivity(Base):
+    __tablename__ = "supply_demo_activities"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("supply_demo_sessions.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(160))
+    detail: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DemoAction(Base):
+    __tablename__ = "supply_demo_actions"
+    __table_args__ = (UniqueConstraint("session_id", "request_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("supply_demo_sessions.id"), index=True)
+    request_id: Mapped[str] = mapped_column(String(36))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    result: Mapped[dict] = mapped_column(JSON)
+
+
+class DemoDeployment(Base):
+    __tablename__ = "supply_demo_deployments"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("supply_demo_sessions.id"), unique=True)
+    version_id: Mapped[str] = mapped_column(ForeignKey("supply_demo_versions.id"))
+    scan_id: Mapped[str] = mapped_column(ForeignKey("supply_demo_scans.id"))
+    digest: Mapped[str] = mapped_column(String(71))
+    asset: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DemoRateLimit(Base):
+    __tablename__ = "supply_demo_rate_limits"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
 class DetectionEvent(Base):
     __tablename__ = "detection_events"
     __table_args__ = (
@@ -69,6 +147,45 @@ class ScenarioRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     thresholds: Mapped[dict] = mapped_column(JSON)
     detection_mode: Mapped[str] = mapped_column(String(16))
+
+
+class LiveInspection(Base):
+    """One local inspection of a host interface; totals are the per-stage counters the UI shows."""
+
+    __tablename__ = "live_inspections"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    interface: Mapped[str] = mapped_column(String(32))
+    address: Mapped[str] = mapped_column(String(45))
+    mode: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    duration_seconds: Mapped[int] = mapped_column(Integer)
+    elapsed_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str] = mapped_column(String(240), default="")
+    thresholds: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"))
+    detection_mode: Mapped[str] = mapped_column(String(16))
+    totals: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict)
+    event_ids: Mapped[list] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=list)
+    incident_ids: Mapped[list] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=list)
+
+
+class LiveInspectionWindow(Base):
+    """One observed second of an inspection: aggregate rates, rule hits, scores and produced events."""
+
+    __tablename__ = "live_inspection_windows"
+    __table_args__ = (UniqueConstraint("run_id", "second"),)
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("live_inspections.id"), index=True)
+    second: Mapped[int] = mapped_column(Integer)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    pkt_rate: Mapped[float] = mapped_column(Float)
+    byte_rate: Mapped[float] = mapped_column(Float)
+    flows: Mapped[int] = mapped_column(Integer)
+    rule_hits: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict)
+    scored: Mapped[int] = mapped_column(Integer, default=0)
+    min_score: Mapped[float | None] = mapped_column(Float)
+    events: Mapped[list] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=list)
 
 
 class ScenarioSample(Base):
@@ -143,6 +260,8 @@ class Asset(Base):
     criticality: Mapped[str] = mapped_column(String(16), default="standard")
     owner_id: Mapped[str | None] = mapped_column(ForeignKey("operators.id"))
     protected_cidrs: Mapped[list] = mapped_column(JSON, default=list)
+    # Explicit opt-in per asset: the automatic path never opens on an asset nobody registered for it.
+    auto_response: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     __table_args__ = (UniqueConstraint("address", "service_port", "protocol", "environment"),)
 
@@ -238,9 +357,11 @@ class ActionRequest(Base):
     __tablename__ = "action_requests"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     incident_id: Mapped[str] = mapped_column(ForeignKey("incidents.id"), index=True)
-    requester_id: Mapped[str] = mapped_column(ForeignKey("operators.id"))
+    # An automatic request has no human requester; the gate assessment in `preview` is its basis.
+    requester_id: Mapped[str | None] = mapped_column(ForeignKey("operators.id"))
     approver_id: Mapped[str | None] = mapped_column(ForeignKey("operators.id"))
     point_id: Mapped[str] = mapped_column(ForeignKey("enforcement_points.id"))
+    origin: Mapped[str] = mapped_column(String(16), default="operator")
     status: Mapped[str] = mapped_column(String(24), default="preview", index=True)
     incident_version: Mapped[int] = mapped_column(Integer)
     policy: Mapped[dict] = mapped_column(JSON)
@@ -258,6 +379,7 @@ class ActionRun(Base):
     request_id: Mapped[str] = mapped_column(ForeignKey("action_requests.id"), unique=True)
     incident_id: Mapped[str] = mapped_column(ForeignKey("incidents.id"), index=True)
     point_id: Mapped[str] = mapped_column(ForeignKey("enforcement_points.id"), index=True)
+    origin: Mapped[str] = mapped_column(String(16), default="operator")
     status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
     policy: Mapped[dict] = mapped_column(JSON)
     policy_hash: Mapped[str] = mapped_column(String(64))
@@ -290,6 +412,8 @@ class OpsControl(Base):
     __tablename__ = "ops_control"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     kill_switch: Mapped[bool] = mapped_column(Boolean, default=False)
+    # The automatic path is a separate switch: promoting a model never opens it (F-ML08).
+    auto_response: Mapped[bool] = mapped_column(Boolean, default=False)
     version: Mapped[int] = mapped_column(Integer, default=1)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

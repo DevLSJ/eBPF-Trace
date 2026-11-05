@@ -12,6 +12,7 @@ from sqlalchemy import delete, func, select
 from backend.core.config import Settings
 from backend.db.database import Database
 from backend.db.models import (
+    LiveInspectionWindow,
     LoginThrottle,
     OperatorSession,
     ServiceObservation,
@@ -27,6 +28,8 @@ async def prune(session, days, apply=False):
         (ServiceObservation, ServiceObservation.observed_at < cutoff),
         (OperatorSession, OperatorSession.expires_at < utcnow()),
         (LoginThrottle, LoginThrottle.window_start < cutoff),
+        # Per-second inspection windows are telemetry; the run rows and their event links stay.
+        (LiveInspectionWindow, LiveInspectionWindow.observed_at < cutoff),
     ]
     counts = {}
     for model, predicate in targets:

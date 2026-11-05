@@ -684,3 +684,192 @@ def test_agent_authentication_and_training_separation(ops_client):
     assert c.get(f"/api/ops/agents/{point['id']}/commands").status_code == 401
     assert "token_hash" not in point
     assert c.get("/api/ops/models", headers=headers).json()["automatic_response_enabled"] is False
+
+
+def flow(client, *, src_ip, features, count=3, source="simulation"):
+    """Feed detections through the same path the collector and rehearsals use."""
+
+    async def run():
+        from backend.db.models import Operator
+
+        async with client.app.state.db.sessions() as session:
+            actor = await session.scalar(select(Operator).where(Operator.username == "alice"))
+            await prepare(session, actor)
+            await tick(session, client.app.state.settings)
+            for index in range(count):
+                message = FlowMessage(
+                    type="flow_features",
+                    message_id=uuid4(),
+                    timestamp=int(time.time() * 1000),
+                    flow={
+                        "src_ip": src_ip,
+                        "dst_ip": "198.51.100.20",
+                        "src_port": 6000 + index,
+                        "dst_port": 443,
+                        "protocol": 6,
+                    },
+                    features={"flow_duration": 1000, "avg_pkt_size": 60, **features},
+                )
+                await process_flow(client.app, session, message, source=source)
+            await session.commit()
+
+    client.portal.call(run)
+
+
+FLOOD = {"pkt_rate": 4500, "byte_rate": 270000, "syn_ratio": 1, "port_entropy": 0, "port_cnt": 1}
+SHARED = {"pkt_rate": 140, "byte_rate": 95000, "syn_ratio": 0.2, "port_entropy": 5.4, "port_cnt": 48}
+SCAN = {"pkt_rate": 80, "byte_rate": 4800, "syn_ratio": 1, "port_entropy": 5.58, "port_cnt": 48}
+
+
+def open_automatic_path(client, headers):
+    assert (
+        client.post(
+            "/api/ops/auto-response", json={"enabled": True, "reason": "Gate exercise"}, headers=headers
+        ).status_code
+        == 200
+    )
+    seed(client, count=0)  # Registers the rehearsal asset and adapter without any detection.
+    asset = client.get("/api/ops/assets", headers=headers).json()["items"][0]
+    result = client.post(
+        f"/api/ops/assets/{asset['id']}/auto-response",
+        json={"enabled": True, "reason": "Registered for the automatic path"},
+        headers=headers,
+    )
+    assert result.status_code == 200 and result.json()["auto_response"] is True
+    return asset
+
+
+def test_automatic_path_needs_switch_and_asset_opt_in_then_applies_short_policy(ops_client):
+    c = ops_client
+    admin = auth(c)
+    assert c.post("/api/ops/auto-response", json={"enabled": True, "reason": "Not an admin"}, headers=auth(c, "bob")).status_code == 403
+    seed(c, count=2)
+    row = incident(c, admin)
+    assert c.get(f"/api/ops/incidents/{row['id']}", headers=admin).json()["actions"] == []
+    assert c.post("/api/ops/auto-response", json={"enabled": True, "reason": "Switch only"}, headers=admin).status_code == 200
+    seed(c, count=2)
+    assert c.get(f"/api/ops/incidents/{row['id']}", headers=admin).json()["actions"] == []
+    open_automatic_path(c, admin)
+    seed(c, count=2)
+    detail = c.get(f"/api/ops/incidents/{row['id']}", headers=admin).json()
+    assert len(detail["actions"]) == 1
+    run = detail["actions"][0]
+    assert run["origin"] == "automatic" and run["status"] == "queued"
+    assert run["policy"]["ttl_seconds"] == 60 and run["policy"]["action"] == "block_source"
+    assert detail["summary"]["automatic"]["status"] == "applied"
+    assert detail["summary"]["automatic"]["gate"]["level"] == "low"
+    kinds = [entry["kind"] for entry in detail["timeline"]]
+    assert "response.auto_approved" in kinds and "response.approved" not in kinds
+    assert any(n["kind"] == "auto_response" for n in detail["notifications"])
+    actions = c.get("/api/ops/actions?source=simulation", headers=admin).json()
+    assert actions["auto_response"] is True and actions["auto_usage"]["used"] == 1
+    assert actions["auto_ttl_seconds"] == 60 and actions["pending"] == []
+    assert c.get("/api/ops/models", headers=admin).json()["automatic_response_enabled"] is True
+    assert c.get("/api/ops/metrics?source=simulation", headers=admin).json()["automatic_actions"] == 1
+    for _ in range(2):
+        c.portal.call(maintenance, c.app)
+    detail = c.get(f"/api/ops/incidents/{row['id']}", headers=admin).json()
+    assert detail["actions"][0]["status"] == "applied"
+    row = c.post(f"/api/ops/incidents/{row['id']}/ack", json={"version": detail["version"]}, headers=admin).json()
+    row = c.post(
+        f"/api/ops/incidents/{row['id']}/transition",
+        json={"version": row["version"], "status": "investigating", "reason": "Review automatic block"},
+        headers=admin,
+    ).json()
+    assert "실행 중인 대응" in make_preview(c, admin, row).json()["error"]["message"]
+    context = c.get(f"/api/ops/incidents/{row['id']}/response-context", headers=admin).json()
+    assert context["automatic"]["switch"] and context["automatic"]["asset_opt_in"]
+    assert context["gates"]["192.0.2.10"]["level"] == "low"
+
+
+def test_gate_routes_shared_source_to_approval_with_reasons(ops_client):
+    c = ops_client
+    admin, approver = auth(c), auth(c, "bob")
+    open_automatic_path(c, admin)
+    flow(c, src_ip="192.0.2.77", features=SHARED)
+    row = incident(c, admin)
+    detail = c.get(f"/api/ops/incidents/{row['id']}", headers=admin).json()
+    assert detail["attack_type"] == "PORT_SCAN" and detail["actions"] == []
+    decision = detail["summary"]["automatic"]
+    assert decision["status"] == "declined" and decision["gate"]["level"] == "high"
+    # The rehearsal asset is critical, so mixed traffic trips the hard stop before the score does.
+    assert decision["gate"]["hard_stop"] == "critical_asset_mixed_traffic"
+    assert any("공유 NAT" in reason for reason in decision["gate"]["reasons"])
+    assert sum(entry["kind"] == "response.auto_declined" for entry in detail["timeline"]) == 1
+    row = c.post(f"/api/ops/incidents/{row['id']}/ack", json={"version": row["version"]}, headers=admin).json()
+    row = c.post(
+        f"/api/ops/incidents/{row['id']}/transition",
+        json={"version": row["version"], "status": "investigating", "reason": "Shared source review"},
+        headers=admin,
+    ).json()
+    context = c.get(f"/api/ops/incidents/{row['id']}/response-context", headers=admin).json()
+    body = {
+        "request_id": str(uuid4()),
+        "point_id": context["points"][0]["id"],
+        "version": row["version"],
+        "source_ip": "192.0.2.77",
+        "ttl_seconds": 30,
+        "reason": "Operator accepts the collateral risk after review",
+    }
+    result = c.post(f"/api/ops/incidents/{row['id']}/action-previews", json=body, headers=admin)
+    assert result.status_code == 201, result.text
+    p = result.json()
+    assert p["origin"] == "operator" and p["preview"]["gate"]["level"] == "high"
+    assert p["preview"]["automatic_approval"] is False
+    approved = c.post(
+        f"/api/ops/action-requests/{p['id']}/approve",
+        json={"policy_hash": p["policy_hash"], "reason": "Second operator agrees"},
+        headers=approver,
+    )
+    assert approved.status_code == 200 and approved.json()["origin"] == "operator"
+
+
+def test_hourly_ceiling_closes_the_automatic_path(ops_client):
+    c = ops_client
+    admin = auth(c)
+    open_automatic_path(c, admin)
+    seed(c, count=2)
+    row = incident(c, admin)
+    run = c.get(f"/api/ops/incidents/{row['id']}", headers=admin).json()["actions"][0]
+    assert run["origin"] == "automatic"
+    assert c.post(f"/api/ops/actions/{run['id']}/revoke", json={"reason": "Free the adapter"}, headers=admin).status_code == 200
+    for _ in range(3):
+        c.portal.call(maintenance, c.app)
+    assert c.get(f"/api/ops/incidents/{row['id']}", headers=admin).json()["actions"][0]["status"] == "released"
+    c.app.state.settings.response_auto_hourly_limit = 1
+    flow(c, src_ip="192.0.2.99", features=SCAN)
+    scan = next(r for r in c.get("/api/ops/incidents?source=simulation", headers=admin).json()["items"] if r["attack_type"] == "PORT_SCAN")
+    detail = c.get(f"/api/ops/incidents/{scan['id']}", headers=admin).json()
+    assert detail["actions"] == [] and detail["summary"]["automatic"]["status"] == "limit_reached"
+    assert any(entry["kind"] == "response.auto_limit_reached" for entry in detail["timeline"])
+    actions = c.get("/api/ops/actions?source=simulation", headers=admin).json()
+    assert actions["auto_response"] is False and actions["auto_usage"] == {"used": 1, "limit": 1}
+
+
+def test_gate_failure_and_kill_switch_fall_back_to_people(ops_client, monkeypatch):
+    c = ops_client
+    admin = auth(c)
+    open_automatic_path(c, admin)
+
+    def broken(**kwargs):
+        raise RuntimeError("gate offline")
+
+    monkeypatch.setattr("backend.services.autoresponse.assess", broken)
+    seed(c, count=2)
+    row = incident(c, admin)
+    detail = c.get(f"/api/ops/incidents/{row['id']}", headers=admin).json()
+    assert detail["actions"] == [] and detail["summary"]["automatic"]["status"] == "gate_error"
+    assert any(entry["kind"] == "response.auto_gate_error" for entry in detail["timeline"])
+    monkeypatch.undo()
+    row = c.post(f"/api/ops/incidents/{row['id']}/ack", json={"version": row["version"]}, headers=admin).json()
+    row = c.post(
+        f"/api/ops/incidents/{row['id']}/transition",
+        json={"version": row["version"], "status": "investigating", "reason": "Manual path"},
+        headers=admin,
+    ).json()
+    assert make_preview(c, admin, row).status_code == 201
+    assert c.post("/api/ops/kill-switch", json={"enabled": True, "reason": "Drill"}, headers=admin).status_code == 200
+    flow(c, src_ip="192.0.2.99", features=SCAN)
+    scan = next(r for r in c.get("/api/ops/incidents?source=simulation", headers=admin).json()["items"] if r["attack_type"] == "PORT_SCAN")
+    detail = c.get(f"/api/ops/incidents/{scan['id']}", headers=admin).json()
+    assert detail["actions"] == [] and "automatic" not in detail["summary"]

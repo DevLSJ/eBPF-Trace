@@ -49,6 +49,7 @@ class AssetInput(Input):
     criticality: Literal["standard", "critical"] = "standard"
     owner_id: UUID | None = None
     protected_cidrs: list[str] = Field(default_factory=list, max_length=100)
+    auto_response: bool = False
 
     @field_validator("protected_cidrs")
     @classmethod
@@ -98,9 +99,17 @@ class AgentReport(Input):
     detail: str = Field(default="", max_length=240)
 
 
-class KillSwitch(Input):
+class Switch(Input):
     enabled: bool
     reason: str = Field(min_length=3, max_length=2000)
+
+
+class KillSwitch(Switch):
+    pass
+
+
+class Rehearsal(Input):
+    scenario_id: Literal["syn_flood", "port_scan", "shared_source"] = "syn_flood"
 
 
 class ModelStage(Input):

@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from backend.db.crud import create_event, event_dict
 from backend.db.models import DetectionEvent
+from backend.services.autoresponse import consider
 from backend.services.incidents import correlate
 from backend.services.model_operations import observe
 
@@ -23,7 +24,8 @@ async def process_flow(app, session, message, *, detector=None, source='live',
             row = await create_event(
                 session, message, result, source=source, scenario_run_id=run_id,
                 expected_label=expected_label, commit=False, model_evidence=model_evidence)
-            await correlate(session, row, app.state.settings)
+            incident = await correlate(session, row, app.state.settings)
+            await consider(session, app, incident, row)
             event = event_dict(row)
     return result, event
 

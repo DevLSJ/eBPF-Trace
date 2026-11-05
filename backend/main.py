@@ -10,17 +10,21 @@ from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from starlette.exceptions import HTTPException
 
+from backend.api.live import router as live_router
 from backend.api.operations import integration_router
 from backend.api.operations import router as operations_router
 from backend.api.routes import router as api_router
+from backend.api.supply_demo import router as demo_router
 from backend.core.config import Settings
 from backend.core.schemas import Thresholds
 from backend.db.database import Database
 from backend.db.models import Base, RuntimeConfig
+from backend.services.live_inspection import LiveInspector
 from backend.services.metrics_collector import collect_metrics
 from backend.services.model_operations import register_model
 from backend.services.notifications import worker as operations_worker
 from backend.services.scenarios import ScenarioService
+from backend.services.supply_demo import DemoJobs
 from backend.websocket.collector import router as ws_router
 from backend.websocket.manager import ConnectionManager
 from ml.engine import DetectionEngine
@@ -54,12 +58,18 @@ def create_app(settings: Settings | None = None):
                 app.state.detector.rules.thresholds = Thresholds(**config.thresholds)
         app.state.scenarios = ScenarioService(app)
         await app.state.scenarios.recover()
+        app.state.live = LiveInspector(app)
+        await app.state.live.recover()
         await register_model(app)
+        app.state.demo_jobs = DemoJobs(app)
+        await app.state.demo_jobs.recover()
         operations_task = asyncio.create_task(operations_worker(app)) if settings.ops_worker_enabled else None
         task = asyncio.create_task(collect_metrics(app)) if settings.metrics_enabled else None
         try:
             yield
         finally:
+            await app.state.demo_jobs.close()
+            await app.state.live.close()
             await app.state.scenarios.close()
             if operations_task:
                 operations_task.cancel()
@@ -78,7 +88,7 @@ def create_app(settings: Settings | None = None):
         CORSMiddleware,
         allow_origins=settings.allowed_origins.split(","),
         allow_methods=["GET", "PUT", "POST", "PATCH"],
-        allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+        allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Demo-CSRF"],
         allow_credentials=True,
     )
 
@@ -116,6 +126,8 @@ def create_app(settings: Settings | None = None):
         return error_response(500, "INTERNAL_ERROR", "An internal error occurred")
 
     app.include_router(api_router)
+    app.include_router(live_router)
+    app.include_router(demo_router)
     app.include_router(operations_router)
     app.include_router(integration_router)
     app.include_router(ws_router)

@@ -28,6 +28,7 @@ from backend.services.incidents import (
     lock_key,
     queue_notifications,
 )
+from backend.services.risk_gate import assess, source_evidence
 
 
 def policy_digest(policy):
@@ -36,7 +37,8 @@ def policy_digest(policy):
     ).hexdigest()
 
 
-async def response_gate(session, incident, point, settings, source_ip=None):
+async def response_gate(session, incident, point, settings, source_ip=None, *, require_owner=True):
+    """Shared safety checks. The automatic path evaluates before any operator owns the incident."""
     reasons = []
     asset = await session.get(Asset, point.asset_id) if point else None
     control = await session.get(OpsControl, 1)
@@ -80,11 +82,22 @@ async def response_gate(session, incident, point, settings, source_ip=None):
             reasons.append("보호 대상 주소에는 대응 정책을 적용할 수 없습니다.")
         if source_ip not in incident.summary.get("sources", []):
             reasons.append("사건 증거에 없는 출발지입니다.")
-    if incident.status not in {"acknowledged", "investigating"}:
+    if require_owner and incident.status not in {"acknowledged", "investigating"}:
         reasons.append("담당자 인수 후 조사 중인 사건에서 대응을 요청하세요.")
-    if not incident.owner_id:
+    if require_owner and not incident.owner_id:
         reasons.append("담당자 인수가 필요합니다.")
     return reasons, asset
+
+
+async def gate_assessment(session, incident, asset, source_ip, settings):
+    events = await source_evidence(session, incident, source_ip)
+    return assess(
+        source_ip=source_ip,
+        asset=asset,
+        events=events,
+        threshold=settings.response_risk_threshold,
+        now=utcnow(),
+    )
 
 
 async def preview(session, incident, actor, body, settings):
@@ -126,6 +139,7 @@ async def preview(session, incident, actor, body, settings):
         reasons.append("이미 실행 중인 대응을 먼저 확인하세요.")
     if reasons:
         raise HTTPException(409, " ".join(reasons))
+    gate = await gate_assessment(session, incident, asset, str(body.source_ip), settings)
     snapshot = {
         "mode": point.mode,
         "asset": asset.name,
@@ -140,6 +154,7 @@ async def preview(session, incident, actor, body, settings):
         "requires_separate_approver": True,
         "expires_locally": True,
         "policy_version": 1,
+        "gate": gate,
     }
     row = ActionRequest(
         id=str(body.request_id),
@@ -408,11 +423,24 @@ async def sweep_responses(session, settings):
                 )
 
 
+async def set_auto_response(session, enabled, actor, reason):
+    await lock_key(session, "global-response-control")
+    row = await session.get(OpsControl, 1)
+    if row is None:
+        row = OpsControl(id=1, kill_switch=False, auto_response=enabled, version=1, updated_at=utcnow())
+        session.add(row)
+    else:
+        row.auto_response, row.version, row.updated_at = enabled, row.version + 1, utcnow()
+    audit(session, "response.auto_response", {"enabled": enabled, "reason": reason}, actor=actor)
+    await session.flush()
+    return row
+
+
 async def set_kill_switch(session, enabled, actor, reason):
     await lock_key(session, "global-response-control")
     row = await session.get(OpsControl, 1)
     if row is None:
-        row = OpsControl(id=1, kill_switch=enabled, version=1, updated_at=utcnow())
+        row = OpsControl(id=1, kill_switch=enabled, auto_response=False, version=1, updated_at=utcnow())
         session.add(row)
     else:
         row.kill_switch, row.version, row.updated_at = enabled, row.version + 1, utcnow()
