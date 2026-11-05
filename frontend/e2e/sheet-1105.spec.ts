@@ -188,4 +188,28 @@ test.describe('상세 패널 — 본문 위에 오른쪽에서(11/05)', () => {
     await settle(page);
     expect(await page.locator('.sg-sheet-layer').evaluate((e) => getComputedStyle(e).backgroundColor)).toMatch(/rgba\(0, 0, 0, 0\.4\d*\)/);
   });
+  test('⑧ 맨 위부터 닫기: 도우미 · 알림이 열려 있으면 Esc 는 그것만 닫고, 다음 Esc 에 패널 · 토스트는 패널 위', async ({ page, backend }) => {
+    void backend;
+    await page.goto('/installs?id=ins-0012');
+    const layer = page.locator('.sg-sheet-layer[data-layer="install"]');
+    await expect(layer).toBeVisible();
+    await settle(page);
+    await page.getByRole('button', { name: /^도우미 열기/ }).click();
+    const asst = page.locator('[data-part="assistant"]');
+    await expect(asst).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(asst).toBeHidden();
+    await expect(layer, '도우미와 패널이 함께 닫힘').toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(layer).toHaveCount(0);
+    // 토스트(z-50)는 패널 층(z-40) 위 — 패널을 연 채 토스트 자리의 맨 위 요소가 토스트 칸
+    await page.goto('/installs?id=ins-0012');
+    await expect(layer).toBeVisible();
+    const z = await page.evaluate(() => {
+      const host = document.querySelector('.sg-sheet-host')!;
+      const toasts = [...document.querySelectorAll('[class*="fixed"][class*="bottom-5"]')][0];
+      return [Number(getComputedStyle(host).zIndex), toasts ? Number(getComputedStyle(toasts).zIndex) : NaN];
+    });
+    expect(z[1], `토스트 z ${z[1]} · 패널 층 z ${z[0]}`).toBeGreaterThan(z[0]);
+  });
 });

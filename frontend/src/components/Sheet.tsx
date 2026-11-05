@@ -15,6 +15,9 @@ export type { SheetNav } from './sheet-nav';
 const lastGone: { kind: string; at: number } = { kind: '', at: 0 };
 // 나가는 애니메이션 길이 = --t-base(11/04f 원칙: 모션 토큰)
 const baseMs = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--t-base')) || 200;
+// 패널 밖에 열린 대화상자 · 메뉴(도우미 · 알림 · 계정 메뉴) — 그쪽이 Esc 를 먼저 받는다
+const otherOverlay = () =>
+  [...document.querySelectorAll('[role="dialog"], [role="menu"]')].some((el) => !el.closest('.sg-sheet-layer') && el.getClientRects().length > 0);
 const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function Sheet({
@@ -66,15 +69,16 @@ export function Sheet({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || typingTarget(e) || dialogOpen()) return;
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || typingTarget(e) || dialogOpen() || otherOverlay()) return;
       const n = navRef.current;
       const act = e.key === 'Escape' ? close : e.key === 'ArrowUp' ? n?.prev : e.key === 'ArrowDown' ? n?.next : null;
       if (!act) return;
       e.preventDefault();
       act();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // 캡처 단계: 도우미 등이 먼저 닫혀 「열린 게 없다」로 보이기 전에 판단한다
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [close]);
 
   const label = typeof title === 'string' ? title : '상세';
