@@ -12,7 +12,12 @@ SANDBOX_ADMIN_PW := sg-dev-admin-pw
 # 평가 결과(GET /api/evaluation): 로컬 개발은 저장소의 bench/reports 를 읽는다(이미지는 /bench/reports)
 DEV_EVAL := EVAL_REPORTS_DIR=$(CURDIR)/bench/reports
 
-.PHONY: dev backend frontend mock stack-up stack-down test build sandbox-up sandbox-down
+.PHONY: dev backend frontend mock stack-up stack-down test build sandbox-up sandbox-down vm-open vm-close
+
+# sg-vm(이 Mac 의 UTM VM) 화면을 http://localhost:$(VM_PORT) 로 — SSH 터널(별칭 sg-vm)이 VM 의 nginx 80 으로 넘긴다(11/05).
+# nginx 가 Host 를 포트 없이 넘겨 로그인 Origin 검사는 같은 호스트로 통과한다 — ALLOWED_ORIGINS 를 바꾸지 않는다. UTM VM 이 켜져 있어야 한다
+VM_PORT ?= 8080
+VM_TUNNEL := 127.0.0.1:$(VM_PORT):127.0.0.1:80
 
 ## dev: 백엔드(mock, :8000) + Vite(:5173) 를 같이 띄운다. Ctrl-C 로 둘 다 종료.
 dev:
@@ -66,3 +71,11 @@ sandbox-up:
 
 sandbox-down:
 	docker rm -f supplyguard-sandbox >/dev/null 2>&1 || true
+
+vm-open:
+	@if pgrep -f 'L $(VM_TUNNEL) sg-vm' >/dev/null; then echo "터널 이미 열림"; \
+	else ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L $(VM_TUNNEL) sg-vm && echo "터널 열림"; fi
+	@curl -sf -m 5 -o /dev/null http://localhost:$(VM_PORT)/health && echo "sg-vm → http://localhost:$(VM_PORT)" || { echo "health 응답 없음 — UTM VM(utmctl start Linux-VM) · 스택 확인"; exit 1; }
+
+vm-close:
+	@pkill -f 'L $(VM_TUNNEL) sg-vm' && echo "터널 닫음" || echo "열린 터널 없음"

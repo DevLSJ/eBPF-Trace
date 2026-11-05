@@ -67,6 +67,7 @@ tools/     sg-install
 | `cd frontend && npx playwright test` | React e2e(가짜 백엔드, CI 에도 있음) |
 | `make stack-up` / `stack-down` | 전체 스택 컨테이너(mock 소스, `.env` 에 `ADMIN_INITIAL_PASSWORD` 필요) |
 | `make sandbox-up` / `sandbox-down` | 실제 가젯 백엔드, `WATCH_CONTAINERS=sg-install-*`, 실행마다 `AUTH_SECRET_KEY` 새로 생성 · OTP 켬 |
+| `make vm-open` / `vm-close` | sg-vm 화면을 http://localhost:8080 으로(SSH 터널, `VM_PORT=` 로 바꿈). UTM VM 이 켜져 있어야 함. 로그인 Origin 은 같은 호스트로 통과 — `ALLOWED_ORIGINS` 안 바꿈(11/05 실측) |
 | `cd backend && GOOS=linux go vet ./...` | 리눅스 전용 코드 검사 |
 | `ADMIN_TOKEN=… tools/sg-bench [-a API] [-l 목록] [-o 결과]` | 공급망 검사 오탐률 하네스 — 인기 패키지 20개 + 취약 버전을 실제 백엔드로 검사, 인기 패키지가 「악성」이면 실패. sg-vm 에서는 `-t ~/sg/.tokens` |
 
@@ -75,7 +76,7 @@ tools/     sg-install
 ### 서버
 
 - **`sg-vm`** — UTM Ubuntu 22.04 arm64(커널 5.15), 키 인증. docker는 sudo 없이, sudo는 비밀번호 필요 → 사용자가 자기 터미널에서 직접. 작업 경로 `~/sg/` 안에서만
-  - 전체 스택 상시 실행: `~/sg/stack`, compose 프로젝트 `supplyguard`, http://192.168.64.2. 로그인 켜짐(10/20) · 발견 auto → fanotify · `ENFORCE_KILL=true` · 전체 감시 · `ollama` 프로필 켬
+  - 전체 스택 상시 실행: `~/sg/stack`, compose 프로젝트 `supplyguard`, 이 Mac 의 UTM VM(`bridge100`, http://192.168.64.2 — 이 Mac 에서만 열림, 화면은 `make vm-open` 의 http://localhost:8080 으로 연다 [2026-11-05]). 로그인 켜짐(10/20) · 발견 auto → fanotify · `ENFORCE_KILL=true` · 전체 감시 · `ollama` 프로필 켬
   - 반영: 소스를 tar 로 옮겨 VM 에서 빌드(`docker compose … build`) → 이전 이미지에 롤백 태그 → `up -d` → health 확인 → 실패 시 롤백 태그로 복구. 롤백 태그 · `.env` 백업 위치는 메모리
   - `.env` · `~/sg/.tokens` 는 600, 값은 출력하지 않는다
 - **`sg-ec2`** — 시험 · 시연용 EC2 [2026-11-03]. **새 AWS 계정**(기존 계정 · `ebpf-trace-app` 과 무관) · 스톡홀름 리전 · t4g.small(arm64, 2GB) · **Ubuntu 22.04**(커널 6.8) · 8GB gp3 · 파일 시스템 없음 · 고정 주소는 탄력적 IP. 별칭 `sg-ec2`(전용 키, 주소는 `~/.ssh/config` 에만). 경로 `/home/ubuntu/supplyguard*` 안에서만. `ollama` 프로필은 끈다
@@ -99,7 +100,7 @@ tools/     sg-install
 
 - 연쇄 규칙(`kind: sequence`, 11/04) — 같은 컨테이너에서 `windowSeconds`(1~60) 안에 `steps`(2~5, 각 단계는 exec · open · connect · dns 조건) 가 순서대로 일어나면 판정. 처리 순서 기준 · 사이 이벤트 허용 · 판정은 이벤트 1건에 1개(더 강한 쪽, 동률이면 단일 규칙 — 진 연쇄는 `sequence` 주석). 미리보기 · 자동 예외 불가(감사 로그에 앞 단계가 없음). 기본 `chain-download-secrets`(kill, **dryRun — 발표까지 유지**). 기본 `no-shell-download` 가 1단계에서 먼저 격리하므로 시연은 그 규칙을 dryRun 으로 두고 한다
 - 판정: `allow` · `alert` · `kill`. 전역 `ENFORCE_KILL=false`면 kill 정책도 알림만
-- 정책은 `backend/policies/default.yaml`(기본 10개)이 빈 DB에 한 번 시드, 이후 대시보드 정책 화면에서 바꾼다. 기존 서버에 새 기본 규칙은 정책 화면 「새 기본 규칙 있음」 안내로 추가(덮어쓰지 않고 빈 값만 채움)
+- 정책은 `backend/policies/default.yaml`(기본 11개 — 11/04 연쇄 규칙 추가)이 빈 DB에 한 번 시드, 이후 대시보드 정책 화면에서 바꾼다. 기존 서버에 새 기본 규칙은 정책 화면 「새 기본 규칙 있음」 안내로 추가(덮어쓰지 않고 빈 값만 채움)
 - connect 규칙 `directIp: allow|alert|kill` — trace_dns 가 켜져 있을 때 도메인 조회 없는 공인 IP 연결. `directIp` 만 있고 `allowHosts` 가 없는 규칙은 IP 직접 연결 전용
 - dns 규칙(`kind: dns`, 10/30) — 질의만 판정. `denyHosts` → `allowHosts` 통과 → `denyQtypes` → `maxLabelLength` → `maxNameLength` → 허용 목록 밖(점 없는 이름 · `*.arpa` · `*.local` · `*.internal` 제외) 순서. 기본 `runtime-dns-exfil`(alert) · `sandbox-dns`(kill — 11/03 sg-vm 실측 뒤 dryRun 해제: 정상 설치 27건 새 오탐 0). `blocklist-hosts` 는 dns 질의에 적용하지 않는다
 - 시연(`DEMO_ENABLED=true`, 운영은 끈다) — 관리자 세션만 `POST /api/demo/run`, 동시 1개 · 90초 · 변경 이력. 서버 종료 때 진행 중인 시연 컨테이너를 지우고 끝낸다
