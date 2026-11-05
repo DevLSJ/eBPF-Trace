@@ -1,5 +1,5 @@
 /* 2026-10-30 디자인 토큰 · 부품 · 모션 · 다크 · 768px 미만 — 계약 §7(공통 계약 contract-1030.md)
-   ① :root 토큰 값 그대로(--bg #F7F7F8 · --accent #4F46E5 · --danger #E11D48 · --r-lg 16px · --t-base 200ms …) + 부품이 토큰을 쓴다(카드 r-lg · 버튼 36px · 표 행 36px · 시트 480px)
+   ① :root 토큰 값 그대로(--bg #F7F7F8 · --accent #4F46E5 · --danger #E11D48 · --r-lg 16px · --t-base 200ms …) + 부품이 토큰을 쓴다(카드 r-lg · 버튼 36px · 표 행 36px · 시트 폭 — 11/05 슬라이드 패널: 설치 · 검사 본문 70%(1440 에서 840) · 그 밖 720)
    ② 테마 전환: 계정 메뉴 「테마」(시스템 · 라이트 · 다크) → <html data-theme> · localStorage supplyguard.theme · 새로고침 뒤 유지 · ?theme=dark 는 저장 없이 이번 로드만
    ③ 다크: 토큰 값 그대로(--bg #0F1115 …) · 본문 대비 AA(≥ 4.5) · color-scheme dark · SVG(토폴로지 · 차트) 색도 토큰
    ④ 390 · 768 전 화면 넘침 0(본문 가로 스크롤 0) · 서랍 사이드바(메뉴 버튼 · dim · Esc) · 1열 · 시트 전체 화면 · 표 overflow-x · 여백 16
@@ -37,7 +37,7 @@ const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)]; return (Math.max(x
   const overflow = (pg) => pg.evaluate(() => { const d = document.documentElement, m = document.querySelector('main'), p = document.querySelector('#page'); return { doc: d.scrollWidth - innerWidth, main: m ? m.scrollWidth - m.clientWidth : 0, page: p ? p.scrollWidth - p.clientWidth : 0, pageH: p ? p.scrollHeight - p.clientHeight : 0 }; });
 
   // ① 토큰 · 부품
-  await T('① :root 토큰 값이 계약 그대로이고 부품이 토큰을 쓴다(카드 r-lg 16 · 버튼 36/28 · 표 행 36 · 시트 480 · 칩 r-pill · 사이드바 240)', async () => {
+  await T('① :root 토큰 값이 계약 그대로이고 부품이 토큰을 쓴다(카드 r-lg 16 · 버튼 36/28 · 표 행 36 · 시트 설치 840 · 이벤트 720 · 칩 r-pill · 사이드바 240)', async () => { // 11/05 슬라이드 패널: 「시트 480」 → 화면별 폭
     const pg = await newPage();
     await go(pg, '/installs');
     const v = await vars(pg, Object.keys(LIGHT));
@@ -48,8 +48,12 @@ const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)]; return (Math.max(x
     const row = await pg.$eval('table[data-table="installs"] tbody tr', (e) => e.getBoundingClientRect().height); ok(row >= 44 && row <= 48, `표 행 ${row}`); // 11/04e 행 44~48
     ok(await pg.$eval('table[data-table="installs"] th', (e) => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight, getComputedStyle(e.closest('thead')).position].join()) === '12px,700,sticky', '표 헤더 12px/700 sticky'); // 11/04e 머리 700
     await pg.click('table[data-table="installs"] tbody tr[data-id]'); await pg.waitForSelector('.sheet[data-sheet="install"]', W);
-    { const w = await pg.$eval('.sheet[data-sheet="install"]', (e) => [e.getBoundingClientRect().width, innerWidth, document.querySelector('.shell').className, getComputedStyle(e).width]); ok(Math.round(w[0]) === 480 && w[3] === '480px', `시트 480 ${JSON.stringify(w)}`); } // 11/02: transform 모션의 소수점 오차(480.00006) — 반올림 비교
+    // 11/05 슬라이드 패널: 설치 패널(data-size=wide) = min(1080px, 본문 70%) — 1440 · 사이드바 240 이면 본문 1200 × 0.7 = 840
+    { const w = await pg.$eval('.sheet[data-sheet="install"]', (e) => [e.getBoundingClientRect().width, e.closest('.sheet-layer').getBoundingClientRect().width, e.dataset.size, getComputedStyle(e).width]); ok(Math.round(w[0]) === 840 && w[3] === '840px' && Math.round(w[1] * 0.7) === 840 && w[2] === 'wide', `설치 패널 840 ${JSON.stringify(w)}`); } // 11/02: transform 모션의 소수점 오차 — 반올림 비교
     ok(await pg.$eval('.sheet .badge', (e) => getComputedStyle(e).borderRadius) === '999px', '배지 r-pill');
+    // 11/05 슬라이드 패널: 그 밖(이벤트 · 감사 로그 · 토폴로지)은 720px
+    await go(pg, '/events'); await pg.evaluate(() => UI.runAttackNow()); await pg.waitForTimeout(500); await pg.click('.feed-row'); await pg.waitForSelector('.sheet[data-sheet="event"]', W);
+    { const w = await pg.$eval('.sheet[data-sheet="event"]', (e) => [e.getBoundingClientRect().width, getComputedStyle(e).width]); ok(Math.round(w[0]) === 720 && w[1] === '720px', `이벤트 패널 720 ${JSON.stringify(w)}`); }
     // 11/02: 기본 버튼은 공급망 검사 「검사 시작」으로 잰다 — 시드의 격리 설치는 이미 판정돼 판정 버튼이 없어 시간에 따라 실패했다
     await go(pg, '/scans');
     ok(await pg.$eval('.btn.btn-primary:not(.btn-xs):not(.btn-sm)', (e) => e.getBoundingClientRect().height) >= 36, '기본 버튼 36px');
@@ -126,7 +130,7 @@ const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)]; return (Math.max(x
         await pg.waitForTimeout(350); // 시트 들어오는 모션(16px → 0, t-base) 뒤에 잰다
         const sheet = await pg.$eval('.sheet[data-sheet="event"]', (e) => { const r = e.getBoundingClientRect(); return [r.width, r.left, r.top]; });
         ok(Math.round(sheet[0]) === 390 && sheet[1] === 0 && sheet[2] === 0, `시트 전체 화면 ${JSON.stringify(sheet)}`);
-        await pg.click('.sheet [aria-label="닫기"]'); await pg.waitForTimeout(200);
+        await pg.click('.sheet [data-action="sheet-close"]'); await pg.waitForTimeout(300); // 11/05 슬라이드 패널: 닫기 버튼 이름이 「닫기(Esc)」 — data-action 으로 고르고 닫힘 180ms 를 기다린다
         await go(pg, '/');
         ok(await pg.$eval('.topbar', (e) => e.getBoundingClientRect().height) === 56, '머리 56');
         ok(await pg.$eval('#page', (e) => getComputedStyle(e).paddingLeft) === '16px', '여백 16');

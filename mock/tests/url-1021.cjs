@@ -124,12 +124,15 @@ const FILTER_RE = /[?&](status|manager|kind|verdict|level|normal|container|actio
     await go(pg, '/topology');
     await pg.evaluate(() => UI.runAttackNow()); await pg.waitForTimeout(1500);
     await pg.click('.topo-side button.chain-step:has(.step-open)'); await pg.waitForTimeout(300);
-    ok(await pg.locator('.topo-side .side-card:has-text("선택한 노드")').count() === 1, '파일 노드가 선택되지 않음');
+    // 11/05 슬라이드 패널: 노드 카드는 .topo-side 가 아니라 토폴로지 패널 안
+    ok(await pg.locator('.sheet-layer [data-sheet="topo"] [data-part="node"]:has-text("선택한 노드")').count() === 1, '파일 노드가 선택되지 않음');
     ok(!/[?&]node=/.test(await hash(pg)), `파일 노드가 주소에 ${await hash(pg)}`);
+    // 11/05 슬라이드 패널: 패널이 공격 체인을 가린다 — 닫고 컨테이너를 고른다
+    await pg.click('.sheet-layer [data-action="sheet-close"]'); await pg.waitForSelector('.sheet-layer', { state: 'detached', timeout: 2000 });
     await pg.click('.topo-side .chain-head'); await pg.waitForTimeout(300);
     const x = decodeURIComponent(await hash(pg));
     ok(/[?&]node=c:/.test(x), `컨테이너 노드가 주소에 없음 ${x}`);
-    await pg.click('.topo-side [aria-label="선택 해제"]'); await pg.waitForTimeout(300); // ✕ 로 선택 해제
+    await pg.click('.sheet-layer [data-sheet="topo"] [data-action="sheet-close"]'); await pg.waitForTimeout(400); // ✕ 로 선택 해제 — 11/05 슬라이드 패널: 노드 카드 ✕ 대신 패널 머리 ✕(닫힘 180ms)
     ok(!/[?&]node=/.test(await hash(pg)), `해제 뒤 주소에 node ${await hash(pg)}`);
     await pg.close();
   });

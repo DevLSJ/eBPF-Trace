@@ -37,6 +37,8 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
   };
   const go = async (pg, hash) => { await pg.goto(`${BASE}?as=admin#${splitHash(hash)[0]}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); if (splitHash(hash)[1]) await goState(pg, hash, 0); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin) // 10/21b
   const confirmOk = (pg) => pg.click('dialog[data-part="confirm"] [data-confirm="ok"]'); // 10/20: 판정 · 적용은 확인 대화상자(B)
+  // 11/05 슬라이드 패널: 패널이 떠 있으면 뒤(토스트 포함)가 어두운 배경에 가려진다 — 패널 머리 ✕ 로 닫고 사라질 때까지 기다린다
+  const closeSheet = async (pg) => { if (!(await pg.$('.sheet-layer'))) return; await pg.click('.sheet-layer [data-action="sheet-close"]'); await pg.waitForSelector('.sheet-layer', { state: 'detached', timeout: 2000 }); };
   const shot = async (pg, name) => { if (!process.env.SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true }); await pg.waitForTimeout(250); await pg.screenshot({ path: path.join(SHOT_DIR, `${name}.png`) }); };
   const runInstall = async (pg, kind) => {
     const id = await pg.evaluate((k) => UI.runInstallDemo(typeof k === 'string' ? k : Object.assign({}, MOCK.demoSpecs[k.base], k.patch)), kind);
@@ -86,6 +88,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     await confirmOk(pg); // 10/20
     await pg.waitForTimeout(300);
     ok((await pg.textContent('.toasts')).includes('pip ./reqeusts 악성 확정'), '판정 토스트 표기');
+    await closeSheet(pg); // 11/05 슬라이드 패널: 토스트가 어두운 배경 아래 — 패널을 닫고 누른다
     await pg.click('.toast-action:has-text("제안 보기")');
     await pg.waitForSelector('[data-view="proposal"]');
     ok((await pg.textContent('[data-section="proposals"] [data-proposal]')).includes('pip ./reqeusts'), '제안 목록 표기');

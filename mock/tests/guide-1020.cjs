@@ -123,7 +123,9 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     ok(await pg.$eval(PANEL, (e) => e.hidden), '링크로 이동했는데 패널이 열린 채(시트의 판정 버튼을 가린다)');
     await openPanel(pg);
     ok(await stepDone(pg, 3), '3 공격 체인 미완료');
-    await pg.keyboard.press('Escape');
+    // 11/05 슬라이드 패널: Esc 는 도우미와 함께 설치 패널까지 닫는다 — 도우미는 버튼으로 닫고 패널의 판정 버튼을 누른다
+    await pg.click(FAB);
+    ok(await pg.$eval(PANEL, (e) => e.hidden), '도우미 버튼으로 안 닫힘');
     await pg.click('.sheet button[aria-label="악성 확정"]');
     await pg.click('dialog[data-part="confirm"] [data-confirm="ok"]'); // 10/20: 판정은 확인 대화상자(B)
     await openPanel(pg);

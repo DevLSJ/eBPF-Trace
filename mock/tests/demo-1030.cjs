@@ -131,8 +131,9 @@ const SECTIONS = ['summary', 'timeline', 'violations', 'evidence', 'decision', '
     const c = await pg.evaluate(() => UI.state.cases.find((x) => x.source === 'runtime' && x.container === 'pkg-reqeusts'));
     ok(c && c.isolation && c.isolation.timeline && c.isolation.auditId, `런타임 건 isolation ${JSON.stringify(c && c.isolation)}`);
     await pg.click('.topo-side .chain-head'); await pg.waitForTimeout(400);
-    ok(await pg.locator('.topo-side .case-card [data-part="timeline"]').count() === 1, '판정 카드 막대 없음');
-    ok(/격리까지 \d+\.\d{2}초/.test(await pg.textContent('.topo-side .case-card [data-part="timeline-total"]')), '판정 카드 합계');
+    // 11/05 슬라이드 패널: 판정 카드(.case-card)는 .topo-side 가 아니라 토폴로지 패널 안
+    ok(await pg.locator('.sheet-layer [data-sheet="topo"] .case-card [data-part="timeline"]').count() === 1, '판정 카드 막대 없음');
+    ok(/격리까지 \d+\.\d{2}초/.test(await pg.textContent('.sheet-layer [data-sheet="topo"] .case-card [data-part="timeline-total"]')), '판정 카드 합계');
     // 없는 구간은 「—」
     const dash = await pg.evaluate(() => { const el = UI.timelineBar({ detectedAt: '2026-10-30T00:00:00.000Z', matchedAt: '2026-10-30T00:00:00.004Z', killedAt: '2026-10-30T00:00:00.050Z' }); return [...el.querySelectorAll('.tl-legend [data-seg]')].map((x) => x.textContent.trim()); });
     ok(dash[1].endsWith('—') && dash[3].endsWith('—') && dash[2].endsWith('46 ms'), `없는 구간 ${JSON.stringify(dash)}`);
@@ -241,7 +242,7 @@ const SECTIONS = ['summary', 'timeline', 'violations', 'evidence', 'decision', '
     await go(pg, '/topology'); await pg.evaluate(() => UI.runAttackNow()); await pg.waitForTimeout(1200);
     await pg.click('.topo-side .chain-head'); await pg.waitForTimeout(300);
     const rc = await pg.evaluate(() => UI.state.cases.find((x) => x.source === 'runtime' && x.state === 'open').id);
-    ok(await pg.getAttribute('.topo-side .case-card [data-action="report"]', 'href') === `#/report?case=${rc}`, '토폴로지 판정 카드 진입');
+    ok(await pg.getAttribute('.sheet-layer [data-sheet="topo"] .case-card [data-action="report"]', 'href') === `#/report?case=${rc}`, '토폴로지 판정 카드 진입'); // 11/05 슬라이드 패널: 판정 카드는 토폴로지 패널 안
     await go(pg, '/');
     await pg.click(`[data-case="${rc}"] ~ .menu-anchor [data-action="row-menu"]`).catch(() => pg.click('.pending-row [data-action="row-menu"]')); await pg.waitForTimeout(200);
     const menuHref = await pg.getAttribute('.pending-row .row-menu:not([hidden]) [data-menu="report"]', 'href');
