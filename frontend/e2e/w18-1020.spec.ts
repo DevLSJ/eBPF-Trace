@@ -530,7 +530,8 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
     expect(reqs(backend, 'GET', /^\/installs\?limit=500/).length).toBeGreaterThan(0); // 스위치를 끈 뒤에야 가짜 백엔드까지 갔다
   });
 
-  test('아이콘 있는 빈 상태', async ({ page, backend }) => {
+  // 11/05: 참고 대시보드처럼 아이콘 없는 빈 상태(10/20 「아이콘 있는 빈 상태」 대체) — 가운데 · 보조색 14px · 높이 180
+  test('빈 상태: 아이콘 없이 글자만', async ({ page, backend }) => {
     backend.empty();
     backend.recent = [];
     backend.audit = [];
@@ -539,7 +540,8 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
       await page.goto(path);
       const empty = page.locator('[data-part="empty"]');
       await expect(empty, path).toBeVisible();
-      await expect(empty.locator('svg').first(), path).toBeVisible();
+      await expect(empty.locator(':scope > svg'), path).toHaveCount(0); // 동작 단추 안 아이콘은 그대로
+      expect(await empty.evaluate((e) => [getComputedStyle(e).textAlign, getComputedStyle(e).fontSize, e.getBoundingClientRect().height >= 180]), path).toEqual(['center', '14px', true]);
     }
   });
 

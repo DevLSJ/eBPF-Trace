@@ -51,6 +51,6 @@ test.describe('감사 로그 — 언제 무엇이 걸렸고, 어떻게 닫혔나
     const doc = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
     expect(doc).toBe(0);
     await expect(page.getByRole('button', { name: '더 보기' })).toHaveCount(0);
-    await expect(page.locator('[data-table-foot="audit"] [data-part="range"]')).toHaveText('1–100 / 100');
+    await expect(page.locator('[data-table-foot="audit"] [data-part="range"]')).toHaveText('총 100건 · 1/1 페이지');
   });
 });

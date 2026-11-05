@@ -37,7 +37,7 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
     await expect(page.locator('[data-rule="sandbox-dns"] [data-kind-badge="dns"]')).toHaveText('조회');
     await expect(page.locator('[data-rule="sensitive-files"] [data-kind-badge="open"]')).toHaveText('파일');
     // 라이트 토큰: --accent-soft #EEF2FF · --accent-text #3730A3
-    expect(await badge.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color])).toEqual(['rgb(238, 242, 255)', 'rgb(55, 48, 163)']);
+    expect(await badge.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color])).toEqual(['rgb(220, 233, 255)', 'rgb(13, 71, 184)']);
     await page.screenshot({ path: `${SHOTS}/1104-seq-list.png` });
   });
 
@@ -222,13 +222,13 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
     await expect(saveCheck(page)).toContainText('저장은 관리자만 할 수 있습니다');
   });
 
-  test('⑩ 다크: 목록 배지가 다크 토큰(--accent-soft #1E2342 · --accent-text #C7CCFF) · 저장 전 확인 안내', async ({ page, backend }) => {
+  test('⑩ 다크: 목록 배지가 다크 토큰(--accent-soft #1A2D4E · --accent-text #DCE9FF) · 저장 전 확인 안내', async ({ page, backend }) => {
     backend.enableSequence();
     await page.addInitScript(() => localStorage.setItem('supplyguard.theme', 'dark'));
     await openSeq(page);
     expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe('dark');
     const badge = page.locator(`[data-rule="${SEQ_RULE_ID}"] [data-kind-badge="sequence"]`);
-    expect(await badge.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color])).toEqual(['rgb(30, 35, 66)', 'rgb(199, 204, 255)']);
+    expect(await badge.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color])).toEqual(['rgb(26, 45, 78)', 'rgb(220, 233, 255)']);
     await checkNow(page);
     await expect(page.locator('[data-part="seq-no-preview"]')).toBeVisible();
     await page.screenshot({ path: `${SHOTS}/1104-seq-dark.png` });

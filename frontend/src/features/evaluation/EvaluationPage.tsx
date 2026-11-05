@@ -647,7 +647,7 @@ export function EvaluationPage() {
             data-action="download-json"
             title="이 화면의 결과(static · runtime · model)를 JSON 한 파일로"
             onClick={() => download(d)}
-            className="flex shrink-0 items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1 text-xs whitespace-nowrap text-slate-700 hover:bg-slate-50"
+            className="sg-btn sg-btn-sm sg-btn-secondary flex shrink-0 items-center gap-1.5 whitespace-nowrap"
           >
             <Download className="size-3.5" aria-hidden /> 결과 JSON
           </button>

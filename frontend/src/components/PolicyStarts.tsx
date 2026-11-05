@@ -18,7 +18,7 @@ function Starts({ event, ruleId }: { event: Event; ruleId?: string }) {
   const blk = blockLink(event);
   const alw = ruleId ? allowLink(rules.data?.find((r) => r.id === ruleId), event) : null;
   if (!blk && !alw) return null;
-  const btn = 'rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50';
+  const btn = 'sg-btn sg-btn-sm sg-btn-secondary';
   return (
     <Section title="이 행동으로 정책 만들기">
       <div className="flex flex-wrap gap-2">

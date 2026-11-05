@@ -56,23 +56,26 @@ test.describe('F6 디자인 토큰 · 부품 · 모션', () => {
     await page.goto('/policies?id=egress-allowlist');
     await expect(page.getByTestId('editor')).toBeVisible();
     for (const [k, v] of [
-      ['--bg', '#F7F7F8'], ['--surface', '#FFFFFF'], ['--surface-2', '#F1F2F4'], ['--border', '#E6E7EB'], ['--text', '#111827'], ['--text-2', '#4B5563'], ['--text-3', '#6B7280'],
-      ['--accent', '#4F46E5'], ['--accent-soft', '#EEF2FF'], ['--danger', '#E11D48'], ['--warn', '#D97706'], ['--warn-soft', '#FFFBEB'], ['--ok', '#059669'], ['--info', '#0284C7'],
-      ['--r-lg', '16px'], ['--t-base', '200ms'], ['--sidebar-w', '240px'], ['--header-h', '56px'],
+      // 11/05: 참고 대시보드 값으로 교체(10/30 계약 §7 값 대체)
+      ['--bg', '#F6F7FB'], ['--surface', '#FFFFFF'], ['--surface-2', '#EEF0F4'], ['--border', '#ECEEF4'], ['--text', '#202534'], ['--text-2', '#7A8090'], ['--text-3', '#7A8090'],
+      ['--accent', '#1769E8'], ['--accent-soft', '#DCE9FF'], ['--danger', '#E4516F'], ['--warn', '#F5A623'], ['--warn-soft', '#FFF5DF'], ['--ok', '#25B884'], ['--info', '#0288D1'],
+      ['--r-lg', '8px'], ['--t-base', '200ms'], ['--sidebar-w', '240px'], ['--header-h', '56px'],
     ]) expect(await token(page, k), k).toBe(v);
-    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#F7F7F8'));
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#F6F7FB'));
     expect(await page.getByTestId('rules').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#FFFFFF'));
-    // 표 머리(Linear 식): 12px · text-3 — R4 11/04: 굵기 600 → 700(11/04e 표 머리 12/700)
+    // 표 머리(11/05 참고 대시보드): 12/600 · 보조색 · 회색 바탕
     await page.goto('/audit');
     const th = page.locator('[data-testid="audit"] thead th').first();
     await expect(th).toBeVisible();
     const thStyle = await th.evaluate((e) => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight, getComputedStyle(e).color]);
-    expect(thStyle).toEqual(['12px', '700', rgb('#6B7280')]);
-    // 버튼 36px · r-md, 시트 480px
+    expect(thStyle).toEqual(['12px', '600', rgb('#7A8090')]);
+    expect(await th.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#EEF0F4'));
+    // 버튼(11/05): 패딩 6/16 · 14.4/1.5 → 높이 33.6 · 반경 6 · 700, 시트
     await page.goto('/policies?id=egress-allowlist');
     const btn = page.locator('[data-view="rule-editor"]').getByRole('button', { name: '저장 전 확인' });
-    expect((await btn.boundingBox())!.height).toBe(36);
-    expect(await btn.evaluate((e) => getComputedStyle(e).borderRadius)).toBe('12px');
+    expect((await btn.boundingBox())!.height).toBeCloseTo(33.6, 0);
+    expect(await btn.evaluate((e) => getComputedStyle(e).fontWeight)).toBe('700');
+    expect(await btn.evaluate((e) => getComputedStyle(e).borderRadius)).toBe('6px');
     await page.goto('/installs?id=ins-0012');
     await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
     expect((await page.locator('[data-sheet="install"]').boundingBox())!.width).toBeCloseTo(840, 0); // 11/05: 설치 검사 패널 = 본문 70%(1440 → 840), 옛 계약 480 은 바뀜
@@ -84,7 +87,7 @@ test.describe('F6 디자인 토큰 · 부품 · 모션', () => {
     await page.locator('[data-view="rule-editor"]').getByRole('button', { name: '저장 전 확인' }).click();
     await page.locator('[data-part="save-check"]').getByRole('button', { name: '저장 후 적용' }).click();
     const badge = page.locator('[data-rule^="runtime-dns-exfil"] [data-kind-badge="dns"]').first();
-    expect(await badge.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color])).toEqual([rgb('#FFFBEB'), rgb('#92400E')]);
+    expect(await badge.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color])).toEqual([rgb('#FFF5DF'), rgb('#946000')]);
   });
 
   test('모션: 화면 전환 · 새 위반 행 하이라이트 · 단계 레일 — prefers-reduced-motion: reduce 면 전부 끔', async ({ page, backend }) => {
@@ -139,11 +142,11 @@ test.describe('F7 다크 모드', () => {
     await picks.nth(2).click();
     expect(await themeOf(page)).toBe('dark');
     expect(await page.evaluate((k) => localStorage.getItem(k), THEME_KEY)).toBe('dark');
-    for (const [k, v] of [['--bg', '#0F1115'], ['--surface', '#171A21'], ['--text', '#E6E8EE'], ['--accent', '#6D7CFF'], ['--danger', '#FB7185'], ['--warn', '#FBBF24'], ['--warn-soft', '#3A2A08']])
+    for (const [k, v] of [['--bg', '#11131A'], ['--surface', '#1B1E28'], ['--text', '#F2F3F7'], ['--accent', '#1769E8'], ['--danger', '#E4516F'], ['--warn', '#F5A623'], ['--warn-soft', '#423627']])
       expect(await token(page, k), k).toBe(v);
-    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#0F1115'));
-    expect(await page.getByTestId('pending').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#171A21'));
-    expect(await page.getByTestId('page-title').evaluate((e) => getComputedStyle(e).color)).toBe(rgb('#E6E8EE'));
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#11131A'));
+    expect(await page.getByTestId('pending').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#1B1E28'));
+    expect(await page.getByTestId('page-title').evaluate((e) => getComputedStyle(e).color)).toBe(rgb('#F2F3F7'));
     await page.reload();
     expect(await themeOf(page)).toBe('dark');
     await expect(page.getByTestId('pending')).toBeVisible();
@@ -170,11 +173,11 @@ test.describe('F7 다크 모드', () => {
     expect(contrast(await token(page, '--text-inverse'), await token(page, '--accent'))).toBeGreaterThanOrEqual(4.5);
     const legend = page.locator('[data-section="overview"] [data-chart="violations"] .chart-legend .sw.k-killed'); // R2 11/04: R1 막대 차트 범례(.sw.k-killed)
     await expect(legend).toBeVisible();
-    expect(await legend.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#FB7185'));
+    expect(await legend.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#E4516F'));
     await page.goto('/topology?node=c%3Apkg-reqeusts');
     const node = page.locator('.react-flow__node', { hasText: /^pkg-reqeusts/ }).first();
     await expect(node).toBeVisible();
-    expect(await node.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#FB7185'));
+    expect(await node.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#E4516F'));
   });
 });
 

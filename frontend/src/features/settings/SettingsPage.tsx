@@ -136,7 +136,7 @@ function ServerTab() {
         part="notify"
         actions={
           isAdmin && n?.channels.length ? (
-            <button type="button" disabled={sending} onClick={() => void test()} className="flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-slate-50 disabled:opacity-50">
+            <button type="button" disabled={sending} onClick={() => void test()} className="sg-btn sg-btn-sm sg-btn-secondary flex items-center gap-1.5">
               <Send className="size-3.5" aria-hidden /> 테스트 발송
             </button>
           ) : null
@@ -703,7 +703,7 @@ function AuthAuditRows({ action, failed }: { action: string; failed: boolean }) 
             </span>
           )}
           {hasMore && (
-            <button type="button" data-action="more" disabled={moreBusy} onClick={() => void more()} className="rounded-md border border-slate-300 px-3 py-1 text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+            <button type="button" data-action="more" disabled={moreBusy} onClick={() => void more()} className="sg-btn sg-btn-sm sg-btn-secondary">
               {moreBusy ? '불러오는 중…' : '더 보기'}
             </button>
           )}

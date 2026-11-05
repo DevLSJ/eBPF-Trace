@@ -1,10 +1,10 @@
 import { LEVEL_LABEL, levelOf, type Level, type Verdict } from '../lib/types';
 
 const style: Record<Level, string> = {
-  normal: 'bg-slate-100 text-slate-600',
-  alert: 'bg-amber-100 text-amber-800',
-  held: 'bg-red-50 text-red-700',
-  killed: 'bg-red-600 text-white',
+  normal: 'sg-pill-neutral',
+  alert: 'sg-pill-warn',
+  held: 'sg-pill-danger',
+  killed: 'sg-pill-danger',
 };
 
 // 상태 배지 pill(R4 11/04 — 목업 11/04e .badge 11.5/700 + 글자색 1px 테두리)

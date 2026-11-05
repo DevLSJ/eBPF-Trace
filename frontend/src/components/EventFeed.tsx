@@ -87,7 +87,7 @@ export function EventFeed({ verdicts, selectedKey, onSelect, empty = '이벤트 
                 })
               }
               className={`absolute inset-x-0 flex items-center gap-3 border-b border-slate-100 px-4 text-sm ${fresh ? 'sg-flash' : ''} ${
-                onSelect ? 'cursor-pointer hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500' : ''
+                onSelect ? 'cursor-pointer hover:bg-[var(--row-hover)] focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500' : ''
               } ${selected ? 'bg-indigo-50' : level === 'killed' || level === 'held' ? 'bg-red-50/60' : ''}`}
             >
               <span className={`num w-16 shrink-0 font-mono text-xs text-slate-500 ${full ? MID_ONLY : ''}`}>{fmtTime(v.event.timestamp)}</span>

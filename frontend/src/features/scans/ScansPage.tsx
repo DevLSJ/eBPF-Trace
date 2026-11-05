@@ -147,7 +147,7 @@ export function ScansPage() {
                   <tbody>
                     {view.rows.map((s) => (
                       <tr key={s.id} {...rowKeys(() => select(s.id))} data-scan={s.id} data-status={s.status} onClick={() => select(s.id)} aria-selected={s.id === selId}
-                        className={`cursor-pointer hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${s.id === selId ? 'bg-indigo-50' : ''}`}>
+                        className={`cursor-pointer hover:bg-[var(--row-hover)] focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${s.id === selId ? 'bg-indigo-50' : ''}`}>
                         {/* 11/04e 막대: 악성 의심 행만(위험색) */}
                         <td data-col="started" className="num tk-short font-mono text-xs" style={barStyle(s.verdict === 'malicious' && 'danger')}>{fmtDateTime(s.startedAt)}</td>
                         <td data-col="target" className="tk-fill font-mono" title={s.target.label}>{s.target.label}</td>
