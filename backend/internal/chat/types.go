@@ -63,6 +63,7 @@ const (
 	IntentBlocklist Intent = "blocklist" // 차단 목록
 	IntentPolicy    Intent = "policy"    // 정책 하나 설명
 	IntentSummary   Intent = "summary"   // 기간 종합 · 가장 많이 걸린 정책
+	IntentUsage     Intent = "usage"     // 사용법(명령 · 화면 조작) — 모델 없이 고정 문구
 	IntentUnknown   Intent = "unknown"   // 규칙으로 못 고름 → 모델 도구 호출 1회
 )
 

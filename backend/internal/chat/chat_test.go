@@ -35,6 +35,17 @@ func TestClassify(t *testing.T) {
 		{"차단 목록 보여 줘", IntentBlocklist, ToolBlocklist, nil},
 		{"이 화면은 뭘 하는 곳이야?", IntentPage, "", nil},
 		{"안녕", IntentUnknown, "", nil},
+		// 사용법(11/05 sg-vm: 「…검사하는 명령」이 최근 검사 결과로 갔다) — 도구 없이 서버 고정 문구
+		{"패키지 설치 전에 검사하는 명령 알려 줘", IntentUsage, "", map[string]string{"topic": "install"}},
+		{"공급망 검사는 어떻게 해?", IntentUsage, "", map[string]string{"topic": "scan"}},
+		{"sg-install 사용법", IntentUsage, "", map[string]string{"topic": "install"}},
+		{"정책 바꾸는 방법 알려 줘", IntentUsage, "", map[string]string{"topic": "policy"}},
+		{"저장소를 스캔하려면 어떻게 하나요?", IntentUsage, "", map[string]string{"topic": "scan"}},
+		{"이거 어떻게 써?", IntentUsage, "", map[string]string{"topic": ""}},
+		// 사용법처럼 보여도 기록을 묻는 질문은 그대로
+		{"공급망 검사 결과 어떻게 됐어?", IntentScan, ToolLatestScan, nil},
+		{"reqeusts 는 왜 격리됐어? 어떻게 해야 해?", IntentWhy, ToolAudit, map[string]string{"container": "sg-install-pip-a1"}},
+		{"reqeusts 가 실행한 명령 뭐야?", IntentUnknown, "", nil},
 	}
 	for _, tc := range tests {
 		p := Classify(tc.q, cases)
@@ -207,6 +218,11 @@ func TestBusy429AndPageBypass(t *testing.T) {
 	if _, err := s.Start(Request{Question: "차단 목록 보여 줘"}); !errors.Is(err, ErrBusy) {
 		t.Errorf("두 번째 생성 = %v, want ErrBusy", err)
 	}
+	if r, err := s.Start(Request{Question: "sg-install 사용법"}); err != nil {
+		t.Errorf("사용법도 모델을 쓰지 않으니 바빠도 받아야 함: %v", err)
+	} else {
+		r.Stream(context.Background(), (&recorder{}).emit)
+	}
 	if r, err := s.Start(Request{Question: "이 화면은 뭘 하는 곳이야?", Page: "/scans"}); err != nil {
 		t.Errorf("화면 설명은 모델을 쓰지 않으니 바빠도 받아야 함: %v", err)
 	} else {
@@ -339,6 +355,21 @@ func TestPageIntentNoModel(t *testing.T) {
 	}
 	if !strings.Contains(rec.text(), "설치 검사") || len(f.requests()) != 0 {
 		t.Errorf("text %q reqs %d", rec.text(), len(f.requests()))
+	}
+}
+
+func TestUsageIntentNoModel(t *testing.T) {
+	f := newFakeOllama(t)
+	s := newTestService(t, f, nil)
+	rec := ask(t, s, Request{Question: "패키지 설치 전에 검사하는 명령 알려 줘", Page: "/"})
+	if got, want := rec.names(), []string{"token", "facts", "links", "done"}; !slices.Equal(got, want) {
+		t.Fatalf("순서 = %v", got)
+	}
+	if !strings.Contains(rec.text(), "tools/sg-install pip") || len(f.requests()) != 0 {
+		t.Errorf("text %q reqs %d", rec.text(), len(f.requests()))
+	}
+	if links, _ := rec.get("links").([]Link); !slices.Contains(links, Link{"설치 검사", "/installs"}) {
+		t.Errorf("설치 검사 링크 없음: %v", rec.get("links"))
 	}
 }
 
