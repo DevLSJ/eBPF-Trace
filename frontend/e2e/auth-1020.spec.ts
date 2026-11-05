@@ -205,8 +205,9 @@ test.describe('인증 — 앱 안에서', () => {
     await page.goto('/');
     await expect(page.getByTestId('page-title')).toHaveText('대시보드');
     backend.auth.session!.state = 'need_license';
-    // R2 11/04: 대시보드 아래 칸 「감사 로그 ›」(더 보기)와 겹치지 않게 사이드바에서 누른다
-    await page.getByRole('navigation', { name: '화면' }).getByRole('link', { name: '감사 로그' }).click();
+    // R2 11/04: 대시보드 아래 칸 「감사 로그 ›」(더 보기)와 겹치지 않게 사이드바에서 누른다.
+    // 주기 요청이 클릭보다 먼저 401 + state 를 받으면 셸이 라이선스 화면으로 바뀌어 링크가 사라진다(11/05 CI) — 아래 세션 만료와 같이 어느 쪽이 먼저든 결과는 같아야 한다
+    await page.getByRole('navigation', { name: '화면' }).getByRole('link', { name: '감사 로그' }).click({ timeout: 2000 }).catch(() => {});
     await expect(step(page)).toHaveAttribute('data-step', 'license');
 
     backend.auth.session!.state = 'active';

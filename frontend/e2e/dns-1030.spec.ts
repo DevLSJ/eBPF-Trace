@@ -195,6 +195,8 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     backend.empty();
     await page.goto('/');
     await expect(page.locator('[data-part="assistant-fab"]')).toHaveAttribute('data-ready', 'true');
+    // 실시간 연결이 선 뒤에 건을 연다 — StrictMode 가 닫는 첫 연결로 보내면 메시지가 사라진다(11/05 CI)
+    await expect(page.getByText('실시간 연결됨')).toBeVisible();
     const c = backend.openCase({ level: 'alert', ruleIds: ['runtime-dns-exfil', 'sandbox-dns'] });
     await expect(page.locator('[data-part="guide"]')).toHaveAttribute('data-guide-case', c.id);
     const egress = page.locator('[data-part="guide"] [data-step="5"] [data-group="egress"]');
