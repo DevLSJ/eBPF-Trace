@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 현재 상태와 우선순위
 
-**로컬 개발 + sg-vm 실서버(2026-11-02).** 개인 캡스톤 프로젝트 SupplyGuard — eBPF(Inspektor Gadget)로 오픈소스 패키지의 런타임 악성 행위를 커널 단에서 잡아 격리한다. 1인, Jira 없음, 사내 표준 미적용. 원격 저장소 없음(GitHub는 나중, 만들 때 **공개** `github.com/devlsj/ebpf-supplychain-guard`).
+**로컬 개발 + sg-vm 실서버 + sg-ec2(2026-11-05).** 개인 캡스톤 프로젝트 SupplyGuard — eBPF(Inspektor Gadget)로 오픈소스 패키지의 런타임 악성 행위를 커널 단에서 잡아 격리한다. 1인, Jira 없음, 사내 표준 미적용. 원격 저장소 없음(GitHub는 공개 직전 — 11/04 결정으로 기존 공개 저장소 `github.com/DevLSJ/eBPF-Trace` 를 덮어쓴다).
 
 두 시나리오는 **동등**하다 [2026-10-15 확정]:
 - **설치 샌드박스** — `tools/sg-install pip|npm|cargo <패키지>`가 감시 컨테이너(`sg-install-*`)에서 설치하고, 위반이면 설치가 끝나기 전에 격리
@@ -14,15 +14,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **마감 2026-11-13(발표)** [2026-10-30 확정]. 범위를 줄일 때는 오탐률 하네스 → 보고서 · 신호등 → 디자인 토큰 → DNS 조건 일부 순서로 뺀다.
 
-작업 우선순위 [2026-11-02 라운드 계획 승인 — 11일에 맞춘 축소안]:
+작업 우선순위 [2026-11-02 라운드 계획 승인 — 11일에 맞춘 축소안 · 2026-11-05 갱신]:
 1. ✅ 11/02 작업 커밋(C1~C10) · 공급망 검사 판정 3단계 + 오탐률 하네스 `tools/sg-bench`(11/03)
-2. 종합 판정 — `sg-install` 세션 시작 때 서버가 같은 패키지의 정적 검사를 자동 시작, 설치 화면 한 건에 런타임 + 정적 결과(목업 → React → 백엔드 → sg-vm)
-3. GitHub 공개 — 공개 전 이력 점검(첫 커밋의 실제 공인 IP 치환), 원격 생성 뒤 CI 첫 실행 확인
-4. 연쇄 규칙 `kind: sequence` — 같은 컨테이너에서 10초 안 exec curl/wget → connect → open 민감 경로, 기본 규칙 1개 **kill · dryRun 시작**(Tier 1)
-5. 시연 — ✅ `sandbox-dns` dryRun 해제(11/03 sg-vm 실측) · ✅ 연쇄 시나리오(`run-attacker.sh SCENARIO=chain`) · 시연 패널 런타임 감시 모드
-6. EC2 첫 배포 — 11/03 `sg-ec2` 준비 · 가젯 실측 완료, 스택 반영 중
-7. UI 패스 — 로그인 · 대시보드 · 공통 부품만, 21st.dev · uiverse · Magic UI · React Bits 패턴을 **CSS · 토큰으로 재구현**(의존성 추가 없음, 요소 · 문구 늘리지 않음)
-8. 리허설. **발표 뒤**: 위반 · 분 집계 · 인증 감사 보관 기간(30일)
+2. ✅ 종합 판정 — `sg-install` 세션 시작 때 같은 패키지 정적 검사 자동 시작, 설치 화면 한 건에 런타임 + 정적(11/04)
+3. ✅ 연쇄 규칙 `kind: sequence` — 기본 `chain-download-secrets`(kill · dryRun, 11/04)
+4. ✅ 평가 라운드(11/04) — 실제 악성 594 · 정상 600 정적 측정, sg-vm 런타임 반복 측정, ML 비교(운영은 규칙), 「평가」 화면 · `GET /api/evaluation`. 결과는 `bench/reports/` · README 「실측 결과」
+5. ✅ UI 라운드(11/04) — 공통 부품 · 스크롤 없는 페이지 · 길게 눌러 옮기기 · 코드 창 · 파일 트리 · 채팅 · 대시보드 재배치 · 시연 전용 페이지 `/demo`(대시보드 시연 카드 제거) · 표 쪽 번호. 개발용 로그인 admin/admin(`AUTH_DEV_MODE`, 11/05)
+6. ✅ sg-vm 반영 · 실측(11/05, 7fafd35) — 시연 benign 통과 · chain 1단계 격리 · all 격리 · 증거 즉시 조회 · 1920 한 화면. `DEMO_ENABLED=true` 켬
+7. EC2 — ✅ 11/05 첫 반영(`/home/ubuntu/supplyguard/current`, sg-vm 과 같은 이미지) · 시연 3종 · 공급망 검사 실측 통과. 남은 것: 보안 그룹 HTTP 80 · 인스턴스 t4g.small(지금 micro)
+8. GitHub 공개 — 기존 공개 저장소 `DevLSJ/eBPF-Trace` 를 덮어씀(옛 main 은 archive 브랜치 보존). 이력 치환은 별도 클론에서 시험 완료(11/05), force push 는 사용자 확인 뒤
+9. 리허설(11/11) · 최종 녹화(11/12) · 발표(11/13). **발표 뒤**: 판정 규칙 조정 실험 · 위반 · 분 집계 · 인증 감사 보관 기간(30일) · 커널 7.0 이벤트 유실
 
 ## 아키텍처 [2026-09-29 확정 · 2026-10-20 갱신]
 
