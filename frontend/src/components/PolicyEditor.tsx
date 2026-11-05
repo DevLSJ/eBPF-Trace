@@ -419,20 +419,20 @@ function SaveCheck({
                 <p className="text-xs text-slate-500">과거 기록 중 결과가 바뀌는 것은 없습니다. 저장한 뒤 들어오는 행동부터 적용됩니다.</p>
               )}
               {pv.changed.length > 0 && (
-                <table className="w-full text-xs">
-                  <thead className="text-left text-slate-500">
+                <table className="sg-table">
+                  <thead>
                     <tr>
-                      <th className="py-1 font-semibold">#</th>
-                      <th className="py-1 font-semibold">컨테이너</th>
-                      <th className="py-1 font-semibold">지금 → 저장 후</th>
+                      <th className="tk-short">#</th>
+                      <th>컨테이너</th>
+                      <th>지금 → 저장 후</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pv.changed.slice(0, 20).map((r) => (
-                      <tr key={r.auditId} className="border-t border-slate-100">
-                        <td className="num py-1 text-slate-400">{r.auditId}</td>
-                        <td className="py-1">{r.container}</td>
-                        <td className="py-1">
+                      <tr key={r.auditId}>
+                        <td className="num tk-short text-slate-400">{r.auditId}</td>
+                        <td>{r.container}</td>
+                        <td>
                           {LV[r.before as Level] ?? r.before} → <b>{LV[r.after as Level] ?? r.after}</b>
                         </td>
                       </tr>

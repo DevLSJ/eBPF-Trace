@@ -171,22 +171,22 @@ export function ProposalDetail({
                   </b>
                 </p>
                 {preview.changed.length > 0 && (
-                  <table className="w-full text-xs">
-                    <thead className="text-left text-slate-500">
+                  <table className="sg-table">
+                    <thead>
                       <tr>
-                        <th className="py-1 font-semibold">#</th>
-                        <th className="py-1 font-semibold">컨테이너</th>
-                        <th className="py-1 font-semibold">규칙</th>
-                        <th className="py-1 font-semibold">탐지 결과</th>
+                        <th className="tk-short">#</th>
+                        <th>컨테이너</th>
+                        <th>규칙</th>
+                        <th>탐지 결과</th>
                       </tr>
                     </thead>
                     <tbody>
                       {preview.changed.slice(0, 50).map((r) => (
-                        <tr key={r.auditId} className="border-t border-slate-100">
-                          <td className="num py-1 text-slate-400">{r.auditId}</td>
-                          <td className="py-1">{r.container}</td>
-                          <td className="py-1 font-mono">{r.ruleId}</td>
-                          <td className="py-1">
+                        <tr key={r.auditId}>
+                          <td className="num tk-short text-slate-400">{r.auditId}</td>
+                          <td>{r.container}</td>
+                          <td className="font-mono">{r.ruleId}</td>
+                          <td>
                             {levelText(String(r.before))} → <b>{levelText(String(r.after))}</b>
                           </td>
                         </tr>

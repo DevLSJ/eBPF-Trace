@@ -423,11 +423,11 @@ function BenignCard({ rt }: { rt: EvalRuntime | null }) {
     <Card part="benign" title={`정상 설치 위반 ${fmtNum(rows.length)}건`} actions={<span className="text-xs text-text-3">정상 설치 {fmtNum(b.installs)}건 중</span>}>
       {rows.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm" data-table="benign-violations">
+          <table className="sg-table" data-table="benign-violations">
             <thead>
-              <tr className="border-b border-border text-left">
+              <tr>
                 {['생태계', '패키지', '결과', '규칙', '걸린 시간'].map((t) => (
-                  <th key={t} className="px-2 py-1.5">
+                  <th key={t} className={t === '걸린 시간' ? 'num-col' : undefined}>
                     {t}
                   </th>
                 ))}
@@ -435,14 +435,14 @@ function BenignCard({ rt }: { rt: EvalRuntime | null }) {
             </thead>
             <tbody>
               {rows.map((x) => (
-                <tr key={`${x.ecosystem}:${x.name}`} data-pkg={`${x.ecosystem}:${x.name}`} className="border-b border-border last:border-0">
-                  <td className="px-2 py-1.5">{x.ecosystem}</td>
-                  <td className="px-2 py-1.5 font-mono text-xs">{x.name}</td>
-                  <td className="px-2 py-1.5">
+                <tr key={`${x.ecosystem}:${x.name}`} data-pkg={`${x.ecosystem}:${x.name}`}>
+                  <td>{x.ecosystem}</td>
+                  <td className="font-mono text-xs">{x.name}</td>
+                  <td>
                     {x.result in INSTALL_STATUS_LABEL ? <StatusBadge status={x.result as InstallStatus} /> : <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">{x.result === 'violation' ? '위반' : x.result}</span>}
                   </td>
-                  <td className="px-2 py-1.5 font-mono text-xs">{x.rule || '—'}</td>
-                  <td className="num px-2 py-1.5">{x.seconds != null ? `${fmtNum(x.seconds)}초` : '—'}</td>
+                  <td className="font-mono text-xs">{x.rule || '—'}</td>
+                  <td className="num num-col">{x.seconds != null ? `${fmtNum(x.seconds)}초` : '—'}</td>
                 </tr>
               ))}
             </tbody>

@@ -106,16 +106,16 @@ function EvidenceCard({ ev }: { ev: Evidence }) {
             items={changes.map((c) => ({ path: c.path, diff: c.kind, badge: { text: c.kind, cls: `ev-${c.kind}`, title: CHANGE_TONE[c.kind]?.[1] ?? c.kind, attrs: { 'data-change-kind': '' } } }))}
           />
         ) : changes.length ? (
-          <table className="w-full text-xs" data-part="evidence-changes">
+          <table className="sg-table" data-part="evidence-changes">
             <tbody>
               {changes.map((c, i) => (
-                <tr key={i} className="border-t border-slate-100">
-                  <td className="w-8 py-0.5">
+                <tr key={i}>
+                  <td className="tk-short">
                     <span className={`rounded px-1 font-mono ${CHANGE_TONE[c.kind]?.[0] ?? 'bg-slate-100'}`} title={CHANGE_TONE[c.kind]?.[1]} data-change-kind="">
                       {c.kind}
                     </span>
                   </td>
-                  <td className="py-0.5 font-mono break-all">{c.path}</td>
+                  <td className="font-mono break-all">{c.path}</td>
                 </tr>
               ))}
             </tbody>
@@ -131,20 +131,20 @@ function EvidenceCard({ ev }: { ev: Evidence }) {
           프로세스 <span className="font-normal text-slate-400">— docker top</span>
         </h4>
         {procs.length ? (
-          <table className="w-full text-xs" data-part="evidence-procs">
-            <thead className="text-left text-slate-500">
+          <table className="sg-table" data-part="evidence-procs">
+            <thead>
               <tr>
-                <th className="py-0.5 font-semibold">PID</th>
-                <th className="py-0.5 font-semibold">사용자</th>
-                <th className="py-0.5 font-semibold">명령</th>
+                <th className="tk-short">PID</th>
+                <th className="tk-short">사용자</th>
+                <th>명령</th>
               </tr>
             </thead>
             <tbody>
               {procs.map((p, i) => (
-                <tr key={i} className="border-t border-slate-100">
-                  <td className="num py-0.5">{p.pid}</td>
-                  <td className="py-0.5">{p.user}</td>
-                  <td className="py-0.5 font-mono break-all">{p.cmd}</td>
+                <tr key={i}>
+                  <td className="num tk-short">{p.pid}</td>
+                  <td className="tk-short">{p.user}</td>
+                  <td className="font-mono break-all">{p.cmd}</td>
                 </tr>
               ))}
             </tbody>
