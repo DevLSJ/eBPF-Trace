@@ -1225,11 +1225,48 @@
   }
   // 오른쪽 상세 시트 — 목록 위치는 그대로, 열린 항목은 URL(?id=)에 남긴다
   // foot: 본문 스크롤과 따로 아래에 고정되는 칸(예: 판정)
-  function sheet({ kind, title, actions, body, foot, onClose }) {
-    return h('aside', { class: 'panel sheet', 'data-sheet': kind, 'aria-label': typeof title === 'string' ? title : '상세' },
-      h('header', { class: 'panel-head' }, h('h2', null, title), h('div', { class: 'panel-actions' }, actions, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'aria-label': '닫기', onclick: onClose }, '✕'))),
+  // [11/05 슬라이드 패널] 표 옆 칸 → 본문 위에 겹쳐 오른쪽에서 미끄러져 나온다. 뒤는 살짝 어둡게(누르면 닫힘) · Esc 닫기 · ↑↓ 이전/다음.
+  //   size: 'wide'(본문 70% · 최대 1080px — 코드 · 공격 체인이 있는 화면) | 'normal'(720px)
+  //   nav: { pos, total, prev, next } — 보이는 목록(현재 쪽) 안에서 다른 항목으로(닫지 않고)
+  //   같은 kind 가 이미 떠 있으면(다시 그리기 · 이전/다음) 애니메이션을 되풀이하지 않는다
+  function sheet({ kind, title, actions, body, foot, onClose, size = 'normal', nav }) {
+    const still = !!document.querySelector(`.sheet-layer[data-layer="${kind}"]:not(.closing)`);
+    let layer;
+    const close = () => {
+      if (!layer || layer.classList.contains('closing')) return;
+      if (reducedMotion()) return onClose();
+      layer.classList.add('closing');
+      setTimeout(onClose, 180);
+    };
+    const navEl = nav && nav.total > 1 ? h('div', { class: 'sheet-nav', 'data-part': 'sheet-nav' },
+      h('span', { class: 'num muted small', 'data-part': 'sheet-pos' }, `${nav.pos + 1} / ${nav.total}`),
+      h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'data-action': 'sheet-prev', 'aria-label': '이전 항목(↑)', title: '이전 항목(↑)', disabled: !nav.prev || null, onclick: () => nav.prev && nav.prev() }, '‹'),
+      h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'data-action': 'sheet-next', 'aria-label': '다음 항목(↓)', title: '다음 항목(↓)', disabled: !nav.next || null, onclick: () => nav.next && nav.next() }, '›')) : null;
+    const aside = h('aside', { class: 'panel sheet', 'data-sheet': kind, 'data-size': size, role: 'dialog', 'aria-label': typeof title === 'string' ? title : '상세' },
+      h('header', { class: 'panel-head sheet-head' }, h('h2', null, title), h('div', { class: 'panel-actions' }, actions, navEl, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'data-action': 'sheet-close', 'aria-label': '닫기(Esc)', title: '닫기(Esc)', onclick: close }, '✕'))),
       h('div', { class: 'sheet-body' }, body), foot ? h('div', { class: 'sheet-foot', 'data-part': 'sheet-foot' }, foot) : null);
+    layer = h('div', { class: `sheet-layer ${still ? 'still' : ''}`, 'data-layer': kind, onclick: (e) => { if (e.target === layer) close(); } }, aside);
+    return layer;
   }
+  // 보이는 목록(ids)에서 cur 의 앞뒤 — 패널 머리의 ‹ › · ↑↓
+  function sheetNav(ids, cur, go) {
+    const pos = ids.indexOf(cur);
+    if (pos < 0) return null;
+    return { pos, total: ids.length, prev: pos > 0 ? () => go(ids[pos - 1]) : null, next: pos < ids.length - 1 ? () => go(ids[pos + 1]) : null };
+  }
+  // 떠 있는 패널 하나에 Esc · ↑ · ↓ (입력 칸 · 다른 대화상자 · 메뉴가 열려 있으면 그쪽이 먼저)
+  document.addEventListener('keydown', (e) => {
+    const layer = document.querySelector('.sheet-layer:not(.closing)');
+    if (!layer || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    const t = e.target;
+    if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+    if (document.querySelector('dialog[open], .modal-backdrop:not([hidden])')) return;
+    const btn = { Escape: 'sheet-close', ArrowUp: 'sheet-prev', ArrowDown: 'sheet-next' }[e.key];
+    const b = btn && layer.querySelector(`[data-action="${btn}"]`);
+    if (!b || b.disabled) return;
+    e.preventDefault();
+    b.click();
+  });
   // 패널 머리 [11/04e]: 제목(14.5/600) + 부제 슬롯(sub) + 오른쪽 「더 보기 ›」 슬롯(more = 링크 · {href, state}) · actions. attrs 는 section 속성(data-section 등)
   function panel({ title, sub, more, actions, body, class: cls, attrs }) {
     const moreEl = more ? h('a', Object.assign({ class: 'panel-more', 'data-more': '' }, to(more.link || more.href || more)), `${more.label || '더 보기'} ›`) : null;
@@ -1660,7 +1697,7 @@
   // 화면 머리 오른쪽(화면 이름 옆)에 그 화면의 주 버튼 · 입력을 둔다. 화면이 바뀌면 비운다
   function headerActions(...nodes) { const el = $('.page-actions'); if (el) replace(el, nodes); }
 
-  window.UI = { h, s, $, replace, fmt, cssVar, countUp, reducedMotion, KINDS, KIND_LONG, KIND_SHORT, levelOf, detailOf, LEVEL_LABEL, INSTALL_STATUS, DECISION_LABEL, LIST_LABEL, ACTOR, SANDBOX, state, emit, listeners, fresh, kindBadge, verdictBadge, statusBadge, decisionBadge, kpi, panel, sheet, empty, pauseToggle, SEV, switchEl, select, feed, barChart, perMinute, topologyGraph, toast, route, navigate, setQuery, go, to, headerActions, screens: {}, timelineBar, srv,
+  window.UI = { h, s, $, replace, fmt, cssVar, countUp, reducedMotion, KINDS, KIND_LONG, KIND_SHORT, levelOf, detailOf, LEVEL_LABEL, INSTALL_STATUS, DECISION_LABEL, LIST_LABEL, ACTOR, SANDBOX, state, emit, listeners, fresh, kindBadge, verdictBadge, statusBadge, decisionBadge, kpi, panel, sheet, sheetNav, empty, pauseToggle, SEV, switchEl, select, feed, barChart, perMinute, topologyGraph, toast, route, navigate, setQuery, go, to, headerActions, screens: {}, timelineBar, srv,
     KIND_ORDER, KIND_STEP, fakeVerdict, attackChain, chainFromVerdicts, decisionBar, previewView, osvQuery, sim, runAttack, runAttackNow, runDnsExfilNow, runInstallDemo, simEvent, api, setSource,
     // 10/20 2차 시안
     disconnect, whenReady, remount: () => mount(), loadEvents, actor, serverFromInfo, CASE_SOURCE, caseLink, topoLink,
