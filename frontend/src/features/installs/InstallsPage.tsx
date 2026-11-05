@@ -18,6 +18,7 @@ import { fmtDateTime, fmtNum, fmtTime, isToday } from '../../lib/format';
 import { duration, EXAMPLE_COMMAND, sessionLabel, violationTotal } from '../../lib/pkg';
 import { INSTALL_STATUS_LABEL, INSTALL_STATUSES, MANAGERS, type Case, type InstallSession } from '../../lib/types';
 import { InstallSheet } from './InstallSheet';
+import { sheetNav } from '../../components/sheet-nav';
 import { StaticBadge } from './StaticBadge';
 import { isDangerRow } from './staticScan';
 
@@ -182,7 +183,7 @@ export function InstallsPage() {
         </div>
       </Panel>
 
-      {id && <InstallSheet id={id} onClose={() => set('id', null)} onChanged={list.reload} />}
+      {id && <InstallSheet id={id} onClose={() => set('id', null)} onChanged={list.reload} nav={sheetNav(view.rows.map((s) => s.id), id, (x) => set('id', x))} />}
     </div>
   );
 }

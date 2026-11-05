@@ -6,7 +6,7 @@ import { stepsFromViolations } from '../../lib/chain';
 import { DecisionBadge, StatusBadge } from '../../components/Badges';
 import { DecisionBox } from '../../components/DecisionBox';
 import { Empty, LoadError } from '../../components/Panel';
-import { Section, Sheet } from '../../components/Sheet';
+import { Section, Sheet, type SheetNav } from '../../components/Sheet';
 import { TimelineBar } from '../../components/TimelineBar';
 import { LevelBadge } from '../../components/VerdictBadge';
 import { useCases } from '../../hooks/cases-context';
@@ -21,7 +21,7 @@ import { hasStaticCell, mismatchNote, skipText } from './staticScan';
 
 const LIST_LABEL = { packages: '패키지', images: '이미지', hosts: '도메인' } as const;
 
-export function InstallSheet({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
+export function InstallSheet({ id, onClose, onChanged, nav }: { id: string; onClose: () => void; onChanged: () => void; nav?: SheetNav }) {
   const load = useCallback(() => api.install(id), [id]);
   const detail = useLoad(load);
   const s = detail.data;
@@ -43,6 +43,8 @@ export function InstallSheet({ id, onClose, onChanged }: { id: string; onClose: 
   return (
     <Sheet
       kind="install"
+      size="wide"
+      nav={nav}
       title={s ? `${s.manager} ${sessionLabel(s)}` : '설치 세션'}
       onClose={onClose}
     >

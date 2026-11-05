@@ -1,13 +1,14 @@
 import { Background, Controls, MarkerType, ReactFlow, type Edge, type Node, type NodeMouseHandler } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Box, Cpu, FileSearch, FileText, X } from 'lucide-react';
-import { startTransition, useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { Box, Cpu, FileSearch, FileText } from 'lucide-react';
+import { startTransition, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AttackChain } from '../../components/AttackChain';
 import { DecisionBadge } from '../../components/Badges';
 import { DecisionBox } from '../../components/DecisionBox';
 import { PageActions } from '../../components/PageActions';
 import { Empty, Panel } from '../../components/Panel';
+import { Section, Sheet } from '../../components/Sheet';
 import { TimelineBar } from '../../components/TimelineBar';
 import { LevelBadge } from '../../components/VerdictBadge';
 import { useCases } from '../../hooks/cases-context';
@@ -279,14 +280,12 @@ export function TopologyPage() {
         </div>
       </Panel>
 
-      <aside className="flex min-h-0 shrink-0 flex-col gap-4 max-md:w-full md:w-[340px]">
-        {selected && (
-          <NodeDetail n={selected} onClose={() => setNode(null)}>
-            {selectedCase && (selected.type === 'container' || selectedCase.state !== 'closed') && (
-              <div className="mb-3 rounded-md border border-amber-200 bg-amber-50/40 p-3" data-testid="topology-decision">
-                <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-700">
-                  판정 · {selectedCase.container} {selectedCase.decision === 'pending' && <DecisionBadge decision="pending" />}
-                </div>
+      {/* [11/05] 고른 노드 · 판정은 슬라이드 패널(720) — 오른쪽 칸에는 공격 체인만 */}
+      {selected && (
+        <Sheet kind="topo" title={`${TYPE_LABEL[selected.type]} · ${selected.label}`} onClose={() => setNode(null)}>
+          {selectedCase && (selected.type === 'container' || selectedCase.state !== 'closed') && (
+            <Section title={<>판정 · {selectedCase.container} {selectedCase.decision === 'pending' && <DecisionBadge decision="pending" />}</>} testId="topology-decision">
+              <div>
                 <DecisionBox caseId={selectedCase.id} />
                 {/* 격리 타임라인(10/30) — 런타임 격리 건 */}
                 {selectedCase.isolation?.timeline && (
@@ -305,9 +304,12 @@ export function TopologyPage() {
                   </Link>
                 </div>
               </div>
-            )}
-          </NodeDetail>
-        )}
+            </Section>
+          )}
+          <NodeDetail n={selected} />
+        </Sheet>
+      )}
+      <aside className="flex min-h-0 shrink-0 flex-col gap-4 max-md:w-full md:w-[340px]">
         <ChainPanel chains={snap.chains} windowMin={windowMin} selectedId={effectiveId} onSelect={toggle} caseFor={caseFor} />
       </aside>
     </div>
@@ -336,17 +338,11 @@ function Legend() {
   );
 }
 
-function NodeDetail({ n, onClose, children }: { n: TopoNode; onClose: () => void; children?: ReactNode }) {
+function NodeDetail({ n }: { n: TopoNode }) {
   const rules = [...n.rules.entries()].sort((a, b) => b[1] - a[1]);
   return (
-    <section data-fill="" className="sg-card max-h-[68%] shrink-0 overflow-y-auto p-4 text-sm" data-testid="node-detail">
-      <div className="mb-2 flex items-center justify-between">
-        <b>선택한 노드</b>
-        <button type="button" onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="선택 해제">
-          <X className="size-4" />
-        </button>
-      </div>
-      {children}
+    <Section title="선택한 노드" testId="node-detail">
+      <div>
       <dl className="grid grid-cols-[4rem_1fr] gap-x-2.5 gap-y-1 text-[13px]">
         <dt className="text-slate-500">종류</dt>
         <dd>{TYPE_LABEL[n.type]}</dd>
@@ -367,7 +363,7 @@ function NodeDetail({ n, onClose, children }: { n: TopoNode; onClose: () => void
       </dl>
       {rules.length > 0 && (
         <div className="mt-3">
-          <div className="text-xs font-medium text-slate-700">걸린 규칙</div>
+          <h4 className="text-[13px] font-semibold text-text-2">걸린 규칙</h4>
           <ul className="mt-1.5 flex flex-wrap gap-1.5">
             {rules.map(([id, cnt]) => (
               <li key={id}>
@@ -386,7 +382,8 @@ function NodeDetail({ n, onClose, children }: { n: TopoNode; onClose: () => void
       >
         이벤트에서 보기 →
       </Link>
-    </section>
+      </div>
+    </Section>
   );
 }
 

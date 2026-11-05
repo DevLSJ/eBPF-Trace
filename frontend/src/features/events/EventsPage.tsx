@@ -11,6 +11,7 @@ import { Panel } from '../../components/Panel';
 import { CodeWindow } from '../../components/CodeWindow';
 import { PolicyStarts } from '../../components/PolicyStarts';
 import { Section, Sheet } from '../../components/Sheet';
+import { sheetNav, type SheetNav } from '../../components/sheet-nav';
 import { VerdictBadge } from '../../components/VerdictBadge';
 import { KindBadge } from '../../components/KindBadge';
 import { useStream } from '../../hooks/stream-context';
@@ -152,14 +153,14 @@ export function EventsPage() {
           </div>
         </div>
       </Panel>
-      {id && <EventSheet v={selected} onClose={() => set('id', '')} />}
+      {id && <EventSheet v={selected} onClose={() => set('id', '')} nav={sheetNav(rows.map((v) => String(v.key)), id, (k) => set('id', k))} />}
     </div>
   );
 }
 
-function EventSheet({ v, onClose }: { v: StreamVerdict | undefined; onClose: () => void }) {
+function EventSheet({ v, onClose, nav }: { v: StreamVerdict | undefined; onClose: () => void; nav?: SheetNav }) {
   return (
-    <Sheet kind="event" title="이벤트 상세" onClose={onClose}>
+    <Sheet kind="event" nav={nav} title="이벤트 상세" onClose={onClose}>
       {!v ? <p className="p-4 text-sm text-slate-500">이 이벤트는 실시간 목록(최근 500건)에서 빠졌습니다. 지난 기록은 감사 로그에서 찾으세요.</p> : <EventDetail v={v} />}
     </Sheet>
   );
