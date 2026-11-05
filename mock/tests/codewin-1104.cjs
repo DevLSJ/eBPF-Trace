@@ -249,6 +249,8 @@ const SEL = {
       const pg = await newPage({ viewport: { width: 390, height: 844 }, colorScheme: 'dark' });
       await open[k](pg);
       await pg.waitForSelector(SEL[k], W);
+      // 11/05 슬라이드 패널: 패널이 미끄러져 들어오는 도중(left > 0)에 재면 넘침으로 보인다 — 패널 애니메이션이 끝난 뒤 잰다(최대 1.5초)
+      await pg.evaluate(() => Promise.race([Promise.all(document.getAnimations().filter((a) => { const t = a.effect && a.effect.target; return t && t.closest && t.closest('.sheet-layer'); }).map((a) => a.finished.catch(() => {}))), new Promise((res) => setTimeout(res, 1500))]));
       const r = await pg.evaluate((sel) => { const w = document.querySelector(sel).getBoundingClientRect(); return [document.documentElement.scrollWidth - innerWidth, Math.round(w.right - innerWidth), Math.round(w.left)]; }, SEL[k]);
       ok(r[0] <= 0 && r[1] <= 0 && r[2] >= 0, `${k} 넘침 ${JSON.stringify(r)}`);
       if (k === 'scan') await shot(pg, 'mobile-dark');

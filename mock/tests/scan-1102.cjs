@@ -27,6 +27,8 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
   const go = async (pg, hash, extra = '') => { await pg.goto(`${BASE}?source=sim&as=admin${extra}#${hash}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); await pg.waitForTimeout(400); };
   const F = '[data-part="scan-form"]';
   const S = '.sheet[data-sheet="scan"]';
+  // 11/05 슬라이드 패널: 패널이 떠 있으면 뒤(검사 입력 · 결과 필터)가 어두운 배경에 가려진다 — 패널 머리 ✕ 로 닫고 사라질 때까지 기다린다
+  const closeSheet = async (pg) => { if (!(await pg.$('.sheet-layer'))) return; await pg.click('.sheet-layer [data-action="sheet-close"]'); await pg.waitForSelector('.sheet-layer', { state: 'detached', timeout: 2000 }); };
   const waitScan = async (pg) => { const id = await pg.$eval('tr[data-scan]', (e) => e.dataset.scan); await pg.waitForSelector(`tr[data-scan="${id}"][data-status="done"]`, { timeout: 8000 }); await pg.click(`tr[data-scan="${id}"]`); await pg.waitForSelector(S); return id; };
 
   await T('1 테스트 코드는 따로 묶고 위협 수 · 판정에서 뺀다(저장소 psf/requests)', async () => {
@@ -85,6 +87,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     const pg = await newPage();
     await go(pg, '/scans');
     const scanPkg = async (name) => {
+      await closeSheet(pg); // 11/05 슬라이드 패널: 앞 검사의 패널을 닫고 입력한다
       await pg.click(`${F} [data-input="package"]`);
       await pg.selectOption(`${F} select[data-field="manager"]`, 'pip');
       await pg.fill(`${F} input[data-field="name"]`, name);
@@ -104,6 +107,7 @@ const ok = (c, m) => { if (!c) throw new Error(m); };
     ok((await pg.textContent(`${S} [data-part="verdict"] p`)).includes('2곳'), '악성 문구는 설치 시점 위협 수');
     const chips = await pg.$$eval('[data-verdict]', (els) => els.map((e) => e.textContent.trim()));
     ok(chips.includes('주의'), `결과 필터 ${JSON.stringify(chips)}`);
+    await closeSheet(pg); // 11/05 슬라이드 패널: 결과 필터는 패널 뒤 — 닫고 누른다
     await pg.click('[data-verdict="caution"]'); await pg.waitForTimeout(200);
     const rows = await pg.$$eval('tr[data-scan]', (els) => els.map((e) => e.dataset.scan));
     ok(rows.length === 1 && rows[0] === id1, `주의 필터 ${JSON.stringify(rows)}`);

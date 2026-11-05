@@ -57,6 +57,9 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
   };
   const go = async (pg, hash, search = '') => { await pg.goto(`${BASE}${search ? search + '&' : '?'}as=admin#${splitHash(hash)[0]}`); await pg.waitForSelector('.page-title', { timeout: 5000 }); if (splitHash(hash)[1]) await goState(pg, hash, 0); await pg.waitForTimeout(400); }; // 10/20: 로그인 건너뜀(?as=admin) // 10/21b
   const confirmOk = (pg) => pg.click('dialog[data-part="confirm"] [data-confirm="ok"]'); // 10/20: 판정 · 적용 · 버림은 확인 대화상자(B)
+  // 11/05 슬라이드 패널: 패널이 떠 있으면 뒤(토스트 · 데모 제어 서랍 포함)가 어두운 배경에 가려진다 — 패널 머리 ✕ 로 닫고 사라질 때까지 기다린다
+  const closeSheet = async (pg) => { if (!(await pg.$('.sheet-layer'))) return; await pg.click('.sheet-layer [data-action="sheet-close"]'); await pg.waitForSelector('.sheet-layer', { state: 'detached', timeout: 2000 }); };
+  const TOPO_SHEET = '.sheet-layer [data-sheet="topo"]'; // 11/05 슬라이드 패널: 토폴로지 노드 카드 · 건 카드(판정 버튼)는 패널 안, .topo-side 에는 공격 체인만
   const shot = async (pg, name) => { if (!process.env.SHOTS) return; fs.mkdirSync(SHOT_DIR, { recursive: true }); await pg.waitForTimeout(250); await pg.screenshot({ path: path.join(SHOT_DIR, `${name}.png`) }); };
   const pendingCount = (pg) => pg.$eval('[data-pending-count]', (el) => Number(el.textContent.replace(/[^\d]/g, '')));
   // 데모 제어 설치 실행 → 끝 보고까지 기다리고 새 세션을 돌려준다
@@ -386,9 +389,12 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
     await go(pg, '/topology');
     await pg.evaluate(() => UI.runAttackNow());
     await pg.waitForTimeout(1300);
-    ok(await pg.locator('.topo-side [data-part="decision"]').count() === 0, '고르기 전에 판정 버튼');
+    ok(await pg.locator('[data-part="decision"]').count() === 0, '고르기 전에 판정 버튼');
     await pg.click('.topo-side .chain-head:has-text("pkg-reqeusts")');
-    const labels = await pg.$$eval('.topo-side [data-part="decision"] button', (els) => els.map((e) => e.getAttribute('aria-label')));
+    // 11/05 슬라이드 패널: 판정 버튼은 .topo-side 가 아니라 토폴로지 패널 안
+    await pg.waitForSelector(`${TOPO_SHEET} [data-part="decision"]`, { timeout: 3000 });
+    const labels = await pg.$$eval(`${TOPO_SHEET} [data-part="decision"] button`, (els) => els.map((e) => e.getAttribute('aria-label')));
+    ok(await pg.locator('.topo-side [data-part="decision"]').count() === 0, '오른쪽 칸에 판정 버튼이 남음');
     ok(JSON.stringify(labels) === JSON.stringify(['악성 확정', '오탐']), `버튼 ${JSON.stringify(labels)}`);
     await pg.close();
   });
@@ -460,7 +466,9 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
     await go(pg, '/topology');
     await pg.waitForTimeout(1200);
     await pg.click('.topo-side .chain-step');
-    const tdts = await pg.$$eval('.topo-side dt', (els) => els.map((e) => e.textContent));
+    // 11/05 슬라이드 패널: 노드 카드는 토폴로지 패널 안
+    await pg.waitForSelector(`${TOPO_SHEET} [data-part="node"]`, { timeout: 3000 });
+    const tdts = await pg.$$eval(`${TOPO_SHEET} [data-part="node"] dt`, (els) => els.map((e) => e.textContent));
     ok(tdts.includes('탐지 결과') && !tdts.includes('판정'), `노드 카드 ${JSON.stringify(tdts)}`);
     await pg.close();
   });
@@ -606,6 +614,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
       await pg.click('.sheet [data-part="decision"] button[aria-label="악성 확정"]');
       await confirmOk(pg); // 10/20
       await pg.waitForTimeout(300);
+      await closeSheet(pg); // 11/05 슬라이드 패널: 토스트가 어두운 배경 아래 — 패널을 닫고 누른다
       await pg.click('.toast-action:has-text("제안 보기")'); // 10/16: React 와 같은 문구
       await pg.waitForSelector('[data-view="proposal"] [data-part="preview"] [data-preview-count]');
       const changes = await pg.$$eval('[data-view="proposal"] [data-change]', (els) => els.map((e) => e.dataset.change));
@@ -631,6 +640,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
       await shot(pg, '07-installs-refused');
     });
     await step('3:00 tiny-git-dep 경고 → 오탐 → 미리보기 「과거 2건 통과로」 → 적용 → 재시도 통과', async () => {
+      await closeSheet(pg); // 11/05 슬라이드 패널: 앞 단계의 설치 패널이 데모 제어 서랍을 가린다 — 닫고 누른다
       await pg.click('.topbar button:has-text("데모 제어")');
       await pg.click('[data-demo="install-warn"]');
       await pg.click('#demo .drawer-x');
@@ -641,6 +651,7 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
       await pg.click('.sheet [data-part="decision"] button[aria-label="오탐"]');
       await confirmOk(pg); // 10/20
       await pg.waitForTimeout(300);
+      await closeSheet(pg); // 11/05 슬라이드 패널: 토스트가 어두운 배경 아래 — 패널을 닫고 누른다
       await pg.click('.toast-action:has-text("제안 보기")'); // 10/16: React 와 같은 문구
       await pg.waitForSelector('[data-view="proposal"] [data-preview-count]');
       const cnt = await pg.textContent('[data-view="proposal"] [data-preview-count]');
@@ -670,7 +681,8 @@ const OSV_FIXED = { reqeusts: 0, requests: 16 };
       await pg.waitForTimeout(1300);
       const steps = await pg.$$eval('.topo-side [data-part="attack-chain"] .step-no', (els) => [...new Set(els.map((e) => e.textContent))]);
       ok(steps.join() === '1 실행,2 파일,3 통신', `체인 ${steps}`);
-      ok(await pg.locator('.topo-side [data-part="decision"] button').count() === 2, '판정 버튼 없음');
+      await pg.waitForSelector(`${TOPO_SHEET} [data-part="decision"]`, { timeout: 3000 }).catch(() => {}); // 11/05 슬라이드 패널: 판정 버튼은 토폴로지 패널 안
+      ok(await pg.locator(`${TOPO_SHEET} [data-part="decision"] button`).count() === 2, '판정 버튼 없음');
       await shot(pg, '10-topology-chain');
     });
     await step('4:40 감사 로그 — 판정 이력 악성 1 · 오탐 1 · 처리자 · 시각', async () => {
