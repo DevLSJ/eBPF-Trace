@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import type { Scan } from '../src/lib/types';
-import { expect, test } from './fixtures';
+import { expect, test, closeSheet } from './fixtures';
 
 // 10/21 목록 필터를 주소에서 뺀다(보안 — 사용자 결정). 주소에는 링크용 값(id · proposal · tab · view, 토폴로지 컨테이너 노드)만.
 const FILTER_KEYS = ['status', 'manager', 'kind', 'level', 'normal', 'container', 'action', 'rule', 'since', 'until', 'verdict', 'range', 'tpl', 'intent', 'value', 'default'];
@@ -85,9 +85,11 @@ test.describe('URL 1021 — 목록 필터는 화면 상태로만', () => {
     await page.locator('.react-flow__node', { hasText: '/etc/shadow' }).first().click();
     await expect(page.getByTestId('node-detail')).toContainText('/etc/shadow');
     expect(new URL(page.url()).searchParams.has('node')).toBe(false);
+    await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
     await page.locator('.react-flow__node', { hasText: 'cdn.reqeusts-update.test' }).first().click();
     await expect(page.getByTestId('node-detail')).toContainText('cdn.reqeusts-update.test');
     expect(new URL(page.url()).searchParams.has('node')).toBe(false);
+    await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 가려진다 — 먼저 닫는다
     await page.locator('.react-flow__node', { hasText: /^pkg-reqeusts/ }).first().click();
     await expect(page).toHaveURL(/\/topology\?node=c%3Apkg-reqeusts$/);
     await expect(page.getByTestId('node-detail')).toContainText('pkg-reqeusts');

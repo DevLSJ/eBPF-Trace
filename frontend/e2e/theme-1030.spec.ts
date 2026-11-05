@@ -74,7 +74,8 @@ test.describe('F6 디자인 토큰 · 부품 · 모션', () => {
     expect((await btn.boundingBox())!.height).toBe(36);
     expect(await btn.evaluate((e) => getComputedStyle(e).borderRadius)).toBe('12px');
     await page.goto('/installs?id=ins-0012');
-    expect((await page.locator('[data-sheet="install"]').boundingBox())!.width).toBeCloseTo(480, 0);
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
+    expect((await page.locator('[data-sheet="install"]').boundingBox())!.width).toBeCloseTo(840, 0); // 11/05: 설치 검사 패널 = 본문 70%(1440 → 840), 옛 계약 480 은 바뀜
     expect(await page.locator('[data-sheet="install"]').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#FFFFFF'));
     // dns 배지는 warn 토큰
     await page.goto('/policies');

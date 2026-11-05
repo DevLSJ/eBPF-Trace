@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { expect, test, closeSheet } from './fixtures';
 
 test.describe('설치 검사 — 이 패키지는 무엇을 하려 했고, 악성인가?', () => {
   test('① 기본 필터는 「판정 대기」, 칩으로 결과 · 매니저를 고른다', async ({ page, backend }) => {
@@ -58,6 +58,7 @@ test.describe('설치 검사 — 이 패키지는 무엇을 하려 했고, 악�
     await expect(box.getByRole('link', { name: /정책에서 미리보기/ })).toHaveAttribute('href', /\/policies\?proposal=prop-/);
     expect(JSON.parse(backend.writes().find((r) => r.path === '/cases/case-0003/decide')!.body!)).toEqual({ decision: 'false_positive', note: 'git:// 의존성' });
     // 목록의 판정 열도 바뀐다
+    await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
     await page.locator('[data-chip="all"]').click();
     await expect(page.locator('tr[data-install="ins-0011"] [data-decision="false_positive"]')).toBeVisible();
   });
@@ -92,9 +93,10 @@ test.describe('설치 검사 — 이 패키지는 무엇을 하려 했고, 악�
     await expect(page.locator('[data-sheet="install"]')).toBeVisible();
     await expect(page.locator('[data-chip="pending"]')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('[data-chip=""]')).toHaveAttribute('aria-pressed', 'true');
-    await page.locator('[data-chip="all"]').click();
+    // 11/05 슬라이드 패널: Esc 로 먼저 닫아야 뒤의 칩을 누를 수 있다
     await page.keyboard.press('Escape');
     await expect(page.locator('[data-sheet]')).toHaveCount(0);
+    await page.locator('[data-chip="all"]').click();
     await expect(page).not.toHaveURL(/id=/);
     await page.locator('tr[data-install="ins-0010"]').focus();
     await page.keyboard.press('Enter');

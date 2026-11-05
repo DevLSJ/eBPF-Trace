@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, test, closeSheet } from './fixtures';
 import { DNS_EXFIL_NAME, dnsVerdict } from './mock-backend';
 
 // 10/30 F1 — Kind 에 dns(도메인 조회) 추가. 계약 contract-1030 §1 화면 라벨 표 그대로.
@@ -138,6 +138,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     await expect(sheet.locator('[data-dns]')).toHaveCount(0);
     await expect(sheet.getByTestId('audit-reason')).toHaveText('허용 목록 밖 도메인 질의: cdn.reqeusts-update.test (A)');
     // CSV: 종류 열에 dns
+    await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
     await page.getByLabel('기간 시작').fill('2020-01-01T00:00');
     await page.getByLabel('기간 끝').fill('2099-01-01T00:00');
     const dl = page.waitForEvent('download');

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, SHOTS, test } from './fixtures';
+import { expect, SHOTS, test, closeSheet } from './fixtures';
 import { SEQ_PATHS, SEQ_RULE_ID, sequenceRule } from './mock-backend';
 
 // 11/04 연쇄 규칙(kind: sequence) — 정책 화면 표시 · 편집 최소안(설계 2-4, 목업 mock/tests/sequence-1104.cjs 화면 항목을 React 에 맞게)
@@ -198,6 +198,7 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
       `규칙 ${SEQ_RULE_ID} — exec wget(0.0초) → connect 203.0.113.7:80(+2.1초) → open /root/.ssh/id_rsa(+2.4초) · 판정은 sensitive-files`,
     ]);
     await expect(sheet.locator('[data-action="allow-this"]')).toContainText('sensitive-files');
+    await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
     await page.locator('li[data-key]', { hasText: '/root/.netrc' }).first().click();
     await expect(sheet.locator('[data-part="detail"]')).toHaveText('/root/.netrc');
     expect(await seqRows(page, 'event')).toEqual([SEQ_LINE]);

@@ -34,6 +34,12 @@ export const test = base.extend<Fixtures & { _console: string[]; _allowed: RegEx
 
 export { expect };
 
+// 11/05 슬라이드 패널 닫기 — Esc 뒤 미끄러져 나갈 때까지
+export async function closeSheet(page: Page) {
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.sg-sheet-layer')).toHaveCount(0);
+}
+
 // 페이지 넘침 검사: 문서 · main 모두 스크롤이 생기지 않아야 한다(표 · 피드 · 시트만 스크롤)
 export async function noPageOverflow(page: Page) {
   const r = await page.evaluate(() => {

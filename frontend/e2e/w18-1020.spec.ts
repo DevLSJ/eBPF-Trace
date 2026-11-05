@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { Page, Route } from '@playwright/test';
 import type { Evidence, Rule, Scan, Verdict } from '../src/lib/types';
-import { expect, noPageOverflow, test } from './fixtures';
+import { expect, noPageOverflow, test, closeSheet } from './fixtures';
 
 // W18(10/20 사용자 확정) — 목업 「2026-10-20 2차 시안」 B · D · F · G · I 를 React 로.
 // B 확인 대화상자(영향 · 사유 · 되돌리기) · F 새 기본 규칙 띠 · G 패키지 골라 차단 · I 증거 · D 목록 정리 · 조회자 숨김
@@ -434,8 +434,10 @@ test.describe('I 증거 · 도메인 조회 없는 IP 직접 연결', () => {
     const dd = page.locator('[data-sheet="event"] [data-dns]');
     await expect(dd).toHaveAttribute('data-dns', 'direct');
     await expect(dd).toContainText('도메인 조회 없는 IP 직접 연결');
+    await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
     await page.locator('li[data-key]', { hasText: '10.1.2.3' }).click();
     await expect(dd).toHaveAttribute('data-dns', 'private');
+    await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
     await page.locator('li[data-key]', { hasText: 'cdn.reqeusts-update.test' }).first().click();
     await expect(dd).toHaveAttribute('data-dns', 'traced');
     await page.goto('/audit?id=999');
