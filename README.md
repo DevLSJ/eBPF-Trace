@@ -1,5 +1,7 @@
 # SupplyGuard — eBPF 기반 오픈소스 공급망 공격 런타임 탐지 플랫폼
 
+[![CI/CD](https://github.com/DevLSJ/eBPF-Trace/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/DevLSJ/eBPF-Trace/actions/workflows/ci-cd.yml)
+
 캡스톤디자인 프로젝트. 정적 분석(SCA)이 놓치는 **런타임 악성 행위**를 커널 단에서 잡는다.
 오픈소스 패키지를 설치하거나 컨테이너에서 실행하는 순간 `execve`·`openat`·`connect` 와 DNS 질의(`trace_dns`, `RESOLVE_DNS=true`)를
 [Inspektor Gadget](https://inspektor-gadget.io) 가젯(eBPF)으로 가로채, YAML 정책과 비교해
