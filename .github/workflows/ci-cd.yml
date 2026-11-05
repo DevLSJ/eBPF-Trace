@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'EC2 배포까지 실행(self-hosted 러너) — 기본 꺼짐'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -112,8 +117,8 @@ jobs:
   deploy:
     name: Deploy verified images on EC2
     needs: images
-    # 수동 실행(workflow_dispatch)만 — 공개 저장소에서 main push 가 self-hosted 러너로 자동 배포하지 않게 (11/05 사용자 결정)
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    # 수동 실행(workflow_dispatch) + 「deploy」 체크만 — 공개 저장소에서 main push · 일반 수동 실행이 self-hosted 러너로 배포하지 않게 (11/05 사용자 결정)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.deploy
     runs-on: self-hosted
     timeout-minutes: 20
     environment: production
