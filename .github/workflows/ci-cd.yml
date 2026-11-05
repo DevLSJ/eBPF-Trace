@@ -6,11 +6,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      deploy:
-        description: 'EC2 배포까지 실행(self-hosted 러너) — 기본 꺼짐'
-        type: boolean
-        default: false
 permissions:
   contents: read
 concurrency:
@@ -113,67 +108,3 @@ jobs:
       - name: Remove registry credentials
         if: always()
         run: docker logout
-
-  deploy:
-    name: Deploy verified images on EC2
-    needs: images
-    # 수동 실행(workflow_dispatch) + 「deploy」 체크만 — 공개 저장소에서 main push · 일반 수동 실행이 self-hosted 러너로 배포하지 않게 (11/05 사용자 결정)
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.deploy
-    runs-on: self-hosted
-    timeout-minutes: 20
-    environment: production
-    env:
-      EC2_HOST: ${{ secrets.EC2_HOST }}
-      EC2_USER: ${{ secrets.EC2_USER }}
-      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-      EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
-      REGISTRY: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - name: Configure pinned SSH host and release archive
-        run: |
-          set -euo pipefail
-          test -n "$REGISTRY" && test -n "$EC2_KNOWN_HOSTS"
-          [[ "$REGISTRY" =~ ^[a-z0-9][a-z0-9_-]+$ ]]
-          mkdir -p "$RUNNER_TEMP/sg-ssh"
-          chmod 700 "$RUNNER_TEMP/sg-ssh"
-          printf '%s\n' "$EC2_SSH_KEY" > "$RUNNER_TEMP/sg-ssh/key"
-          printf '%s\n' "$EC2_KNOWN_HOSTS" > "$RUNNER_TEMP/sg-ssh/known_hosts"
-          chmod 600 "$RUNNER_TEMP/sg-ssh/key"
-          git archive --format=tar.gz -o "$RUNNER_TEMP/release.tgz" HEAD
-      - name: Upload verified source
-        run: |
-          set -euo pipefail
-          ssh -i "$RUNNER_TEMP/sg-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/sg-ssh/known_hosts" -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" "mkdir -p /home/ubuntu/supplyguard-releases/$GITHUB_SHA"
-          scp -i "$RUNNER_TEMP/sg-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/sg-ssh/known_hosts" -o StrictHostKeyChecking=yes "$RUNNER_TEMP/release.tgz" "$EC2_USER@$EC2_HOST:/home/ubuntu/supplyguard-releases/$GITHUB_SHA/source.tgz"
-      - name: Registry login on EC2
-        run: |
-          set -euo pipefail
-          printf '%s' "$DOCKERHUB_TOKEN" | ssh -i "$RUNNER_TEMP/sg-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/sg-ssh/known_hosts" -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" "docker login -u '$REGISTRY' --password-stdin"
-      - name: Pull images and deploy the exact commit
-        run: |
-          set -euo pipefail
-          ssh -i "$RUNNER_TEMP/sg-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/sg-ssh/known_hosts" -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" bash -s -- "$GITHUB_SHA" "$REGISTRY" <<'REMOTE'
-          set -euo pipefail
-          export IMAGE_TAG="$1" DOCKERHUB_USERNAME="$2"
-          cd "/home/ubuntu/supplyguard-releases/$IMAGE_TAG"
-          tar -xzf source.tgz
-          # 운영 .env 는 릴리스 밖(/home/ubuntu/supplyguard/.env)에 한 번만 두고 링크한다
-          test -s /home/ubuntu/supplyguard/.env
-          ln -sfn /home/ubuntu/supplyguard/.env .env
-          # 링크된 .env 에 IMAGE_TAG/DOCKERHUB_USERNAME 이 있으면 compose 가 그 값을 우선하므로 셸 환경으로 덮어쓴다
-          docker compose -p supplyguard --project-directory . -f deploy/docker-compose.yml config --quiet
-          df -Pm / | awk 'NR==2 && $4 < 900 { print "insufficient disk: " $4 " MiB"; exit 1 }'
-          docker compose -p supplyguard --project-directory . -f deploy/docker-compose.yml pull backend frontend
-          bash deploy/deploy.sh </dev/null
-          ln -sfn "/home/ubuntu/supplyguard-releases/$IMAGE_TAG" /home/ubuntu/supplyguard-current
-          test "$(readlink /home/ubuntu/supplyguard-current)" = "/home/ubuntu/supplyguard-releases/$IMAGE_TAG"
-          docker image prune -f >/dev/null
-          REMOTE
-      - name: Remove temporary credentials
-        if: always()
-        run: |
-          rm -f "$RUNNER_TEMP/sg-ssh/key" "$RUNNER_TEMP/sg-ssh/known_hosts"
