@@ -1434,19 +1434,22 @@ small { font-size: 12px; } /* 11/04e: 브라우저 기본 smaller(11.7px) 대신
 
 /* ── 11/05 슬라이드 패널: 상세는 표 옆 칸이 아니라 본문 위에 겹쳐 오른쪽에서 나온다(사용자 결정 — 폭 화면별 · 뒤 어둡게 + 이전/다음 · 주제별 블록 + 2열 격자) ── */
 .sheet-slot, .sheet-slot:empty { display: contents; }
-.sheet-layer { position: fixed; top: var(--header-h); right: 0; bottom: 0; left: var(--sidebar-w); z-index: 55; display: flex; justify-content: flex-end; background: rgba(15, 23, 42, .28); animation: sheet-scrim-in var(--t-base) var(--ease) both; }
+.sheet-layer { position: fixed; top: var(--header-h); right: 0; bottom: 0; left: var(--sidebar-w); z-index: 55; overflow: hidden; display: flex; justify-content: flex-end; background: rgba(15, 23, 42, .28); animation: sheet-scrim-in var(--t-base) var(--ease) both; }
 .shell.collapsed .sheet-layer { left: var(--sidebar-w-collapsed); }
 .sheet-layer.still, .sheet-layer.still .sheet { animation: none; }
-.sheet-layer .sheet, .sheet-layer .sheet[data-sheet="scan"] { --sheet-w: min(720px, calc(100% - 48px)); width: var(--sheet-w); height: 100%; max-width: none; border-radius: 0; border-top: 0; border-right: 0; border-bottom: 0; box-shadow: -12px 0 32px rgba(15, 23, 42, .16); animation: sheet-slide-in 260ms var(--ease) both; }
+.sheet-layer .sheet, .sheet-layer .sheet[data-sheet="scan"] { --sheet-w: min(720px, calc(100% - 48px)); width: var(--sheet-w); height: 100%; max-width: none; border-radius: 0; border-top: 0; border-right: 0; border-bottom: 0; box-shadow: -12px 0 32px rgba(15, 23, 42, .16); animation: sheet-slide-in var(--t-slow) var(--ease) both; } /* 11/04f 원칙: 길이는 모션 토큰 */
 .sheet-layer .sheet[data-size="wide"] { --sheet-w: min(1080px, 70%); }
-.sheet-layer.closing { animation: sheet-scrim-out 180ms ease-in both; }
-.sheet-layer.closing .sheet { animation: sheet-slide-out 180ms ease-in both; }
+.sheet-layer.closing { animation: sheet-scrim-out var(--t-base) ease-in both; }
+.sheet-layer.closing .sheet { animation: sheet-slide-out var(--t-base) ease-in both; }
 @keyframes sheet-scrim-in { from { background: rgba(15, 23, 42, 0); } }
 @keyframes sheet-scrim-out { to { background: rgba(15, 23, 42, 0); } }
 @keyframes sheet-slide-in { from { transform: translateX(100%); } }
 @keyframes sheet-slide-out { to { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .sheet-layer, .sheet-layer .sheet { animation: none !important; } }
 :root[data-theme="dark"] .sheet-layer { background: rgba(0, 0, 0, .45); }
+/* 패널 층(55) 위: 토스트 · 데모 제어 서랍 · 머리 알림 · 메뉴 — 열린 패널 너머로 보이는데 누르면 배경이 눌리던 문제(11/05 하위 검증) */
+.toasts, .drawer { z-index: 58; }
+.notices, .topbar .menu { z-index: 60; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .sheet-layer { background: rgba(0, 0, 0, .45); } }
 /* 머리: 제목 16px · 위치 「3 / 20」 · ‹ › · ✕ */
 .sheet-head { height: 52px; padding: 0 16px 0 24px; gap: 12px; }
