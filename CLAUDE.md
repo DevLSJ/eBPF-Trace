@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 현재 상태와 우선순위
 
-**로컬 개발 + sg-vm 실서버 + sg-ec2(2026-11-05).** 개인 캡스톤 프로젝트 SupplyGuard — eBPF(Inspektor Gadget)로 오픈소스 패키지의 런타임 악성 행위를 커널 단에서 잡아 격리한다. 1인, Jira 없음, 사내 표준 미적용. 원격 저장소 없음(GitHub는 공개 직전 — 11/04 결정으로 기존 공개 저장소 `github.com/DevLSJ/eBPF-Trace` 를 덮어쓴다).
+**로컬 개발 + sg-vm 실서버 + sg-ec2(2026-11-05).** 개인 캡스톤 프로젝트 SupplyGuard — eBPF(Inspektor Gadget)로 오픈소스 패키지의 런타임 악성 행위를 커널 단에서 잡아 격리한다. 1인, Jira 없음, 사내 표준 미적용. 원격 저장소는 공개 GitHub `github.com/DevLSJ/eBPF-Trace`(11/05 이력 치환 뒤 force push로 덮어씀, gh 활성 계정 DevLSJ — 발표 뒤 Lee-SungJae로 되돌릴지 다시 묻는다).
 
 두 시나리오는 **동등**하다 [2026-10-15 확정]:
 - **설치 샌드박스** — `tools/sg-install pip|npm|cargo <패키지>`가 감시 컨테이너(`sg-install-*`)에서 설치하고, 위반이면 설치가 끝나기 전에 격리
@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 5. ✅ UI 라운드(11/04) — 공통 부품 · 스크롤 없는 페이지 · 길게 눌러 옮기기 · 코드 창 · 파일 트리 · 채팅 · 대시보드 재배치 · 시연 전용 페이지 `/demo`(대시보드 시연 카드 제거) · 표 쪽 번호. 개발용 로그인 admin/admin(`AUTH_DEV_MODE`, 11/05)
 6. ✅ sg-vm 반영 · 실측(11/05, 052894d) — 시연 benign 통과 · chain 1단계 격리 · all 격리 · 증거 즉시 조회 · 1920 한 화면. `DEMO_ENABLED=true` 켬
 7. EC2 — ✅ 11/05 첫 반영(`/home/ubuntu/supplyguard/current`, sg-vm 과 같은 이미지) · 시연 3종 · 공급망 검사 실측 통과. 남은 것: 보안 그룹 HTTP 80 · 인스턴스 t4g.small(지금 micro)
-8. GitHub 공개 — 기존 공개 저장소 `DevLSJ/eBPF-Trace` 를 덮어씀(옛 main 은 archive 브랜치 보존). 이력 치환은 별도 클론에서 시험 완료(11/05), force push 는 사용자 확인 뒤
+8. ✅ GitHub 공개(11/05) — `DevLSJ/eBPF-Trace` 를 덮어씀(옛 main 은 태그 `archive/ebpf-trace-main`, 옛 미커밋은 브랜치 `archive/ebpf-trace`). CI 는 테스트 · 이미지 빌드만 — 옛 EC2 secrets · self-hosted 러너 · deploy 작업은 11/05 정리(공개 저장소의 남의 PR 이 sg-vm 에서 돌지 않게)
 9. 리허설(11/11) · 최종 녹화(11/12) · 발표(11/13). **발표 뒤**: 판정 규칙 조정 실험 · 위반 · 분 집계 · 인증 감사 보관 기간(30일) · 커널 7.0 이벤트 유실
 
 ## 아키텍처 [2026-09-29 확정 · 2026-10-20 갱신]
@@ -116,8 +116,7 @@ tools/     sg-install
 
 ### 커밋 · 머지 [2026-10-15 확정]
 
-- 원격이 생기기 전: **검증(자가 검증 항목)을 통과하면 묻지 않고 로컬 main 에 커밋**한다 [2026-11-03 — 원격이 없어 커밋은 이 PC 에만 남는다, push · 원격 생성은 하지 않는다]. `git add -A` 금지 — 내 파일만 골라 담는다. Tier 1 변경은 커밋을 나눈다
-- GitHub가 생긴 뒤: 기능 브랜치 → PR(CI 통과) → 사용자 메시지에 **「머지 승인」**이 있을 때만 셀프 머지
+- [2026-11-05 GitHub 공개 뒤] 기능 브랜치 → PR(CI 통과) → 사용자 메시지에 **「머지 승인」**이 있을 때만 셀프 머지. main 에 바로 커밋 · push 하지 않는다. `git add -A` 금지 — 내 파일만 골라 담는다. Tier 1 변경은 커밋을 나눈다
 
 ### Tier
 

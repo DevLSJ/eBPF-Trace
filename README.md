@@ -19,9 +19,9 @@ REST · WS 앞: 로그인(쿠키 세션 · 역할 · OTP) — CLI 는 Bearer ADM
 | --- | --- | --- |
 | 백엔드 | Go 1.26 · Inspektor Gadget v0.56.1 (Go 패키지, in-process) · pgx · go-redis · bcrypt · TOTP(RFC 6238) | `backend/` |
 | 프론트엔드 | React 18 · TypeScript · Vite 7 · Tailwind 4 · React Flow · 직접 그린 SVG 차트 · qrcode | `frontend/` |
-| 배포 | Docker Compose (nginx · backend · frontend · PostgreSQL 17 · Redis 7 · 선택 Caddy HTTPS · 선택 Ollama) · GitHub Actions → Docker Hub → EC2 | `deploy/` · `.github/workflows/` |
+| 배포 | Docker Compose (nginx · backend · frontend · PostgreSQL 17 · Redis 7 · 선택 Caddy HTTPS · 선택 Ollama) · GitHub Actions(테스트 · 이미지 빌드) · 서버 반영은 `deploy/deploy.sh` | `deploy/` · `.github/workflows/` |
 | 목업 | 정적 HTML 대시보드 — 화면 · 흐름을 먼저 확정하는 곳(React 가 기준) | `mock/` |
-| 문서 | 개발 계획 · 결정 · 아키텍처 · API 계약 · 진행 기록 | Claude Docs (아래 「문서」) |
+| 문서 | 목업 결정 기록 · 데모 시나리오 | 아래 「문서」 |
 
 화면: 대시보드(상태 신호등 · KPI · 판정 대기 · eBPF 수집 종합) · 시연(관리자 · `DEMO_ENABLED`) · 설치 검사 · 공급망 검사 · 평가(실측 결과) · 이벤트 · 토폴로지 · 정책 · 감사 로그 · 설정(서버 · 계정 · 라이선스 · 인증 감사) · 건 보고서(`#/report`),
 우측 하단 도우미(대응 가이드 · AI 도우미).
@@ -104,8 +104,8 @@ deploy/compose.sh logs -f backend
 - 컨테이너 발견 `CONTAINER_DISCOVERY=auto`(fanotify 먼저, 안 되면 docker-events — 시작 직후 약 0.1초는 놓칠 수 있음)
 
 CI/CD(`.github/workflows/ci-cd.yml`): PR/푸시마다 `go vet`·`go test -race`·정적 빌드·`npm run lint/build`·React e2e(Playwright)·compose 검증 →
-`main` 이면 Docker Hub 푸시 → self-hosted runner 가 EC2 에서 `deploy/deploy.sh` 실행.
-필요한 시크릿: `DOCKERHUB_USERNAME` · `DOCKERHUB_TOKEN` · `EC2_HOST` · `EC2_USER` · `EC2_SSH_KEY` · `EC2_KNOWN_HOSTS`.
+`main` 이면 운영 이미지 빌드 · 기동 확인(시크릿 `DOCKERHUB_USERNAME` · `DOCKERHUB_TOKEN` 이 있으면 Docker Hub 푸시).
+서버 반영은 CI 가 하지 않는다 — 서버에서 `deploy/deploy.sh`(위 「운영 배포」).
 
 ## 정책
 
@@ -130,7 +130,6 @@ CI/CD(`.github/workflows/ci-cd.yml`): PR/푸시마다 `go vet`·`go test -race`�
 
 `/health` 를 뺀 모든 경로는 **로그인 세션**(쿠키) 뒤에 있다. 쓰기는 관리자 역할 — 조회자는 읽기 · 미리보기 · 챗봇만.
 CLI · 자동화는 `Authorization: Bearer $ADMIN_TOKEN`(관리자, 처리자 「cli」), sg-install 보고는 `SANDBOX_TOKEN`.
-전체 계약은 Claude Docs 「API 계약」 탭.
 
 | 묶음 | 경로 |
 | --- | --- |
@@ -154,6 +153,5 @@ eBPF 가젯 실행 검증은 커널이 있는 EC2/VM 에서만 한다.
 
 ## 문서
 
-- [SupplyGuard 개발 문서](https://claude.ai/code/artifact/5fc4e674-2b54-4bb2-9cd6-a03cae190285) — 개요 · 결정 · 아키텍처 · 정책 · API 계약 · 진행 기록 · 남은 일 (새 세션은 여기서 시작)
 - `mock/README.md` — 목업 사용법 · 결정 기록
 - `deploy/demo/README.md` — 데모 공격 시나리오
