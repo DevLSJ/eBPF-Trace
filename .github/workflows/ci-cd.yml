@@ -87,8 +87,10 @@ jobs:
       - name: Build and push amd64 release images
         run: |
           set -euo pipefail
-          test -n "$REGISTRY"
-          printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$REGISTRY" --password-stdin
+          # 레지스트리 secret 이 없으면 빌드 · 기동 확인만 하고 push 는 건너뛴다(11/05 — 지금 배포는 SSH 로 이미지 전송)
+          PUSH=1
+          if [ -z "$REGISTRY" ] || [ -z "$DOCKERHUB_TOKEN" ]; then PUSH=0; REGISTRY=local; echo "::notice::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN 없음 — 이미지 빌드 · 기동 확인만, push 생략"; fi
+          [ "$PUSH" = 1 ] && printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$REGISTRY" --password-stdin
           docker build --pull -f deploy/Dockerfile.backend --build-context eval-reports=bench/reports -t "$REGISTRY/supplyguard-backend:$GITHUB_SHA" backend
           docker build --pull -f deploy/Dockerfile.frontend -t "$REGISTRY/supplyguard-frontend:$GITHUB_SHA" frontend
           # 이미지가 실제로 기동하는지: mock 소스로 띄워 /health 확인
@@ -99,8 +101,10 @@ jobs:
           done
           docker inspect -f '{{.State.Health.Status}}' "$cid" | grep -qx healthy
           docker rm -f "$cid" >/dev/null
-          docker push "$REGISTRY/supplyguard-backend:$GITHUB_SHA"
-          docker push "$REGISTRY/supplyguard-frontend:$GITHUB_SHA"
+          if [ "$PUSH" = 1 ]; then
+            docker push "$REGISTRY/supplyguard-backend:$GITHUB_SHA"
+            docker push "$REGISTRY/supplyguard-frontend:$GITHUB_SHA"
+          fi
       - name: Remove registry credentials
         if: always()
         run: docker logout
@@ -108,7 +112,8 @@ jobs:
   deploy:
     name: Deploy verified images on EC2
     needs: images
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # 수동 실행(workflow_dispatch)만 — 공개 저장소에서 main push 가 self-hosted 러너로 자동 배포하지 않게 (11/05 사용자 결정)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: self-hosted
     timeout-minutes: 20
     environment: production
