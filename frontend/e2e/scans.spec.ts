@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import type { Scan } from '../src/lib/types';
-import { expect, test } from './fixtures';
+import { expect, test, closeSheet } from './fixtures';
 
 // 공급망 검사 — 저장소 주소 확장(W4): tree/<ref>/<폴더> · commit · releases/tag 를 받고, 라벨에 @ref/폴더가 보인다.
 // mock-backend 에는 /api/scans 가 없어 이 파일에서만 가로챈다(뒤에 등록한 route 가 먼저 맞는다).
@@ -92,6 +92,7 @@ test.describe('공급망 검사 — 저장소 주소 확장(W4)', () => {
     await expect(ref.locator('[data-ref="v2.31.0"]')).toContainText('브랜치/태그 v2.31.0');
     await expect(ref.locator('[data-subpath="src/requests"]')).toContainText('폴더 src/requests');
     // 기본 브랜치 전체는 그렇게 표시
+    await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
     await page.locator('tr[data-scan="scan-0001"]').click();
     await expect(page.locator('[data-sheet="scan"] [data-part="repo-ref"] [data-ref=""]')).toContainText('기본 브랜치');
     await expect(page.locator('[data-sheet="scan"] [data-subpath]')).toHaveCount(0);

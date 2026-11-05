@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import type { Scan } from '../src/lib/types';
-import { expect, test } from './fixtures';
+import { expect, test, closeSheet } from './fixtures';
 
 // 11/02 공급망 검사 보완(목업 mock/tests/scan-1102.cjs 와 같은 기대값):
 // 테스트 코드 탐지는 「테스트 코드 N — 위험 점수 · 판정에 넣지 않음」 묶음으로 따로, 위협 수에 들지 않는다 /
@@ -102,6 +102,7 @@ test.describe('공급망 검사 보완(11/02)', () => {
     await expect(v).toContainText('설치 단계의 위험한 행동은 없고');
     await expect(v).toContainText('3곳');
     await expect(v).not.toContainText('차단 목록에 올리세요');
+    await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
     await page.getByRole('button', { name: /^주의/ }).click();
     await expect(page.locator('tr[data-scan]')).toHaveCount(1);
   });

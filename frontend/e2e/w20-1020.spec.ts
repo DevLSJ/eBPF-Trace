@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import type { Verdict } from '../src/lib/types';
-import { expect, noPageOverflow, SHOTS, test } from './fixtures';
+import { expect, noPageOverflow, SHOTS, test, closeSheet } from './fixtures';
 
 // W20(10/20) — 이벤트 화면 정리 · connect 의 dnsTraced false 명시 · 768px 폭
 
@@ -28,10 +28,12 @@ test.describe('W20 도메인 조회 줄 — dnsTraced false · 없음 · true', 
     await expect(dd).toHaveAttribute('data-dns', 'off');
     await expect(dd).toHaveText('판단 불가 — trace_dns 꺼짐(도메인 기준 규칙은 통과 처리)');
 
+    await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
     await page.locator('li[data-key]', { hasText: '198.51.100.22' }).click();
     await expect(dd).toHaveAttribute('data-dns', 'unknown');
     await expect(dd).toHaveText('기록 없음(옛 기록)');
 
+    await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
     await page.locator('li[data-key]', { hasText: '198.51.100.23' }).click();
     await expect(dd).toHaveAttribute('data-dns', 'traced');
     await expect(dd).toHaveText('trace_dns 로 확인 — files.example.test');
@@ -85,19 +87,20 @@ test.describe('W20 768px 넘침 0', () => {
         await settle(page, '/events', 'events');
         await page.locator('li[data-key]').first().click();
         await expect(page.locator('[data-sheet="event"]')).toBeVisible();
-        await page.waitForTimeout(200);
+        await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running')); // 11/05: 패널이 다 들어온 뒤
         await noPageOverflow(page);
-        // 좁아진 목록: 필터 이름이 글자 단위로 꺾이지 않고, 행의 탐지 결과가 패널 안에 보인다
+        // 목록(11/05 부터 패널이 겹쳐 목록 폭은 그대로): 필터 이름이 글자 단위로 꺾이지 않고, 행의 탐지 결과가 패널 안에 보인다
         const lbl = page.getByTestId('events').locator('label', { hasText: '컨테이너' });
         expect((await lbl.boundingBox())!.height).toBeLessThanOrEqual(36);
         const panel = (await page.getByTestId('events').boundingBox())!;
         const badge = (await page.locator('li[data-key]').first().locator('span').last().boundingBox())!;
         expect(badge.width).toBeGreaterThan(0);
         expect(badge.x + badge.width).toBeLessThanOrEqual(panel.x + panel.width);
-        // 일시정지는 목록 필터 줄에 하나만 보인다 — 눌러서 동작
+        // 일시정지는 목록 필터 줄에 하나만 보인다 — 눌러서 동작(11/05: 패널을 닫은 뒤 — 열린 동안 뒤 화면은 가려진다)
+        await page.screenshot({ path: `${SHOTS}/w20-768x${h}-events-sheet.png` });
+        await closeSheet(page);
         await page.getByRole('button', { name: '일시정지' }).click();
         await expect(page.getByRole('button', { name: '재개' })).toBeVisible();
-        await page.screenshot({ path: `${SHOTS}/w20-768x${h}-events-sheet.png` });
       });
     });
   }
