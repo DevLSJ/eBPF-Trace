@@ -46,10 +46,10 @@ export function ReportPage() {
   return (
     <div data-fill="" className="h-full min-h-0 overflow-y-auto" data-part="report-scroll">
       <PageActions>
-        <button type="button" onClick={() => window.print()} disabled={!d} className="flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+        <button type="button" onClick={() => window.print()} disabled={!d} className="sg-btn sg-btn-sm sg-btn-secondary flex items-center gap-1.5">
           <Printer className="size-3.5" aria-hidden /> 인쇄
         </button>
-        <button type="button" onClick={copy} disabled={!d} className="flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+        <button type="button" onClick={copy} disabled={!d} className="sg-btn sg-btn-sm sg-btn-secondary flex items-center gap-1.5">
           <Copy className="size-3.5" aria-hidden /> Markdown 복사
         </button>
         <span className="hidden truncate text-xs text-slate-400 lg:inline">A4 1~2장 · 읽기 전용</span>

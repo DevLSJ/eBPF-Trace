@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import type { Dest } from '../lib/nav';
 import { errorText, isUnsupported } from '../lib/api';
 
-// 패널(11/04e 목업 U.panel, R1 11/04) — 반경 12 · 1px 테두리 · 옅은 그림자 · 머리 = 제목 14.5/600 + 부제(sub) + 오른쪽 actions · 「더 보기 ›」(more) · 바닥줄(foot, 채움 칸 밖)
+// 패널(참고 대시보드 섹션 카드, 11/05) — 반경 8 · 1px 선 · hover 파란 선 · 머리 56 = 제목 17.9/700 + 부제(sub) + 오른쪽 actions · 「더 보기 ›」(more) · 바닥줄(foot, 채움 칸 밖)
 export function Panel({
   title,
   sub,
@@ -26,8 +26,8 @@ export function Panel({
 }) {
   return (
     <section className={`sg-card sg-panel flex min-h-0 flex-col overflow-hidden ${className}`} data-testid={testId}>
-      <header className="sg-panel-head flex min-h-11 shrink-0 items-center gap-2.5 border-b border-border px-4 py-1.5">
-        <h2 className="min-w-0 truncate text-[14.5px] font-semibold text-slate-800">{title}</h2>
+      <header className="sg-panel-head flex shrink-0 items-center gap-2.5">
+        <h2 className="sg-panel-title min-w-0 truncate">{title}</h2>
         {sub && <span className="sg-panel-sub min-w-0 flex-1 truncate text-[12.5px] text-text-3">{sub}</span>}
         {(actions || more) && (
           <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -47,7 +47,7 @@ export function Panel({
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <div className="flex h-full min-h-24 items-center justify-center p-6 text-center text-sm text-slate-400">{children}</div>;
+  return <div className="sg-empty flex h-full min-h-[180px] items-center justify-center p-6 text-center text-[14px] text-text-3">{children}</div>;
 }
 
 // 불러오기 실패 안내. 라우트가 없으면(404) 「백엔드 미지원」 — 그 영역만 비고 앱은 계속 동작한다.

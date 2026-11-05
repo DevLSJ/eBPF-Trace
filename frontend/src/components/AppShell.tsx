@@ -190,7 +190,7 @@ export function AppShell() {
               <Menu className="size-5" aria-hidden />
             </button>
           )}
-          <h1 className="shrink-0 text-lg font-semibold text-text" data-testid="page-title">
+          <h1 className="shrink-0 text-[1.65rem] leading-tight font-bold tracking-[-0.02em] text-text" data-testid="page-title">
             {TITLES[pathname] ?? ''}
           </h1>
           {/* 768 미만: 머리 칸의 화면 버튼은 가로로 넘기며 본다(머리 높이 56px 유지) */}

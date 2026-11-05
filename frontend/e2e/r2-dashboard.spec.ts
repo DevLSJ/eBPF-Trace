@@ -590,7 +590,7 @@ test.describe("G 다크", () => {
       `${DASH} [data-card="top-rules"] > .sg-panel`,
       `${DASH} [data-card="pending"] > .sg-panel`,
     ])
-      expect(await bg(sel), sel).toBe(rgb("#171A21"));
+      expect(await bg(sel), sel).toBe(rgb("#1B1E28"));
     expect(await scrollAudit(page)).toMatchObject({
       doc: 0,
       main: 0,

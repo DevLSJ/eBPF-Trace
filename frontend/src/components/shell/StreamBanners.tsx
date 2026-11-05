@@ -30,7 +30,7 @@ export function StreamBanners() {
           <span className="min-w-0 flex-1">
             <b>이벤트를 불러오지 못했습니다</b> — {errorText(loadError)}. 지금 보이는 목록 · 숫자는 실제와 다를 수 있습니다.
           </span>
-          <button type="button" onClick={retryLoad} className="shrink-0 rounded-md border border-red-300 bg-white px-2.5 py-1 text-xs font-medium text-red-800 hover:bg-red-100">
+          <button type="button" onClick={retryLoad} className="sg-btn sg-btn-sm sg-btn-outline-danger shrink-0">
             다시 시도
           </button>
         </div>

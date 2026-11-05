@@ -35,7 +35,7 @@ export function ListError({ error, what, onRetry, retrying }: { error: unknown; 
             data-action="retry"
             disabled={retrying}
             onClick={onRetry}
-            className="mt-1 flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="sg-btn sg-btn-sm sg-btn-secondary mt-1 flex items-center gap-1.5"
           >
             <RotateCw className={`size-3.5 ${retrying ? 'sg-spin' : ''}`} aria-hidden /> 다시 시도
           </button>
@@ -46,13 +46,12 @@ export function ListError({ error, what, onRetry, retrying }: { error: unknown; 
   );
 }
 
-// 아이콘 있는 빈 상태
-export function EmptyState({ icon: Icon, title, hint, actions, testId }: { icon: LucideIcon; title: ReactNode; hint?: ReactNode; actions?: ReactNode; testId?: string }) {
+// 빈 상태(11/05 참고 대시보드) — 가운데 · 보조색 14px · 높이 180 · 아이콘 없음(11/05 결정, 10/20 「아이콘 있는 빈 상태」 대체). icon 은 받기만 한다
+export function EmptyState({ title, hint, actions, testId }: { icon?: LucideIcon; title: ReactNode; hint?: ReactNode; actions?: ReactNode; testId?: string }) {
   return (
-    <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 p-6 text-center text-sm" data-part="empty" data-testid={testId}>
-      <Icon className="size-7 text-slate-300" aria-hidden />
-      <b className="text-slate-700">{title}</b>
-      {hint && <span className="max-w-md text-xs text-slate-500">{hint}</span>}
+    <div className="sg-empty flex h-full min-h-[180px] flex-col items-center justify-center gap-1 p-6 text-center text-[14px] text-text-3" data-part="empty" data-testid={testId}>
+      <span>{title}</span>
+      {hint && <span className="max-w-md text-[12.5px]">{hint}</span>}
       {actions && <div className="mt-1 flex flex-wrap items-center justify-center gap-2">{actions}</div>}
     </div>
   );
@@ -66,7 +65,7 @@ export function PagerSlot({ children, edge = true }: { children: ReactNode; edge
 
 export function ClearFiltersButton({ onClick, children = '필터 모두 해제' }: { onClick: () => void; children?: ReactNode }) {
   return (
-    <button type="button" onClick={onClick} className="rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50">
+    <button type="button" onClick={onClick} className="sg-btn sg-btn-sm sg-btn-secondary">
       {children}
     </button>
   );

@@ -1,14 +1,15 @@
+import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { PAGE_SIZES, type Column, type SortState } from '../hooks/useTableKit';
 import { fmtNum } from '../lib/format';
 
 // 표 기반(11/04e 목업 U.tableKit, R1 11/04) — 표 화면 적용은 R4. 여기에는 바탕만:
 //   useTableKit  머리 클릭(키보드 Enter) 정렬(오름 → 내림) · 쪽 나누기(페이지당 20 · 50 · 100) · ?id= 로 들어온 행이 있는 쪽(reveal)
-//   SortHead     <thead> — 머리 sticky 12/700, 정렬되는 칸은 버튼 + 화살표 + aria-sort
-//   TablePager   아래 쪽 번호 바닥줄 「1–20 / 45 · 페이지당 20▾ · ‹ 1 2 3 … 9 ›」(채움 칸 밖에 둔다). total 을 모르면(옛 응답) 이전/다음만
+//   SortHead     <thead> — 머리 sticky 42 · 회색 바탕 · 12/600, 정렬되는 칸은 버튼 + 화살표 + aria-sort
+//   TablePager   아래 쪽 넘김(참고 대시보드, 11/05) 「총 45건 · 1/3 페이지」 ··· 「20개씩▾ |‹ ‹ 1 2 3 › ›|」(채움 칸 밖에 둔다). total 을 모르면(옛 응답) 「1–20 · 1 페이지」 + 이전/다음만
 //   BusyBar      재조회 때 머리 위 2px 진행 띠(이전 행은 그대로 둔다)
-//   StatusPill   상태 배지 — 11.5/700 + 글자색 1px 테두리 · 옅은 배경
-// 행 46(.sg-table td) · 줄 선 --line-soft · 숫자 칸 오른쪽(num) · 긴 글 칸 하나만 남는 폭 + 말줄임(fill) · 짧은 칸은 내용 폭(short)
+//   StatusPill   상태 배지 — 27 · 12.5/750 · 톤 테두리 · 옅은 배경(참고 대시보드)
+// 행 48(.sg-table td) · 줄 선 --line-soft · 숫자 칸 오른쪽(num) · 긴 글 칸 하나만 남는 폭 + 말줄임(fill) · 짧은 칸은 내용 폭(short)
 export function SortHead<T>({ columns, sort, onSort }: { columns: Column<T>[]; sort: SortState; onSort: (key: string) => void }) {
   return (
     <thead className="sg-thead">
@@ -68,7 +69,7 @@ export function TablePager({
 }) {
   const known = total != null;
   const n = known ? Math.max(1, Math.ceil(total / size)) : 0;
-  const btn = (label: string, p: number, o: { key?: string; aria?: string; cur?: boolean; disabled?: boolean } = {}) => (
+  const btn = (label: ReactNode, p: number, o: { key?: string; aria?: string; cur?: boolean; disabled?: boolean } = {}) => (
     <button
       key={o.key ?? String(p)}
       type="button"
@@ -86,26 +87,21 @@ export function TablePager({
     <div className="tk-foot" data-table-foot={name}>
       <div className="tk-pager" data-part="pager">
         <span className="num" data-part="range">
-          {known ? (total ? `${fmtNum(from)}–${fmtNum(to)} / ${fmtNum(total)}` : '0건') : `${fmtNum(from)}–${fmtNum(to)}`}
+          {known ? `총 ${fmtNum(total)}건 · ${page}/${n} 페이지` : `${fmtNum(from)}–${fmtNum(to)} · ${page} 페이지`}
         </span>
-        <span className="tk-dot" aria-hidden>
-          ·
-        </span>
-        <label className="tk-size-label">
-          페이지당{' '}
+        <div className="tk-pager-right">
           <select className="tk-size" data-part="page-size" aria-label="페이지당 행 수" value={size} onChange={(e) => onSize(Number(e.target.value))}>
             {PAGE_SIZES.map((x) => (
               <option key={x} value={x}>
-                {x}
+                {x}개씩
               </option>
             ))}
           </select>
-        </label>
-        <nav className="tk-pages" aria-label="쪽">
-          {known
-            ? total
+          <nav className="tk-pages" aria-label="쪽">
+            {known
               ? [
-                  btn('‹', page - 1, { key: 'prev', aria: '이전 쪽', disabled: page <= 1 }),
+                  btn(<ChevronFirst aria-hidden />, 1, { key: 'first', aria: '첫 쪽', disabled: page <= 1 }),
+                  btn(<ChevronLeft aria-hidden />, page - 1, { key: 'prev', aria: '이전 쪽', disabled: page <= 1 }),
                   ...pageNums(page, n).flatMap((x, i, a) => [
                     ...(i && x - a[i - 1] > 1
                       ? [
@@ -116,11 +112,15 @@ export function TablePager({
                       : []),
                     btn(String(x), x, { cur: x === page }),
                   ]),
-                  btn('›', page + 1, { key: 'next', aria: '다음 쪽', disabled: page >= n }),
+                  btn(<ChevronRight aria-hidden />, page + 1, { key: 'next', aria: '다음 쪽', disabled: page >= n }),
+                  btn(<ChevronLast aria-hidden />, n, { key: 'last', aria: '끝 쪽', disabled: page >= n }),
                 ]
-              : null
-            : [btn('‹ 이전', page - 1, { key: 'prev', aria: '이전 쪽', disabled: !hasPrev }), btn('다음 ›', page + 1, { key: 'next', aria: '다음 쪽', disabled: !hasNext })]}
-        </nav>
+              : [
+                  btn(<ChevronLeft aria-hidden />, page - 1, { key: 'prev', aria: '이전 쪽', disabled: !hasPrev }),
+                  btn(<ChevronRight aria-hidden />, page + 1, { key: 'next', aria: '다음 쪽', disabled: !hasNext }),
+                ]}
+          </nav>
+        </div>
       </div>
     </div>
   );
@@ -134,7 +134,7 @@ export function BusyBar({ on }: { on: boolean }) {
   );
 }
 
-export type PillTone = 'neutral' | 'accent' | 'info' | 'ok' | 'warn' | 'danger';
+export type PillTone = 'neutral' | 'accent' | 'info' | 'ok' | 'warn' | 'danger' | 'dark';
 export function StatusPill({ tone = 'neutral', children, ...rest }: { tone?: PillTone; children: ReactNode } & Record<`data-${string}`, string | undefined>) {
   return (
     <span className={`sg-pill sg-pill-${tone}`} {...rest}>

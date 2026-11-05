@@ -217,7 +217,7 @@ function Row({
       data-bar={bar ?? undefined}
       aria-selected={selected}
       onClick={onOpen}
-      className={`cursor-pointer hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${selected ? 'bg-indigo-50' : ''}`}
+      className={`cursor-pointer hover:bg-[var(--row-hover)] focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${selected ? 'bg-indigo-50' : ''}`}
     >
       <td data-col="started" className="num tk-short font-mono text-xs text-slate-600" title={fmtDateTime(s.startedAt)} style={barStyle(bar)}>
         {isToday(s.startedAt, now) ? fmtTime(s.startedAt) : fmtDateTime(s.startedAt)}
