@@ -651,11 +651,11 @@ html.sg-sorting, html.sg-sorting * { cursor: grabbing !important; -webkit-user-s
 .sg-sheet-host { position: absolute; inset: 0; z-index: 40; pointer-events: none; }
 .sg-sheet-host:empty { display: none; }
 .sg-sheet-layer { position: absolute; inset: 0; overflow: hidden; display: flex; justify-content: flex-end; pointer-events: auto; background: rgba(15, 23, 42, 0.28); animation: sg-scrim-in var(--t-base) var(--ease) both; }
-.sg-sheet-layer > .sg-sheet { --sheet-w: min(720px, calc(100% - 48px)); width: var(--sheet-w); height: 100%; border-radius: 0; border-top: 0; border-right: 0; border-bottom: 0; box-shadow: -12px 0 32px rgba(15, 23, 42, 0.16); animation: sg-slide-in 260ms var(--ease) both; }
+.sg-sheet-layer > .sg-sheet { --sheet-w: min(720px, calc(100% - 48px)); width: var(--sheet-w); height: 100%; border-radius: 0; border-top: 0; border-right: 0; border-bottom: 0; box-shadow: -12px 0 32px rgba(15, 23, 42, 0.16); animation: sg-slide-in var(--t-slow) var(--ease) both; } /* 11/04f 원칙: 길이는 모션 토큰 */
 .sg-sheet-layer > .sg-sheet[data-size='wide'] { --sheet-w: min(1080px, 70%); }
 .sg-sheet-layer.still, .sg-sheet-layer.still > .sg-sheet { animation: none; }
-.sg-sheet-layer.closing { animation: sg-scrim-out 180ms ease-in both; }
-.sg-sheet-layer.closing > .sg-sheet { animation: sg-slide-out 180ms ease-in both; }
+.sg-sheet-layer.closing { animation: sg-scrim-out var(--t-base) ease-in both; }
+.sg-sheet-layer.closing > .sg-sheet { animation: sg-slide-out var(--t-base) ease-in both; }
 @keyframes sg-scrim-in { from { background: rgba(15, 23, 42, 0); } }
 @keyframes sg-scrim-out { to { background: rgba(15, 23, 42, 0); } }
 @keyframes sg-slide-in { from { transform: translateX(100%); } }

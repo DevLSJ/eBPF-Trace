@@ -13,6 +13,8 @@ export type { SheetNav } from './sheet-nav';
 //   - nav: 보이는 목록(현재 쪽) 안의 앞뒤 — 머리 「n / m ‹ ›」 · ↑↓, 닫지 않고 넘긴다
 //   - 열린 항목은 URL(?id=)에 남는다(화면 쪽). 같은 kind 가 방금 닫히고 다시 열리면(key 로 다시 그리기 · 이전/다음) 애니메이션을 되풀이하지 않는다
 const lastGone: { kind: string; at: number } = { kind: '', at: 0 };
+// 나가는 애니메이션 길이 = --t-base(11/04f 원칙: 모션 토큰)
+const baseMs = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--t-base')) || 200;
 const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function Sheet({
@@ -55,7 +57,7 @@ export function Sheet({
     setTimeout(() => {
       lastGone.kind = ''; // 닫고 나서 다시 여는 것은 새로 미끄러져 들어온다
       onCloseRef.current();
-    }, 180);
+    }, baseMs());
   }, []);
   const navRef = useRef(nav);
   useEffect(() => {
