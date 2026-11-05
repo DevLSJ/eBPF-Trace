@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. ✅ 연쇄 규칙 `kind: sequence` — 기본 `chain-download-secrets`(kill · dryRun, 11/04)
 4. ✅ 평가 라운드(11/04) — 실제 악성 594 · 정상 600 정적 측정, sg-vm 런타임 반복 측정, ML 비교(운영은 규칙), 「평가」 화면 · `GET /api/evaluation`. 결과는 `bench/reports/` · README 「실측 결과」
 5. ✅ UI 라운드(11/04) — 공통 부품 · 스크롤 없는 페이지 · 길게 눌러 옮기기 · 코드 창 · 파일 트리 · 채팅 · 대시보드 재배치 · 시연 전용 페이지 `/demo`(대시보드 시연 카드 제거) · 표 쪽 번호. 개발용 로그인 admin/admin(`AUTH_DEV_MODE`, 11/05)
-6. ✅ sg-vm 반영 · 실측(11/05, 7fafd35) — 시연 benign 통과 · chain 1단계 격리 · all 격리 · 증거 즉시 조회 · 1920 한 화면. `DEMO_ENABLED=true` 켬
+6. ✅ sg-vm 반영 · 실측(11/05, 052894d) — 시연 benign 통과 · chain 1단계 격리 · all 격리 · 증거 즉시 조회 · 1920 한 화면. `DEMO_ENABLED=true` 켬
 7. EC2 — ✅ 11/05 첫 반영(`/home/ubuntu/supplyguard/current`, sg-vm 과 같은 이미지) · 시연 3종 · 공급망 검사 실측 통과. 남은 것: 보안 그룹 HTTP 80 · 인스턴스 t4g.small(지금 micro)
 8. GitHub 공개 — 기존 공개 저장소 `DevLSJ/eBPF-Trace` 를 덮어씀(옛 main 은 archive 브랜치 보존). 이력 치환은 별도 클론에서 시험 완료(11/05), force push 는 사용자 확인 뒤
 9. 리허설(11/11) · 최종 녹화(11/12) · 발표(11/13). **발표 뒤**: 판정 규칙 조정 실험 · 위반 · 분 집계 · 인증 감사 보관 기간(30일) · 커널 7.0 이벤트 유실
@@ -40,7 +40,7 @@ AI 도우미: 백엔드 → Ollama qwen2.5:3b(선택, 읽기 전용 조회 → �
 
 - **백엔드**: Go 1.26 · Inspektor Gadget v0.56.1을 Go 패키지로 프로세스 안에서 실행(Cgo 없음). 가젯 데이터 오퍼레이터는 `operators.GetDataOperators()` 전체를 쓰고 LocalManager만 직접 만든 컬렉션으로 교체한다 — 일부만 넣으면 trace_dns가 CO-RE 오류로 안 뜬다
 - **컨테이너 발견**: `CONTAINER_DISCOVERY=auto`(기본) — fanotify(runc 훅)를 먼저 시도하고 안 되면(Docker Desktop) docker-events. docker-events는 컨테이너 시작 순간의 동작을 놓친다(11/03 sg-vm · sg-ec2 실측: 시작 0초 0/10, 0.05초부터 10/10)
-- **프론트**: React 18 · TS · Vite 7 · Tailwind 4 · React Flow · qrcode(로컬 번들). 차트는 직접 그린 SVG(차트 라이브러리 없음 — 3becc47 에서 Recharts 제거, 11/04 「SVG 유지」 확정)
+- **프론트**: React 18 · TS · Vite 7 · Tailwind 4 · React Flow · qrcode(로컬 번들). 차트는 직접 그린 SVG(차트 라이브러리 없음 — 26b0225 에서 Recharts 제거, 11/04 「SVG 유지」 확정)
 - **저장**: PostgreSQL 17 · Redis 7(이벤트 버퍼). 정상 이벤트는 하나씩 저장하지 않고 분 단위 개수만(`collected_minutes`), 감사 로그는 위반만. 증거만 7일 정리(11/02 sg-vm 실측: 이벤트 12.7만 건 뒤 DB 8.9MB)
 - **배포**: Docker Compose(nginx 80 → backend :8000 · frontend :80 · PG · Redis · 선택 Caddy · 선택 `ollama`(`--profile ai`, 4GB)) · 레지스트리 Docker Hub(`sg-ec2` 는 SSH 로 이미지 전송) · EC2 단일 호스트(`sg-ec2`, 11/03 새 계정)
 - **격리 책임**: IG는 탐지만, kill은 백엔드가 Docker API로
