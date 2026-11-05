@@ -52,7 +52,7 @@ AI 도우미: 백엔드 → Ollama qwen2.5:3b(선택, 읽기 전용 조회 → �
 ```
 backend/   cmd/{server,healthcheck} · internal/{api,auth,chat,config,dockerapi,enforcer,evidence,ingestion,model,notify,osv,pipeline,review,rules,scan,sginstall,stats,store,summary,ws} · policies/default.yaml
 frontend/  src/{components/{shell,list},features/{dashboard,installs,scans,events,topology,policies,audit,settings},hooks,lib} · e2e/
-mock/      정적 목업(index.html + shared/ + tests/) — 결정 확인용
+mock/      옛 정적 목업(index.html + shared/ + tests/) — 11/05 부터 기록용(고치지 않음)
 deploy/    compose(기본 · dev · mock · https) · Dockerfile · nginx · deploy.sh · demo/
 tools/     sg-install
 ```
@@ -62,7 +62,7 @@ tools/     sg-install
 | 명령 | 내용 |
 |---|---|
 | `make dev` | 백엔드(mock 이벤트, :8000, 로그인 켜짐 · `admin`/`admin` 으로 바로 대시보드 — Makefile `DEV_AUTH` 가 OTP 를 끄고 `AUTH_DEV_MODE=true`(mock 소스 전용)로 비밀번호 변경 · 라이선스 단계를 건너뜀) + Vite(:5173) |
-| `make mock` | 목업 :8766 (**8765는 참고 제품 목업 — 끄지 않는다**). 병렬 회귀는 8767 · 8768 |
+| `make mock` | 옛 목업 :8766 — 11/05 부터 개발 · 검증에 쓰지 않음(기록 열람용). **8765는 참고 제품 목업 — 끄지 않는다** |
 | `make test` | 백엔드 vet · race 테스트 + 프론트 lint · build |
 | `cd frontend && npx playwright test` | React e2e(가짜 백엔드, CI 에도 있음) |
 | `make stack-up` / `stack-down` | 전체 스택 컨테이너(mock 소스, `.env` 에 `ADMIN_INITIAL_PASSWORD` 필요) |
@@ -84,18 +84,16 @@ tools/     sg-install
   - **Ubuntu 26.04(커널 7.0)는 쓰지 않는다** — IG v0.56.1 가젯 이벤트가 발견 방식과 상관없이 약 절반 빠졌다(11/03 실측: 26.04 fanotify 14/40 · 22.04 fanotify 40/40 · docker-events 는 컨테이너 시작 순간 동작만 놓쳐 30/40)
 - 반영은 `deploy/deploy.sh`의 백업 → 반영 → 확인 → 실패 시 복구만
 
-### 목업 (`mock/`) [2026-10-15 확정 · 2026-11-02 갱신]
+### 화면 개발 [2026-11-05 사용자 결정 — 목업 단계 · 목업 테스트 없앰]
 
-**React가 기준이고, 목업은 결정 확인용이다.** 화면 변경은 목업에서 먼저 보여 주고 확정한 뒤 React에 반영한다. 둘이 다르면 어느 쪽이 맞는지 묻는다. 목업을 재구성하지 않는다.
+**로컬 서버(React · 백엔드) 위주로 개발하고 테스트한다.** 화면 변경은 `make dev`(:5173 · admin/admin)에서 바로 만들어 띄워 보여 주고 확정한다. 검증은 `make test` + React e2e(`frontend/e2e`), 새 회귀 테스트도 React e2e 로만 쓴다. 개인 규칙의 「목업 먼저(mockup-first)」는 이 저장소에서 쓰지 않는다.
 
-디자인 [2026-10-30 — 10/15 「테마 유지」 결정 변경]: 공통 토큰 · 부품(값은 `frontend/src/index.css` = `mock/shared/styles.css`). 카드 · 그리드 · 모션은 Pinterest 식, 표 · 필터 · 사이드바 · 설정은 Linear/Vercel 식, 빨강은 위험에만 · 강조 indigo. 외부 CSS · 웹폰트 · 로고 금지. 다크 모드(`supplyguard.theme`) · 768px 미만(서랍 사이드바 · 1열, 단 종합 숫자 칸은 2열) 포함.
+디자인 [2026-10-30 — 10/15 「테마 유지」 결정 변경]: 공통 토큰 · 부품(값은 `frontend/src/index.css`). 카드 · 그리드 · 모션은 Pinterest 식, 표 · 필터 · 사이드바 · 설정은 Linear/Vercel 식, 빨강은 위험에만 · 강조 indigo. 외부 CSS · 웹폰트 · 로고 금지. 다크 모드(`supplyguard.theme`) · 768px 미만(서랍 사이드바 · 1열, 단 종합 숫자 칸은 2열) 포함.
 
-- 데이터 소스 2종: 내장 시뮬레이션 / 실제 백엔드(`?source=live&api=…`, 쿠키 로그인 — 목업 · 백엔드를 같은 호스트 이름 127.0.0.1 로). 빈 서버 `?fresh=1`, 로그인 건너뛰기 `?as=admin|viewer`, 첫 로그인부터 `?auth=fresh`
-- **결정 기록**: 10/15 1차 · 10/16 · 10/20 도우미(`guide-1020.cjs`) · 10/20 2차(로그인 · 대화상자 · 알림 센터 · 목록 · 셸 · 새 기본 규칙 · 증거, `feedback-1020b.cjs`) · 10/20 결정 반영(토큰 칸 삭제 · 설정 화면 · 라이선스 칩 · 30초 재시도 · 비밀번호 5자, `feedback-1020c.cjs`) · 10/30(DNS 규칙 · 시연 · 타임라인 · 신호등 · 보고서 · 디자인 토큰 · 다크 · 768px, `dns-1030` · `demo-1030` · `theme-1030`, 11/02 React 맞춤) — 상세는 `mock/README.md` 반영 기록
+- `mock/`(정적 목업 · `mock/tests/*.cjs`)은 지난 결정의 기록으로만 남긴다 — 고치지 않고 회귀도 돌리지 않는다. 지난 결정 기록 원문은 `mock/README.md` 반영 기록
+- 지난 결정(목업 시절): 10/15 1차 · 10/16 · 10/20 도우미(`guide-1020.cjs`) · 10/20 2차(로그인 · 대화상자 · 알림 센터 · 목록 · 셸 · 새 기본 규칙 · 증거, `feedback-1020b.cjs`) · 10/20 결정 반영(토큰 칸 삭제 · 설정 화면 · 라이선스 칩 · 30초 재시도 · 비밀번호 5자, `feedback-1020c.cjs`) · 10/30(DNS 규칙 · 시연 · 타임라인 · 신호등 · 보고서 · 디자인 토큰 · 다크 · 768px, `dns-1030` · `demo-1030` · `theme-1030`, 11/02 React 맞춤) · 11/05 슬라이드 패널(상세는 본문 위에 겹쳐 오른쪽에서 — 공급망 · 설치 70% · 그 밖 720 · 뒤 어둡게 · 「n / m ‹ ›」 · ↑↓ · 주제별 블록, `sheet-1105`) — 상세는 `mock/README.md` 반영 기록
 - API 계약: Claude Docs 「API 계약」 탭
-- Playwright: `frontend/node_modules/playwright`(목업 회귀는 `PLAYWRIGHT=` 로 빌려 쓴다)
-- 회귀: 목업 15묶음(feedback-1015 · goals-1015 · decisions-1016 · policy-1016 · overview-1016 · scan-1016 · guide-1020 · feedback-1020b · feedback-1020c · align-1021 · url-1021 · dns-1030 · demo-1030 · theme-1030 · scan-1102) + React `frontend/e2e`. 판정 N/N + 콘솔 오류 0. live 검사는 `API=`(기본 127.0.0.1:8000) 백엔드가 떠 있을 때만 돈다 — `make dev` 를 켜 둔 채 돌리면 비밀번호가 달라 실패하니 `API=http://127.0.0.1:8099` 처럼 비우거나 `mock/tests/live-login.cjs` 로 맞춘다
-- 스크린샷은 `mock/screenshots/`(gitignore)
+- 스크린샷은 `frontend/test-results/screens/`(e2e `SHOTS`)
 
 ## 도메인 규칙
 
@@ -124,13 +122,13 @@ tools/     sg-install
 |---|---|
 | **1** — 한 줄씩 설명 가능, 커밋 분리 | `enforcer`(kill · 증거 훅) · `rules` 매칭(`directIp` · `kind: dns` 포함) · 시연 API(`demo` — 컨테이너 기동) · 관찰 범위(`WATCH_`/`IGNORE_CONTAINERS` · 컨테이너 발견 방식) · **인증**(`auth` — 로그인 · 세션 · 역할 · CSRF · 잠금 · `AUTH_SECRET_KEY` · 라이선스) · CORS · 가젯 로딩(privileged · `pid: host` · docker.sock) · `deploy.sh` |
 | **2** — 설계 + 테스트 | `pipeline` · `resolver`(DNS 캐시) · `ingestion` · `store` · `ws` · `review` · `scan` · `notify` · `evidence` · `chat` · `summary` · API 계약 · `sg-install` |
-| **3** — 실행해 보고 확인 | 화면 · 목업 · 스타일 · 설정 |
+| **3** — 실행해 보고 확인 | 화면 · 스타일 · 설정 |
 
 ### 매 세션
 
 1. 계획 승인 → 구현. 계획과 실측이 다르면 멈추고 정정 보고
 2. 결함은 원인 실측 후 설계. 수정 전 코드에서 새 테스트 실패를 먼저 보인다
-3. 자가 검증: `make test` + React e2e + 바뀐 화면 회귀 N/N + 콘솔 오류 0. 가젯 동작은 `sg-vm`에서만 실측
+3. 자가 검증: `make test` + React e2e(바뀐 화면은 e2e 로 지킨다) + 콘솔 오류 0. 목업 회귀는 돌리지 않는다 [11/05]. 가젯 동작은 `sg-vm`에서만 실측
 4. 화면 질문은 앱을 띄워 열어 준 뒤 한다
 
 ### 문서
