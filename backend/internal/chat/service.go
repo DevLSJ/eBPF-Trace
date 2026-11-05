@@ -93,7 +93,7 @@ type Run struct {
 }
 
 // Start: 질문을 검사하고 의도를 분류한다. 모델이 필요한 질문은 자리를 잡는다(이미 생성 중이면 ErrBusy).
-// 화면 설명은 모델을 쓰지 않으니 자리 없이 받는다.
+// 화면 설명 · 사용법은 모델을 쓰지 않으니 자리 없이 받는다.
 func (s *Service) Start(req Request) (*Run, error) {
 	q := strings.TrimSpace(req.Question)
 	if q == "" {
@@ -103,7 +103,7 @@ func (s *Service) Start(req Request) (*Run, error) {
 		return nil, ErrTooLong
 	}
 	r := &Run{s: s, q: q, page: req.Page, history: cleanHistory(req.History), plan: Classify(q, s.cases())}
-	if r.plan.Intent != IntentPage {
+	if r.plan.Intent != IntentPage && r.plan.Intent != IntentUsage {
 		select {
 		case s.slot <- struct{}{}:
 			r.held = true
@@ -215,6 +215,16 @@ func (r *Run) Stream(parent context.Context, emit Emit) {
 			return
 		}
 		finish(Facts{Intent: IntentPage, Sentences: []string{txt}}, []Link{}, nil)
+		return
+	}
+	// 1-1) 사용법: 모델 없이 고정 문구 + 관련 화면
+	if r.plan.Intent == IntentUsage {
+		txt, links := usageText(r.plan.Args["topic"])
+		if emit("token", txt) != nil {
+			outcome = "client_gone"
+			return
+		}
+		finish(Facts{Intent: IntentUsage, Sentences: []string{txt}}, links, nil)
 		return
 	}
 
