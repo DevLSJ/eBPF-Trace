@@ -204,10 +204,12 @@ test.describe('인증 — 앱 안에서', () => {
   test('401 + state 면 그 단계 화면, state 가 없으면 로그인(문구 표시)', async ({ page, backend }) => {
     await page.goto('/');
     await expect(page.getByTestId('page-title')).toHaveText('대시보드');
+    // 실시간 연결이 선 뒤에 상태를 바꾼다 — 연결되는 순간 /api/cases · /api/info 를 다시 읽으므로, 느린 CI 에서는 그 요청이 클릭보다 먼저 401 을 받아 대시보드에서 라이선스 화면으로 갔다(11/05 CI trace)
+    await expect(page.getByText('실시간 연결됨')).toBeVisible();
+    await page.waitForLoadState('networkidle'); // 연결 직후 다시 읽기까지 끝난 뒤
     backend.auth.session!.state = 'need_license';
-    // R2 11/04: 대시보드 아래 칸 「감사 로그 ›」(더 보기)와 겹치지 않게 사이드바에서 누른다.
-    // 주기 요청이 클릭보다 먼저 401 + state 를 받으면 셸이 라이선스 화면으로 바뀌어 링크가 사라진다(11/05 CI) — 아래 세션 만료와 같이 어느 쪽이 먼저든 결과는 같아야 한다
-    await page.getByRole('navigation', { name: '화면' }).getByRole('link', { name: '감사 로그' }).click({ timeout: 2000 }).catch(() => {});
+    // R2 11/04: 대시보드 아래 칸 「감사 로그 ›」(더 보기)와 겹치지 않게 사이드바에서 누른다
+    await page.getByRole('navigation', { name: '화면' }).getByRole('link', { name: '감사 로그' }).click();
     await expect(step(page)).toHaveAttribute('data-step', 'license');
 
     backend.auth.session!.state = 'active';
