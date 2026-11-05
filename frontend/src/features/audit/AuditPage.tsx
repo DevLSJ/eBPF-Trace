@@ -355,7 +355,7 @@ function Violations({
                     data-level={level}
                     aria-selected={String(a.id) === selectedId}
                     onClick={() => onOpen(a.id)}
-                    className={`cursor-pointer hover:bg-slate-50 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${String(a.id) === selectedId ? 'bg-indigo-50' : ''}`}
+                    className={`cursor-pointer hover:bg-[var(--row-hover)] focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${String(a.id) === selectedId ? 'bg-indigo-50' : ''}`}
                   >
                     {/* 11/04e 막대: 격리된 행만(위험색) */}
                     <td data-col="id" className="num num-col tk-short text-xs text-slate-400" style={barStyle(level === 'killed' && 'danger')}>

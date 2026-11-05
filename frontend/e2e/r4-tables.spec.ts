@@ -187,12 +187,12 @@ const SCREENS: [string, string, (p: Page) => Promise<void>][] = [
 
 // ── A 설치 검사 ──
 test.describe('A 설치 검사 표', () => {
-  test('머리 sticky 12/700 · 정렬 aria-sort(오름 → 내림 · 키보드) · 행 44~48 · 숫자 오른쪽 · 배지 11.5/700 + 테두리 · 막대는 판정 대기 · 격리만', async ({ page, backend }) => {
+  test('머리 sticky 12/600 · 정렬 aria-sort(오름 → 내림 · 키보드) · 행 44~48 · 숫자 오른쪽 · 배지 12.5/750 + 테두리 · 막대는 판정 대기 · 격리만', async ({ page, backend }) => {
     void backend;
     await page.goto('/installs');
     await page.locator('[data-chip="all"]').click();
     const T = 'installs';
-    expect(await headStyle(page, T)).toEqual(['12px', '700', 'sticky']);
+    expect(await headStyle(page, T)).toEqual(['12px', '600', 'sticky']);
     const sortable = await page.locator(`table[data-table="${T}"] th[aria-sort]`).evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.col));
     expect(sortable.length, `정렬 칸 ${sortable}`).toBeGreaterThanOrEqual(5);
     expect(await ariaSort(page, T, 'started')).toBe('descending'); // 기본: 시작 내림(목록 순서 그대로)
@@ -224,7 +224,7 @@ test.describe('A 설치 검사 표', () => {
         .evaluate((e) => e.classList.contains('tk-fill')),
     ).toBe(true);
     expect(await page.locator(`table[data-table="${T}"] th[data-col="started"]`).evaluate((e) => e.classList.contains('tk-short'))).toBe(true);
-    expect(await pillStyle(page, `table[data-table="${T}"] tbody [data-status]`)).toEqual({ fs: '11.5px', fw: '700', line: true, radius: true });
+    expect(await pillStyle(page, `table[data-table="${T}"] tbody [data-status]`)).toEqual({ fs: '12.5px', fw: '750', line: true, radius: true });
     // 막대: 격리(위험) · 판정 대기 경고(경고)만, 통과 없음
     await page.locator(`table[data-table="${T}"] th[data-col="started"] button`).click();
     const danger = await tokRgb(page, '--danger');
@@ -240,21 +240,21 @@ test.describe('A 설치 검사 표', () => {
     await page.screenshot({ path: `${SCRATCH}/r4-installs.png` });
   });
 
-  test('쪽 번호 바닥줄(클라이언트): 1–20 / N · 쪽 단추 · 페이지당 50 · 바닥줄은 채움 칸 밖 · 필터 바꾸면 첫 쪽 · ?id= 행이 있는 쪽', async ({ page, backend }) => {
+  test('쪽 번호 바닥줄(클라이언트): 총 N건 · 1/P 페이지 · 쪽 단추 · 페이지당 50 · 바닥줄은 채움 칸 밖 · 필터 바꾸면 첫 쪽 · ?id= 행이 있는 쪽', async ({ page, backend }) => {
     seedInstalls(backend, 37); // 8 + 37 = 45
     await page.goto('/installs?status=all');
     const foot = page.locator('[data-table-foot="installs"]');
-    await expect(foot.locator('[data-part="range"]')).toHaveText('1–20 / 45');
+    await expect(foot.locator('[data-part="range"]')).toHaveText('총 45건 · 1/3 페이지');
     await expect(page.locator('table[data-table="installs"] tbody tr')).toHaveCount(20);
     await expect(foot.locator('select[data-part="page-size"]')).toHaveValue('20');
     await foot.locator('[data-page="2"]').click();
-    await expect(foot.locator('[data-part="range"]')).toHaveText('21–40 / 45');
+    await expect(foot.locator('[data-part="range"]')).toHaveText('총 45건 · 2/3 페이지');
     await expect(foot.locator('[data-page="2"]')).toHaveAttribute('aria-current', 'page');
     await foot.locator('[data-page="next"]').click();
-    await expect(foot.locator('[data-part="range"]')).toHaveText('41–45 / 45');
+    await expect(foot.locator('[data-part="range"]')).toHaveText('총 45건 · 3/3 페이지');
     await expect(foot.locator('[data-page="next"]')).toBeDisabled();
     await foot.locator('select[data-part="page-size"]').selectOption('50');
-    await expect(foot.locator('[data-part="range"]')).toHaveText('1–45 / 45');
+    await expect(foot.locator('[data-part="range"]')).toHaveText('총 45건 · 1/1 페이지');
     await expect(page.locator('table[data-table="installs"] tbody tr')).toHaveCount(45);
     expect(
       await page.evaluate(() => {
@@ -267,7 +267,7 @@ test.describe('A 설치 검사 표', () => {
     await foot.locator('select[data-part="page-size"]').selectOption('20');
     await foot.locator('[data-page="3"]').click();
     await page.locator('[data-chip="pip"]').click();
-    await expect(foot.locator('[data-part="range"]')).toHaveText(/^1–20 \/ \d+$/);
+    await expect(foot.locator('[data-part="range"]')).toHaveText(/^총 \d+건 · 1\/\d+ 페이지$/);
     // 주소 ?id= 로 들어오면 그 행이 있는 쪽(38번째 행 = 2쪽)
     await page.goto('/installs?status=all&id=ins-1030');
     await expect(page.locator('[data-sheet="install"]')).toBeVisible();
@@ -298,14 +298,14 @@ test.describe('A 설치 검사 표', () => {
 
 // ── B 공급망 검사 ──
 test.describe('B 공급망 검사 표', () => {
-  test('정렬 aria-sort · 쪽 번호 1–20 / 25 · 악성 행만 위험 막대 · 배지 pill · 위험 점수 오른쪽', async ({ page, backend }) => {
+  test('정렬 aria-sort · 총 25건 · 1/2 페이지 · 악성 행만 위험 막대 · 배지 pill · 위험 점수 오른쪽', async ({ page, backend }) => {
     void backend;
     await scansApi(page);
     await page.goto('/scans');
     const T = 'scans';
     await expect(page.locator(`table[data-table="${T}"] tbody tr`)).toHaveCount(20);
-    expect(await headStyle(page, T)).toEqual(['12px', '700', 'sticky']);
-    await expect(page.locator(`[data-table-foot="${T}"] [data-part="range"]`)).toHaveText('1–20 / 25');
+    expect(await headStyle(page, T)).toEqual(['12px', '600', 'sticky']);
+    await expect(page.locator(`[data-table-foot="${T}"] [data-part="range"]`)).toHaveText('총 25건 · 1/2 페이지');
     expect(await ariaSort(page, T, 'started')).toBe('descending');
     await page.locator(`table[data-table="${T}"] th[data-col="risk"] button`).click();
     expect(await ariaSort(page, T, 'risk')).toBe('ascending');
@@ -320,13 +320,13 @@ test.describe('B 공급망 검사 표', () => {
         .first()
         .evaluate((e) => getComputedStyle(e).textAlign),
     ).toBe('right');
-    expect(await pillStyle(page, `table[data-table="${T}"] tbody td[data-col="verdict"] > span`)).toEqual({ fs: '11.5px', fw: '700', line: true, radius: true });
+    expect(await pillStyle(page, `table[data-table="${T}"] tbody td[data-col="verdict"] > span`)).toEqual({ fs: '12.5px', fw: '750', line: true, radius: true });
     const danger = await tokRgb(page, '--danger');
     const bars = await barOf(page, `table[data-table="${T}"] tbody tr`);
     expect(bars[0]).toBe(danger); // 악성(점수 8.2 — 내림 정렬 첫 행)
     expect(bars.slice(1).every((b) => b === null)).toBe(true);
     await page.locator(`[data-table-foot="${T}"] [data-page="2"]`).click();
-    await expect(page.locator(`[data-table-foot="${T}"] [data-part="range"]`)).toHaveText('21–25 / 25');
+    await expect(page.locator(`[data-table-foot="${T}"] [data-part="range"]`)).toHaveText('총 25건 · 2/2 페이지');
     await expect(page.locator(`table[data-table="${T}"] tbody tr`)).toHaveCount(5);
     // ?id= 로 들어오면 그 행이 있는 쪽
     await page.goto(`/scans?id=${SCANS[22].id}`);
@@ -337,20 +337,20 @@ test.describe('B 공급망 검사 표', () => {
 
 // ── C 감사 로그(서버 쪽 번호) ──
 test.describe('C 감사 로그 쪽 번호', () => {
-  test('offset · limit 요청 → 1–20 / total · 2쪽 offset=20 · 페이지당 50 · 정렬은 받은 쪽 안에서 · 「더 보기」 없음 · 격리 행만 막대', async ({ page, backend }) => {
+  test('offset · limit 요청 → 총 total건 · 2쪽 offset=20 · 페이지당 50 · 정렬은 받은 쪽 안에서 · 「더 보기」 없음 · 격리 행만 막대', async ({ page, backend }) => {
     backend.seedAudit(40);
     const total = backend.audit.length;
     await page.goto('/audit');
     const T = 'audit';
     const foot = page.locator(`[data-table-foot="${T}"]`);
-    await expect(foot.locator('[data-part="range"]')).toHaveText(`1–20 / ${total}`);
+    await expect(foot.locator('[data-part="range"]')).toHaveText(`총 ${total}건 · 1/${Math.ceil(total / 20)} 페이지`);
     await expect(page.locator(`table[data-table="${T}"] tbody tr`)).toHaveCount(20);
     const auditReqs = () => backend.requests.filter((r) => r.method === 'GET' && r.path.startsWith('/audit?')).map((r) => new URLSearchParams(r.path.split('?')[1]));
     expect(auditReqs().some((q) => q.get('offset') === '0' && q.get('limit') === '20')).toBe(true);
-    expect(await headStyle(page, T)).toEqual(['12px', '700', 'sticky']);
+    expect(await headStyle(page, T)).toEqual(['12px', '600', 'sticky']);
     const page1 = await page.locator(`table[data-table="${T}"] tbody tr`).evaluateAll((els) => els.map((e) => Number((e as HTMLElement).dataset.audit)));
     await foot.locator('[data-page="2"]').click();
-    await expect(foot.locator('[data-part="range"]')).toHaveText(`21–40 / ${total}`);
+    await expect(foot.locator('[data-part="range"]')).toHaveText(`총 ${total}건 · 2/${Math.ceil(total / 20)} 페이지`);
     expect(auditReqs().some((q) => q.get('offset') === '20' && q.get('limit') === '20')).toBe(true);
     const page2 = await page.locator(`table[data-table="${T}"] tbody tr`).evaluateAll((els) => els.map((e) => Number((e as HTMLElement).dataset.audit)));
     expect(page2.some((id) => page1.includes(id))).toBe(false);
@@ -362,7 +362,7 @@ test.describe('C 감사 로그 쪽 번호', () => {
     expect(sorted).toEqual([...page2].sort((a, b) => a - b));
     expect(auditReqs().length).toBe(n);
     await foot.locator('select[data-part="page-size"]').selectOption('50');
-    await expect(foot.locator('[data-part="range"]')).toHaveText(`1–50 / ${total}`);
+    await expect(foot.locator('[data-part="range"]')).toHaveText(`총 ${total}건 · 1/${Math.ceil(total / 50)} 페이지`);
     expect(auditReqs().some((q) => q.get('offset') === '0' && q.get('limit') === '50')).toBe(true);
     await expect(page.locator(`table[data-table="${T}"] tbody tr`)).toHaveCount(50);
     await expect(page.getByRole('button', { name: '더 보기' })).toHaveCount(0);
@@ -388,7 +388,7 @@ test.describe('C 감사 로그 쪽 번호', () => {
         .first()
         .evaluate((e) => getComputedStyle(e).textAlign),
     ).toBe('right');
-    expect(await pillStyle(page, `table[data-table="${T}"] tbody td[data-col="level"] > span`)).toMatchObject({ fs: '11.5px', fw: '700', line: true });
+    expect(await pillStyle(page, `table[data-table="${T}"] tbody td[data-col="level"] > span`)).toMatchObject({ fs: '12.5px', fw: '750', line: true });
     await page.screenshot({ path: `${SCRATCH}/r4-audit.png` });
   });
 
@@ -397,22 +397,22 @@ test.describe('C 감사 로그 쪽 번호', () => {
     backend.auditLegacy = true;
     await page.goto('/audit');
     const foot = page.locator('[data-table-foot="audit"]');
-    await expect(foot.locator('[data-part="range"]')).toHaveText('1–20');
+    await expect(foot.locator('[data-part="range"]')).toHaveText('1–20 · 1 페이지');
     await expect(foot.locator('[data-page]')).toHaveCount(2);
     await expect(foot.locator('[data-page="prev"]')).toBeDisabled();
-    await expect(foot.locator('[data-page="next"]')).toHaveText('다음 ›');
+    await expect(foot.locator('[data-page="next"]')).toHaveAttribute('aria-label', '다음 쪽');
     const ids1 = await page.locator('table[data-table="audit"] tbody tr').evaluateAll((els) => els.map((e) => Number((e as HTMLElement).dataset.audit)));
     const cursor = Math.min(...ids1);
     await foot.locator('[data-page="next"]').click();
-    await expect(foot.locator('[data-part="range"]')).toHaveText('21–40');
+    await expect(foot.locator('[data-part="range"]')).toHaveText('21–40 · 2 페이지');
     expect(backend.requests.some((r) => r.path.startsWith('/audit?') && new URLSearchParams(r.path.split('?')[1]).get('before') === String(cursor))).toBe(true);
     const ids2 = await page.locator('table[data-table="audit"] tbody tr').evaluateAll((els) => els.map((e) => Number((e as HTMLElement).dataset.audit)));
     expect(Math.max(...ids2)).toBeLessThan(cursor);
     await foot.locator('[data-page="next"]').click();
-    await expect(foot.locator('[data-part="range"]')).toHaveText(/^41–\d+$/);
+    await expect(foot.locator('[data-part="range"]')).toHaveText(/^41–\d+ · 3 페이지$/);
     await expect(foot.locator('[data-page="next"]')).toBeDisabled(); // 마지막 쪽(20개 미만)
     await foot.locator('[data-page="prev"]').click();
-    await expect(foot.locator('[data-part="range"]')).toHaveText('21–40');
+    await expect(foot.locator('[data-part="range"]')).toHaveText('21–40 · 2 페이지');
     expect(await page.locator('table[data-table="audit"] tbody tr').evaluateAll((els) => els.map((e) => Number((e as HTMLElement).dataset.audit)))).toEqual(ids2);
   });
 
@@ -443,14 +443,14 @@ test.describe('C 감사 로그 쪽 번호', () => {
     await expect(page.locator('[data-part="skeleton"]')).toBeVisible();
     await expect(page.locator('table[data-table="audit"] tbody tr')).toHaveCount(20);
     await page.locator('[data-table-foot="audit"] [data-page="2"]').click();
-    await expect(page.locator('[data-table-foot="audit"] [data-part="range"]')).toHaveText(/^21–40/);
+    await expect(page.locator('[data-table-foot="audit"] [data-part="range"]')).toHaveText(/ 2\/\d+ 페이지$/);
     const busy = page.locator('[data-testid="audit"] [data-part="busy"]');
     await expect(busy).toBeHidden();
     await page.getByRole('combobox', { name: /^대응/ }).selectOption('kill');
     await expect(busy).toBeVisible();
     await expect(page.locator('table[data-table="audit"] tbody tr')).toHaveCount(20); // 이전 행 유지
     await expect(busy).toBeHidden({ timeout: 3000 });
-    await expect(page.locator('[data-table-foot="audit"] [data-part="range"]')).toHaveText(/^1–/);
+    await expect(page.locator('[data-table-foot="audit"] [data-part="range"]')).toHaveText(/ 1\/\d+ 페이지$/);
     const q = backend.requests.filter((r) => r.path.startsWith('/audit?') && r.path.includes('action=kill')).map((r) => new URLSearchParams(r.path.split('?')[1]));
     expect(q.some((x) => x.get('offset') === '0')).toBe(true);
   });
@@ -458,12 +458,12 @@ test.describe('C 감사 로그 쪽 번호', () => {
 
 // ── D 다른 표 ──
 test.describe('D 다른 표 — 변경 이력 · 설정 · 이벤트', () => {
-  test('판정 · 변경 이력: 머리 12/700 · 정렬 aria-sort(받은 목록 안)', async ({ page, backend }) => {
+  test('판정 · 변경 이력: 머리 12/600 · 정렬 aria-sort(받은 목록 안)', async ({ page, backend }) => {
     void backend;
     await page.goto('/audit?view=changes');
     const T = 'history';
     await expect(page.locator(`table[data-table="${T}"] tbody tr`).first()).toBeVisible();
-    expect(await headStyle(page, T)).toEqual(['12px', '700', 'sticky']);
+    expect(await headStyle(page, T)).toEqual(['12px', '600', 'sticky']);
     expect(await ariaSort(page, T, 'at')).toBe('descending');
     await page.locator(`table[data-table="${T}"] th[data-col="at"] button`).click();
     expect(await ariaSort(page, T, 'at')).toBe('ascending');
@@ -472,12 +472,12 @@ test.describe('D 다른 표 — 변경 이력 · 설정 · 이벤트', () => {
     expect(await ariaSort(page, T, 'at')).toBe('none');
   });
 
-  test('설정 — 계정 · 인증 감사 표: 머리 12/700 · 정렬 aria-sort · 행 44~48', async ({ page, backend }) => {
+  test('설정 — 계정 · 인증 감사 표: 머리 12/600 · 정렬 aria-sort · 행 44~48', async ({ page, backend }) => {
     void backend;
     await page.goto('/settings?tab=accounts');
     const T = 'users';
     await expect(page.locator(`table[data-table="${T}"] tbody tr`)).toHaveCount(2);
-    expect(await headStyle(page, T)).toEqual(['12px', '700', 'sticky']);
+    expect(await headStyle(page, T)).toEqual(['12px', '600', 'sticky']);
     await page.locator(`table[data-table="${T}"] th[data-col="username"] button`).click();
     expect(await ariaSort(page, T, 'username')).toBe('ascending');
     expect(await colText(page, T, 'username')).toEqual(['admin (나)', 'viewer']);
@@ -488,7 +488,7 @@ test.describe('D 다른 표 — 변경 이력 · 설정 · 이벤트', () => {
     expect(h).toBeLessThanOrEqual(48);
     await page.goto('/settings?tab=auth-audit');
     await expect(page.locator('table[data-table="auth-audit"] tbody tr').first()).toBeVisible();
-    expect(await headStyle(page, 'auth-audit')).toEqual(['12px', '700', 'sticky']);
+    expect(await headStyle(page, 'auth-audit')).toEqual(['12px', '600', 'sticky']);
     await page.locator('table[data-table="auth-audit"] th[data-col="actor"] button').click();
     expect(await ariaSort(page, 'auth-audit', 'actor')).toBe('ascending');
   });
@@ -576,7 +576,7 @@ test.describe('F 9개 화면 — 문서 · main 스크롤 0, 스크롤은 채움
 
 // ── G 타이포 · 패널 ──
 test.describe('G 타이포 · 패널', () => {
-  test('9개 화면: 글자 12px 이상(상태 배지 11.5) · 표 패널 제목 14.5/600 · 표는 패널(반경 12) 안', async ({ page, backend }) => {
+  test('9개 화면: 글자 12px 이상(상태 배지 11.5) · 표 패널 제목 17.9/700 · 표는 패널(반경 8) 안', async ({ page, backend }) => {
     void backend;
     await scansApi(page);
     await evalApi(page);
@@ -600,7 +600,7 @@ test.describe('G 타이포 · 패널', () => {
         const h2 = panel.querySelector('h2')!;
         return [getComputedStyle(h2).fontSize, getComputedStyle(h2).fontWeight, getComputedStyle(panel).borderTopLeftRadius];
       });
-      expect(p, T).toEqual(['14.5px', '600', '12px']);
+      expect(p, T).toEqual(['17.92px', '700', '8px']);
     }
   });
 });
@@ -617,16 +617,16 @@ test.describe('H 다크', () => {
       .locator('table[data-table="installs"] th')
       .first()
       .evaluate((e) => getComputedStyle(e).backgroundColor);
-    expect(th).toBe('rgb(23, 26, 33)'); // --surface 다크
+    expect(th).toBe('rgb(40, 45, 56)'); // --surface-2 다크(11/05 표 머리 회색 바탕)
     const line = await page
       .locator('table[data-table="installs"] tbody td')
       .first()
       .evaluate((e) => getComputedStyle(e).borderBottomColor);
-    expect(line).toBe('rgb(35, 40, 50)'); // --line-soft 다크
+    expect(line).toBe('rgb(48, 52, 66)'); // --line-soft 다크
     const bars = await barOf(page, 'table[data-table="installs"] tbody tr[data-install="ins-0012"]');
-    expect(bars[0]).toBe('rgb(251, 113, 133)'); // --danger 다크
+    expect(bars[0]).toBe('rgb(228, 81, 111)'); // --danger 다크
     const foot = await page.locator('[data-table-foot="installs"]').evaluate((e) => getComputedStyle(e).backgroundColor);
-    expect(foot).toBe('rgb(23, 26, 33)');
+    expect(foot).toBe('rgb(27, 30, 40)');
     await page.screenshot({ path: `${SCRATCH}/r4-installs-dark.png` });
     await page.goto('/audit');
     await expect(page.locator('table[data-table="audit"] tbody tr').first()).toBeVisible();

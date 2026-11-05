@@ -3,16 +3,16 @@ import { scopeOf } from '../lib/rules';
 import { DECISION_LABEL, INSTALL_STATUS_LABEL, SCAN_VERDICT_LABEL, type Decision, type InstallStatus, type Rule, type ScanVerdict } from '../lib/types';
 
 const statusStyle: Record<InstallStatus, string> = {
-  running: 'bg-indigo-50 text-indigo-700',
-  passed: 'bg-emerald-50 text-emerald-700',
-  isolated: 'bg-red-600 text-white',
-  warned: 'bg-amber-100 text-amber-800',
-  failed: 'bg-slate-200 text-slate-700',
-  unknown: 'bg-white text-slate-600',
-  refused: 'bg-slate-800 text-white',
+  running: 'sg-pill-info',
+  passed: 'sg-pill-ok',
+  isolated: 'sg-pill-danger',
+  warned: 'sg-pill-warn',
+  failed: 'sg-pill-neutral',
+  unknown: 'sg-pill-neutral',
+  refused: 'sg-pill-dark',
 };
 
-// 상태 배지(R4 11/04 — 목업 11/04e .badge): sg-pill = 11.5/700 · 글자색 1px 테두리 · pill 모양. 색은 종류별 그대로
+// 상태 배지(11/05 참고 대시보드): sg-pill = 27 · 12.5/750 · 톤 테두리 · 알약 모양. 톤 = 진행 info · 통과 ok · 격리 danger · 경고 warn · 실패/모름 neutral · 거부 dark
 // 설치 결과
 export function StatusBadge({ status }: { status: InstallStatus }) {
   return (
@@ -23,9 +23,9 @@ export function StatusBadge({ status }: { status: InstallStatus }) {
 }
 
 const decisionStyle: Record<Decision, string> = {
-  pending: 'bg-amber-50 text-amber-800',
-  malicious: 'bg-red-100 text-red-800',
-  false_positive: 'bg-sky-100 text-sky-800',
+  pending: 'sg-pill-warn',
+  malicious: 'sg-pill-danger',
+  false_positive: 'sg-pill-info',
 };
 
 // 판정(사람의 결론)
@@ -38,10 +38,10 @@ export function DecisionBadge({ decision }: { decision: Decision }) {
 }
 
 const scanVerdictStyle: Record<ScanVerdict, string> = {
-  malicious: 'bg-red-100 text-red-700',
-  vulnerable: 'bg-amber-100 text-amber-800',
-  caution: 'bg-amber-100 text-amber-800',
-  clean: 'bg-emerald-50 text-emerald-700',
+  malicious: 'sg-pill-danger',
+  vulnerable: 'sg-pill-warn',
+  caution: 'sg-pill-warn',
+  clean: 'sg-pill-ok',
 };
 
 // 공급망 검사 판정(검사 중 · 실패 · 4단계) — 공급망 검사 화면과 설치 목록 「정적 검사」 열(11/04)이 같은 배지. 실패 사유는 title
@@ -55,13 +55,13 @@ export function ScanVerdictBadge({
   const base = `sg-pill ${className}`;
   if (status === 'running')
     return (
-      <span {...rest} className={`${base} bg-indigo-50 text-indigo-700`}>
+      <span {...rest} className={`${base} sg-pill-info`}>
         검사 중…
       </span>
     );
   if (status === 'failed')
     return (
-      <span title={error || undefined} {...rest} className={`${base} bg-slate-100 text-slate-600`}>
+      <span title={error || undefined} {...rest} className={`${base} sg-pill-neutral`}>
         실패
       </span>
     );

@@ -223,13 +223,13 @@ function EventDetail({ v }: { v: StreamVerdict }) {
         </dl>
         <div className="mt-3">
           {install ? (
-            <Link {...dest('/installs', { status: 'all' })} className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 px-2.5 py-1 text-xs text-indigo-700 hover:bg-indigo-50">
+            <Link {...dest('/installs', { status: 'all' })} className="sg-btn sg-btn-sm sg-btn-secondary inline-flex items-center gap-1.5">
               설치 검사에서 보기 →
             </Link>
           ) : (
             <Link
               {...topologyDest(name)}
-              className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 px-2.5 py-1 text-xs text-indigo-700 hover:bg-indigo-50"
+              className="sg-btn sg-btn-sm sg-btn-secondary inline-flex items-center gap-1.5"
             >
               <Network className="size-3.5" aria-hidden /> 토폴로지에서 보기
             </Link>

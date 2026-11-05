@@ -65,12 +65,12 @@ export function InstallSheet({ id, onClose, onChanged, nav }: { id: string; onCl
               )}
               <div className="mt-2 flex flex-wrap gap-2">
                 {s.status === 'isolated' && (
-                  <Link {...evidenceDest(s.container)} className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 px-2.5 py-1 text-xs text-indigo-700 hover:bg-indigo-50">
+                  <Link {...evidenceDest(s.container)} className="sg-btn sg-btn-sm sg-btn-secondary inline-flex items-center gap-1.5">
                     <FileSearch className="size-3.5" aria-hidden /> 증거 보기
                   </Link>
                 )}
                 {(s.status === 'isolated' || s.status === 'warned') && (
-                  <Link to={`/report?install=${encodeURIComponent(s.id)}`} data-action="report" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50">
+                  <Link to={`/report?install=${encodeURIComponent(s.id)}`} data-action="report" className="sg-btn sg-btn-sm sg-btn-secondary inline-flex items-center gap-1.5">
                     <FileText className="size-3.5" aria-hidden /> 보고서
                   </Link>
                 )}
