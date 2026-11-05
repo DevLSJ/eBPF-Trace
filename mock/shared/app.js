@@ -1236,7 +1236,7 @@
       if (!layer || layer.classList.contains('closing')) return;
       if (reducedMotion()) return onClose();
       layer.classList.add('closing');
-      setTimeout(onClose, 180);
+      setTimeout(onClose, parseFloat(cssVar('--t-base')) || 200); // 나가는 애니메이션(--t-base) 뒤
     };
     const navEl = nav && nav.total > 1 ? h('div', { class: 'sheet-nav', 'data-part': 'sheet-nav' },
       h('span', { class: 'num muted small', 'data-part': 'sheet-pos' }, `${nav.pos + 1} / ${nav.total}`),
@@ -1254,19 +1254,22 @@
     if (pos < 0) return null;
     return { pos, total: ids.length, prev: pos > 0 ? () => go(ids[pos - 1]) : null, next: pos < ids.length - 1 ? () => go(ids[pos + 1]) : null };
   }
-  // 떠 있는 패널 하나에 Esc · ↑ · ↓ (입력 칸 · 다른 대화상자 · 메뉴가 열려 있으면 그쪽이 먼저)
-  document.addEventListener('keydown', (e) => {
+  // 떠 있는 패널 하나에 Esc · ↑ · ↓ (입력 칸 · 다른 대화상자 · 메뉴 · 도우미 · 서랍이 열려 있으면 그쪽이 먼저)
+  //   캡처 단계에서 먼저 본다 — 도우미 등이 먼저 닫혀 버리면 「열린 게 없다」로 보고 패널까지 닫던 문제(11/05 하위 검증)
+  const otherOverlay = () => [...document.querySelectorAll('[role="dialog"], [role="menu"], .drawer.open')]
+    .some((el) => !el.closest('.sheet-layer') && !el.hidden && el.getClientRects().length > 0);
+  window.addEventListener('keydown', (e) => {
     const layer = document.querySelector('.sheet-layer:not(.closing)');
     if (!layer || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
     const t = e.target;
     if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
-    if (document.querySelector('dialog[open], .modal-backdrop:not([hidden])')) return;
+    if (document.querySelector('dialog[open], .modal-backdrop:not([hidden])') || otherOverlay()) return;
     const btn = { Escape: 'sheet-close', ArrowUp: 'sheet-prev', ArrowDown: 'sheet-next' }[e.key];
     const b = btn && layer.querySelector(`[data-action="${btn}"]`);
     if (!b || b.disabled) return;
     e.preventDefault();
     b.click();
-  });
+  }, true);
   // 패널 머리 [11/04e]: 제목(14.5/600) + 부제 슬롯(sub) + 오른쪽 「더 보기 ›」 슬롯(more = 링크 · {href, state}) · actions. attrs 는 section 속성(data-section 등)
   function panel({ title, sub, more, actions, body, class: cls, attrs }) {
     const moreEl = more ? h('a', Object.assign({ class: 'panel-more', 'data-more': '' }, to(more.link || more.href || more)), `${more.label || '더 보기'} ›`) : null;

@@ -4,6 +4,7 @@
    ③ 적용: 공통 시트 4화면 + 토폴로지 노드 상세(오른쪽 칸에는 공격 체인만)
    ④ 내용: 주제별 블록(소제목 15px 굵게 · 구분선) · 「이름 | 값」 2열 격자 · 본문 14px
    + 768 미만 전체 화면 · 다크 · 1440 · 콘솔 오류 0
+   + 11/05 하위 검증: 토스트 · 데모 제어 서랍 · 머리 알림은 패널 위 · Esc 는 맨 위(도우미 · 서랍)부터
    실행: BASE=http://127.0.0.1:8767/index.html PLAYWRIGHT=<playwright 경로> node tests/sheet-1105.cjs */
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:8766/index.html';
@@ -184,6 +185,29 @@ const near = (a, b, d = 2) => Math.abs(a - b) <= d;
     const bg = await pg.$eval(L('audit'), (e) => getComputedStyle(e).backgroundColor);
     ok(/rgba\(0, 0, 0, 0\.4[0-9]*\)/.test(bg), `다크 뒤 ${bg}`);
     await pg.screenshot({ path: `${SHOTS}/1105-audit-dark.png` });
+    await pg.close();
+  });
+
+  await T('9 패널 위: 토스트 · 데모 제어 서랍은 패널 층 위(누르면 그것이 눌림) · 도우미가 열려 있으면 Esc 는 도우미만 닫고, 다음 Esc 에 패널', async () => {
+    const pg = await newPage();
+    await go(pg, '/installs');
+    await seedInstalls(pg, 1);
+    await pg.locator('tbody tr[data-id]').first().click();
+    await pg.waitForSelector(S('install')); await pg.waitForTimeout(400);
+    const toast = await pg.evaluate(() => { const t = document.querySelector('.toasts .toast'); if (!t) return 'no-toast'; const r = t.getBoundingClientRect(); const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return !!top && !!top.closest('.toasts'); });
+    ok(toast === true, `토스트가 패널 층 아래 ${toast}`);
+    await pg.evaluate(() => document.getElementById('demo').classList.add('open')); await pg.waitForTimeout(300);
+    const drawer = await pg.evaluate(() => { const r = document.getElementById('demo').getBoundingClientRect(); const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return !!top && !!top.closest('#demo'); });
+    ok(drawer, '데모 제어 서랍이 패널 층 아래');
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(350);
+    ok(await pg.locator(L('install')).count() === 1, '서랍이 열려 있는데 Esc 가 패널을 닫음');
+    await pg.evaluate(() => document.getElementById('demo').classList.remove('open')); await pg.waitForTimeout(300);
+    await pg.click('.assist-fab'); await pg.waitForSelector('[data-part="assistant"]:not([hidden])');
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(350);
+    ok(await pg.locator('[data-part="assistant"][hidden]').count() === 1, 'Esc 에 도우미가 안 닫힘');
+    ok(await pg.locator(L('install')).count() === 1, '도우미와 패널이 함께 닫힘');
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(350);
+    ok(await pg.locator(L('install')).count() === 0, '두 번째 Esc 에 패널이 안 닫힘');
     await pg.close();
   });
 
