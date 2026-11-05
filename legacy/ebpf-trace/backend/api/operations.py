@@ -43,6 +43,7 @@ from backend.db.models import (
     ServiceObservation,
     utcnow,
 )
+from backend.services.autoresponse import automatic_usage
 from backend.services.incidents import (
     CLOSED,
     acknowledge,
@@ -58,8 +59,10 @@ from backend.services.model_operations import model_overview, statistics
 from backend.services.response import (
     agent_report,
     approve,
+    gate_assessment,
     preview,
     revoke,
+    set_auto_response,
     set_kill_switch,
     verify_transition,
 )
@@ -71,7 +74,9 @@ _DUMMY_HASH = password_hash(secrets.token_urlsafe(32))
 
 
 @router.post("/rehearsals", status_code=201)
-async def start_rehearsal(request: Request, actor=Depends(current_operator)):
+async def start_rehearsal(
+    request: Request, body: schema.Rehearsal | None = None, actor=Depends(current_operator)
+):
     authorize(actor, "investigate")
     from backend.core.schemas import ScenarioRequest
     from backend.services.rehearsal import prepare, tick
@@ -81,7 +86,7 @@ async def start_rehearsal(request: Request, actor=Depends(current_operator)):
         await tick(session, request.app.state.settings)
         await session.commit()
     return await request.app.state.scenarios.start(
-        ScenarioRequest(scenario_id="syn_flood", request_id=uuid4())
+        ScenarioRequest(scenario_id=(body or schema.Rehearsal()).scenario_id, request_id=uuid4())
     )
 
 
@@ -353,7 +358,12 @@ async def create_asset(body: schema.AssetInput, request: Request, actor=Depends(
             raise HTTPException(422, "Asset owner not found")
         row = Asset(id=str(uuid4()), **body.model_dump(mode="json"))
         session.add(row)
-        audit(session, "asset.created", {"asset_id": row.id, "name": row.name}, actor=actor)
+        audit(
+            session,
+            "asset.created",
+            {"asset_id": row.id, "name": row.name, "auto_response": row.auto_response},
+            actor=actor,
+        )
         try:
             await session.commit()
         except IntegrityError:
@@ -361,6 +371,26 @@ async def create_asset(body: schema.AssetInput, request: Request, actor=Depends(
                 409, "This address, service and environment are already registered"
             ) from None
         await session.refresh(row)
+        return serialize(row)
+
+
+@router.post("/assets/{asset_id}/auto-response")
+async def asset_auto_response(
+    asset_id: UUID, body: schema.Switch, request: Request, actor=Depends(current_operator)
+):
+    authorize(actor, "admin")
+    async with request.app.state.db.sessions() as session:
+        row = await session.get(Asset, str(asset_id))
+        if not row:
+            raise HTTPException(404, "Asset not found")
+        row.auto_response = body.enabled
+        audit(
+            session,
+            "asset.auto_response",
+            {"asset_id": row.id, "enabled": body.enabled, "reason": body.reason},
+            actor=actor,
+        )
+        await session.commit()
         return serialize(row)
 
 
@@ -419,10 +449,17 @@ async def actions(
             .limit(100)
         )
         control = await session.get(OpsControl, 1)
+        settings = request.app.state.settings
         return {
             "items": [serialize(r) for r in rows],
             "pending": [serialize(r) for r in pending],
             "kill_switch": control.kill_switch if control else False,
+            "auto_response": bool(control and control.auto_response),
+            "auto_usage": await automatic_usage(session, settings),
+            "auto_ttl_seconds": min(
+                settings.response_auto_ttl_seconds, settings.response_max_ttl_seconds
+            ),
+            "risk_threshold": settings.response_risk_threshold,
         }
 
 
@@ -451,12 +488,27 @@ async def response_context(incident_id: UUID, request: Request, actor=Depends(cu
             .order_by(ActionRequest.created_at.desc())
             .limit(30)
         )
+        settings = request.app.state.settings
+        asset = await session.get(Asset, row.asset_id) if row.asset_id else None
+        control = await session.get(OpsControl, 1)
+        gates = {}
+        if asset:
+            for source_ip in row.summary.get("sources", [])[:10]:
+                gates[source_ip] = await gate_assessment(session, row, asset, source_ip, settings)
         return {
             "points": [serialize(p, ("token_hash",)) for p in points],
             "observations": [serialize(o) for o in observations],
             "previews": [serialize(p) for p in previews],
-            "max_ttl_seconds": request.app.state.settings.response_max_ttl_seconds,
-            "recovery_observation_seconds": request.app.state.settings.recovery_observation_seconds,
+            "gates": gates,
+            "automatic": {
+                "switch": bool(control and control.auto_response),
+                "asset_opt_in": bool(asset and asset.auto_response),
+                "ttl_seconds": min(settings.response_auto_ttl_seconds, settings.response_max_ttl_seconds),
+                "threshold": settings.response_risk_threshold,
+                "decision": row.summary.get("automatic"),
+            },
+            "max_ttl_seconds": settings.response_max_ttl_seconds,
+            "recovery_observation_seconds": settings.recovery_observation_seconds,
         }
 
 
@@ -510,6 +562,15 @@ async def kill_switch(body: schema.KillSwitch, request: Request, actor=Depends(c
     authorize(actor, "admin")
     async with request.app.state.db.sessions() as session:
         row = await set_kill_switch(session, body.enabled, actor, body.reason)
+        await session.commit()
+        return serialize(row)
+
+
+@router.post("/auto-response")
+async def auto_response(body: schema.Switch, request: Request, actor=Depends(current_operator)):
+    authorize(actor, "admin")
+    async with request.app.state.db.sessions() as session:
+        row = await set_auto_response(session, body.enabled, actor, body.reason)
         await session.commit()
         return serialize(row)
 
@@ -591,6 +652,7 @@ async def model_stage(
             if missing:
                 raise HTTPException(409, "승격 조건 미충족: " + ", ".join(missing))
         row.stage, row.enabled, row.updated_at = body.stage, body.stage != "offline", utcnow()
+        control = await session.get(OpsControl, 1)
         audit(
             session,
             "model.stage_changed",
@@ -598,7 +660,8 @@ async def model_stage(
                 "model_id": row.id,
                 "stage": body.stage,
                 "reason": body.reason,
-                "automatic_response": False,
+                # Promotion does not touch the automatic path; record its state for the audit trail.
+                "automatic_response": bool(control and control.auto_response),
             },
             actor=actor,
         )

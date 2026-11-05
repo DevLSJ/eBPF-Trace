@@ -3,13 +3,13 @@ import { errorMessage, getThresholds, saveThresholds } from '../api/client';
 import type { Thresholds } from '../types';
 
 const fields: { key: keyof Thresholds; label: string; min: number; max?: number; step: number; hint: string }[] = [
-  { key: 'syn_pps_threshold', label: 'SYN Flood 기준 (SYN/s)', min: 1, step: 1, hint: '출발지 전체 SYN 패킷 수' },
-  { key: 'syn_ratio_threshold', label: 'SYN 비율', min: 0, max: 1, step: 0.01, hint: 'SYN Flood 판정에 함께 적용' },
-  { key: 'port_cnt_threshold', label: 'Port Scan 목적지 포트 수', min: 2, max: 65536, step: 1, hint: '10초 내 출발지별 고유 포트 수' },
-  { key: 'baseline_pps', label: '기준 트래픽 (pps)', min: 1, step: 1, hint: '트래픽 급증 판정의 기준값' },
-  { key: 'spike_threshold_multiplier', label: '트래픽 급증 배수', min: 1.01, step: 0.01, hint: '기준 트래픽 × 배수 이상 탐지' },
-  { key: 'large_flow_threshold', label: '대용량 플로우 (bytes/s)', min: 1, step: 1, hint: '12,500,000 bytes/s = 100 Mbps' },
-  { key: 'anomaly_threshold', label: 'ML 이상 점수 임계값', min: -1, max: -0.001, step: 0.001, hint: '기본 −0.1 · 변경 시 기존 성능 검증 범위 밖' },
+  { key: 'syn_pps_threshold', label: '연결 폭주(SYN Flood) 기준 · 초당 접속 요청(SYN/s)', min: 1, step: 1, hint: '출발지 전체의 1초당 새 연결 요청(SYN) 수' },
+  { key: 'syn_ratio_threshold', label: '접속 요청 비율(SYN ratio)', min: 0, max: 1, step: 0.01, hint: '연결 폭주(SYN Flood) 판정에 함께 적용' },
+  { key: 'port_cnt_threshold', label: '포트 스캔(Port Scan) 기준 · 목적지 포트 수', min: 2, max: 65536, step: 1, hint: '10초 내 출발지별 고유 포트 수' },
+  { key: 'baseline_pps', label: '기준 트래픽 · 초당 패킷(pps)', min: 1, step: 1, hint: '트래픽 급증(Traffic Spike) 판정의 기준값' },
+  { key: 'spike_threshold_multiplier', label: '트래픽 급증(Traffic Spike) 배수', min: 1.01, step: 0.01, hint: '기준 트래픽 × 배수 이상 탐지' },
+  { key: 'large_flow_threshold', label: '대용량 전송(Large Flow) 기준 · 초당 바이트(bytes/s)', min: 1, step: 1, hint: '12,500,000 bytes/s = 100 Mbps' },
+  { key: 'anomaly_threshold', label: 'AI 이상 점수 임계값(anomaly_threshold)', min: -1, max: -0.001, step: 0.001, hint: '기본 −0.1 · 이 점수보다 낮으면 이상 · 변경 시 기존 성능 검증 범위 밖' },
 ];
 
 export function ThresholdSettings({ onSaved }: { onSaved: (value: Thresholds) => void }) {

@@ -109,6 +109,11 @@ async def current_operator(request: Request):
         ):
             raise HTTPException(401, "Account is disabled")
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            if actor.is_test_account and request.url.path != "/api/ops/logout":
+                raise HTTPException(
+                    403,
+                    "공개 테스트 계정은 운영 데이터를 변경할 수 없습니다. 안내 시연을 이용하세요.",
+                )
             check_origin(request)
             csrf = request.headers.get("x-csrf-token", "")
             if not hmac.compare_digest(digest(csrf), login.csrf_hash):

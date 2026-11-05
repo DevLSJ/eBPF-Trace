@@ -53,6 +53,16 @@ Ubuntu VM의 **eBPF/XDP**가 관찰한 트래픽을 **FastAPI**가 분석·저�
 
 외부로 공격 패킷을 보내지 않으며 Slack 알림도 전송하지 않습니다. 실행·검토 저장은 HTTPS 또는 localhost에서 관리자 인증 후 가능합니다. [시연 순서와 API →](docs/scenarios.md)
 
+## Inspect your own network
+
+**지금 쓰는 와이파이·랜선의 실제 트래픽을 탐지 경로에 그대로 통과시킵니다.** `실시간 검사` 메뉴에서 관리자 토큰으로 이 서버의 인터페이스를 불러와 하나를 고르면, 정한 시간 동안 매초 관측이 수집기와 같은 경로를 지나 실제(LIVE) 탐지 기록이 됩니다.
+
+| 1 수집 | 2 1차 방어선 · 규칙 | 3 2차 방어선 · AI | 4 대응 |
+|:---|:---|:---|:---|
+| 패킷 검사(25개 관측 항목, 권한 필요) 또는 카운터 검사(권한 불필요) | 저장된 임계값으로 연결 폭주 · 포트 스캔 · 트래픽 급증 · 대용량 전송 판정 | 검증된 모델이 있으면 이상 점수, 없으면 이유와 함께 건너뜀 | 탐지를 사건으로 묶고 차단 안전 점검 → 자동/승인 경로 |
+
+**방어선 점검** 버튼은 트래픽을 기다리지 않습니다. 저장된 임계값으로 만든 표본을 규칙 엔진·모델·차단 안전 점검에 넣어 네 줄의 판정표(기대 판정 vs 실제 판정, 기대 경로 vs 실제 경로)를 보여 주며 아무것도 저장하지 않습니다. [검사 방식과 권한 →](docs/operations-guide.md#7-b-실시간-검사--내-와이파이랜선-트래픽-2026-09-28-구현)
+
 ## From packets to evidence
 
 ![CIC-IDS-2017 분석 화면 — 캡처 타임라인과 정답 매칭](docs/screenshots/analysis-desktop.png)
@@ -131,7 +141,17 @@ npm ci
 npm run dev
 ```
 
-`http://127.0.0.1:5173`에서 발급한 개인 계정으로 로그인합니다. 대응 훈련에는 [별도 승인자 계정](docs/incident-operations.md#로컬에서-체험)도 필요합니다. 기존 공개 관측 화면은 `/#overview`입니다. Collector가 없으면 실시간 데이터는 수신 대기로 표시됩니다. 관리자 토큰·Redis·VM 수집기·EC2 배포 설정은 [운영 가이드](docs/operations.md)에 정리했습니다.
+실제 운영과 같은 **Docker PostgreSQL·Redis** 위에서 돌리려면 SQLite 대신 아래처럼 시작합니다(데이터는 도커 볼륨에 남고, 웹앱은 같은 API를 그대로 씁니다).
+
+```bash
+export DEV_POSTGRES_PASSWORD=ebpf-dev-local
+docker compose -f docker-compose.dev.yml up -d
+export DATABASE_URL="postgresql+asyncpg://ebpf_test:${DEV_POSTGRES_PASSWORD}@127.0.0.1:25432/ebpf_test"
+.venv/bin/python -m alembic upgrade head
+ADMIN_TOKEN=local-admin-token REDIS_URL=redis://127.0.0.1:26379/0 OPS_ALLOW_INSECURE_LOCAL=true .venv/bin/python -m uvicorn backend.main:app --port 8000
+```
+
+`http://127.0.0.1:5173`에서 발급한 개인 계정으로 로그인합니다. 대응 훈련에는 [별도 승인자 계정](docs/incident-operations.md#로컬에서-체험)도 필요합니다. 기존 공개 관측 화면은 `/#overview`입니다. Collector가 없으면 실시간 데이터는 수신 대기로 표시됩니다. 관리자 토큰·Redis·VM 수집기·EC2 배포 설정은 [운영 가이드](docs/operations-guide.md)에, 실시간 검사의 API·테이블 명세와 로컬 도커 확인 절차는 [API·DB 명세](docs/api-live-inspection.md)에 정리했습니다.
 
 ## Verify & reproduce
 
@@ -144,10 +164,12 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-- **Python 96개:** 실제 PostgreSQL·Redis, 사건·알림·승인·복구, ML 승격·폴백, 대응 에이전트 검증. 외부 테스트 URL이 없으면 해당 4개는 건너뜁니다.
+- **Python 118개:** 실제 PostgreSQL·Redis, 사건·알림·승인·복구, ML 승격·폴백, 대응 에이전트, 차단 안전성 게이트와 자동 경로(적용·거부·상한·폴백) 검증. 외부 테스트 URL이 없으면 5개는 건너뜁니다.
 - **브라우저 20개:** 기존 데스크톱·모바일 관측 기능과 두 운영자의 인수→승인→적용→해제→복구 흐름, 자산 등록·모델 운영·보고서.
 - **Linux 커널:** 격리 네트워크 namespace에서 실제 nftables의 범위 제한·정상 연결 유지·커널 TTL 자동 해제·명시적 해제 확인.
 - **데이터 추적:** 원본·피처·레이블 결과의 SHA-256, 시간 분리 정책, 제외 건수와 실제 평가 지표를 기록합니다.
+
+프론트엔드 디자인 검토용 **정적 목업 3종**은 [`mock/`](mock/README.md)에 있습니다 (v1 자체 스타일 · v2-A/B Loguard 테마 이식, 같은 화면·데이터 공유). `mock/index.html`을 열어 비교하세요.
 
 원본은 `pcap/`과 `label/`에 두며 Git/Docker에 포함하지 않습니다. 작은 검증 보고서만 `ml/reports/`에 포함합니다. [레이블 결합과 모델 평가 재현 명령](docs/operations.md#탐지학습)을 참고하세요.
 

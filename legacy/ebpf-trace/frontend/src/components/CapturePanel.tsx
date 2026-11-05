@@ -4,6 +4,8 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { getCaptureReport, getModelAnalysis, errorMessage } from '../api/client';
 import type { CaptureReport, ModelAnalysis } from '../types';
 import { BenchmarkPanel } from './BenchmarkPanel';
+import { Term } from './Term';
+import { MODEL_KIND, UNIT, engineLabel, withOriginal } from '../labels';
 
 const number = (value: number) => value.toLocaleString('ko-KR');
 const percent = (value: number) => `${(value * 100).toFixed(2)}%`;
@@ -27,7 +29,7 @@ export function CapturePanel() {
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${report.source.replace(/\.pcap$/, '')}-analysis.json`; anchor.click(); URL.revokeObjectURL(url);
   };
   return <div id="capture" className="analysis-workspace">
-    <div className="analysis-intro"><div><span className="eyebrow">FROM PACKETS TO EVIDENCE</span><h2>CIC-IDS-2017 분석 워크스페이스</h2><p>실제 캡처에서 정답 매칭과 모델 평가까지, 데이터로 확인하는 탐지 성능.</p></div><span className="evidence-tag"><FileCheck2 size={15}/>실제 데이터 분석</span></div>
+    <div className="analysis-intro"><div><span className="eyebrow">패킷에서 근거까지</span><h2>CIC-IDS-2017 분석 워크스페이스</h2><p>실제 캡처에서 정답 매칭과 모델 평가까지, 데이터로 확인하는 탐지 성능.</p></div><span className="evidence-tag"><FileCheck2 size={15}/>실제 데이터 분석</span></div>
     {error ? <div className="error-banner" role="alert">{error}<button onClick={() => setRetry(v => v + 1)}>다시 시도</button></div> : !report ? <p className="panel-message" role="status">분석 결과를 불러오는 중입니다.</p> : <>
       <section className="panel capture-panel">
         <div className="panel-heading"><div><h2>PCAP 오프라인 분석</h2><p>전체 파일 분석 · 패킷을 네트워크로 재전송하지 않습니다.</p></div><button className="outline-button" onClick={download}><ArrowDownToLine size={14}/>분석 JSON</button></div>
@@ -36,7 +38,7 @@ export function CapturePanel() {
           <div className="capture-stats">{[
             ['원본 패킷', number(report.counts.packets), 'TCP · UDP 외 패킷 포함'],
             ['생성 피처 행', number(report.counts.feature_rows), '실시간 Collector와 같은 피처 계산'],
-            ['정답 매칭률', labels ? percent(labels.coverage) : '—', labels ? `${number(labels.counts.matched ?? 0)}개 피처 행의 정답 확인` : '레이블 결합 대기'],
+            ['정답 매칭률', labels ? percent(labels.coverage) : '계산 불가', labels ? `${number(labels.counts.matched ?? 0)}개 관측 행의 정답 확인` : '정답 레이블이 없어 계산할 수 없어요'],
           ].map(([title, value, note]) => <div key={title}><span>{title}</span><strong>{value}</strong><small>{note}</small></div>)}</div>
           <div className="analysis-chart-heading"><h3>캡처 타임라인</h3><span>분당 TCP / UDP 패킷 · 현지 시각 (UTC−03:00)</span></div>
           <div className="capture-chart" role="img" aria-label="캡처 시간대별 분당 패킷 수">
@@ -64,19 +66,19 @@ export function CapturePanel() {
         </div></section>
       </div>
       <BenchmarkPanel benchmark={model?.context_evaluation} preparation={model?.preparation}/>
-      <section className="panel model-panel"><div className="panel-heading"><div><h2><FlaskConical size={17}/>Isolation Forest 평가</h2><p>Thursday + Friday · 시간순 분리 · 경계 10초 및 장기 플로우 제외</p></div><span className={`evaluation-status ${evaluation?.deployment_approved ? 'approved' : ''}`}>{evaluation ? evaluation.deployment_approved ? '운영 승인' : '실험 평가 · 운영 미승인' : '평가 대기'}</span></div>
+      <section className="panel model-panel"><div className="panel-heading"><div><h2><FlaskConical size={17}/><Term term={MODEL_KIND.isolation_forest}/> 평가</h2><p>Thursday + Friday · 시간순 분리 · 경계 10초 및 장기 플로우 제외</p></div><span className={`evaluation-status ${evaluation?.deployment_approved ? 'approved' : ''}`}>{evaluation ? evaluation.deployment_approved ? '운영 승인' : '실험 평가 · 운영 미승인' : '평가 대기'}</span></div>
         {modelError ? <div className="error-banner" role="alert">{modelError}<button onClick={() => setRetry(v => v + 1)}>다시 시도</button></div> : !evaluation ? <p className="panel-message">실측 평가 보고서가 아직 없습니다. 성능 지표는 평가 후 표시됩니다.</p> : <div className="model-content">
           <div className="evaluation-metrics">{[
-            ['Precision', evaluation.performance.precision, '탐지한 행 중 실제 공격 비율'],
-            ['Recall', evaluation.performance.recall, '실제 공격 행 중 탐지한 비율'],
-            ['F1 score', evaluation.performance.f1, `목표 ≥ ${percent(evaluation.targets.f1_min)}`],
-            ['False positive rate', evaluation.performance.fpr, `목표 ≤ ${percent(evaluation.targets.fpr_max)}`],
+            [withOriginal(UNIT.precision), evaluation.performance.precision, '탐지한 행 중 실제 공격 비율'],
+            [withOriginal(UNIT.recall), evaluation.performance.recall, '실제 공격 행 중 탐지한 비율'],
+            [withOriginal(UNIT.f1), evaluation.performance.f1, `목표 ≥ ${percent(evaluation.targets.f1_min)}`],
+            [withOriginal(UNIT.fpr), evaluation.performance.fpr, `목표 ≤ ${percent(evaluation.targets.fpr_max)}`],
           ].map(([title, value, note]) => <div key={String(title)}><span>{title}</span><strong>{percent(Number(value))}</strong><small>{note}</small></div>)}</div>
           <div className="evaluation-bottom"><div className="split-summary"><h3>검증 데이터</h3><p>정상 학습 <b>{number(evaluation.split.training_rows)}</b>행</p><p>시간순 평가 <b>{number(evaluation.split.held_out_rows)}</b>행</p><p>경계·장기 플로우 제외 <b>{number(evaluation.split.purged_rows)}</b>행</p><span>점수 임계값 {evaluation.threshold} · {evaluation.performance.passed ? '수치 목표 충족' : '수치 목표 미달'}</span></div>
           <div className="confusion"><h3>혼동 행렬 <span>피처 행 기준</span></h3><div className="confusion-grid">{[['TN · 정상 통과', evaluation.performance.tn], ['FP · 정상 오탐', evaluation.performance.fp], ['FN · 공격 미탐', evaluation.performance.fn], ['TP · 공격 탐지', evaluation.performance.tp]].map(([label, count]) => <div key={String(label)}><span>{label}</span><b>{number(Number(count))}</b></div>)}</div></div></div>
           {evaluation.six_feature_comparison && <div className="feature-comparison"><div><span>동일한 데이터 · 동일한 시간순 분리</span><h3>출발지 문맥을 추가한 비교 실험</h3><p>각 연결의 패킷 수에 출발지 전체의 PPS, SYN PPS, 포트 다양성을 더했습니다. 아래 값은 동일한 평가 표본에서 비교합니다.</p></div><div><span>기존 6개 피처 F1</span><strong>{percent(evaluation.six_feature_comparison.performance.f1)}</strong></div><div><span>{evaluation.features.length}개 피처 F1</span><strong>{percent(evaluation.performance.f1)}</strong></div></div>}
           {evaluation.performance.per_label && <div className="per-label-metrics"><h3>평가 레이블별 관측 결과</h3><div className="table-wrap"><table><thead><tr><th>정답 레이블</th><th>평가 행</th><th>탐지된 행</th><th>탐지 비율</th></tr></thead><tbody>{Object.entries(evaluation.performance.per_label).map(([label, result]) => <tr key={label}><td>{label}{label === 'BENIGN' ? ' · 오탐' : ''}</td><td>{number(result.rows)}</td><td>{number(result.detected)}</td><td>{percent(result.detection_rate)}</td></tr>)}</tbody></table></div></div>}
-          <div className="model-runtime"><ShieldCheck size={18}/><div><strong>현재 운영 엔진: {model?.runtime.mode === 'hybrid' ? '하이브리드' : '규칙 기반'}</strong><p>이 화면의 실험 결과와 운영 모델 적용 상태는 별도로 관리됩니다. {model?.runtime.collector_feature_schema_version === 2 ? '실시간 Collector: 목적지·양방향 피처 v2 관측 중.' : '실시간 Collector의 v2 피처는 아직 확인되지 않았습니다.'}</p></div></div>
+          <div className="model-runtime"><ShieldCheck size={18}/><div><strong>현재 운영 엔진: {engineLabel(model?.runtime.mode) || '규칙만 사용'}</strong><p>이 화면의 실험 결과와 운영 모델 적용 상태는 별도로 관리됩니다. {model?.runtime.collector_feature_schema_version === 2 ? '실시간 Collector: 목적지·양방향 피처 v2 관측 중.' : '실시간 Collector의 v2 피처는 아직 확인되지 않았습니다.'}</p></div></div>
         </div>}
       </section>
       <div className="analysis-footnote"><Info size={15}/><span>정답 매칭과 모델 평가는 오프라인 결과입니다. 실시간 탐지 이벤트에는 이 데이터가 주입되지 않습니다.</span></div>

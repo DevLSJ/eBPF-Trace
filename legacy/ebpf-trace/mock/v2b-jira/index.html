@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eBPF Trace — v2-B. Jira 참고형</title>
+<link rel="stylesheet" href="../shared/base.css">
+<link rel="stylesheet" href="../shared/trace.css">
+<link rel="stylesheet" href="theme.css">
+<style>
+.variant-switch { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 850; background: rgba(16,27,48,.92); color: #fff; font-size: 11.5px; padding: 4px 10px; border-radius: 12px; display: flex; gap: 8px; align-items: center; }
+.variant-switch a { color: #7FE0C8; } .variant-switch b { color: #fff; }
+body.login .variant-switch { top: 12px; }
+</style>
+</head>
+<body data-variant="jira">
+<div class="shell">
+  <aside id="sidebar" aria-label="사이드바"></aside>
+  <div class="workspace"><header id="topbar" aria-label="상단바"></header><main id="main" tabindex="-1"></main></div>
+</div>
+<div class="variant-switch"><b>v2-B. Jira 참고형</b><span>·</span><a id="toOther" href="../v1-trace/index.html">v1 Trace 보기 →</a><span>·</span><a href="../index.html">버전 선택</a></div>
+<script src="../shared/data.js"></script>
+<script src="../shared/app.js"></script>
+<script src="../shared/screens.js"></script>
+<script>
+  App.init({ variant: 'jira' });
+  // 같은 화면을 다른 버전으로 — URL 상태(해시)를 그대로 넘긴다
+  const other = document.getElementById('toOther');
+  const sync = () => { other.href = '../v1-trace/index.html' + location.hash; };
+  sync(); window.addEventListener('hashchange', sync);
+</script>
+</body>
+</html>

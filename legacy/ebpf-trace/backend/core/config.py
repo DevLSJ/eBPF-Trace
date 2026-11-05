@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     response_max_ttl_seconds: int = Field(default=300, ge=30, le=900)
     response_freshness_seconds: int = Field(default=30, ge=5, le=120)
     recovery_observation_seconds: int = Field(default=60, ge=10, le=3600)
+    # Automatic path: shorter exposure than an approved policy, and a ceiling on how often it fires.
+    response_auto_ttl_seconds: int = Field(default=60, ge=30, le=300)
+    response_auto_hourly_limit: int = Field(default=10, ge=1, le=1000)
+    response_risk_threshold: float = Field(default=0.4, ge=0.05, le=0.95)
 
     @model_validator(mode="after")
     def postgres_url(self):

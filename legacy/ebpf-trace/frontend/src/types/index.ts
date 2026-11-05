@@ -83,3 +83,21 @@ export interface EventSummary { total: number; severity: Record<string, number>;
 export interface Scenario { id: string; name: string; description: string; stages: string[]; duration_seconds: number }
 export interface ScenarioSample { step: number; timestamp: string; stage: string; expected_label: string; detected_label: string; features: Features; anomaly_score: number | null; event_id: number | null }
 export interface ScenarioRun { id: string; scenario_id: string; status: string; started_at: string; finished_at: string | null; thresholds: Thresholds; detection_mode: string; samples?: ScenarioSample[]; event_count?: number; matched_steps?: number; sample_count?: number }
+
+// 실시간 검사(#live): 서버가 돌아가는 호스트의 인터페이스와 검사 실행, 방어선 점검
+export interface InterfaceInfo { name: string; kind: 'wifi' | 'ethernet' | 'loopback' | 'virtual' | 'other'; label: string; addresses: string[]; is_up: boolean; speed_mbps: number; packets_received: number; bytes_received: number; active: boolean }
+export interface LiveCapability { available: boolean; reason: string }
+export interface LiveInterfaces { items: InterfaceInfo[]; capabilities: { packet: LiveCapability; counters: LiveCapability }; host: string; platform: string }
+export interface InspectionEvent { event_id: number; attack_type: string; severity: Severity; incident_id: string | null; automatic: string | null }
+export interface InspectionWindow { t: number; pkt_rate: number; byte_rate: number; flows: number; rule_hits: Record<string, number>; scored: number; min_score: number | null; events: InspectionEvent[] }
+export interface StageBase { status: string; note?: string }
+export interface InspectionStages {
+  capture: StageBase & { mode: 'packet' | 'counters'; packets: number; bytes: number; peak_pps: number; flows: number; seconds: number };
+  rules: StageBase & { checked: number; hits: Record<string, number>; thresholds: Thresholds };
+  model: StageBase & { reason: string; scored: number; min_score: number | null; anomalies: number; mode: string; model_status: string; threshold: number; feature_count: number };
+  response: StageBase & { events: number; incidents: number; automatic: { applied: number; declined: number; other: number }; live_enabled: boolean };
+}
+export interface InspectionRun { id: string; interface: string; address: string; mode: 'packet' | 'counters'; status: 'running' | 'completed' | 'cancelled' | 'failed'; duration_seconds: number; elapsed_seconds: number; error: string; started_at: string; finished_at: string | null; detection_mode: string; stages: InspectionStages; event_ids: number[]; windows?: InspectionWindow[] }
+export interface CheckProbe { name: string; expected?: string; detected?: string; passed?: boolean; score?: number | null; flagged?: boolean; route?: string; level?: string; hard_stop?: string | null; reason?: string }
+export interface CheckItem { id: 'capture' | 'rules' | 'model' | 'response'; title: string; status: 'ok' | 'warn' | 'skipped' | 'fail'; detail: string; probes?: CheckProbe[]; live_reason?: string; live_applied?: boolean; mode?: string; contract?: string; control?: { auto_response: boolean; kill_switch: boolean }; assets?: number; assets_opted_in?: number; points_enabled?: number; auto_ttl_seconds?: number; capabilities?: { packet: LiveCapability; counters: LiveCapability }; interfaces?: string[] }
+export interface DefenseCheck { checked_at: string; items: CheckItem[]; summary: Record<string, number> }

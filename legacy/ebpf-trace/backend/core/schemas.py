@@ -112,4 +112,11 @@ class EventReview(BaseModel):
 class ScenarioRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     request_id: UUID
-    scenario_id: Literal["intrusion", "syn_flood", "port_scan", "large_flow"]
+    scenario_id: Literal["intrusion", "syn_flood", "port_scan", "large_flow", "shared_source"]
+
+
+class InspectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    interface: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9._:-]+$")
+    mode: Literal["auto", "packet", "counters"] = "auto"
+    duration_seconds: int = Field(default=30, ge=5, le=300)

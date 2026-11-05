@@ -6,7 +6,7 @@ from uuid import uuid4
 from sqlalchemy import select
 
 from backend.core.operations_schemas import AgentReport
-from backend.core.operator_auth import digest
+from backend.core.operator_auth import aware, digest
 from backend.db.models import ActionRun, Asset, EnforcementPoint, ServiceObservation, utcnow
 from backend.services.incidents import audit, lock_key
 from backend.services.response import agent_report
@@ -85,8 +85,6 @@ async def tick(session, settings):
         )
         active = False
         for run in runs:
-            from backend.core.operator_auth import aware
-
             target = None
             if run.status in {"queued", "applying"} and aware(run.command_expires_at) > utcnow():
                 target = "applied"

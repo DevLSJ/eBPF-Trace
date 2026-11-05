@@ -17,6 +17,8 @@ def test_additive_migration_preserves_old_events(tmp_path):
     with sqlite3.connect(path) as db:
         assert db.execute('SELECT id, source, scenario_run_id, is_confirmed FROM detection_events').fetchall() == [(1, 'live', None, None)]
         assert db.execute('SELECT COUNT(*) FROM scenario_samples').fetchone()[0] == 0
+        assert db.execute('SELECT COUNT(*) FROM live_inspection_windows').fetchone()[0] == 0
     command.downgrade(config, '423cae8d12db')
     with sqlite3.connect(path) as db:
         assert db.execute('SELECT id FROM detection_events').fetchall() == [(1,)]
+        assert db.execute("SELECT name FROM sqlite_master WHERE name LIKE 'live_inspection%'").fetchall() == []

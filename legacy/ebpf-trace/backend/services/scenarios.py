@@ -23,9 +23,14 @@ CATALOG = [
      'stages': ['baseline', 'recon', 'recovery']},
     {'id': 'large_flow', 'name': '대량 데이터 전송', 'description': '전송량 급증을 통한 LARGE FLOW 규칙 확인',
      'stages': ['baseline', 'transfer', 'recovery']},
+    {'id': 'shared_source', 'name': '공유 출발지 탐색', 'description': '정상 사용자와 섞인 NAT 뒤 탐색 · 게이트가 자동 차단을 거부하는지 확인',
+     'stages': ['baseline', 'mixed_recon', 'recovery']},
 ]
 EXPECTED = {'baseline': 'BENIGN', 'recovery': 'BENIGN', 'recon': 'PORT_SCAN',
-            'flood': 'SYN_FLOOD', 'transfer': 'LARGE_FLOW'}
+            'flood': 'SYN_FLOOD', 'transfer': 'LARGE_FLOW', 'mixed_recon': 'PORT_SCAN'}
+# A shared NAT: one host scans while others keep completed sessions open. Different source address
+# so it never merges with the single-attacker rehearsals.
+SHARED_SOURCE = '192.0.2.77'
 STEP_SECONDS = 1
 SAMPLES_PER_STAGE = 3
 
@@ -48,8 +53,12 @@ def message_for(stage, step):
     elif stage == 'transfer':
         features.update(pkt_rate=9500, byte_rate=13_500_000 + step * 1000,
                         avg_pkt_size=1422, source_pkt_rate=9500)
+    elif stage == 'mixed_recon':
+        features.update(pkt_rate=140, byte_rate=95000, syn_ratio=0.2, port_entropy=5.4,
+                        port_cnt=48, source_pkt_rate=140, source_syn_rate=28, avg_pkt_size=680)
+    source = SHARED_SOURCE if stage == 'mixed_recon' else '192.0.2.10'
     return FlowMessage(type='flow_features', message_id=uuid4(), timestamp=int(time.time() * 1000),
-                       flow=dict(src_ip='192.0.2.10', dst_ip='198.51.100.20',
+                       flow=dict(src_ip=source, dst_ip='198.51.100.20',
                                  src_port=41000 + step, dst_port=443, protocol=6), features=features)
 
 

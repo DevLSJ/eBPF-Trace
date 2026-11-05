@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eBPF Trace — 프론트엔드 목업 버전 선택</title>
+<style>
+  body { margin: 0; font-family: "Noto Sans KR", "Pretendard", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; background: #111d33; color: #e2e8f0; min-height: 100vh; display: grid; place-items: center; }
+  main { max-width: 1020px; padding: 40px 24px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.02em; } p.lead { color: #94a3b8; margin: 0 0 22px; line-height: 1.7; }
+  .new { display: inline-flex; gap: 8px; flex-wrap: wrap; margin: 0 0 26px; padding: 0; list-style: none; } .new li { font-size: 12px; color: #c7d2fe; background: rgba(151,184,251,.12); border: 1px solid rgba(151,184,251,.25); padding: 5px 10px; border-radius: 999px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; } @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  a.card { display: flex; flex-direction: column; gap: 8px; background: #fff; color: #1c2b45; border-radius: 16px; padding: 22px; text-decoration: none; transition: transform .15s, box-shadow .15s; } a.card:hover { transform: translateY(-3px); box-shadow: 0 20px 40px rgba(0,0,0,.25); }
+  a.card small { font-size: 11px; letter-spacing: .12em; font-weight: 700; color: #3775e8; } a.card b { font-size: 18px; } a.card span { font-size: 13px; color: #4a5568; line-height: 1.6; }
+  .swatch { display: flex; gap: 6px; margin-top: 4px; } .swatch i { width: 22px; height: 22px; border-radius: 6px; }
+  footer { margin-top: 26px; font-size: 12.5px; color: #64748b; line-height: 1.7; } footer code { color: #cbd5e1; } footer kbd { border: 1px solid #475569; border-radius: 4px; padding: 0 5px; color: #e2e8f0; font-size: 11px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>eBPF Trace · 프론트엔드 목업</h1>
+  <p class="lead">정적 HTML · 바닐라 JS · 외부 라이브러리 없음. 세 버전이 <b>같은 화면·데이터·기능</b>을 공유하고 셸(사이드바·상단바)과 디자인 토큰만 다릅니다. React 프론트엔드의 2026-09-28 리뉴얼과 같은 구조로, 처음 사용자가 화면만 보고 흐름을 따라갈 수 있는지 세 버전으로 비교하세요.</p>
+  <ul class="new"><li>페이지 고정 · 본문만 스크롤</li><li>상단바 사용 흐름 레일(관찰›체험›검토›대응›분석)</li><li>알림 센터 드로어 + 종 배지</li><li>토스트 · 스낵바 피드백</li><li>? 사용 안내</li><li>사이드바 접기 · 모바일 서랍</li><li>14화면 + 로그인</li></ul>
+  <div class="grid">
+    <a class="card" href="v1-trace/index.html#/overview?as=minseo"><small>V1 · TRACE</small><b>자체 스타일 (React와 동일 토큰)</b><span>남색 사이드바 · 파란 강조 · 청록 포인트 · 둥근 카드 · Noto Sans KR 13.5px. 실제 React 워크스페이스와 같은 디자인.</span><div class="swatch"><i style="background:#111d33"></i><i style="background:#3775e8"></i><i style="background:#17a994"></i><i style="background:#f5f7fb;border:1px solid #cbd5e1"></i></div></a>
+    <a class="card" href="v2a-legacy/index.html#/overview?as=minseo"><small>V2-A · LOGUARD 현행 참고형</small><b>밀도 높은 관리자형</b><span>12px · 셀 테두리 · 박스형 검색 조건 · 어두운 네이비 사이드바 · 노란 강조. 같은 기능을 밀도 높은 관리자 화면 톤으로.</span><div class="swatch"><i style="background:#0A2E6E"></i><i style="background:#0B3D91"></i><i style="background:#F5B800"></i><i style="background:#EDEFF2;border:1px solid #C8CDD4"></i></div></a>
+    <a class="card" href="v2b-jira/index.html#/overview?as=minseo"><small>V2-B · LOGUARD JIRA 참고형</small><b>넓은 여백의 협업형</b><span>14px · 밝은 사이드바 · 인라인 필터바 · 언더라인 탭 · Atlassian 톤.</span><div class="swatch"><i style="background:#F7F8F9;border:1px solid #CFD3D9"></i><i style="background:#0B3D91"></i><i style="background:#1F845A"></i><i style="background:#FFFFFF;border:1px solid #E4E6EA"></i></div></a>
+  </div>
+  <footer>계정(더미): <code>minseo</code> 관리자 · <code>jihoon</code> 승인자 · <code>yuna</code> 대응자 · <code>viewer</code> 열람자 — 비밀번호는 4자 이상 아무 값. 딥링크에 <code>?as=jihoon</code>을 붙이면 자동 로그인. 화면 안에서 <kbd>?</kbd>로 사용 안내, 종 아이콘의 <b>데모: 새 탐지</b>로 알림 배지·토스트를 확인할 수 있습니다. 주소는 모두 문서용 TEST-NET이며 실제 운영 데이터가 아닙니다.</footer>
+</main>
+</body>
+</html>
