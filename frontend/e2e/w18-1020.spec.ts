@@ -590,11 +590,13 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
     await page.getByLabel('종류').selectOption('exec');
     await page.locator('[data-action="export-csv"]').click();
     await expect(page.locator('[data-part="export-error"]')).toContainText('기간');
-    const since = new Date(Date.now() - 3600_000);
-    const until = new Date(Date.now() + 3600_000);
-    const local = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-    await page.getByLabel('기간 시작').fill(local(since));
-    await page.getByLabel('기간 끝').fill(local(until));
+    // datetime-local 값은 브라우저 시간대(timezoneId Asia/Seoul)로 만든다 — Node(CI 는 UTC)에서 만들면 9시간 어긋나 0건(11/05 CI)
+    const [since, until] = await page.evaluate(() => {
+      const local = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+      return [local(new Date(Date.now() - 3600_000)), local(new Date(Date.now() + 3600_000))];
+    });
+    await page.getByLabel('기간 시작').fill(since);
+    await page.getByLabel('기간 끝').fill(until);
     expect(new URL(page.url()).search).toBe('');
     const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-action="export-csv"]').click()]);
     expect(dl.suggestedFilename()).toMatch(/^supplyguard-audit-\d{8}-\d{8}\.csv$/);
