@@ -13,6 +13,7 @@ import { FileTree, type TreeItem } from '../../components/FileTree';
 import { ConfirmDialog } from '../../components/Modal';
 import { Empty, LoadError, Panel } from '../../components/Panel';
 import { Section, Sheet } from '../../components/Sheet';
+import { sheetNav, type SheetNav } from '../../components/sheet-nav';
 import { useAuth } from '../../hooks/auth-context';
 import { useToast } from '../../hooks/toast-context';
 import { useInterval, useLoad } from '../../hooks/useLoad';
@@ -167,7 +168,7 @@ export function ScansPage() {
           </div>
         </Panel>
       </div>
-      {selId && <ScanSheet key={selId} id={selId} canWrite={canWrite} done={list.data?.find((s) => s.id === selId)?.status !== 'running'} onClose={() => select('')} />}
+      {selId && <ScanSheet key={selId} id={selId} canWrite={canWrite} done={list.data?.find((s) => s.id === selId)?.status !== 'running'} onClose={() => select('')} nav={sheetNav(view.rows.map((s) => s.id), selId, select)} />}
     </div>
   );
 }
@@ -253,14 +254,14 @@ function ScanForm({ canWrite, onStarted }: { canWrite: boolean; onStarted: () =>
   );
 }
 
-function ScanSheet({ id, canWrite, done, onClose }: { id: string; canWrite: boolean; done: boolean; onClose: () => void }) {
+function ScanSheet({ id, canWrite, done, onClose, nav }: { id: string; canWrite: boolean; done: boolean; onClose: () => void; nav?: SheetNav }) {
   const load = useCallback(() => api.scan(id), [id]);
   const r = useLoad(load);
   const { reload } = r;
   useEffect(() => { if (done) reload(); }, [done, reload]);
   const s = r.data;
   return (
-    <Sheet kind="scan" title={s?.target.label ?? '공급망 검사'} onClose={onClose} width={560}>
+    <Sheet kind="scan" size="wide" nav={nav} title={s?.target.label ?? '공급망 검사'} onClose={onClose}>
       {!s ? (r.error ? <LoadError error={r.error} what="검사" /> : <Empty>불러오는 중…</Empty>) : <ScanDetail s={s} canWrite={canWrite} />}
     </Sheet>
   );

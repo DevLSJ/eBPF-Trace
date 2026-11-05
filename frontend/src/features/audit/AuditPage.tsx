@@ -14,6 +14,7 @@ import { PageActions } from '../../components/PageActions';
 import { Empty, LoadError, Panel } from '../../components/Panel';
 import { PolicyStarts } from '../../components/PolicyStarts';
 import { Section, Sheet } from '../../components/Sheet';
+import { sheetNav, type SheetNav } from '../../components/sheet-nav';
 import { VerdictBadge } from '../../components/VerdictBadge';
 import { useCases } from '../../hooks/cases-context';
 import { useFilters } from '../../hooks/useFilters';
@@ -78,6 +79,7 @@ export function AuditPage() {
   const { cases } = useCases();
   const caseOf = useMemo(() => new Map((cases ?? []).map((c) => [c.id, c])), [cases]);
 
+  const [shownIds, setShownIds] = useState<number[]>([]); // 지금 쪽에 보이는 행 — 상세 패널의 이전/다음(11/05)
   const setFilter = (k: FilterKey, v: string) => setFilters({ [k]: v });
   const set = (k: 'id' | 'tab', v: string, replace = k !== 'id') => {
     const next = new URLSearchParams(params);
@@ -191,6 +193,7 @@ export function AuditPage() {
               autoOpen={tab === 'evidence' && !id}
               onClear={() => clearKeys(FILTERS)}
               onOpen={(rid, auto) => set('id', String(rid), auto)}
+              onRows={setShownIds}
             />
           ) : (
             <History cases={cases} since={debounced.since} until={debounced.until} filtered={filtered} onClear={() => clearKeys(FILTERS)} />
@@ -198,7 +201,7 @@ export function AuditPage() {
         </div>
       </Panel>
       {view === 'violations' && id && (
-        <AuditSheetLoader id={Number(id)} caseOf={caseOf} tab={tab} onTab={(t) => set('tab', t === 'evidence' ? 'evidence' : '', true)} onClose={() => clearKeys([])} />
+        <AuditSheetLoader id={Number(id)} caseOf={caseOf} tab={tab} onTab={(t) => set('tab', t === 'evidence' ? 'evidence' : '', true)} onClose={() => clearKeys([])} nav={sheetNav(shownIds, Number(id), (x) => set('id', String(x)))} />
       )}
     </div>
   );
@@ -231,6 +234,7 @@ function Violations({
   autoOpen,
   onClear,
   onOpen,
+  onRows,
 }: {
   filters: Filters;
   caseOf: Map<string, Case>;
@@ -242,6 +246,7 @@ function Violations({
   autoOpen: boolean;
   onClear: () => void;
   onOpen: (id: number, auto?: boolean) => void;
+  onRows?: (ids: number[]) => void;
 }) {
   // 필터가 바뀌면 첫 쪽부터(렌더 중 맞춤)
   const [req, setReq] = useState<Req>({ filters, page: 1, size: 20 });
@@ -304,6 +309,9 @@ function Violations({
   const kit = useTableKit({ columns, sort: { key: 'id', dir: 'desc' } });
   const { sorted } = kit;
   const rows = useMemo(() => (got ? sorted(got.rows) : []), [got, sorted]);
+  useEffect(() => {
+    onRows?.(rows.map((a) => a.id));
+  }, [rows, onRows]);
 
   const opened = useRef(false);
   useEffect(() => {
@@ -414,12 +422,14 @@ function AuditSheetLoader({
   tab,
   onTab,
   onClose,
+  nav,
 }: {
   id: number;
   caseOf: Map<string, Case>;
   tab: 'detail' | 'evidence';
   onTab: (t: 'detail' | 'evidence') => void;
   onClose: () => void;
+  nav?: SheetNav;
 }) {
   // 목록에 없으면(직접 연 주소) 그 id 바로 앞에서 한 건을 다시 찾는다
   const cached = rowCache.get(id);
@@ -430,7 +440,7 @@ function AuditSheetLoader({
   const tabs = !!a && (levelOf(a) === 'killed' || tab === 'evidence');
   const shown = tabs ? tab : 'detail';
   return (
-    <Sheet kind="audit" title={`감사 기록 #${id}`} onClose={onClose}>
+    <Sheet kind="audit" nav={nav} title={`감사 기록 #${id}`} onClose={onClose}>
       {a ? (
         <>
           {tabs && (

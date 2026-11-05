@@ -6,7 +6,7 @@ import { useCases } from '../hooks/cases-context';
 import { useStream } from '../hooks/stream-context';
 import { AccountMenu } from './AccountMenu';
 import { Assistant } from './Assistant';
-import { HeaderSlotContext } from './header-slot';
+import { HeaderSlotContext, SheetHostContext } from './header-slot';
 import { HelpDialog } from './shell/HelpDialog';
 import { NoticeCenter } from './shell/NoticeCenter';
 import { SearchBox } from './shell/SearchBox';
@@ -82,6 +82,7 @@ export function AppShell() {
   const demoOn = isAdmin && info?.demo === true;
   const { pathname } = useLocation();
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [sheetHost, setSheetHost] = useState<HTMLElement | null>(null); // 상세 패널 자리(11/05) — main 위에 겹친다
   const [help, setHelp] = useState(false);
   const { collapsed, narrow, mobile, mobileOpen, toggle, openMobile, closeMobile } = useSidebar(pathname);
   const enforce = stats?.enforceKill ?? info?.enforceKill;
@@ -209,15 +210,19 @@ export function AppShell() {
         </header>
         <StreamBanners />
         <DnsBanner />
-        <main className="min-h-0 flex-1 overflow-hidden p-4 md:p-6">
+        <main className="relative min-h-0 flex-1 overflow-hidden p-4 md:p-6">
           <HeaderSlotContext.Provider value={slot}>
-            {/* 화면 전환: fade + 4px 상승(경로가 바뀔 때만 — 같은 화면의 ?id= 는 그대로). 바깥 칸이 움직이는 4px 를 잘라 본문 넘침이 생기지 않는다 */}
-            <div className="h-full min-h-0 overflow-hidden">
-              <div key={pathname} data-part="screen" className="sg-screen h-full min-h-0">
-                <Outlet />
+            <SheetHostContext.Provider value={sheetHost}>
+              {/* 화면 전환: fade + 4px 상승(경로가 바뀔 때만 — 같은 화면의 ?id= 는 그대로). 바깥 칸이 움직이는 4px 를 잘라 본문 넘침이 생기지 않는다 */}
+              <div className="h-full min-h-0 overflow-hidden">
+                <div key={pathname} data-part="screen" className="sg-screen h-full min-h-0">
+                  <Outlet />
+                </div>
               </div>
-            </div>
+            </SheetHostContext.Provider>
           </HeaderSlotContext.Provider>
+          {/* 상세 패널 자리: 비어 있으면 클릭을 통과시킨다 */}
+          <div ref={setSheetHost} data-part="sheet-host" className="sg-sheet-host" />
         </main>
       </div>
       <Assistant />
