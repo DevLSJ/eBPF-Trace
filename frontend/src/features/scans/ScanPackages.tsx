@@ -81,11 +81,11 @@ export function ScanPackages({ s }: { s: Scan }) {
     <Section title={`패키지 ${list.length} — 잠금 · 의존성 파일에서 읽음, 같은 패키지 · 버전은 한 줄`}>
       <div data-part="packages" className="grid gap-2">
         <div className="max-h-72 overflow-auto rounded-md border border-slate-200">
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
+          <table className="sg-table">
+            <thead>
               <tr>
                 {isAdmin && (
-                  <th className="w-8 px-2 py-1">
+                  <th className="tk-short">
                     <input
                       type="checkbox"
                       aria-label="모두 고르기"
@@ -97,17 +97,15 @@ export function ScanPackages({ s }: { s: Scan }) {
                   </th>
                 )}
                 {['패키지', '버전', '취약', '의존', '출처 파일'].map((h) => (
-                  <th key={h} className="px-2 py-1 font-semibold">
-                    {h}
-                  </th>
+                  <th key={h}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {list.map((g) => (
-                <tr key={g.key} data-pkg={g.key} data-sources={g.sources.length} className={`border-t border-slate-100 ${picked.has(g.key) ? 'bg-indigo-50' : ''}`}>
+                <tr key={g.key} data-pkg={g.key} data-sources={g.sources.length} className={picked.has(g.key) ? 'bg-indigo-50' : undefined}>
                   {isAdmin && (
-                    <td className="px-2 py-1">
+                    <td className="tk-short">
                       {canPick(g) ? (
                         <input type="checkbox" className="accent-indigo-600" aria-label={`${g.key} 고르기`} checked={picked.has(g.key)} onChange={(e) => toggle(g.key, e.target.checked)} />
                       ) : (
@@ -117,11 +115,11 @@ export function ScanPackages({ s }: { s: Scan }) {
                       )}
                     </td>
                   )}
-                  <td className="px-2 py-1 font-mono">{g.manager ? `${g.manager}:${g.name}` : <span title="차단 목록이 다루지 않는 생태계">{`${g.ecosystem} ${g.name}`}</span>}</td>
-                  <td className="px-2 py-1 font-mono">{g.version}</td>
-                  <td className={`num px-2 py-1 ${g.vulns ? 'font-semibold text-amber-700' : 'text-slate-400'}`}>{g.vulns}</td>
-                  <td className="px-2 py-1">{g.direct ? '직접' : '간접'}</td>
-                  <td className="px-2 py-1 font-mono text-xs text-slate-600">
+                  <td className="font-mono">{g.manager ? `${g.manager}:${g.name}` : <span title="차단 목록이 다루지 않는 생태계">{`${g.ecosystem} ${g.name}`}</span>}</td>
+                  <td className="font-mono">{g.version}</td>
+                  <td className={`num ${g.vulns ? 'font-semibold text-amber-700' : 'text-slate-400'}`}>{g.vulns}</td>
+                  <td>{g.direct ? '직접' : '간접'}</td>
+                  <td className="font-mono text-xs text-slate-600">
                     <ul>
                       {g.sources.map((x) => (
                         <li key={x}>{x}</li>

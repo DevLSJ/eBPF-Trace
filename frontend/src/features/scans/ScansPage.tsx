@@ -385,19 +385,19 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
       </Section>
       {vulns.length > 0 && (
         <Section title={`알려진 취약점 ${fmtNum(s.vulnCount)} — OSV-Scanner, ${t.kind === 'package' ? '이 패키지 버전 · 의존성 포함' : '간접 의존성 포함'}`}>
-          <table className="w-full text-xs" data-part="vulns">
-            <thead className="text-left text-slate-500">
-              <tr>{['패키지', '버전', '의존', '건수', '최고', 'ID'].map((x) => <th key={x} className="py-1 font-semibold">{x}</th>)}</tr>
+          <table className="sg-table" data-part="vulns">
+            <thead>
+              <tr>{['패키지', '버전', '의존', '건수', '최고', 'ID'].map((x) => <th key={x}>{x}</th>)}</tr>
             </thead>
             <tbody>
               {vulns.map((v) => (
-                <tr key={`${v.package}@${v.version}`} className="border-t border-slate-100" data-vpkg={v.package} data-count={v.count} data-max={v.maxSeverity} data-direct={String(v.direct)}>
-                  <td className="py-1 font-mono">{v.package}</td>
-                  <td className="py-1 font-mono">{v.version}</td>
-                  <td className="py-1">{v.direct ? '직접' : '간접'}</td>
-                  <td className="num py-1">{v.count}</td>
-                  <td className="py-1"><span className={`rounded px-1.5 py-0.5 ${Number(v.maxSeverity) >= 9 ? 'bg-red-900 text-white' : Number(v.maxSeverity) >= 7 ? 'bg-red-100 text-red-700' : Number(v.maxSeverity) >= 4 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100'}`}>{v.maxSeverity || '—'}</span></td>
-                  <td className="py-1">{v.ids.slice(0, 2).map((x) => <a key={x} href={`https://osv.dev/vulnerability/${x}`} target="_blank" rel="noreferrer" className="mr-1 font-mono text-indigo-600 hover:underline">{x}</a>)}</td>
+                <tr key={`${v.package}@${v.version}`} data-vpkg={v.package} data-count={v.count} data-max={v.maxSeverity} data-direct={String(v.direct)}>
+                  <td className="font-mono">{v.package}</td>
+                  <td className="font-mono">{v.version}</td>
+                  <td>{v.direct ? '직접' : '간접'}</td>
+                  <td className="num">{v.count}</td>
+                  <td><span className={`rounded px-1.5 py-0.5 ${Number(v.maxSeverity) >= 9 ? 'bg-red-900 text-white' : Number(v.maxSeverity) >= 7 ? 'bg-red-100 text-red-700' : Number(v.maxSeverity) >= 4 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100'}`}>{v.maxSeverity || '—'}</span></td>
+                  <td>{v.ids.slice(0, 2).map((x) => <a key={x} href={`https://osv.dev/vulnerability/${x}`} target="_blank" rel="noreferrer" className="mr-1 font-mono text-indigo-600 hover:underline">{x}</a>)}</td>
                 </tr>
               ))}
             </tbody>

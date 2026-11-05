@@ -120,33 +120,31 @@ function Report({ d, author, at }: { d: ReportData; author: string; at: Date }) 
           위반 <span className="num font-normal text-slate-400">{d.violations.length}</span>
         </H>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="text-left text-slate-500">
+          <table className="sg-table">
+            <thead>
               <tr>
                 {['시각', '종류', '규칙', '상세', '판정'].map((h) => (
-                  <th key={h} className="py-1 pr-3 font-semibold whitespace-nowrap">
-                    {h}
-                  </th>
+                  <th key={h}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {d.violations.map((v, i) => (
-                <tr key={i} className="border-t border-slate-100 align-top">
-                  <td className="num py-1 pr-3 font-mono whitespace-nowrap text-slate-600">{fmtDateTime(v.event.timestamp)}</td>
-                  <td className="py-1 pr-3">
+                <tr key={i}>
+                  <td className="num tk-short font-mono text-slate-600">{fmtDateTime(v.event.timestamp)}</td>
+                  <td className="tk-short">
                     <KindBadge kind={v.event.kind} />
                   </td>
-                  <td className="py-1 pr-3 font-mono whitespace-nowrap">{v.ruleId ?? '—'}</td>
-                  <td className="py-1 pr-3 font-mono break-all">{detailOf(v.event)}</td>
-                  <td className="py-1">
+                  <td className="tk-short font-mono">{v.ruleId ?? '—'}</td>
+                  <td className="font-mono break-all">{detailOf(v.event)}</td>
+                  <td className="tk-short">
                     <VerdictBadge v={v} />
                   </td>
                 </tr>
               ))}
               {!d.violations.length && (
                 <tr>
-                  <td colSpan={5} className="py-2 text-slate-400">
+                  <td colSpan={5} className="text-slate-400">
                     위반 없음
                   </td>
                 </tr>
