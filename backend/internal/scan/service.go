@@ -442,7 +442,9 @@ func (s *Service) scan(ctx context.Context, sc *model.Scan, src string) error {
 		}
 	}
 	if depsOnly || t.Kind != "package" {
-		args := []string{"scan", "source", "-r", "/work/" + rel, "--format", "json"}
+		// --no-call-analysis=all(11/06): OSV-Scanner 2.x 는 Go 호출 분석이 기본으로 켜져 Go 소스를 빌드하다 메모리 부족(3GB 에서도 137).
+		// 이 제품은 호출 분석 결과를 쓰지 않는다(parse.go 는 ids · max_severity 만)
+		args := []string{"scan", "source", "-r", "/work/" + rel, "--format", "json", "--no-call-analysis=all"}
 		var direct map[string]bool
 		if depsOnly {
 			args = []string{"scan", "source", "--lockfile", "/work/" + rel + "/" + t.FileName, "--format", "json"}
