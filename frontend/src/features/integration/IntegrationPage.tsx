@@ -1,9 +1,8 @@
-import { Check, Copy, Loader2, Minus, Play, TriangleAlert, X } from 'lucide-react';
+import { Check, ChevronDown, Loader2, Minus, Play, TriangleAlert, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { FlowHero } from '../../components/FlowHero';
 import { Empty, LoadError, Panel } from '../../components/Panel';
 import { useAuth } from '../../hooks/auth-context';
-import { useCopyCommand } from '../../hooks/useCopyCommand';
 import { useCountUp } from '../../hooks/useCountUp';
 import { useInterval, useLoad } from '../../hooks/useLoad';
 import { useStream } from '../../hooks/stream-context';
@@ -11,7 +10,8 @@ import { useToast } from '../../hooks/toast-context';
 import { api, ApiError } from '../../lib/api';
 import { fmtNum } from '../../lib/format';
 import type { Info, IntegrationContainer, IntegrationEnv, IntegrationStatus, IntegrationTest, Kind } from '../../lib/types';
-import { envChecks, FLOW, labelSnippet, type Tone } from './model';
+import { envChecks, FLOW, type Tone } from './model';
+import { ScenarioWizard } from './ScenarioWizard';
 import './integration.css';
 
 // 「연동」 페이지(11/06 사용자 결정): 내 컨테이너를 라벨 한 줄로 SupplyGuard 에 붙이는 절차.
@@ -42,33 +42,35 @@ export function IntegrationPage() {
         </div>
         <FlowHero nodes={FLOW} part="int-flow" />
       </section>
-      <div className="int-cols">
-        <div className="int-steps">
-          <StepCard n={1} title="환경 점검" sub="이 서버에서 실제 수집이 되는지" part="step-env" delay={0}>
-            {data ? <EnvChecks env={data.env} info={info} /> : <Skeleton rows={6} />}
-          </StepCard>
-          <StepCard n={2} title="라벨 한 줄" sub="compose 또는 docker run 에 추가" part="step-label" delay={1}>
-            {data ? <LabelStep env={data.env} /> : <Skeleton rows={4} />}
-          </StepCard>
-          <StepCard n={3} title="연결 확인" sub="시험 컨테이너로 이벤트 수신 확인" part="step-test" delay={2}>
-            {data ? <TestStep env={data.env} test={data.test} isAdmin={isAdmin} onStarted={reload} /> : <Skeleton rows={3} />}
-          </StepCard>
+      <div className="int-main">
+        {data ? <ScenarioWizard env={data.env} containers={data.containers} /> : <section className="int-wizard sg-card"><Skeleton rows={8} /></section>}
+        <div className="int-side">
+          <EnvCard data={data} info={info} isAdmin={isAdmin} onStarted={reload} />
+          <WatchList data={data} />
         </div>
-        <WatchList data={data} />
       </div>
     </div>
   );
 }
 
-function StepCard({ n, title, sub, part, delay, children }: { n: number; title: string; sub: string; part: string; delay: number; children: ReactNode }) {
+// 환경 점검 + 수집 확인(시험 컨테이너) — 기본은 요약 한 줄, 펼치면 항목 · 조치(확인 필요가 있으면 처음부터 펼침)
+function EnvCard({ data, info, isAdmin, onStarted }: { data?: IntegrationStatus; info: Info | null; isAdmin: boolean; onStarted: () => void }) {
+  const warn = data ? envChecks(data.env, info).filter((c) => c.tone === 'warn').length : 0;
+  const [open, setOpen] = useState<boolean | null>(null);
+  const shown = open ?? warn > 0;
   return (
-    <section className="int-step sg-card" data-part={part} style={{ ['--d' as string]: delay }}>
+    <section className="int-step sg-card" data-part="step-env" data-open={String(shown)} style={{ ['--d' as string]: 0 }}>
       <header className="int-step-head">
-        <span className="int-step-n">{n}</span>
-        <b className="int-step-title">{title}</b>
-        <span className="int-step-sub">{sub}</span>
+        <b className="int-step-title">환경 점검</b>
+        <span className="int-step-sub">이 서버에서 실제 수집이 되는지</span>
+        <button type="button" className="int-env-toggle" data-part="env-toggle" aria-expanded={shown} onClick={() => setOpen(!shown)}>
+          {shown ? '접기' : '펼치기'} <ChevronDown className={`size-3.5 int-chev ${shown ? 'up' : ''}`} aria-hidden />
+        </button>
       </header>
-      <div className="int-step-body">{children}</div>
+      <div className="int-step-body">
+        {data ? <EnvChecks env={data.env} info={info} open={shown} /> : <Skeleton rows={2} />}
+        {data && shown && <TestStep env={data.env} test={data.test} isAdmin={isAdmin} onStarted={onStarted} />}
+      </div>
     </section>
   );
 }
@@ -89,7 +91,7 @@ const TONE_ICON: Record<Tone, ReactNode> = {
   off: <Minus className="size-3.5" aria-hidden />,
 };
 
-function EnvChecks({ env, info }: { env: IntegrationEnv; info: Info | null }) {
+function EnvChecks({ env, info, open }: { env: IntegrationEnv; info: Info | null; open: boolean }) {
   const checks = envChecks(env, info);
   const warn = checks.filter((c) => c.tone === 'warn').length;
   return (
@@ -97,7 +99,7 @@ function EnvChecks({ env, info }: { env: IntegrationEnv; info: Info | null }) {
       <p className={`int-verdict ${warn ? 'warn' : 'ok'}`} data-part="env-verdict">
         {warn ? `확인 필요 ${warn}건 — 아래 조치 참고` : env.source === 'gadget' ? '실제 수집 준비됨' : '모의 이벤트로 동작 중'}
       </p>
-      <ul className="int-checks" data-part="env-checks">
+      {open && <ul className="int-checks" data-part="env-checks">
         {checks.map((c, i) => (
           <li key={c.id} data-check={c.id} data-tone={c.tone} className={`int-check tone-${c.tone}`} style={{ ['--i' as string]: i }}>
             <span className="int-check-ico">{TONE_ICON[c.tone]}</span>
@@ -108,48 +110,8 @@ function EnvChecks({ env, info }: { env: IntegrationEnv; info: Info | null }) {
             {c.hint && <span className="int-check-hint">{c.hint}</span>}
           </li>
         ))}
-      </ul>
+      </ul>}
     </>
-  );
-}
-
-function LabelStep({ env }: { env: IntegrationEnv }) {
-  const [kind, setKind] = useState<'compose' | 'run'>('compose');
-  const [enforce, setEnforce] = useState(false);
-  const copy = useCopyCommand();
-  const text = labelSnippet(kind, env, enforce);
-  return (
-    <div className="int-label" data-part="label-step">
-      <div className="int-label-bar">
-        <div className="int-tabs" role="tablist" aria-label="형식">
-          {(['compose', 'run'] as const).map((k) => (
-            <button key={k} type="button" role="tab" aria-selected={kind === k} data-tab={k} className={`int-tab ${kind === k ? 'on' : ''}`} onClick={() => setKind(k)}>
-              {k === 'compose' ? 'docker compose' : 'docker run'}
-            </button>
-          ))}
-        </div>
-        <label className="int-enforce">
-          <input type="checkbox" data-part="label-enforce" checked={enforce} onChange={(e) => setEnforce(e.target.checked)} />
-          격리까지 맡기기
-        </label>
-        <button type="button" className="sg-btn sg-btn-sm sg-btn-secondary" data-part="label-copy" onClick={() => copy(text)}>
-          <Copy className="size-3.5" aria-hidden /> 복사
-        </button>
-      </div>
-      <pre className="int-code" data-part="label-code" key={`${kind}-${enforce}`}>
-        {text.split('\n').map((line, i) => (
-          <span key={i} className={line.includes('supplyguard.') ? 'hl' : undefined}>
-            {line}
-            {'\n'}
-          </span>
-        ))}
-      </pre>
-      <ul className="int-points" data-part="label-points">
-        <li>라벨이 붙은 컨테이너만 감시 대상에 추가됨</li>
-        <li>라벨 변경은 컨테이너를 다시 만들 때 적용됨(docker compose up -d)</li>
-        <li>{enforce ? '정책 위반 시 증거 수집 뒤 즉시 격리됨' : '격리 라벨이 없으면 위반은 「격리 보류」로 기록만 됨'}</li>
-      </ul>
-    </div>
   );
 }
 

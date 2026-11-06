@@ -1,0 +1,454 @@
+import { Check, Copy, Loader2, Plus, RotateCcw, TriangleAlert, X } from 'lucide-react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { StatusBadge } from '../../components/Badges';
+import { useCopyCommand } from '../../hooks/useCopyCommand';
+import { useInterval, useLoad } from '../../hooks/useLoad';
+import { useStream } from '../../hooks/stream-context';
+import { api } from '../../lib/api';
+import { installDest } from '../../lib/nav';
+import type { IntegrationContainer, IntegrationEnv } from '../../lib/types';
+import {
+  DEFAULT_INSTALL,
+  DEFAULT_MULTI,
+  DEFAULT_SINGLE,
+  detected,
+  expected,
+  installCmd,
+  installSessionFor,
+  installValid,
+  multiApply,
+  multiErrors,
+  multiSnippet,
+  multiValid,
+  outcomeOf,
+  pkgError,
+  SCENARIOS,
+  singleApply,
+  singleErrors,
+  singleSnippet,
+  singleValid,
+  STEPS,
+  testCmd,
+  testVerdict,
+  type InstallInput,
+  type Manager,
+  type MultiInput,
+  type Outcome,
+  type ScenarioId,
+  type SingleInput,
+} from './model';
+
+// 시나리오 따라 하기(11/06 요구 1 수정): 시나리오 고르기 → 1 입력(설정 자동 생성) → 2 적용(감시 목록에서 자동 감지) → 3 확인(내 컨테이너 시험 동작).
+// 진행 · 입력값은 이 브라우저에 저장(새로고침해도 이어짐, 저장이 막혀 있으면 이번 화면만). 문구 규칙: 개조식 명사형 종결
+const KEY = 'supplyguard.integrate.wizard.v1';
+interface Saved {
+  scenario: ScenarioId | null;
+  step: number;
+  single: SingleInput;
+  multi: MultiInput;
+  install: InstallInput;
+  armedAt?: string; // 3단계 시험 명령을 복사한 시각
+  installSince?: string; // 설치 검사 명령을 복사한 시각
+  target?: string; // 여러 컨테이너에서 시험할 컨테이너
+}
+const FRESH: Saved = { scenario: null, step: 1, single: DEFAULT_SINGLE, multi: DEFAULT_MULTI, install: DEFAULT_INSTALL };
+function load(): Saved {
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<Saved> | null;
+    return v ? { ...FRESH, ...v } : FRESH;
+  } catch {
+    return FRESH;
+  }
+}
+function save(s: Saved) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(s));
+  } catch {
+    /* 저장이 막혀 있으면 이번 화면만 */
+  }
+}
+
+export function ScenarioWizard({ env, containers }: { env: IntegrationEnv; containers: IntegrationContainer[] }) {
+  const [st, setSt] = useState<Saved>(load);
+  const set = useCallback((p: Partial<Saved>) => {
+    setSt((cur) => {
+      const next = { ...cur, ...p };
+      save(next);
+      return next;
+    });
+  }, []);
+  const sc = st.scenario;
+  const valid = sc === 'single' ? singleValid(st.single) : sc === 'multi' ? multiValid(st.multi) : sc === 'install' ? installValid(st.install) : false;
+  return (
+    <section className="int-wizard sg-card" data-part="wizard" data-scenario={sc ?? ''} data-step={st.step}>
+      <div className="int-scn-row" role="radiogroup" aria-label="연동 시나리오">
+        {SCENARIOS.map((s, i) => (
+          <button
+            key={s.id}
+            type="button"
+            role="radio"
+            aria-checked={sc === s.id}
+            data-scn={s.id}
+            className={`int-scn ${sc === s.id ? 'on' : ''}`}
+            style={{ ['--i' as string]: i }}
+            onClick={() => sc !== s.id && set({ scenario: s.id, step: 1, armedAt: undefined, installSince: undefined, target: undefined })}
+          >
+            <b className="int-scn-title">{s.title}</b>
+            <span className="int-scn-sub">{s.sub}</span>
+            <ul className="int-scn-points">
+              {s.points.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          </button>
+        ))}
+      </div>
+      {!sc ? (
+        <p className="int-wiz-hint" data-part="wizard-pick">
+          ↑ 상황에 맞는 시나리오 선택 → 입력 · 적용 · 확인 3단계 진행됨
+        </p>
+      ) : (
+        <>
+          <ol className="int-stepper" data-part="stepper">
+            {STEPS.map((label, i) => {
+              const n = i + 1;
+              const state = n < st.step ? 'done' : n === st.step ? 'on' : 'off';
+              return (
+                <li key={label} data-state={state} className={`int-stepper-item ${state}`}>
+                  <button type="button" disabled={n > st.step && !(n === 2 && valid)} onClick={() => set({ step: n })}>
+                    <span className="int-stepper-n">{state === 'done' ? <Check className="size-3.5" aria-hidden /> : n}</span>
+                    {label}
+                  </button>
+                </li>
+              );
+            })}
+            <li className="int-stepper-reset">
+              <button type="button" className="sg-btn sg-btn-sm sg-btn-secondary" data-part="wizard-reset" onClick={() => set({ ...FRESH, scenario: sc })}>
+                <RotateCcw className="size-3.5" aria-hidden /> 처음부터
+              </button>
+            </li>
+          </ol>
+          <div className="int-wiz-body" key={`${sc}-${st.step}`}>
+            {st.step === 1 && sc === 'single' && <SingleForm v={st.single} onChange={(single) => set({ single })} />}
+            {st.step === 1 && sc === 'multi' && <MultiForm v={st.multi} onChange={(multi) => set({ multi })} />}
+            {st.step === 1 && sc === 'install' && <InstallForm v={st.install} onChange={(install) => set({ install })} />}
+            {st.step === 1 && (
+              <div className="int-wiz-foot">
+                <button type="button" className="sg-btn sg-btn-primary" data-part="wizard-next" disabled={!valid} onClick={() => set({ step: 2 })}>
+                  설정 만들기 →
+                </button>
+              </div>
+            )}
+            {st.step === 2 && sc !== 'install' && <ApplyStep sc={sc} st={st} env={env} containers={containers} onNext={() => set({ step: 3 })} />}
+            {st.step === 2 && sc === 'install' && <InstallApply st={st} set={set} />}
+            {st.step === 3 && sc !== 'install' && <TestStep sc={sc} st={st} set={set} containers={containers} />}
+            {st.step === 3 && sc === 'install' && <InstallApply st={st} set={set} />}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+// ── 1 입력 ──
+function Field({ label, error, children, wide }: { label: string; error?: string; children: ReactNode; wide?: boolean }) {
+  return (
+    <label className={`int-field ${wide ? 'wide' : ''} ${error ? 'bad' : ''}`}>
+      <span className="int-field-label">{label}</span>
+      {children}
+      {error && <span className="int-field-err">{error}</span>}
+    </label>
+  );
+}
+
+function SingleForm({ v, onChange }: { v: SingleInput; onChange: (v: SingleInput) => void }) {
+  const e = singleErrors(v);
+  return (
+    <div className="int-form" data-part="form-single">
+      <div className="int-tabs" role="tablist" aria-label="방식">
+        {(['compose', 'run'] as const).map((k) => (
+          <button key={k} type="button" role="tab" aria-selected={v.mode === k} data-mode={k} className={`int-tab ${v.mode === k ? 'on' : ''}`} onClick={() => onChange({ ...v, mode: k })}>
+            {k === 'compose' ? 'docker compose' : 'docker run'}
+          </button>
+        ))}
+      </div>
+      <div className="int-form-grid">
+        <Field label={v.mode === 'compose' ? '서비스(컨테이너) 이름' : '컨테이너 이름'} error={e.name}>
+          <input name="name" className="int-input" value={v.name} onChange={(x) => onChange({ ...v, name: x.target.value.trim() })} />
+        </Field>
+        <Field label="이미지" error={e.image}>
+          <input name="image" className="int-input" value={v.image} onChange={(x) => onChange({ ...v, image: x.target.value.trim() })} />
+        </Field>
+      </div>
+      <label className="int-enforce">
+        <input type="checkbox" name="enforce" checked={v.enforce} onChange={(x) => onChange({ ...v, enforce: x.target.checked })} />
+        격리까지 맡기기 <span className="int-muted">— 정책 위반 시 증거 수집 뒤 즉시 종료됨</span>
+      </label>
+    </div>
+  );
+}
+
+function MultiForm({ v, onChange }: { v: MultiInput; onChange: (v: MultiInput) => void }) {
+  const e = multiErrors(v);
+  const upd = (k: number, p: Partial<MultiInput['services'][number]>) => onChange({ ...v, services: v.services.map((s, i) => (i === k ? { ...s, ...p, ...(p.watch === false ? { enforce: false } : {}) } : s)) });
+  return (
+    <div className="int-form" data-part="form-multi">
+      <div className="int-form-grid">
+        <Field label="compose 프로젝트 이름" error={e.project}>
+          <input name="project" className="int-input" value={v.project} onChange={(x) => onChange({ ...v, project: x.target.value.trim() })} />
+        </Field>
+      </div>
+      <table className="sg-table int-svc-table" data-part="svc-table">
+        <thead>
+          <tr>
+            <th>서비스</th>
+            <th>이미지</th>
+            <th className="tk-short">감시</th>
+            <th className="tk-short">격리</th>
+            <th className="tk-short" />
+          </tr>
+        </thead>
+        <tbody>
+          {v.services.map((s, k) => (
+            <tr key={k} data-svc={k} className="int-svc-row">
+              <td>
+                <input aria-label={`서비스 ${k + 1} 이름`} className={`int-input ${e.services[k]?.name ? 'bad' : ''}`} value={s.name} onChange={(x) => upd(k, { name: x.target.value.trim() })} title={e.services[k]?.name || undefined} />
+              </td>
+              <td>
+                <input aria-label={`서비스 ${k + 1} 이미지`} className={`int-input ${e.services[k]?.image ? 'bad' : ''}`} value={s.image} onChange={(x) => upd(k, { image: x.target.value.trim() })} title={e.services[k]?.image || undefined} />
+              </td>
+              <td className="tk-short">
+                <input type="checkbox" aria-label={`서비스 ${k + 1} 감시`} checked={s.watch} onChange={(x) => upd(k, { watch: x.target.checked })} />
+              </td>
+              <td className="tk-short">
+                <input type="checkbox" aria-label={`서비스 ${k + 1} 격리`} checked={s.enforce} disabled={!s.watch} onChange={(x) => upd(k, { enforce: x.target.checked })} />
+              </td>
+              <td className="tk-short">
+                <button type="button" className="int-icon-btn" aria-label={`서비스 ${k + 1} 빼기`} disabled={v.services.length <= 1} onClick={() => onChange({ ...v, services: v.services.filter((_, i) => i !== k) })}>
+                  <X className="size-3.5" aria-hidden />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="int-form-row">
+        <button type="button" className="sg-btn sg-btn-sm sg-btn-secondary" data-part="svc-add" disabled={v.services.length >= 12} onClick={() => onChange({ ...v, services: [...v.services, { name: `svc${v.services.length + 1}`, image: 'busybox:1.36', watch: true, enforce: false }] })}>
+          <Plus className="size-3.5" aria-hidden /> 서비스 추가
+        </button>
+        {(e.none || e.services.find((x) => x.name || x.image)) && <span className="int-field-err" data-part="multi-error">{e.none || '이름 · 이미지 형식 확인 필요'}</span>}
+      </div>
+    </div>
+  );
+}
+
+const MANAGERS: Manager[] = ['pip', 'npm', 'cargo'];
+function InstallForm({ v, onChange }: { v: InstallInput; onChange: (v: InstallInput) => void }) {
+  return (
+    <div className="int-form" data-part="form-install">
+      <div className="int-tabs" role="tablist" aria-label="패키지 관리자">
+        {MANAGERS.map((k) => (
+          <button key={k} type="button" role="tab" aria-selected={v.manager === k} data-manager={k} className={`int-tab ${v.manager === k ? 'on' : ''}`} onClick={() => onChange({ ...v, manager: k })}>
+            {k}
+          </button>
+        ))}
+      </div>
+      <div className="int-form-grid">
+        <Field label="패키지(버전 지정 가능, 예: requests==2.31.0)" error={pkgError(v.pkg)} wide>
+          <input name="pkg" className="int-input" value={v.pkg} onChange={(x) => onChange({ ...v, pkg: x.target.value.trim() })} />
+        </Field>
+      </div>
+      <ul className="int-points">
+        <li>설치는 감시 컨테이너(sg-install-*) 안에서 실행됨 — 호스트에 설치되지 않음</li>
+        <li>악성 동작 시 설치 완료 전에 격리됨, 결과는 설치 검사 화면에 기록됨</li>
+      </ul>
+    </div>
+  );
+}
+
+// ── 2 적용 · 자동 감지 ──
+function Code({ text, part, onCopy }: { text: string; part: string; onCopy?: () => void }) {
+  const copy = useCopyCommand();
+  return (
+    <div className="int-codebox">
+      <pre className="int-code" data-part={part}>
+        {text.split('\n').map((line, i) => (
+          <span key={i} className={line.includes('supplyguard.') ? 'hl' : undefined}>
+            {line}
+            {'\n'}
+          </span>
+        ))}
+      </pre>
+      <button
+        type="button"
+        className="sg-btn sg-btn-sm sg-btn-secondary int-code-copy"
+        data-part={`${part}-copy`}
+        onClick={() => {
+          copy(text);
+          onCopy?.();
+        }}
+      >
+        <Copy className="size-3.5" aria-hidden /> 복사
+      </button>
+    </div>
+  );
+}
+
+function ApplyStep({ sc, st, env, containers, onNext }: { sc: 'single' | 'multi'; st: Saved; env: IntegrationEnv; containers: IntegrationContainer[]; onNext: () => void }) {
+  const exp = expected(sc, st.single, st.multi);
+  const found = detected(exp, containers);
+  const n = found.filter((f) => f.row).length;
+  const all = n === found.length && found.length > 0;
+  return (
+    <div className="int-apply" data-part="apply">
+      <div className="int-apply-cols">
+        <div>
+          <h4 className="int-h4">① 설정 — {sc === 'single' && st.single.mode === 'run' ? '실행 명령' : 'docker-compose.yml'}</h4>
+          <Code part="gen-config" text={sc === 'single' ? singleSnippet(st.single, env) : multiSnippet(st.multi, env)} />
+          {sc === 'single' && st.single.mode === 'compose' && <p className="int-muted">기존 compose 의 같은 서비스에 labels · container_name 두 항목 추가</p>}
+        </div>
+        <div>
+          <h4 className="int-h4">② 서버에서 실행 — 컨테이너 다시 만들기</h4>
+          <Code part="gen-apply" text={sc === 'single' ? singleApply(st.single, env) : multiApply()} />
+          <h4 className="int-h4">③ 자동 감지 {found.length > 1 && <span className="int-muted" data-part="detect-count">{n} / {found.length}</span>}</h4>
+          <ul className="int-detect" data-part="detect">
+            {found.map((f) => (
+              <li key={f.name} data-detect={f.name} data-found={String(!!f.row)} className={`int-detect-row ${f.row ? 'found' : ''}`}>
+                <span className="int-detect-ico">{f.row ? <Check className="size-3.5" aria-hidden /> : <Loader2 className="size-3.5 animate-spin" aria-hidden />}</span>
+                <b>{f.name}</b>
+                <span className="int-muted">{f.row ? (f.row.enforce ? '감시 · 격리 대상 확인됨' : '감시 확인됨') : '감시 목록에 나타나기를 기다리는 중'}</span>
+                {f.row && f.enforce !== f.row.enforce && <span className="int-field-err">격리 설정 다름 — 라벨 확인 필요</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <div className="int-wiz-foot">
+        {all ? <span className="int-ok" data-part="detect-done">모두 감지됨 — 확인 단계 진행 가능</span> : <span className="int-muted">감지 전에도 다음 단계로 이동 가능</span>}
+        <button type="button" className={`sg-btn ${all ? 'sg-btn-primary' : 'sg-btn-secondary'}`} data-part="wizard-next" onClick={onNext}>
+          확인 단계 →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── 3 확인 — 내 컨테이너에서 시험 동작 ──
+const OUTCOME: Record<Outcome, { tone: string; title: string; points: string[] }> = {
+  killed: { tone: 'danger', title: '격리됨 — 연동 · 격리 모두 동작 확인됨', points: ['/etc/shadow 읽기가 sensitive-files 정책에 걸려 컨테이너 종료됨', '조치: docker compose up -d 로 다시 시작(재시작 정책이 있으면 자동)'] },
+  held: { tone: 'warn', title: '격리 보류 — 감시 동작 확인됨', points: ['위반 탐지 · 기록됨, 격리 라벨이 없어 종료하지 않음', '격리가 필요하면 supplyguard.enforce=true 추가'] },
+  alert: { tone: 'ok', title: '경고 기록됨 — 감시 동작 확인됨', points: ['위반 탐지 · 기록됨(정책 대응이 경고)'] },
+};
+
+function TestStep({ sc, st, set, containers }: { sc: 'single' | 'multi'; st: Saved; set: (p: Partial<Saved>) => void; containers: IntegrationContainer[] }) {
+  const { verdicts } = useStream();
+  const exp = expected(sc, st.single, st.multi);
+  const target = exp.find((e) => e.name === st.target)?.name ?? exp[0]?.name ?? '';
+  const enforce = exp.find((e) => e.name === target)?.enforce ?? false;
+  const watching = containers.some((c) => c.name === target && c.watched);
+  const v = testVerdict(verdicts, target, st.armedAt);
+  const out = v ? OUTCOME[outcomeOf(v)] : null;
+  return (
+    <div className="int-test3" data-part="verify">
+      {exp.length > 1 && (
+        <div className="int-form-row">
+          <span className="int-field-label">시험할 컨테이너</span>
+          <select className="int-input" data-part="verify-target" value={target} onChange={(e) => set({ target: e.target.value, armedAt: undefined })}>
+            {exp.map((e) => (
+              <option key={e.name} value={e.name}>
+                {e.name}
+                {e.enforce ? ' (격리)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {!watching && <p className="int-field-err">⚠ {target} 아직 감시 목록에 없음 — 2단계 적용 먼저 필요</p>}
+      {enforce && (
+        <p className="int-warn" data-part="verify-kill-warn">
+          <TriangleAlert className="size-4" aria-hidden /> 격리 라벨 있음 — 시험 동작 시 이 컨테이너가 실제로 종료됨
+        </p>
+      )}
+      <h4 className="int-h4">서버에서 실행 — 무해한 시험 동작(계정 파일 읽기 시도)</h4>
+      <Code part="gen-test" text={testCmd(target)} onCopy={() => set({ armedAt: new Date().toISOString() })} />
+      <div className={`int-verify ${out ? out.tone : st.armedAt ? 'wait' : 'idle'}`} data-part="verify-result" data-outcome={v ? outcomeOf(v) : st.armedAt ? 'waiting' : 'idle'} key={v ? `v${v.event.timestamp}` : st.armedAt ?? 'idle'}>
+        {!st.armedAt ? (
+          <span className="int-muted">명령 복사 → 실행하면 결과가 여기에 자동 표시됨</span>
+        ) : !v || !out ? (
+          <span className="int-wait">
+            <Loader2 className="size-4 animate-spin" aria-hidden /> {target} 의 위반 판정 기다리는 중
+          </span>
+        ) : (
+          <>
+            <b className="int-verify-title">
+              <Check className="size-4" aria-hidden /> {out.title}
+            </b>
+            <ul className="int-points">
+              {out.points.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+              <li>
+                규칙 {v.ruleId} · {v.reason}
+              </li>
+            </ul>
+            <div className="int-form-row">
+              <Link className="sg-btn sg-btn-sm sg-btn-secondary" to="/events">
+                이벤트 보기
+              </Link>
+              <Link className="sg-btn sg-btn-sm sg-btn-secondary" to={`/topology?node=${encodeURIComponent(`c:${target}`)}`}>
+                토폴로지에서 보기
+              </Link>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── 설치 검사: 2 적용(명령) · 3 확인(세션 결과) ──
+function InstallApply({ st, set }: { st: Saved; set: (p: Partial<Saved>) => void }) {
+  const loadFn = useCallback(() => api.installs({ limit: 50 }), []);
+  const { data, reload } = useLoad(st.installSince ? loadFn : null);
+  const sess = installSessionFor(data, st.install, st.installSince);
+  const finished = !!sess && sess.status !== 'running';
+  // 콜백을 고정해야 타이머가 렌더마다(실시간 통계로 2초보다 자주) 다시 걸리지 않는다
+  const poll = useCallback(() => {
+    if (st.installSince && !finished) reload();
+  }, [st.installSince, finished, reload]);
+  useInterval(poll, 2000);
+  useEffect(() => {
+    if (sess && st.step === 2) set({ step: 3 });
+  }, [sess, st.step, set]);
+  return (
+    <div className="int-apply" data-part="install-apply">
+      <h4 className="int-h4">SupplyGuard 서버 셸에서 실행(저장소 폴더)</h4>
+      <Code part="gen-install" text={installCmd(st.install)} onCopy={() => set({ installSince: new Date(Date.now() - 2000).toISOString() })} />
+      <ul className="int-points">
+        <li>도구 위치: 저장소의 tools/sg-install · SANDBOX_TOKEN 은 서버 .env 의 값 사용</li>
+        <li>명령 복사 뒤 실행하면 설치 세션이 여기에 자동 표시됨</li>
+      </ul>
+      <div className={`int-verify ${finished ? (sess!.status === 'passed' ? 'ok' : 'danger') : st.installSince ? 'wait' : 'idle'}`} data-part="install-result" data-status={sess?.status ?? (st.installSince ? 'waiting' : 'idle')}>
+        {!st.installSince ? (
+          <span className="int-muted">명령 복사 → 실행하면 결과가 여기에 자동 표시됨</span>
+        ) : !sess ? (
+          <span className="int-wait">
+            <Loader2 className="size-4 animate-spin" aria-hidden /> {st.install.manager} {st.install.pkg} 설치 세션 기다리는 중
+          </span>
+        ) : (
+          <>
+            <b className="int-verify-title">
+              <StatusBadge status={sess.status} /> {sess.status === 'running' ? '설치 진행 중' : sess.status === 'passed' ? '설치 통과 — 위반 없음 확인됨' : '설치 중 위반 — 결과 확인 필요'}
+            </b>
+            <div className="int-form-row">
+              <Link className="sg-btn sg-btn-sm sg-btn-secondary" data-part="install-open" to={installDest(sess.id).to} state={installDest(sess.id).state}>
+                설치 상세 보기
+              </Link>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

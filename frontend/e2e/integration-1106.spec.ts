@@ -1,8 +1,9 @@
 import type { Page } from '@playwright/test';
 import { expect, noPageOverflow, SHOTS, test } from './fixtures';
+import { killedVerdict } from './mock-backend';
 
 // 11/06 사용자 결정 — 「연동」 페이지: 라벨 한 줄(supplyguard.watch)로 내 컨테이너 연동.
-//   메뉴 = 대시보드 바로 아래(모두에게) · 흐름 그림 자동 재생 · ① 환경 점검 ② 라벨 한 줄(격리 체크 · 복사) ③ 연결 테스트(관리자)
+//   메뉴 = 대시보드 바로 아래(모두에게) · 흐름 그림 자동 재생 · 시나리오 3종(입력 → 설정 생성 → 자동 감지 → 내 컨테이너 시험 동작) · 환경 점검 + 수집 확인(관리자)
 //   · 감시 목록(3초 갱신 — 들어온 행 강조, 나간 행 흐려짐) · 대시보드 위 「연동 시작하기」 띠(실제 수집인데 내 컨테이너 0개)
 const NAV = '[data-part="sidebar"] nav';
 const P = '[data-part="integration"]';
@@ -39,53 +40,161 @@ test.describe('11/06 연동 페이지', () => {
     await expect(flow.locator('[data-state="on"]')).toHaveAttribute('data-node', 'act');
   });
 
-  test('① 환경 점검: 현상 → 조치. mock 은 「모의 이벤트」 확인 필요, 실제 수집 · fanotify · 격리 켬은 준비됨', async ({ page, backend }) => {
+  test('환경 점검: 확인 필요가 있으면 펼친 채 현상 → 조치, 모두 정상이면 요약 한 줄로 접힘', async ({ page, backend }) => {
     await page.goto('/integration');
     await ready(page);
     const env = page.locator('[data-part="step-env"]');
+    await expect(env).toHaveAttribute('data-open', 'true'); // mock — 모의 이벤트 확인 필요
     await expect(env.locator('[data-check="source"]')).toHaveAttribute('data-tone', 'warn');
     await expect(env.locator('[data-check="source"]')).toContainText('EVENT_SOURCE=gadget');
     await expect(env.locator('[data-part="env-verdict"]')).toContainText('확인 필요');
-    // 실제 서버처럼
+    // 실제 서버처럼 — 모두 정상이면 접힘(요약만), 펼치면 항목 6개 정상
     backend.integration = { ...backend.integration, env: { ...backend.integration.env, source: 'gadget', kernel: '5.15.0-160-generic', os: 'Ubuntu 22.04.5 LTS' } };
     backend.info = { ...backend.info, source: 'gadget', discovery: 'fanotify', dnsResolve: 'ok', gadgets: ['exec', 'open', 'connect', 'dns'], enforceKill: true };
     await page.reload();
     await ready(page);
-    for (const id of ['source', 'kernel', 'os', 'gadgets', 'discovery', 'enforce']) await expect(env.locator(`[data-check="${id}"]`), id).toHaveAttribute('data-tone', 'ok');
+    await expect(env).toHaveAttribute('data-open', 'false');
     await expect(env.locator('[data-part="env-verdict"]')).toHaveText('실제 수집 준비됨');
+    await expect(env.locator('[data-check]')).toHaveCount(0);
+    await env.locator('[data-part="env-toggle"]').click();
+    for (const id of ['source', 'kernel', 'os', 'gadgets', 'discovery', 'enforce']) await expect(env.locator(`[data-check="${id}"]`), id).toHaveAttribute('data-tone', 'ok');
     // 커널 7.0 · docker-events · 격리 꺼짐 → 각각 확인 필요 + 조치
     backend.integration = { ...backend.integration, env: { ...backend.integration.env, kernel: '7.0.0-10-generic', enforceKill: false } };
     backend.info = { ...backend.info, discovery: 'docker-events', discoveryNote: '컨테이너 시작 직후 약 0.1초 안의 동작은 놓칠 수 있습니다' };
     await page.reload();
     await ready(page);
+    await expect(env).toHaveAttribute('data-open', 'true');
     await expect(env.locator('[data-check="kernel"]')).toContainText('이벤트 유실');
     await expect(env.locator('[data-check="discovery"]')).toContainText('0.1초');
     await expect(env.locator('[data-check="enforce"]')).toContainText('ENFORCE_KILL=false');
     await expect(env.locator('[data-part="env-verdict"]')).toContainText('확인 필요 3건');
   });
 
-  test('② 라벨 한 줄: compose · docker run, 「격리까지 맡기기」면 enforce 줄 추가 · 복사', async ({ page, context, backend }) => {
-    void backend;
+  test('시나리오 ① 내 서비스 하나: 입력 검사 → 설정 생성(격리 체크 · container_name) → 적용 뒤 자동 감지 → 시험 동작 결과(격리 보류)', async ({ page, context, backend }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.goto('/integration');
     await ready(page);
-    const step = page.locator('[data-part="step-label"]');
-    const code = step.locator('[data-part="label-code"]');
-    await expect(code).toContainText('supplyguard.watch: "true"');
-    await expect(code).not.toContainText('supplyguard.enforce');
-    await expect(code.locator('.hl')).toHaveCount(1);
-    await step.locator('[data-part="label-enforce"]').check();
-    await expect(code).toContainText('supplyguard.enforce: "true"');
-    await expect(code.locator('.hl')).toHaveCount(2);
-    await expect(step.locator('[data-part="label-points"]')).toContainText('즉시 격리됨');
-    await step.locator('[data-tab="run"]').click();
-    await expect(code).toContainText('--label supplyguard.watch=true');
-    await expect(code).toContainText('--label supplyguard.enforce=true');
-    await step.locator('[data-part="label-copy"]').click();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('--label supplyguard.enforce=true');
+    const w = page.locator('[data-part="wizard"]');
+    await expect(w.locator('[data-scn]')).toHaveCount(3);
+    await expect(w.locator('[data-part="wizard-pick"]')).toBeVisible();
+    await w.locator('[data-scn="single"]').click();
+    await expect(w).toHaveAttribute('data-step', '1');
+    // 입력 검사
+    await w.locator('input[name="name"]').fill('My App');
+    await expect(w.locator('.int-field-err')).toContainText('소문자');
+    await expect(w.locator('[data-part="wizard-next"]')).toBeDisabled();
+    await w.locator('input[name="name"]').fill('shop-api');
+    await w.locator('input[name="image"]').fill('shop-api:1.4');
+    await w.locator('input[name="enforce"]').check();
+    await w.locator('[data-part="wizard-next"]').click();
+    // 2 적용 — 생성된 compose · 명령, 감지 대기
+    await expect(w).toHaveAttribute('data-step', '2');
+    const cfg = w.locator('[data-part="gen-config"]');
+    await expect(cfg).toContainText('container_name: shop-api');
+    await expect(cfg).toContainText('supplyguard.watch: "true"');
+    await expect(cfg).toContainText('supplyguard.enforce: "true"');
+    await expect(w.locator('[data-part="gen-apply"]')).toHaveText('docker compose up -d shop-api');
+    await w.locator('[data-part="gen-config-copy"]').click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('container_name: shop-api');
+    await expect(w.locator('[data-detect="shop-api"]')).toHaveAttribute('data-found', 'false');
+    // 서버에 컨테이너가 나타나면(3초 갱신) 자동 감지
+    backend.integration = { ...backend.integration, containers: [...backend.integration.containers, { id: 'c-shop', name: 'shop-api', image: 'shop-api:1.4', ignored: false, watched: true, watchBy: 'label', enforce: true, enforceBy: 'label' }] };
+    await expect(w.locator('[data-detect="shop-api"]')).toHaveAttribute('data-found', 'true', { timeout: 6000 });
+    await expect(w.locator('[data-part="detect-done"]')).toBeVisible();
+    await w.locator('[data-part="wizard-next"]').click();
+    // 3 확인 — 격리 라벨 경고 · 시험 명령 · 결과 대기 → 판정 수신
+    await expect(w).toHaveAttribute('data-step', '3');
+    await expect(w.locator('[data-part="verify-kill-warn"]')).toContainText('실제로 종료됨');
+    await expect(w.locator('[data-part="gen-test"]')).toHaveText('docker exec shop-api cat /etc/shadow');
+    await expect(w.locator('[data-part="verify-result"]')).toHaveAttribute('data-outcome', 'idle');
+    await w.locator('[data-part="gen-test-copy"]').click();
+    await expect(w.locator('[data-part="verify-result"]')).toHaveAttribute('data-outcome', 'waiting');
+    backend.send({ type: 'verdict', data: { ...killedVerdict('shop-api', '금지 경로 /etc/shadow'), ruleId: 'sensitive-files', enforced: false, dryRun: true, enforceSkip: 'label' } });
+    await expect(w.locator('[data-part="verify-result"]')).toHaveAttribute('data-outcome', 'held');
+    await expect(w.locator('[data-part="verify-result"]')).toContainText('격리 보류 — 감시 동작 확인됨');
+    await expect(w.locator('[data-part="verify-result"]')).toContainText('sensitive-files');
+    await page.screenshot({ path: `${SHOTS}/1106-integration-scenario-single.png` });
+    // 새로고침해도 단계 · 입력 이어짐
+    await page.reload();
+    await ready(page);
+    await expect(w).toHaveAttribute('data-step', '3');
+    await expect(w.locator('[data-part="gen-test"]')).toHaveText('docker exec shop-api cat /etc/shadow');
   });
 
-  test('③ 연결 테스트: 관리자 → 진행 → 통과(종류별 수), 진행 중엔 버튼 잠김 · 변경 이력 1줄', async ({ page, backend }) => {
+  test('시나리오 ① docker run: 한 줄 명령 · 라벨 없는 격리면 enforce 줄 없음', async ({ page, backend }) => {
+    void backend;
+    await page.goto('/integration');
+    await ready(page);
+    const w = page.locator('[data-part="wizard"]');
+    await w.locator('[data-scn="single"]').click();
+    await w.locator('[data-mode="run"]').click();
+    await w.locator('[data-part="wizard-next"]').click();
+    await expect(w.locator('[data-part="gen-config"]')).toContainText('--label supplyguard.watch=true');
+    await expect(w.locator('[data-part="gen-config"]')).not.toContainText('supplyguard.enforce');
+    await expect(w.locator('[data-part="gen-apply"]')).toHaveText('docker run -d --name my-app --label supplyguard.watch=true my-app:latest');
+  });
+
+  test('시나리오 ② 여러 컨테이너: 서비스 행 추가 · 감시 끄면 격리도 꺼짐 · compose 전체 생성 · 감지 n / m · 시험 대상 선택(격리됨)', async ({ page, backend }) => {
+    await page.goto('/integration');
+    await ready(page);
+    const w = page.locator('[data-part="wizard"]');
+    await w.locator('[data-scn="multi"]').click();
+    const rows = w.locator('[data-part="svc-table"] tbody tr');
+    await expect(rows).toHaveCount(3);
+    await w.locator('[data-part="svc-add"]').click();
+    await expect(rows).toHaveCount(4);
+    await rows.nth(3).getByLabel('서비스 4 감시').uncheck();
+    await expect(rows.nth(3).getByLabel('서비스 4 격리')).toBeDisabled();
+    await rows.nth(3).getByLabel('서비스 4 빼기').click();
+    await expect(rows).toHaveCount(3);
+    // 감시 0개면 다음 불가
+    for (const k of [1, 2]) await rows.nth(k - 1).getByLabel(`서비스 ${k} 감시`).uncheck();
+    await expect(w.locator('[data-part="multi-error"]')).toContainText('감시할 서비스 1개 이상');
+    await expect(w.locator('[data-part="wizard-next"]')).toBeDisabled();
+    for (const k of [1, 2]) await rows.nth(k - 1).getByLabel(`서비스 ${k} 감시`).check();
+    await rows.nth(1).getByLabel('서비스 2 격리').check();
+    await w.locator('[data-part="wizard-next"]').click();
+    const cfg = w.locator('[data-part="gen-config"]');
+    await expect(cfg).toContainText('name: shop');
+    await expect(cfg).toContainText('container_name: shop-web');
+    await expect(cfg).toContainText('container_name: shop-db');
+    expect((await cfg.textContent())!.match(/supplyguard\.watch/g)).toHaveLength(2); // db 는 감시 안 함
+    await expect(w.locator('[data-part="gen-apply"]')).toHaveText('docker compose up -d');
+    await expect(w.locator('[data-part="detect-count"]')).toHaveText('0 / 2');
+    backend.integration = { ...backend.integration, containers: [...backend.integration.containers, { id: 'c-w', name: 'shop-web', image: 'nginx:1.27-alpine', ignored: false, watched: true, watchBy: 'label', enforce: false }] };
+    await expect(w.locator('[data-part="detect-count"]')).toHaveText('1 / 2', { timeout: 6000 });
+    await w.locator('[data-part="wizard-next"]').click();
+    await w.locator('[data-part="verify-target"]').selectOption('shop-api');
+    await expect(w.locator('[data-part="verify-kill-warn"]')).toBeVisible();
+    await expect(w.locator('[data-part="gen-test"]')).toHaveText('docker exec shop-api cat /etc/shadow');
+    await w.locator('[data-part="gen-test-copy"]').click();
+    backend.send({ type: 'verdict', data: { ...killedVerdict('shop-api'), ruleId: 'sensitive-files' } });
+    await expect(w.locator('[data-part="verify-result"]')).toHaveAttribute('data-outcome', 'killed');
+    await expect(w.locator('[data-part="verify-result"]')).toContainText('격리됨 — 연동 · 격리 모두 동작 확인됨');
+  });
+
+  test('시나리오 ③ 패키지 설치 검사: 명령 생성 → 새 설치 세션 자동 감지 → 결과 · 설치 상세 링크', async ({ page, backend }) => {
+    await page.goto('/integration');
+    await ready(page);
+    const w = page.locator('[data-part="wizard"]');
+    await w.locator('[data-scn="install"]').click();
+    await w.locator('[data-manager="npm"]').click();
+    await w.locator('input[name="pkg"]').fill('left-pad@1.3.0');
+    await w.locator('[data-part="wizard-next"]').click();
+    await expect(w.locator('[data-part="gen-install"]')).toHaveText('tools/sg-install npm left-pad@1.3.0');
+    await expect(w.locator('[data-part="install-result"]')).toHaveAttribute('data-status', 'idle');
+    await w.locator('[data-part="gen-install-copy"]').click();
+    await expect(w.locator('[data-part="install-result"]')).toHaveAttribute('data-status', 'waiting');
+    const now = new Date().toISOString();
+    backend.installs.unshift({ ...backend.installs[0], id: 'ins-9001', manager: 'npm', packages: ['left-pad@1.3.0'], startedAt: now, finishedAt: now, status: 'passed', caseId: null, violations: [], isolation: null, scan: undefined, scanId: null });
+    await expect(w.locator('[data-part="install-result"]')).toHaveAttribute('data-status', 'passed', { timeout: 6000 });
+    await expect(w).toHaveAttribute('data-step', '3');
+    await expect(w.locator('[data-part="install-result"]')).toContainText('설치 통과');
+    await w.locator('[data-part="install-open"]').click();
+    await expect(page).toHaveURL(/\/installs\?id=ins-9001/);
+  });
+
+  test('수집 확인(시험 컨테이너): 관리자 → 진행 → 통과(종류별 수), 진행 중엔 버튼 잠김', async ({ page, backend }) => {
     await page.goto('/integration');
     await ready(page);
     const step = page.locator('[data-part="test-step"]');
@@ -102,12 +211,12 @@ test.describe('11/06 연동 페이지', () => {
     await page.screenshot({ path: `${SHOTS}/1106-integration.png` });
   });
 
-  test('③ 조회자 · 실행 불가 서버: 버튼 잠김 + 이유', async ({ page, backend }) => {
+  test('수집 확인 — 조회자: 버튼 잠김 + 이유', async ({ page, backend }) => {
     backend.auth.asViewer();
     await page.goto('/integration');
     await ready(page);
     await expect(page.locator('[data-part="test-start"]')).toBeDisabled();
-    await expect(page.locator('[data-part="step-test"]')).toContainText('관리자만 실행 가능');
+    await expect(page.locator('[data-part="test-step"]')).toContainText('관리자만 실행 가능');
   });
 
   test('감시 목록: 감시 · 격리 이유 배지, 새 컨테이너는 강조하며 들어오고 사라진 것은 흐려진 뒤 빠짐', async ({ page, backend }) => {
@@ -136,21 +245,19 @@ test.describe('11/06 연동 페이지', () => {
 
 test.describe('11/06 연동 페이지 — 화면 틀', () => {
   for (const [w, h] of [[1920, 1080], [1440, 900]] as const)
-    test(`${w}×${h}: 단계 3칸 가로 · 감시 목록 아래 · 문서 넘침 0 · 단계 카드 잘림 없음`, async ({ page, backend }) => {
+    test(`${w}×${h}: 흐름 그림 · 시나리오(가운데) · 환경 점검 + 감시 목록(오른쪽) · 문서 넘침 0`, async ({ page, backend }) => {
       void backend;
       await page.setViewportSize({ width: w, height: h });
       await page.goto('/integration');
       await ready(page);
+      await page.locator('[data-scn="multi"]').click();
+      await page.locator('[data-part="wizard-next"]').click();
       await noPageOverflow(page);
-      // 단계 카드 등장 애니메이션(차례로 10px 올라옴)이 끝난 뒤에 잰다
-      await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => ((a.effect as KeyframeEffect | null)?.target as Element | null)?.closest('.int-steps')).map((a) => a.finished)));
-      const boxes = await page.locator('.int-step').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.bottom), e.scrollHeight <= e.clientHeight + 1]; }));
-      expect(boxes).toHaveLength(3);
-      expect(new Set(boxes.map((b) => b[0])).size).toBe(1); // 한 줄
-      expect(boxes.every((b) => b[2])).toBe(true); // 안쪽 넘침 없음
-      const watch = await page.getByTestId('int-watch').boundingBox();
-      expect(watch!.y).toBeGreaterThan(boxes[0][1] as number);
+      const [wiz, watch] = await Promise.all([page.locator('[data-part="wizard"]').boundingBox(), page.getByTestId('int-watch').boundingBox()]);
+      expect(watch!.x).toBeGreaterThan(wiz!.x + wiz!.width - 1);
+      expect(wiz!.y + wiz!.height).toBeLessThanOrEqual(h);
       expect(watch!.y + watch!.height).toBeLessThanOrEqual(h);
+      await page.waitForTimeout(700);
       await page.screenshot({ path: `${SHOTS}/1106-integration-${w}.png` });
     });
 });
