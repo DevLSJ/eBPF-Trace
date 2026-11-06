@@ -15,15 +15,26 @@ DEV_EVAL := EVAL_REPORTS_DIR=$(CURDIR)/bench/reports
 # 저장소 안 .scan-work 를 작업 폴더로 쓰고 검사기에는 같은 폴더를 bind(SCAN_VOLUME 이 절대 경로면 bind). Docker Desktop 이 켜져 있어야 한다
 DEV_SCAN := SCAN_DIR=$(CURDIR)/.scan-work SCAN_VOLUME=$(CURDIR)/.scan-work
 
-.PHONY: dev backend frontend mock stack-up stack-down test build sandbox-up sandbox-down vm-open vm-close
+.PHONY: setup dev backend frontend mock stack-up stack-down test build sandbox-up sandbox-down vm-open vm-close
 
 # sg-vm(이 Mac 의 UTM VM) 화면을 http://localhost:$(VM_PORT) 로 — SSH 터널(별칭 sg-vm)이 VM 의 nginx 80 으로 넘긴다(11/05).
 # nginx 가 Host 를 포트 없이 넘겨 로그인 Origin 검사는 같은 호스트로 통과한다 — ALLOWED_ORIGINS 를 바꾸지 않는다. UTM VM 이 켜져 있어야 한다
 VM_PORT ?= 8080
 VM_TUNNEL := 127.0.0.1:$(VM_PORT):127.0.0.1:80
 
-## dev: 백엔드(mock, :8000) + Vite(:5173) 를 같이 띄운다. Ctrl-C 로 둘 다 종료.
+## setup: 새 PC · 새 clone 에서 처음 한 번(11/06) — 도구 확인 → 프론트 의존성(npm ci) · e2e 브라우저(chromium) · Go 모듈
+setup:
+	@command -v go >/dev/null || { echo "Go 1.26 이상이 필요합니다 — https://go.dev/dl"; exit 1; }
+	@command -v node >/dev/null || { echo "Node 22.12 이상이 필요합니다(frontend/.nvmrc) — https://nodejs.org"; exit 1; }
+	@command -v docker >/dev/null || echo "참고: Docker 가 없으면 공급망 검사 · make stack-up · sandbox-up 은 쓸 수 없습니다(make dev · make test 는 됨)"
+	@echo "go $$(go env GOVERSION) · node $$(node -v)"
+	cd backend && go mod download
+	cd frontend && npm ci --no-audit --no-fund && npx playwright install chromium
+	@echo "준비 끝 — make dev(http://127.0.0.1:5173, admin/admin) · make test · cd frontend && npx playwright test"
+
+## dev: 백엔드(mock, :8000) + Vite(:5173) 를 같이 띄운다. Ctrl-C 로 둘 다 종료. 프론트 의존성이 없으면 먼저 npm ci(새 clone)
 dev:
+	@test -d frontend/node_modules || { echo "frontend 의존성이 없어 먼저 설치합니다(npm ci) — 처음 한 번은 make setup 권장"; cd frontend && npm ci --no-audit --no-fund; }
 	@trap 'kill 0' EXIT INT TERM; \
 	  (cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true DEMO_ENABLED=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) $(DEV_EVAL) $(DEV_SCAN) go run ./cmd/server) & \
 	  (cd frontend && npm run dev) & \
@@ -49,6 +60,7 @@ stack-down:
 	$(COMPOSE_MOCK) down
 
 test:
+	@test -d frontend/node_modules || { echo "frontend 의존성이 없어 먼저 설치합니다(npm ci)"; cd frontend && npm ci --no-audit --no-fund; }
 	cd backend && go vet ./... && GOOS=linux go vet ./... && go test -race ./...
 	cd frontend && npm run lint && npm run build
 

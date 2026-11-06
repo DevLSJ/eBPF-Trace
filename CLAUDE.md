@@ -61,6 +61,7 @@ tools/     sg-install
 
 | 명령 | 내용 |
 |---|---|
+| `make setup` | 새 PC · 새 clone 에서 처음 한 번 — 도구 확인 · Go 모듈 · `npm ci` · Playwright chromium(11/06). `make dev` · `make test` 는 `node_modules` 가 없으면 `npm ci` 부터 |
 | `make dev` | 백엔드(mock 이벤트, :8000, 로그인 켜짐 · `admin`/`admin` 으로 바로 대시보드 — Makefile `DEV_AUTH` 가 OTP 를 끄고 `AUTH_DEV_MODE=true`(mock 소스 전용)로 비밀번호 변경 · 라이선스 단계를 건너뜀) + Vite(:5173). 공급망 검사는 Docker Desktop 이 켜져 있어야 하고 작업 폴더는 `.scan-work`(검사기에 bind, 11/06) |
 | `make mock` | 옛 목업 :8766 — 11/05 부터 개발 · 검증에 쓰지 않음(기록 열람용). **8765는 참고 제품 목업 — 끄지 않는다** |
 | `make test` | 백엔드 vet · race 테스트 + 프론트 lint · build |

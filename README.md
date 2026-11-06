@@ -74,6 +74,27 @@ REST · WS 앞: 로그인(쿠키 세션 · 역할 · OTP) — CLI 는 Bearer ADM
 | 작은 표본 | 런타임은 시나리오당 10회 · 정상 설치 50건. 정적 모델 비교는 PyPI 만이면 규칙 F1 93.8% > HGB 86.6%, npm 을 넣으면 HGB 88.9% > 규칙 85.7% 로 뒤집힘 | 수치는 표본 크기와 함께 공개(`bench/reports/`) |
 | 판정 모델 미운영 | HGB 는 PyPI 시험에서 오탐 10.8%(규칙 0.8%) | 운영 판정은 규칙, 모델은 비교 실험만 |
 
+## 준비물 · 처음 한 번 (새 PC · 새 clone)
+
+| 도구 | 버전 | 쓰는 곳 |
+|---|---|---|
+| Go | 1.26 이상(`backend/go.mod`) | 백엔드 · `make test` |
+| Node.js | 22.12 이상(`frontend/.nvmrc` = 24) | 화면 · e2e |
+| make · bash | — | 모든 명령(Windows 는 WSL2) |
+| Docker | 선택 | 공급망 검사 · `make stack-up` · `make sandbox-up`(없어도 `make dev` · `make test` 는 됨) |
+| Python 3 | 선택 | `make mock`(옛 목업 열람)만 |
+
+```bash
+git clone https://github.com/DevLSJ/eBPF-Trace.git && cd eBPF-Trace
+make setup      # 도구 확인 → Go 모듈 · npm ci · Playwright chromium
+make dev        # http://127.0.0.1:5173 (admin / admin)
+make test       # 백엔드 vet · race 테스트 + 프론트 lint · build
+cd frontend && npx playwright test   # React e2e(가짜 백엔드)
+```
+
+- `make dev` · `make test` 는 `frontend/node_modules` 가 없으면 먼저 `npm ci` 를 실행함
+- 저장소에 없는 것: `.env`(비밀 값 — `.env.example` 에서 만듦) · 기획 문서 · 개인 Claude 설정(공개 저장소라 넣지 않음)
+
 ## 빠른 시작 (로컬, 커널 없이)
 
 macOS/Windows 에서는 eBPF 를 못 돌리므로 `EVENT_SOURCE=mock` 이 데모 시나리오(정상 컨테이너 + 타이포스쿼팅 패키지 `pkg-reqeusts`)를 재생한다.
