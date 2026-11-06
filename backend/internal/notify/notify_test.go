@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -75,9 +76,27 @@ func fast(cfg Config) Config {
 	return cfg
 }
 
-func start(t *testing.T, cfg Config) (*Service, *bytes.Buffer) {
+// syncBuf: 채널 고루틴이 로그를 쓰는 동안 테스트가 읽어도 경쟁이 없게(-race, 11/06 새 clone 의 make test 에서 600번 중 4번 DATA RACE)
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (w *syncBuf) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.b.Write(p)
+}
+
+func (w *syncBuf) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.b.String()
+}
+
+func start(t *testing.T, cfg Config) (*Service, *syncBuf) {
 	t.Helper()
-	logBuf := &bytes.Buffer{}
+	logBuf := &syncBuf{}
 	s := New(fast(cfg), slog.New(slog.NewTextHandler(logBuf, nil)))
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
