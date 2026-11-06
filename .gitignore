@@ -16,3 +16,5 @@ docs/
 bench/raw/
 bench/datasets/
 bench/.venv/
+# 로컬 공급망 검사 작업 폴더(make dev, 11/06)
+.scan-work/
