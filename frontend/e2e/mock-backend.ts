@@ -1,5 +1,6 @@
 import type { Page, Route, WebSocketRoute } from '@playwright/test';
 import type {
+  IntegrationStatus,
   AuditEntry,
   Blocklist,
   BlockList,
@@ -202,6 +203,18 @@ export class MockBackend {
   failing = new Map<string, number>();
   // 10/30 시연(계약 §2 mock 소스): info.demo 가 true 일 때만 /api/demo 경로가 있다. demoDown → 503, demoRefused → 거부 세션(202 refused)
   demo: DemoState = { enabled: false, scenarios: DEMO_SCENARIOS, running: null, last: null };
+  // 11/06 연동(GET /api/integration · POST /api/integration/test) — 백엔드 internal/integration 과 같은 모양. integrationDown → 503
+  integration: IntegrationStatus = {
+    env: { source: 'mock', os: '', kernel: '', enforceKill: true, enforceNames: ['sg-install-*'], labelWatch: 'supplyguard.watch', labelEnforce: 'supplyguard.enforce', probeImage: 'busybox:1.36', testable: true },
+    containers: [
+      { id: 'c-pkg', name: 'pkg-reqeusts', image: 'demo/reqeusts:1.0.2', ignored: false, watched: true, watchBy: 'all', enforce: true, enforceBy: 'label' },
+      { id: 'c-web', name: 'web-api', image: 'node:22-alpine', ignored: false, watched: true, watchBy: 'all', enforce: false },
+      { id: 'c-worker', name: 'worker', image: 'python:3.12-slim', ignored: false, watched: true, watchBy: 'all', enforce: false },
+    ],
+    test: null,
+  };
+  integrationDown = false;
+  integrationTestMs = 1200;
   demoDown = false;
   demoRefused = false;
   demoStepMs = 250; // 모의 재생 간격
@@ -803,6 +816,22 @@ export class MockBackend {
         this.startDemo(run);
         return json(run, 202);
       }
+    }
+
+    // 11/06 연동
+    if (method === 'GET' && path === '/integration') return json(this.integration);
+    if (method === 'POST' && path === '/integration/test') {
+      if (this.integrationDown || !this.integration.env.testable) return fail(503, '이 서버에서는 연결 테스트를 할 수 없습니다');
+      if (this.integration.test?.state === 'running') return fail(409, '연결 테스트가 이미 진행 중입니다');
+      const unix = Math.floor(Date.now() / 1000) + ++this.seq;
+      const t = { id: `probe-${unix}`, container: `sg-probe-${unix}`, state: 'running' as const, startedAt: new Date().toISOString(), events: {} };
+      this.integration = { ...this.integration, test: t };
+      this.addChange('integration_test', `연결 테스트: ${t.container}`);
+      setTimeout(() => {
+        if (this.integration.test?.id !== t.id) return;
+        this.integration = { ...this.integration, test: { ...t, state: 'passed', endedAt: new Date().toISOString(), events: { exec: 5, open: 1 } } };
+      }, this.integrationTestMs);
+      return json(t, 202);
     }
 
     // 기존 API

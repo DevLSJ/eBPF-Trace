@@ -12,6 +12,7 @@ import { scanHref, SOURCE_LABEL } from "../../lib/guide";
 import { installDest, topologyDest } from "../../lib/nav";
 import { caseLabel, type Case } from "../../lib/types";
 import "./dashboard.css";
+import { IntegrateBanner } from "../integration/IntegrateBanner";
 
 // 대시보드 — 「지금 처리할 일이 있나?」(판정 대기) + 「지금까지 무엇을 수집 · 탐지했나?」(eBPF 수집 종합, 10/16)
 // 11/04e 재배치(R2 11/04, 목업 mock/README.md 11/04e A): 머리 한 줄(상태 신호등 · 「eBPF 감시 중」 · 기간) → KPI 6칸(종합 카드 밖 독립 줄, 길게 눌러 옮기기)
@@ -23,6 +24,7 @@ export function DashboardPage() {
   const s = sum.data ?? null;
   return (
     <div data-part="dashboard" data-section="overview" className="sg-dash">
+      <IntegrateBanner />
       <div data-part="dash-top" className="sg-dash-top">
         <SignalPills />
         <span

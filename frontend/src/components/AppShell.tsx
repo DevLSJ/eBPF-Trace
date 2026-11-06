@@ -1,4 +1,4 @@
-import { ChartColumn, ChevronsLeft, ChevronsRight, CircleHelp, FileClock, LayoutDashboard, ListTree, Menu, MonitorPlay, Network, PackageSearch, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
+import { ChartColumn, ChevronsLeft, ChevronsRight, CircleHelp, FileClock, LayoutDashboard, ListTree, Menu, MonitorPlay, Network, Plug, PackageSearch, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/auth-context';
@@ -58,9 +58,12 @@ const groups: { id?: 'install' | 'runtime' | 'records'; label?: string; items: N
 
 // R3 11/04: 「시연」 — 대시보드 바로 아래 고정(home 줄 — 길게 눌러 옮기기 · 순서 저장 대상 아님), 관리자 + /api/info.demo 일 때만 groups 에 끼운다
 const DEMO_ITEM: NavItem = { to: '/demo', label: '시연', icon: MonitorPlay };
+// 11/06: 「연동」 — 모두에게(연결 테스트 버튼만 관리자), 대시보드 바로 아래 고정(home 줄)
+const INTEGRATION_ITEM: NavItem = { to: '/integration', label: '연동', icon: Plug };
 
 const TITLES: Record<string, string> = {
   '/': '대시보드',
+  '/integration': '연동',
   '/demo': '시연',
   '/installs': '설치 검사',
   '/scans': '공급망 검사',
@@ -146,7 +149,7 @@ export function AppShell() {
           </div>
           <nav className="flex min-h-0 flex-col gap-3 overflow-y-auto px-2 py-3" aria-label="화면">
             {groups.map((g, gi) => (
-              <NavGroup key={gi} g={!g.id && demoOn ? { ...g, items: [...g.items, DEMO_ITEM] } : g} collapsed={collapsed} pending={pending} />
+              <NavGroup key={gi} g={!g.id ? { ...g, items: [...g.items, INTEGRATION_ITEM, ...(demoOn ? [DEMO_ITEM] : [])] } : g} collapsed={collapsed} pending={pending} />
             ))}
           </nav>
           {!collapsed && (

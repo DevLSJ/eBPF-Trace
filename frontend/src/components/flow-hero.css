@@ -1,0 +1,202 @@
+/* 흐름 그림(11/06) — 노드 순차 점등 · 선 위 점 흐름 · 요점 전환. 길이는 모션 토큰(--t-base · --t-slow), 색은 테마 토큰 */
+.flow-hero {
+  --flow-gap: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.flow-track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--flow-gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.flow-node {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 8px);
+  background: var(--surface);
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+  animation: flow-pop var(--t-slow) var(--ease) forwards;
+  animation-delay: calc(var(--i) * 90ms);
+  transition:
+    border-color var(--t-base) var(--ease),
+    box-shadow var(--t-base) var(--ease),
+    background var(--t-base) var(--ease);
+}
+.flow-hero.compact .flow-node {
+  padding: 9px 11px;
+}
+.flow-dot {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--text-3);
+  background: var(--surface-2);
+  transition:
+    background var(--t-base) var(--ease),
+    color var(--t-base) var(--ease),
+    transform var(--t-base) var(--ease);
+}
+.flow-title {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.flow-sub {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 톤 — 켜진(on) · 지난(done) 노드 */
+.flow-node.tone-accent { --flow-c: var(--accent); --flow-soft: var(--accent-soft, rgba(23, 105, 232, 0.12)); }
+.flow-node.tone-ok { --flow-c: var(--ok, #137653); --flow-soft: var(--ok-soft, rgba(19, 118, 83, 0.12)); }
+.flow-node.tone-warn { --flow-c: var(--warn, #b45309); --flow-soft: var(--warn-soft, rgba(180, 83, 9, 0.12)); }
+.flow-node.tone-danger { --flow-c: var(--danger, #e4516f); --flow-soft: var(--danger-soft, rgba(228, 81, 111, 0.12)); }
+.flow-node.done .flow-dot,
+.flow-node.on .flow-dot {
+  color: #fff;
+  background: var(--flow-c);
+}
+.flow-node.on {
+  border-color: var(--flow-c);
+  background: linear-gradient(0deg, var(--flow-soft), var(--flow-soft)), var(--surface);
+  box-shadow: 0 0 0 3px var(--flow-soft), 0 10px 26px var(--flow-soft);
+}
+.flow-node.on .flow-dot {
+  transform: scale(1.08);
+  animation: flow-ring calc(var(--t-slow) * 4) var(--ease) infinite;
+}
+/* 노드 사이 선 — 꺼짐은 점선이 흐르고, 지난 구간은 강조색으로 차오른다 */
+.flow-link {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--flow-gap) * -1);
+  width: var(--flow-gap);
+  height: 2px;
+  overflow: visible;
+  background: var(--border);
+  z-index: 1;
+}
+.flow-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--flow-c);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--t-slow) var(--ease);
+}
+.flow-link.lit::after {
+  transform: scaleX(1);
+}
+.flow-dash {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, var(--text-3) 0 3px, transparent 3px 7px);
+  opacity: 0.35;
+  animation: flow-dash 0.9s linear infinite;
+}
+.flow-link.lit .flow-dash {
+  display: none;
+}
+.flow-particle {
+  position: absolute;
+  top: -3px;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--flow-c);
+  box-shadow: 0 0 10px 2px var(--flow-c);
+  animation: flow-particle var(--t-slow) var(--ease) forwards;
+  z-index: 2;
+}
+/* 요점 한 줄 — 단계마다 아래에서 올라온다 */
+.flow-point {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-height: 22px;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  animation: flow-point var(--t-slow) var(--ease);
+}
+.flow-point-step {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.flow-hero.still .flow-node {
+  opacity: 1;
+  transform: none;
+  animation: none;
+}
+.flow-hero.still .flow-point {
+  animation: none;
+}
+@keyframes flow-pop {
+  to { opacity: 1; transform: none; }
+}
+@keyframes flow-ring {
+  0% { box-shadow: 0 0 0 0 var(--flow-soft); }
+  70% { box-shadow: 0 0 0 9px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes flow-dash {
+  to { background-position: 14px 0; }
+}
+@keyframes flow-particle {
+  from { left: -4px; opacity: 0; }
+  20% { opacity: 1; }
+  to { left: calc(100% - 4px); opacity: 0; }
+}
+@keyframes flow-point {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (max-width: 767px) {
+  .flow-track {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+  }
+  .flow-link {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-node,
+  .flow-point,
+  .flow-node.on .flow-dot,
+  .flow-dash {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+}
