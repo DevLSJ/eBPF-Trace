@@ -191,6 +191,8 @@ type Verdict struct {
 	Enforced bool `json:"enforced,omitempty"`
 	// EnforceError: 종료 시도가 실패한 경우 사유
 	EnforceError string `json:"enforceError,omitempty"`
+	// EnforceSkip(11/06): kill 정책인데 격리 범위 밖이라 보류(DryRun)한 이유 — "label" = 격리 라벨(supplyguard.enforce) 없음
+	EnforceSkip string `json:"enforceSkip,omitempty"`
 	// CaseID · Install: 이 판정이 묶인 건 · 설치 세션 (없으면 null). 감사 로그 행에도 그대로 남는다.
 	CaseID  *string     `json:"caseId"`
 	Install *InstallRef `json:"install"`

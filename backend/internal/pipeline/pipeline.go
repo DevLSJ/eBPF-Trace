@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"path"
 	"sync"
 	"time"
 
@@ -38,6 +37,10 @@ type Options struct {
 	// 개발자 PC 처럼 남의 컨테이너(minikube 등)가 같이 도는 호스트에서 오탐 격리를 막는 안전장치.
 	WatchContainers []string
 	NormalEventRate int
+	// Labels(11/06): 컨테이너 라벨 조회(supplyguard.watch · supplyguard.enforce). nil 이면 이름 규칙만
+	Labels Labeler
+	// Enforce(11/06): 격리 범위. nil 이면 감시 대상 전부(옛 동작) — main 은 항상 채운다(scope.go)
+	Enforce *EnforceScope
 	// DNSGrace: trace_dns 가 켜져 있는데 도메인이 없는 공인 IP connect 는 이만큼 기다렸다 리졸버를 다시 보고 평가한다
 	// (connect 가 DNS 응답보다 먼저 처리되는 경쟁 완화). 0 이면 바로 평가.
 	DNSGrace time.Duration
@@ -55,8 +58,10 @@ type Pipeline struct {
 	review   Reviewer
 	notifier notify.Notifier
 
-	persist chan model.Verdict
-	killed  map[string]time.Time // 컨테이너 ID → 격리 시각 (중복 kill 방지)
+	persist  chan model.Verdict
+	killed   map[string]time.Time // 컨테이너 ID → 격리 시각 (중복 kill 방지)
+	lc       labelCache           // 컨테이너 ID → 라벨(scope.go)
+	observer func(model.Event)    // 감시 대상 이벤트 관찰(연동 연결 테스트, scope.go)
 
 	rateSec   int64
 	rateCount int
@@ -119,22 +124,12 @@ func (p *Pipeline) Run(ctx context.Context, events <-chan model.Event) {
 	}
 }
 
-// Ignored: 자기 스택(supplyguard-*) 등 제외 대상이거나, 관찰 목록(WatchContainers)이 있는데 그 밖이면 true
+// Ignored: 이름 규칙만 본 제외 여부(라벨 감시는 watched, scope.go) — 자기 스택(supplyguard-*)이거나, 관찰 목록이 있는데 그 밖이면 true
 func (p *Pipeline) Ignored(containerName string) bool {
-	for _, g := range p.opt.IgnoreContainers {
-		if ok, _ := path.Match(g, containerName); ok {
-			return true
-		}
+	if matchAny(p.opt.IgnoreContainers, containerName) {
+		return true
 	}
-	if len(p.opt.WatchContainers) == 0 {
-		return false
-	}
-	for _, g := range p.opt.WatchContainers {
-		if ok, _ := path.Match(g, containerName); ok {
-			return false
-		}
-	}
-	return true
+	return len(p.opt.WatchContainers) > 0 && !matchAny(p.opt.WatchContainers, containerName)
 }
 
 func (p *Pipeline) Handle(ctx context.Context, ev model.Event) {
@@ -152,8 +147,14 @@ func (p *Pipeline) Handle(ctx context.Context, ev model.Event) {
 		}
 		// DNS 질의(10/30)는 아래로 흘러 kind: dns 규칙으로 평가한다 (DNS 유예 없음)
 	}
-	if ev.ContainerID == "" || p.Ignored(ev.ContainerName) {
-		return // 호스트 프로세스 또는 보호 대상
+	if ev.ContainerID == "" || !p.watched(ctx, ev) {
+		return // 호스트 프로세스 · 보호 대상 · 감시 범위 밖(이름 · 라벨, scope.go)
+	}
+	if p.opt.Enforce != nil {
+		p.labels(ctx, ev.ContainerID) // 격리 범위 판정용 라벨을 잠금 밖에서 미리(캐시)
+	}
+	if p.observer != nil {
+		p.observer(ev)
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -245,6 +246,7 @@ func (p *Pipeline) emit(v model.Verdict) {
 func (p *Pipeline) lifecycle(ctx context.Context, ev model.Event) {
 	if ev.Kind == model.KindExit {
 		p.engine.Forget(ev.ContainerID) // 끝난 컨테이너의 연쇄 상태 — 설치 세션 추적(review)과 무관하게 버린다
+		p.forgetLabels(ev.ContainerID)
 	}
 	if p.review == nil {
 		return
@@ -273,6 +275,10 @@ func (p *Pipeline) lifecycle(ctx context.Context, ev model.Event) {
 func (p *Pipeline) enforce(ctx context.Context, v *model.Verdict) {
 	if !p.opt.EnforceKill {
 		v.DryRun = true // 전역 dry-run: 격리 대상이지만 알림만
+		return
+	}
+	if !p.enforceAllowed(ctx, v.Event) {
+		v.DryRun, v.EnforceSkip = true, EnforceSkipLabel // 격리 범위 밖(라벨 · 이름, scope.go): 보류
 		return
 	}
 	id := v.Event.ContainerID
