@@ -153,11 +153,7 @@ test.describe("A 배치(1440×900)", () => {
     await expect(cards.nth(0).locator("h2")).toHaveText("수집량 추이");
     await expect(cards.nth(1).locator("h2")).toHaveText("위반 추이");
     await expect(cards.nth(2).locator("h2")).toHaveText("설치 검사 결과");
-    await expect(
-      page
-        .locator(`${DASH} [data-chart="collected"].line-chart path[data-kind]`)
-        .first(),
-    ).toBeVisible();
+    await expectLineDrawn(page);
     await expect(
       page.locator(
         `${DASH} [data-chart="violations"].stack-bars [data-bucket]`,
@@ -640,3 +636,25 @@ test.describe("H 390", () => {
     await page.screenshot({ path: `${SCRATCH}/r2-dashboard-390.png` });
   });
 });
+
+// 11/06 CI(PR #4, 23:59 UTC)에서 수집량 선이 「hidden」 — 가짜 exec 는 시간당 180 고정이라 매시 59분엔 모든 칸이 같아
+// 선 높이가 0 이 되고 Playwright 가 보이지 않는다고 본다. 지금 시간 칸도 180 으로 채워 그 순간을 매번 만든다
+test.describe("C 수집량 선 — 모든 칸이 같은 값이어도 그려진다(11/06)", () => {
+  test("exec 가 24칸 모두 같을 때도 선 path 가 있고 점 24개", async ({ page, backend }) => {
+    const H = 60;
+    const m0 = Math.max(...backend.collected.map((c) => c.minute));
+    const hourStart = Math.floor(m0 / H) * H;
+    const sum = backend.collected.filter((c) => c.minute >= hourStart).reduce((n, c) => n + c.exec, 0);
+    backend.collected.push({ minute: m0, exec: 180 - sum, open: 0, connect: 0 });
+    await page.goto("/");
+    await ready(page);
+    await expectLineDrawn(page);
+  });
+});
+// 선이 그려졌는지 — 「보임」은 모든 점이 같은 높이면(높이 0 상자) 실패하므로 차트 SVG 가 보이고 path 의 점이 24개인지 본다
+async function expectLineDrawn(page: Page) {
+  await expect(page.locator(`${DASH} [data-chart="collected"].line-chart`)).toBeVisible();
+  const line = page.locator(`${DASH} [data-chart="collected"].line-chart path[data-kind]`).first();
+  await expect(line).toBeAttached();
+  expect(((await line.getAttribute("d")) ?? "").match(/[ML]/g)?.length).toBe(24);
+}
