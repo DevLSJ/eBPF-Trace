@@ -38,6 +38,8 @@ type Config struct {
 	DockerHost  string
 	// 공급망 검사(10/16): 작업 볼륨(백엔드 경로 · Docker 볼륨 이름) · 검사기 이미지
 	ScanDir, ScanVolume, GuardDogImage, OSVImage string
+	// EnforceContainers(11/06 라벨 연동): 라벨(supplyguard.enforce) 없이도 격리하는 이름 패턴. 기본 sg-install-*(설치 샌드박스 · 시연)
+	EnforceContainers []string
 	// 종합 판정(11/04): 설치 세션 보고 때 서버가 같은 패키지의 정적 검사를 자동으로 시작한다(SCAN_AUTO on | off, 기본 on).
 	// 자원: 동시 실행 상한(수동 검사 포함) · 자동 검사 대기 상한(넘으면 건너뜀 busy) · 검사기 컨테이너 메모리(MB) · CPU(코어)
 	ScanAuto                   bool
@@ -90,6 +92,7 @@ func Load() (Config, error) {
 		IgnoreContainers:   list(env("IGNORE_CONTAINERS", "supplyguard-*")),
 		WatchContainers:    list(env("WATCH_CONTAINERS", "")),
 		ContainerDiscovery: env("CONTAINER_DISCOVERY", "auto"),
+		EnforceContainers:  list(env("ENFORCE_CONTAINERS", "sg-install-*")),
 		DockerHost:         env("DOCKER_HOST", "unix:///var/run/docker.sock"),
 		ScanDir:            env("SCAN_DIR", "/scan"),
 		ScanVolume:         env("SCAN_VOLUME", "supplyguard_scan_work"),

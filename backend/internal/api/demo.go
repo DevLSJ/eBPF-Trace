@@ -21,6 +21,11 @@ const msgDemoBrowserOnly = "시연은 대시보드의 관리자 로그인에서�
 // demoAdmin: 컨테이너를 띄우는 쓰기 — 조회자 403(「조회자는 읽기만 할 수 있습니다」는 미들웨어가 먼저 낸다), CLI Bearer 403.
 // 로그인이 꺼진 조립(테스트 · 옛 구성)에서는 다른 쓰기와 같은 ADMIN_TOKEN 규칙
 func (h *handlers) demoAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return h.browserAdmin(msgDemoBrowserOnly, next)
+}
+
+// browserAdmin: 대시보드 관리자 세션만(조회자 403 · CLI Bearer 403, msg). 시연 · 연동 연결 테스트(11/06)가 같이 쓴다
+func (h *handlers) browserAdmin(msg string, next http.HandlerFunc) http.HandlerFunc {
 	if h.Deps.Auth == nil {
 		return h.auth(next)
 	}
@@ -32,7 +37,7 @@ func (h *handlers) demoAdmin(next http.HandlerFunc) http.HandlerFunc {
 		case !a.IsAdmin():
 			writeErr(w, http.StatusForbidden, "조회자는 읽기만 할 수 있습니다")
 		case a.ID == auth.CLIActor.ID:
-			writeErr(w, http.StatusForbidden, msgDemoBrowserOnly)
+			writeErr(w, http.StatusForbidden, msg)
 		default:
 			next(w, r)
 		}
