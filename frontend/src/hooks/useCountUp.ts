@@ -21,7 +21,8 @@ export function useCountUp(value: number, ms?: number): number {
       return;
     }
     let raf = requestAnimationFrame(function tick(t) {
-      const p = Math.min(1, (t - start) / dur);
+      // rAF 시각은 프레임 시작 시각이라 위 performance.now() 보다 앞설 수 있다 — 0 아래로 내려가면 숫자가 거꾸로 간다(11/06 CI)
+      const p = Math.max(0, Math.min(1, (t - start) / dur));
       // 끝 3% 는 바로 목표값으로(같은 화면의 숫자들이 같은 프레임에 끝나도록)
       const e = p >= 0.97 ? 1 : 1 - (1 - p) ** 3;
       set(Math.round(from + (value - from) * e));
