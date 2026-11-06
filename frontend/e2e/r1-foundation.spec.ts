@@ -804,3 +804,31 @@ test.describe('H 다크 모드', () => {
     await page.screenshot({ path: `${SCRATCH}/r1-dark.png` });
   });
 });
+
+// 11/06 CI(PR #6)에서 카운트업 중간값이 시작값(1234)보다 작게(1221) 읽혔다 — 첫 rAF 시각이 효과의 performance.now() 보다
+// 앞서면 진행률이 음수가 되어 숫자가 한 프레임 거꾸로 갔다. 프레임 시각을 20ms 앞당겨 그 순간을 매번 만든다
+test.describe('C KPI 카운트업 — 첫 프레임 시각이 시작보다 앞서도 거꾸로 가지 않는다(11/06)', () => {
+  test('1,000 → 2,000 사이 보인 값은 모두 1,000 이상 2,000 이하, 끝은 2,000', async ({ page, backend }) => {
+    void backend;
+    await page.goto('/');
+    await expect(page.getByTestId('pending')).toBeVisible();
+    const base = { k: 'violations', label: '위반', icon: '⚠', stripe: 'danger', tone: 'danger', sub: '', box: { w: 260, h: 140 } };
+    await stage(page, 'kpi', { ...base, value: 1000 });
+    const val = page.locator(`${STAGE} [data-kpi="violations"] [data-value]`);
+    await expect(val).toHaveText('1,000');
+    await page.evaluate(() => {
+      const w = window as unknown as { __seen: number[] };
+      w.__seen = [];
+      const el = document.querySelector('[data-r1-stage] [data-kpi="violations"] [data-value]')!;
+      new MutationObserver(() => w.__seen.push(Number(el.textContent!.replace(/,/g, '')))).observe(el, { childList: true, subtree: true, characterData: true });
+      const raf = window.requestAnimationFrame.bind(window);
+      window.requestAnimationFrame = (cb) => raf((t) => cb(t - 20));
+    });
+    await restage(page, { ...base, value: 2000 });
+    await expect(val).toHaveText('2,000');
+    const seen = await page.evaluate(() => (window as unknown as { __seen: number[] }).__seen);
+    expect(seen.length).toBeGreaterThan(1);
+    expect(Math.min(...seen), `보인 값 ${seen.join(',')}`).toBeGreaterThanOrEqual(1000);
+    expect(Math.max(...seen)).toBeLessThanOrEqual(2000);
+  });
+});
