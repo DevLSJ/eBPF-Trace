@@ -55,15 +55,17 @@ type Container struct {
 	Image   string
 	Pid     int
 	Running bool
+	Labels  map[string]string // 11/06: 감시 · 격리 범위(supplyguard.watch · supplyguard.enforce). 없으면 빈 맵
 }
 
 // List: 실행 중인 컨테이너 목록 (PID 는 없음 — Inspect 로 얻는다)
 func (c *Client) List(ctx context.Context) ([]Container, error) {
 	var raw []struct {
-		ID    string   `json:"Id"`
-		Names []string `json:"Names"`
-		Image string   `json:"Image"`
-		State string   `json:"State"`
+		ID     string            `json:"Id"`
+		Names  []string          `json:"Names"`
+		Image  string            `json:"Image"`
+		State  string            `json:"State"`
+		Labels map[string]string `json:"Labels"`
 	}
 	if err := c.getJSON(ctx, "/containers/json", &raw); err != nil {
 		return nil, err
@@ -74,18 +76,19 @@ func (c *Client) List(ctx context.Context) ([]Container, error) {
 		if len(r.Names) > 0 {
 			name = strings.TrimPrefix(r.Names[0], "/")
 		}
-		out = append(out, Container{ID: r.ID, Name: name, Image: r.Image, Running: r.State == "running"})
+		out = append(out, Container{ID: r.ID, Name: name, Image: r.Image, Running: r.State == "running", Labels: orEmpty(r.Labels)})
 	}
 	return out, nil
 }
 
-// Inspect: 이름·이미지·init PID
+// Inspect: 이름·이미지·init PID·라벨
 func (c *Client) Inspect(ctx context.Context, id string) (Container, error) {
 	var raw struct {
 		ID     string `json:"Id"`
 		Name   string `json:"Name"`
 		Config struct {
-			Image string `json:"Image"`
+			Image  string            `json:"Image"`
+			Labels map[string]string `json:"Labels"`
 		} `json:"Config"`
 		State struct {
 			Pid     int  `json:"Pid"`
@@ -95,7 +98,23 @@ func (c *Client) Inspect(ctx context.Context, id string) (Container, error) {
 	if err := c.getJSON(ctx, "/containers/"+url.PathEscape(id)+"/json", &raw); err != nil {
 		return Container{}, err
 	}
-	return Container{ID: raw.ID, Name: strings.TrimPrefix(raw.Name, "/"), Image: raw.Config.Image, Pid: raw.State.Pid, Running: raw.State.Running}, nil
+	return Container{ID: raw.ID, Name: strings.TrimPrefix(raw.Name, "/"), Image: raw.Config.Image, Pid: raw.State.Pid, Running: raw.State.Running, Labels: orEmpty(raw.Config.Labels)}, nil
+}
+
+// Labels: 컨테이너 라벨(파이프라인 감시 · 격리 범위, pipeline.Labeler)
+func (c *Client) Labels(ctx context.Context, id string) (map[string]string, error) {
+	ct, err := c.Inspect(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return ct.Labels, nil
+}
+
+func orEmpty(m map[string]string) map[string]string {
+	if m == nil {
+		return map[string]string{}
+	}
+	return m
 }
 
 type Event struct {
