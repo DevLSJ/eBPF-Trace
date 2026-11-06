@@ -57,11 +57,11 @@ test.describe('R3 시연 페이지 — 메뉴 · 자리', () => {
     const link = page.locator(`${NAV} a[href="/demo"]`);
     await expect(link).toBeVisible();
     await expect(link).toContainText('시연');
-    // 대시보드 바로 아래(같은 고정 줄 — 묶음 제목 없는 home), 정렬 대상 표시 없음
+    // 대시보드 아래 고정 줄(묶음 제목 없는 home) — 11/06 부터 대시보드 → 연동 → 시연, 정렬 대상 표시 없음
     const home = page.locator(`${NAV} [data-nav-group="home"] > a`);
-    expect(await home.evaluateAll((els) => els.map((e) => e.getAttribute('href')))).toEqual(['/', '/demo']);
+    expect(await home.evaluateAll((els) => els.map((e) => e.getAttribute('href')))).toEqual(['/', '/integration', '/demo']);
     await expect(link).not.toHaveAttribute('data-sort-scope', /.+/);
-    const [d, l] = await Promise.all([page.locator(`${NAV} a[href="/"]`).boundingBox(), link.boundingBox()]);
+    const [d, l] = await Promise.all([page.locator(`${NAV} a[href="/integration"]`).boundingBox(), link.boundingBox()]);
     expect(l!.y).toBeGreaterThan(d!.y);
     expect(l!.y - d!.y).toBeLessThan(d!.height + 8);
     // 길게 눌러도 집히지 않고(0.4초 넘게) 저장 키에 들어가지 않는다
@@ -83,7 +83,7 @@ test.describe('R3 시연 페이지 — 메뉴 · 자리', () => {
     await page.evaluate(() => localStorage.setItem('supplyguard.layout', JSON.stringify({ v: 1, sidebar: { install: ['evaluation', 'scans', 'installs'] } })));
     await page.reload();
     await expect(page.locator(`${NAV} a[href="/demo"]`)).toBeVisible();
-    expect(await page.locator(`${NAV} [data-nav-group="home"] > a`).evaluateAll((els) => els.map((e) => e.getAttribute('href')))).toEqual(['/', '/demo']);
+    expect(await page.locator(`${NAV} [data-nav-group="home"] > a`).evaluateAll((els) => els.map((e) => e.getAttribute('href')))).toEqual(['/', '/integration', '/demo']);
   });
 });
 

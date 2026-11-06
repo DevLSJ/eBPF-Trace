@@ -48,6 +48,8 @@ export interface Verdict {
   dryRun?: boolean; // kill 대상이지만 dry-run이라 종료 안 함
   enforced?: boolean; // 실제 격리됨
   enforceError?: string;
+  // 11/06 라벨 연동: kill 정책인데 격리 범위 밖이라 보류 — "label" = 격리 라벨(supplyguard.enforce) 없음
+  enforceSkip?: 'label';
   // 격리 타임라인(10/30) — matched 판정만, 옛 백엔드는 없음
   timeline?: Timeline;
   // 이 이벤트로 완성된 연쇄(11/04, backend model.SequenceHit). ruleId 와 같으면 연쇄가 판정, 다르면 단일 규칙이 이기고 연쇄는 주석
@@ -768,4 +770,42 @@ export interface Evaluation {
   runtime: EvalRuntime | null;
   model: EvalModel | null;
   modelAll?: EvalModel | null;
+}
+
+// ── 연동(11/06): GET /api/integration · POST /api/integration/test ──
+export interface IntegrationEnv {
+  source: 'gadget' | 'mock';
+  os: string;
+  kernel: string;
+  enforceKill: boolean;
+  enforceNames: string[];
+  labelWatch: string;
+  labelEnforce: string;
+  probeImage: string;
+  testable: boolean;
+}
+export interface IntegrationContainer {
+  id: string;
+  name: string;
+  image: string;
+  ignored: boolean;
+  watched: boolean;
+  watchBy?: 'all' | 'name' | 'label';
+  enforce: boolean;
+  enforceBy?: 'all' | 'name' | 'label' | 'sandbox' | 'demo';
+}
+export interface IntegrationTest {
+  id: string;
+  container: string;
+  state: 'running' | 'passed' | 'failed';
+  startedAt: string;
+  endedAt?: string;
+  events: Partial<Record<Kind, number>>;
+  error?: string;
+}
+export interface IntegrationStatus {
+  env: IntegrationEnv;
+  containers: IntegrationContainer[];
+  listError?: string;
+  test: IntegrationTest | null;
 }

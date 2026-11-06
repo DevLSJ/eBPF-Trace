@@ -34,6 +34,8 @@ import type {
   UserBrief,
   UserView,
   Verdict,
+  IntegrationStatus,
+  IntegrationTest,
 } from './types';
 import { readSSE } from './sse';
 
@@ -207,6 +209,9 @@ export const api = {
   // 시연 실행(10/30 계약 §2, DEMO_ENABLED 일 때만 경로가 있다): 상태(조회자 포함) · 시작(관리자, 202 Run / 409 실행 중 / 503 Docker 없음)
   demo: () => request<DemoState>('/demo'),
   demoRun: (scenario: DemoScenario) => request<DemoRun>('/demo/run', json('POST', { scenario })),
+  // 연동(11/06): 환경 점검 · 감시 중 컨테이너(조회자 포함) · 연결 테스트(관리자 세션, 202 / 409 진행 중 / 503 불가)
+  integration: () => request<IntegrationStatus>('/integration'),
+  integrationTest: () => request<IntegrationTest>('/integration/test', { method: 'POST' }),
 
   // AI 도우미(10/20): POST /api/chat → SSE token… → facts → links → done | error.
   // 시작 전 오류(400 · 429)는 ApiError 로 던지고, 스트림의 error 이벤트는 { error } 로 돌려준다. 멈추기는 signal(AbortError 를 던진다)

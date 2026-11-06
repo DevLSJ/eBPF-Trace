@@ -20,6 +20,12 @@ export function LevelBadge({ level, title }: { level: Level; title?: string }) {
 export function VerdictBadge({ v }: { v: Verdict }) {
   const level = levelOf(v);
   const title =
-    level === 'held' ? (v.enforceError ? `격리 실패: ${v.enforceError}` : 'dry-run — 알림만 보냄') : undefined;
+    level === 'held'
+      ? v.enforceError
+        ? `격리 실패: ${v.enforceError}`
+        : v.enforceSkip === 'label'
+          ? '격리 보류 — 격리 라벨(supplyguard.enforce=true) 없음'
+          : 'dry-run — 알림만 보냄'
+      : undefined;
   return <LevelBadge level={level} title={title} />;
 }
