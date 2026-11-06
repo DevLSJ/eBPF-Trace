@@ -20,6 +20,7 @@ import (
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/auth"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/chat"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/demo"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/integration"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/notify"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/osv"
@@ -77,6 +78,8 @@ type Deps struct {
 	Auth *auth.Service
 	// Demo: 시연 실행(10/30, DEMO_ENABLED). nil 이면 /api/demo 경로 없음 · /api/info demo=false
 	Demo *demo.Service
+	// Integration: 연동 화면(11/06) — 환경 점검 · 감시 중 컨테이너 · 연결 테스트. nil 이면 /api/integration 경로 없음
+	Integration *integration.Service
 	// EvalReportsDir: 평가 결과 JSON 디렉터리(EVAL_REPORTS_DIR, 11/04) — GET /api/evaluation 이 요청마다 읽는다. 비거나 파일이 없으면 404
 	EvalReportsDir string
 }
@@ -163,6 +166,10 @@ func Router(d Deps) http.Handler {
 	}
 	if d.Demo != nil {
 		h.routeDemo(mux)
+	}
+	if d.Integration != nil {
+		mux.HandleFunc("GET /api/integration", h.integrationStatus)
+		mux.HandleFunc("POST /api/integration/test", h.browserAdmin(msgProbeBrowserOnly, h.integrationTest))
 	}
 	return cors(d.AllowedOrigins, mux)
 }

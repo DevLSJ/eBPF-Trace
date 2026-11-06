@@ -23,6 +23,7 @@ import (
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/enforcer"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/evidence"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/ingestion"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/integration"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/notify"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/osv"
@@ -128,14 +129,15 @@ func run() error {
 	var source, lifecycle ingestion.Source
 	var enf enforcer.Enforcer
 	var onInstallStart func(model.InstallSession)
-	var dnsTraced func() bool   // trace_dns 가 지금 돌고 있는지 (/api/info dnsResolve)
-	var discovery func() string // 실제로 쓰이는 컨테이너 발견 방식 (/api/info discovery, mock 은 nil)
-	var demoSim demo.Simulator  // mock 소스의 시연 재생(10/30). 가젯 소스는 nil → Docker 로 컨테이너를 띄운다
+	var dnsTraced func() bool    // trace_dns 가 지금 돌고 있는지 (/api/info dnsResolve)
+	var discovery func() string  // 실제로 쓰이는 컨테이너 발견 방식 (/api/info discovery, mock 은 nil)
+	var demoSim demo.Simulator   // mock 소스의 시연 재생(10/30). 가젯 소스는 nil → Docker 로 컨테이너를 띄운다
+	var labeler pipeline.Labeler // 감시 · 격리 범위 라벨(11/06) — mock 은 흉내, 가젯은 Docker inspect
 	switch cfg.EventSource {
 	case "mock":
 		m := ingestion.NewMock()
 		source, enf, onInstallStart, dnsTraced = m, m, m.SimulateInstall, m.DNSTraced
-		demoSim = m
+		demoSim, labeler = m, m
 	default:
 		g := &ingestion.Gadget{Kinds: cfg.Gadgets, ContainerName: cfg.ContainerName, Discovery: cfg.ContainerDiscovery, DockerHost: cfg.DockerHost, ResolveDNS: cfg.ResolveDNS}
 		source, dnsTraced, discovery = g, g.DNSTraced, g.ActiveDiscovery
@@ -149,6 +151,7 @@ func run() error {
 			slog.Warn("evidence disabled: docker", "err", err)
 		} else {
 			de.BeforeKill = evidence.New(dc, evStore).BeforeKill
+			labeler = dc
 		}
 		enf = de
 	}
@@ -237,11 +240,25 @@ func run() error {
 		EnforceKill:      cfg.EnforceKill,
 		IgnoreContainers: cfg.IgnoreContainers,
 		WatchContainers:  cfg.WatchContainers,
+		Labels:           labeler,
+		Enforce:          &pipeline.EnforceScope{Names: cfg.EnforceContainers},
 		NormalEventRate:  cfg.NormalEventRate,
 		DNSGrace:         cfg.DNSGrace,
 	}, engine, enf, hub, agg, audit, buffer)
 	pipe.SetReview(rv)
 	pipe.SetNotifier(ntf)
+
+	// 연동(11/06): 환경 점검 · 감시 중 컨테이너(파이프라인과 같은 판정) · 연결 테스트(시험 컨테이너 sg-probe-*)
+	intOpt := integration.Options{Scoper: pipe, Recorder: rv, Source: cfg.EventSource, EnforceKill: cfg.EnforceKill,
+		EnforceNames: cfg.EnforceContainers, HostRoot: os.Getenv("HOST_ROOT")}
+	if m, ok := source.(*ingestion.Mock); ok {
+		intOpt.Lister, intOpt.Prober = mockContainers{m}, m
+	} else if dc, err := dockerapi.New(cfg.DockerHost); err == nil {
+		d := integration.Docker{API: dc}
+		intOpt.Lister, intOpt.Prober = d, d
+	}
+	intSvc := integration.New(intOpt)
+	pipe.SetObserver(intSvc.Observe)
 
 	snapshot := func() stats.Snapshot {
 		s := agg.Snapshot()
@@ -314,6 +331,7 @@ func run() error {
 		EvalReportsDir:       cfg.EvalReportsDir,
 		Auth:                 authSvc,
 		Demo:                 demoSvc,
+		Integration:          intSvc,
 		Info: api.Info{Source: cfg.EventSource, Gadgets: cfg.Gadgets, EnforceKill: cfg.EnforceKill,
 			GadgetVersion: ingestion.GadgetVersion, WatchContainers: cfg.WatchContainers, IgnoreContainers: cfg.IgnoreContainers},
 	}))
@@ -335,6 +353,11 @@ func run() error {
 			}
 			dcancel()
 		}
+		ictx, icancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := intSvc.Shutdown(ictx); err != nil {
+			slog.Warn("integration: shutdown did not finish", "err", err)
+		}
+		icancel()
 		hub.Close()
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -342,9 +365,11 @@ func run() error {
 	}()
 
 	slog.Info("listening", "addr", srv.Addr, "source", cfg.EventSource,
-		"gadgets", cfg.Gadgets, "enforceKill", cfg.EnforceKill, "ignore", strings.Join(cfg.IgnoreContainers, ","), "watch", strings.Join(cfg.WatchContainers, ","))
-	if cfg.EventSource == "gadget" && cfg.EnforceKill && len(cfg.WatchContainers) == 0 {
-		slog.Warn("ENFORCE_KILL=true without WATCH_CONTAINERS: every container on this host can be killed by policy")
+		"gadgets", cfg.Gadgets, "enforceKill", cfg.EnforceKill, "ignore", strings.Join(cfg.IgnoreContainers, ","), "watch", strings.Join(cfg.WatchContainers, ","),
+		"enforceNames", strings.Join(cfg.EnforceContainers, ","), "labels", pipeline.LabelWatch+" · "+pipeline.LabelEnforce)
+	// 11/06: 격리는 라벨(supplyguard.enforce) · sandbox · 시연 · ENFORCE_CONTAINERS 이름만 — 전체 감시여도 그 밖은 보류(경고)
+	if cfg.EventSource == "gadget" && cfg.EnforceKill && labeler == nil {
+		slog.Warn("container labels unavailable: only ENFORCE_CONTAINERS names can be killed", "enforceNames", strings.Join(cfg.EnforceContainers, ","))
 	}
 	if cfg.AdminToken == "" && cfg.EventSource != "mock" {
 		slog.Warn("ADMIN_TOKEN not set; CLI/automation Bearer access is disabled (dashboard login still works)")
@@ -429,3 +454,14 @@ func (v reviewView) Installs() []model.InstallSession {
 }
 func (v reviewView) Cases() []model.Case        { return v.rv.ListCases(review.CaseQuery{}) }
 func (v reviewView) Blocklist() model.Blocklist { return v.rv.Blocklist() }
+
+// mockContainers: mock 소스의 흉내 컨테이너를 연동 목록으로
+type mockContainers struct{ m *ingestion.Mock }
+
+func (a mockContainers) Containers(context.Context) ([]integration.Container, error) {
+	var out []integration.Container
+	for _, c := range a.m.Containers() {
+		out = append(out, integration.Container{ID: c.ID, Name: c.Name, Image: c.Image, Labels: c.Labels})
+	}
+	return out, nil
+}

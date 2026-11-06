@@ -107,6 +107,7 @@ tools/     sg-install
 - 시연(`DEMO_ENABLED=true`, 운영은 끈다) — 관리자 세션만 `POST /api/demo/run`, 동시 1개 · 90초 · 변경 이력. 서버 종료 때 진행 중인 시연 컨테이너를 지우고 끝낸다
 - kill 직전 증거(로그 · 파일 변경 · 프로세스)를 0.7초 안에서 모은다. 넘으면 기다리지 않고 kill
 - 자기 스택은 `IGNORE_CONTAINERS=supplyguard-*`로 관찰 제외
+- 라벨 연동(11/06, `pipeline/scope.go`): 감시 = `WATCH_CONTAINERS` 비면 전체, 아니면 이름 패턴 OR 라벨 `supplyguard.watch=true`. **격리 = 라벨 `supplyguard.enforce=true` · `supplyguard.sandbox`(sg-install) · `supplyguard.demo`(시연) 또는 `ENFORCE_CONTAINERS`(기본 `sg-install-*`)만** — 그 밖의 kill 은 보류(`dryRun` + `enforceSkip: "label"`). 라벨은 Docker inspect 로 컨테이너당 한 번(종료 때 잊음), 조회 실패면 이름 규칙만. 연동 화면 `GET /api/integration` · 연결 테스트 `POST /api/integration/test`(관리자 세션 · 시험 컨테이너 `sg-probe-*` busybox · 감시 라벨만 · 동시 1개 · 45초)
 - **인증**: `/health` 를 뺀 모든 화면 · API · WebSocket 은 로그인 뒤. 쓰기는 관리자 역할(조회자는 읽기 · 미리보기 · 챗봇만). `ADMIN_TOKEN` 은 CLI · 자동화용 Bearer(처리자 「cli」). `SANDBOX_TOKEN` 은 sg-install 보고만(mock 은 비어도 허용). 비밀번호 5자 이상 · 아이디와 다름, 5번 틀리면 5분 잠금. `AUTH_SECRET_KEY` 는 가젯 모드에서 필수(32자 이상)
 - 감사 처리자는 로그인 계정의 표시 이름. 적용 · 버림 · 차단 해제의 사유는 변경 이력에 남는다
 - 데모 패키지 `deploy/demo/reqeusts`는 무해 시뮬(TEST-NET 주소 · 예약 도메인만). 실제 악성 코드를 넣지 않는다

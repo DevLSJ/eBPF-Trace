@@ -34,6 +34,7 @@ type Mock struct {
 type mockContainer struct {
 	id, name, image string
 	attacker        bool
+	labels          map[string]string // 11/06: Docker 라벨 흉내(감시 · 격리 범위, Labels)
 	killedAt        time.Time
 	normal          []model.Event
 }
@@ -45,26 +46,45 @@ func NewMock() *Mock {
 		RestartIn: 15 * time.Second,
 		Step:      InstallStep,
 		containers: []*mockContainer{
-			{name: "web-api", image: "node:22-alpine", normal: []model.Event{
+			{name: "web-api", image: "node:22-alpine", labels: watchOnly, normal: []model.Event{
 				{Kind: model.KindExec, Comm: "node", Args: "node /app/server.js"},
 				{Kind: model.KindOpen, Comm: "node", Path: "/app/node_modules/express/index.js"},
 				{Kind: model.KindOpen, Comm: "node", Path: "/etc/hosts"},
 				{Kind: model.KindConnect, Comm: "node", DstIP: "172.18.0.4", DstPort: 5432},
 				{Kind: model.KindConnect, Comm: "node", DstIP: "104.16.2.35", DstPort: 443, DstHost: "api.github.com"},
 			}},
-			{name: "worker", image: "python:3.12-slim", normal: []model.Event{
+			{name: "worker", image: "python:3.12-slim", labels: watchOnly, normal: []model.Event{
 				{Kind: model.KindExec, Comm: "python3", Args: "python3 -m worker"},
 				{Kind: model.KindOpen, Comm: "python3", Path: "/usr/local/lib/python3.12/json/__init__.py"},
 				{Kind: model.KindOpen, Comm: "python3", Path: "/tmp/job-queue.lock"},
 				{Kind: model.KindConnect, Comm: "python3", DstIP: "172.18.0.5", DstPort: 6379},
 			}},
-			{name: "pkg-reqeusts", image: "demo/reqeusts:1.0.2", attacker: true, normal: []model.Event{
+			{name: "pkg-reqeusts", image: "demo/reqeusts:1.0.2", attacker: true, labels: watchEnforce, normal: []model.Event{
 				{Kind: model.KindExec, Comm: "python3", Args: "python3 -c import reqeusts"},
 				{Kind: model.KindOpen, Comm: "python3", Path: "/usr/local/lib/python3.12/site-packages/reqeusts/__init__.py"},
 				{Kind: model.KindConnect, Comm: "python3", DstIP: "151.101.0.223", DstPort: 443, DstHost: "files.pythonhosted.org"},
 			}},
 		},
 	}
+}
+
+// mock 컨테이너 라벨(11/06 라벨 연동) — 정상 서비스는 감시만, 공격 시연 컨테이너는 감시 + 격리, 설치 흉내는 sg-install 처럼 sandbox
+var (
+	watchOnly    = map[string]string{"supplyguard.watch": "true"}
+	watchEnforce = map[string]string{"supplyguard.watch": "true", "supplyguard.enforce": "true"}
+	sandbox      = map[string]string{"supplyguard.sandbox": "1"}
+)
+
+// Labels: pipeline.Labeler 구현 — 모르는 컨테이너는 빈 라벨(오류 아님)
+func (m *Mock) Labels(_ context.Context, containerID string) (map[string]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, c := range append(append([]*mockContainer{}, m.containers...), m.installs...) {
+		if c.id == containerID && c.labels != nil {
+			return c.labels, nil
+		}
+	}
+	return map[string]string{}, nil
 }
 
 // exfilName: DNS 유출 시연 이름 — 48자 hex 라벨(가짜 유출 데이터) 아래 예약 TLD(.example, RFC 2606)
@@ -177,7 +197,7 @@ func (m *Mock) installContainer(s model.InstallSession) (*mockContainer, chan<- 
 	if image == "" {
 		image = map[string]string{"pip": "python:3.12-slim", "npm": "node:22-alpine", "cargo": "rust:1-slim"}[s.Manager]
 	}
-	c := &mockContainer{id: newID(), name: s.Container, image: image}
+	c := &mockContainer{id: newID(), name: s.Container, image: image, labels: sandbox}
 	if m.out != nil {
 		m.installs = append(m.installs, c)
 	}
@@ -242,6 +262,60 @@ func (m *Mock) PlayDemo(ctx context.Context, s model.InstallSession, scenario st
 		}
 	}
 	return m.play(ctx, c, groups, out)
+}
+
+// probeEvents: 연동 연결 테스트(11/06)의 시험 컨테이너 본문(integration.ProbeCmd)이 내는 순서 — 네트워크 없음
+var probeEvents = []model.Event{
+	{Kind: model.KindExec, Comm: "sh", Args: "sh -c sleep 1; cat /etc/hostname >/dev/null; ls /etc >/dev/null; sleep 2"},
+	{Kind: model.KindExec, Comm: "sleep", Args: "sleep 1"},
+	{Kind: model.KindExec, Comm: "cat", Args: "cat /etc/hostname"},
+	{Kind: model.KindOpen, Comm: "cat", Path: "/etc/hostname"},
+	{Kind: model.KindExec, Comm: "ls", Args: "ls /etc"},
+	{Kind: model.KindExec, Comm: "sleep", Args: "sleep 2"},
+}
+
+// Probe: 연동 연결 테스트 — 감시 라벨만 붙은 시험 컨테이너를 컨테이너 없이 재생하고 끝나면 돌아온다. 소스가 돌지 않으면 오류
+func (m *Mock) Probe(ctx context.Context, name string) error {
+	m.mu.Lock()
+	out := m.out
+	c := &mockContainer{id: newID(), name: name, image: "busybox:1.36", labels: watchOnly}
+	if out != nil {
+		m.installs = append(m.installs, c)
+	}
+	m.mu.Unlock()
+	if out == nil {
+		return errors.New("mock 이벤트 소스가 아직 돌지 않습니다")
+	}
+	groups := make([][]model.Event, 0, len(probeEvents))
+	for _, ev := range probeEvents {
+		groups = append(groups, []model.Event{ev})
+	}
+	m.play(ctx, c, groups, out)
+	return nil
+}
+
+// MockContainer: 연동 화면 목록용(지금 도는 흉내 컨테이너와 라벨)
+type MockContainer struct {
+	ID, Name, Image string
+	Labels          map[string]string
+}
+
+// Containers: 격리되지 않은 상시 컨테이너 + 진행 중인 설치 · 시험 컨테이너
+func (m *Mock) Containers() []MockContainer {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []MockContainer
+	for _, c := range append(append([]*mockContainer{}, m.containers...), m.installs...) {
+		if c.id == "" || !c.killedAt.IsZero() {
+			continue
+		}
+		l := c.labels
+		if l == nil {
+			l = map[string]string{}
+		}
+		out = append(out, MockContainer{ID: c.id, Name: c.name, Image: c.image, Labels: l})
+	}
+	return out
 }
 
 // InstallStep: 설치 흉내 이벤트 간격
