@@ -234,11 +234,11 @@ test.describe('11/06 연동 페이지', () => {
         { id: 'c-shop', name: 'shop-api', image: 'shop:1', ignored: false, watched: true, watchBy: 'label', enforce: false },
       ],
     };
+    // 같은 갱신에서 worker 는 빠지고 shop-api 가 들어온다 — 사라진 행은 0.7초만 보이므로 먼저 확인
+    await expect(list.locator('.int-row.gone')).toContainText('worker', { timeout: 6000 });
     const row = list.locator('[data-container="shop-api"]');
-    await expect(row).toBeVisible({ timeout: 6000 });
     await expect(row).toHaveClass(/\bin\b/);
     await expect(row.locator('[data-tag="watch"]')).toHaveText('라벨');
-    await expect(list.locator('.int-row.gone')).toContainText('worker');
     await expect(list.locator('.int-row.gone')).toHaveCount(0, { timeout: 3000 });
   });
 });
