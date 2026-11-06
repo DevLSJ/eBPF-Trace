@@ -17,7 +17,7 @@ type RunSpec struct {
 	Name     string
 	Image    string
 	Cmd      []string
-	Volume   string // 이름 있는 볼륨 → Target 에 읽기 전용
+	Volume   string // 이름 있는 볼륨 → Target 에 읽기 전용. 절대 경로면 그 폴더를 bind(make dev — 백엔드가 호스트에서 직접 돌 때, 11/06)
 	Target   string
 	Network  bool // false = network none
 	MemoryMB int64
@@ -33,7 +33,7 @@ func (c *Client) Run(ctx context.Context, s RunSpec) ([]byte, int, error) {
 		"HostConfig": map[string]any{
 			"NetworkMode": map[bool]string{true: "bridge", false: "none"}[s.Network],
 			"Memory":      s.MemoryMB << 20, "NanoCpus": int64(s.CPUs * 1e9),
-			"Mounts":      []map[string]any{{"Type": "volume", "Source": s.Volume, "Target": s.Target, "ReadOnly": true}},
+			"Mounts":      []map[string]any{{"Type": mountType(s.Volume), "Source": s.Volume, "Target": s.Target, "ReadOnly": true}},
 			"SecurityOpt": []string{"no-new-privileges"}, "CapDrop": []string{"ALL"},
 		},
 	}
@@ -72,6 +72,14 @@ func (c *Client) Run(ctx context.Context, s RunSpec) ([]byte, int, error) {
 	defer res.Body.Close()
 	out, err := demux(io.LimitReader(res.Body, 32<<20))
 	return out, waited.StatusCode, err
+}
+
+// mountType: 절대 경로는 호스트 폴더(bind), 그 밖은 이름 있는 볼륨
+func mountType(src string) string {
+	if strings.HasPrefix(src, "/") {
+		return "bind"
+	}
+	return "volume"
 }
 
 // demux: TTY 없는 컨테이너 로그(8바이트 머리 + 본문)에서 표준 출력만
