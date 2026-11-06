@@ -524,9 +524,16 @@
   gap: 14px;
   min-height: 0;
 }
+/* 오른쪽 열은 화면 높이 안에서만 — 환경 점검은 최대 58% 안에서 스크롤, 감시 목록은 남은 높이(최소 높이 없음, 안에서 스크롤).
+   11/06 CI(리눅스 글꼴)에서 1440×900 이 3px 넘쳤다 */
+.int-side > .int-step {
+  flex: none;
+  max-height: 58%;
+  overflow: auto;
+}
 .int-side .int-watch {
   flex: 1;
-  min-height: 160px;
+  min-height: 0;
 }
 .int-wizard {
   display: flex;
