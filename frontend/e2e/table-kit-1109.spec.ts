@@ -8,11 +8,13 @@ import { expect, test } from './fixtures';
 //   ⑨ 주소 쿼리 목록 상태  ⑩ 시트 부제 · 배지 · 탭 · 초점 가둠  ⑪ 큰 2단 창  ⑫ 미저장 경고
 // 2차(SPEC-1109 §2~4 — LOGuard 답변 반영): ⑬ 시트 움직임  ⑭ 창 · 팝오버 움직임  ⑮ 행 상태  ⑯ 꺼진 단추 · 재조회 · 폭 손잡이 · 줄 끝 고정
 //   ⑰ 칸 도우미(두 줄 · 「—」 · 시각 형식 · 칸 폭 표준 · CSV 화면 글)  ⑱ 화면 제목 700 · 로그인 반경(11/05 값)
+// 3차(SPEC-1109 §7 화면 문구 — 공통 부품 몫): ⑲ 확인 창  ⑳ 화면 상태 기본 문구  ㉑ 아이콘 단추 이름 · 꺼진 사유  ㉒ 표 아래 안내 한 줄
+//   ㉓ 동작 끝말 → 색(lib/actionTone.ts)  ㉔ 화면 설명 저장소(lib/screenCopy.ts)
 // 무대 뒤 화면은 주소 쿼리를 읽지 않는 「연동」(/integration).
 
 type Stage = { unmount: () => void };
 const BASE = '/integration';
-async function stage(page: Page, kind: 'list' | 'modal', props: Record<string, unknown> = {}) {
+async function stage(page: Page, kind: 'list' | 'modal' | 'confirm' | 'states', props: Record<string, unknown> = {}) {
   await page.evaluate(
     async ([k, p]) => {
       const w = window as unknown as { __tk?: { mount: (k: string, p: unknown) => Promise<Stage> }; __tkst?: Stage };
@@ -686,7 +688,7 @@ test.describe('⑯ 꺼진 단추 · 재조회 · 폭 손잡이 · 줄 끝 고정
     await page.locator('[data-action="table-columns"]').click();
     const reset = page.locator('[data-action="columns-reset"]');
     await expect(reset).toHaveAttribute('aria-disabled', 'true');
-    await expect(reset).toHaveAttribute('title', '이미 기본 칸');
+    await expect(reset).toHaveAttribute('title', '이미 기본 칸입니다'); // §7 꺼진 사유 = 문장 · 마침표 없음
     expect(await reset.evaluate((e) => (e as HTMLButtonElement).disabled)).toBe(false);
     await reset.focus();
     await expect(reset).toBeFocused();
@@ -699,7 +701,7 @@ test.describe('⑯ 꺼진 단추 · 재조회 · 폭 손잡이 · 줄 끝 고정
     await expect(busy).toBeVisible();
     await expect(rows).toHaveCount(20);
     await expect(refresh).toHaveAttribute('aria-disabled', 'true');
-    await expect(refresh).toHaveAttribute('title', '불러오는 중');
+    await expect(refresh).toHaveAttribute('title', '불러오는 중입니다');
     await expect(busy).toBeHidden();
     await expect(refresh).not.toHaveAttribute('aria-disabled', 'true');
     // 폭 손잡이: 늘 보임 .7 · 올리면 주 색
@@ -774,5 +776,166 @@ test.describe('⑱ 화면 제목 · 로그인(11/05 값)', () => {
     await expect(auth).toHaveAttribute('data-step', 'login');
     expect(await page.locator('[data-part="auth"] > div').first().evaluate((e) => getComputedStyle(e).borderRadius)).toBe('12px');
     expect(await auth.getByLabel('아이디').evaluate((e) => getComputedStyle(e).borderRadius)).toBe('6px');
+  });
+});
+
+// ── 11/09 3차: SPEC-1109 §7 화면 문구(공통 부품 몫) ──
+// 확인 창 · 화면 상태 기본 문구 · 꺼진 단추 사유(마침표 없음) · 아이콘 단추 이름 · 표 아래 안내 · 동작 끝말 색 · 화면 설명 저장소
+const AT = '../src/lib/actionTone'; // 구현 전에도 타입 검사를 통과하도록 실행할 때 불러온다
+const SC = '../src/lib/screenCopy';
+
+test.describe('⑲ 확인 창', () => {
+  test('제목 「~할까요?」 · 본문 · 영향 범위 줄 · 확인 체크 · 위험 단추 — 체크 전 확인은 aria-disabled + 사유(마침표 없음)', async ({ page, backend }) => {
+    void backend;
+    await page.goto(BASE);
+    const impact = ['이 정책을 쓰는 컨테이너 3개의 판정이 바뀝니다.', '차단 이력 12건은 그대로 남습니다.'];
+    await stage(page, 'confirm', {
+      title: '정책 no-shell-download 을 삭제할까요?',
+      body: '삭제한 정책은 더 이상 판정하지 않습니다.',
+      impact,
+      requireCheck: '삭제하면 되돌릴 수 없음을 확인했습니다',
+      confirmLabel: '삭제',
+      danger: true,
+    });
+    const d = page.locator('dialog[data-part="confirm"]');
+    await expect(d).toHaveAttribute('aria-label', '정책 no-shell-download 을 삭제할까요?');
+    await expect(d.locator('h3')).toHaveText('정책 no-shell-download 을 삭제할까요?');
+    await expect(d.locator('[data-part="confirm-body"]')).toHaveText('삭제한 정책은 더 이상 판정하지 않습니다.');
+    await expect(d.locator('[data-part="confirm-impact"] li')).toHaveText(impact);
+    await expect(d.locator('[data-part="confirm-effects"]'), '영향 범위를 주면 옛 「함께 일어나는 일」 칸은 없음').toHaveCount(0);
+    await expect(d.locator('[data-part="confirm-target"]')).toHaveCount(0);
+    const ok = d.locator('[data-confirm="ok"]');
+    await expect(ok).toHaveText('삭제');
+    await expect(ok).toHaveClass(/sg-btn-danger/);
+    await expect(ok).toHaveAttribute('aria-disabled', 'true');
+    await expect(ok).toHaveAttribute('title', '확인 칸을 먼저 고르세요');
+    await ok.click();
+    await expect(page.locator('[data-tk-confirmed]')).toHaveCount(0);
+    await d.getByRole('checkbox', { name: '삭제하면 되돌릴 수 없음을 확인했습니다' }).check();
+    await expect(ok).not.toHaveAttribute('aria-disabled', 'true');
+    await ok.click();
+    await expect(page.locator('[data-tk-confirmed="1"]')).toHaveCount(1);
+  });
+
+  test('막는 사유가 있으면 확인이 꺼진다(사유 상자 · 툴팁은 마침표 없이) · 주 단추 모양', async ({ page, backend }) => {
+    void backend;
+    await page.goto(BASE);
+    await stage(page, 'confirm', { title: '정책 sandbox-dns 를 삭제할까요?', blocked: '시스템 규칙은 지울 수 없습니다.', requireCheck: '삭제하면 되돌릴 수 없음을 확인했습니다', confirmLabel: '삭제', danger: true });
+    const d = page.locator('dialog[data-part="confirm"]');
+    await expect(d.locator('[data-part="confirm-blocked"]')).toHaveText('시스템 규칙은 지울 수 없습니다.');
+    await expect(d.getByRole('checkbox'), '막혔으면 확인 체크도 없음').toHaveCount(0);
+    const ok = d.locator('[data-confirm="ok"]');
+    await expect(ok).toHaveAttribute('aria-disabled', 'true');
+    await expect(ok).toHaveAttribute('title', '시스템 규칙은 지울 수 없습니다');
+    await ok.click();
+    await expect(page.locator('[data-tk-confirmed]')).toHaveCount(0);
+    await stage(page, 'confirm', { title: '정책 egress-allowlist 를 저장할까요?', body: '저장하면 바로 적용됩니다.', confirmLabel: '저장', danger: false });
+    await expect(d.locator('[data-confirm="ok"]')).toHaveClass(/sg-btn-primary/);
+    await expect(d.locator('[data-confirm="ok"]')).toHaveText('저장');
+  });
+});
+
+test.describe('⑳ 화면 상태 기본 문구', () => {
+  test('빈 「[무엇]이 없습니다.」 + 다음 할 일 + 1차 단추 · 검색 결과 없음 · 오류 · 권한 없음 · 로딩 읽기 라벨 — 아이콘 없음', async ({ page, backend }) => {
+    void backend;
+    await page.goto(BASE);
+    await stage(page, 'states');
+    const st = (k: string) => page.locator(`[data-tk-stage="states"] [data-state="${k}"]`);
+    await expect(st('empty').locator('[data-part="empty"] > span').first()).toHaveText('정책이 없습니다.');
+    await expect(st('empty')).toContainText('정책 생성으로 첫 정책을 만드세요.');
+    await expect(st('empty').getByRole('button', { name: '정책 생성' })).toBeVisible();
+    await expect(st('empty-log').locator('[data-part="empty"] > span').first()).toHaveText('감사 로그가 없습니다.');
+    await expect(st('empty-default').locator('[data-part="empty"] > span').first()).toHaveText('데이터가 없습니다.');
+    const nr = st('no-results').locator('[data-part="no-results"]');
+    await expect(nr).toContainText('조건에 맞는 데이터가 없습니다');
+    await expect(nr).toContainText('검색 조건을 바꾸거나 해제해 보세요.');
+    await nr.getByRole('button', { name: '조건 지우기' }).click();
+    await expect(page.locator('[data-tk-cleared="1"]')).toHaveCount(1);
+    await expect(st('error').locator('[data-part="error"]')).toContainText('불러오지 못했습니다');
+    await expect(st('error').getByRole('button', { name: '다시 시도' })).toBeVisible();
+    await expect(st('denied').locator('[data-part="denied"]')).toHaveText('이 화면을 볼 권한이 없습니다.');
+    const sk = st('loading').locator('[data-part="skeleton"]');
+    await expect(sk).toHaveAttribute('aria-busy', 'true');
+    await expect(sk).toHaveAttribute('aria-label', '불러오는 중');
+    for (const k of ['empty', 'empty-default', 'no-results', 'denied']) await expect(st(k).locator('svg'), `${k} 아이콘 없음`).toHaveCount(0);
+  });
+});
+
+test.describe('㉑ 아이콘 단추 이름 · 꺼진 단추 사유', () => {
+  test('아이콘 단추는 title = aria-label 「동작 — 대상」 · 꺼진 사유는 마침표 없이(부품 기본 사유 포함)', async ({ page, backend }) => {
+    void backend;
+    await openList(page);
+    const act = (id: string) => page.locator(`${T} tbody tr[data-row="${id}"] td[data-col="act"] button`);
+    await expect(act('r01')).toHaveAttribute('aria-label', '되돌리기 — r01');
+    await expect(act('r01')).toHaveAttribute('title', '되돌리기 — r01');
+    await expect(act('r03')).toHaveAttribute('aria-label', '되돌리기 — r03');
+    await expect(act('r03')).toHaveAttribute('aria-disabled', 'true');
+    await expect(act('r03')).toHaveAttribute('title', '시스템 규칙은 되돌릴 수 없습니다');
+    const pairs = await page
+      .locator('[data-table-tools="demo"] .tk-icon-btn, [data-table-foot="demo"] .tk-page[aria-label]')
+      .evaluateAll((els) => els.map((e) => [e.getAttribute('title'), e.getAttribute('aria-label')]));
+    expect(pairs.length).toBeGreaterThan(5);
+    for (const [t, a] of pairs) expect(t, `${a} 의 title`).toBe(a);
+    // 부품 기본 사유 — 마침표 없음
+    await page.locator('[data-action="table-columns"]').click();
+    await expect(page.locator('[data-action="columns-reset"]')).toHaveAttribute('title', '이미 기본 칸입니다');
+    for (const n of ['종류', '판정', '담당', '위반']) await page.locator('[data-part="column-picker"]').getByRole('checkbox', { name: n }).uncheck();
+    await expect(page.locator('[data-part="column-picker"] label[data-col="name"]')).toHaveAttribute('title', '칸은 하나 이상 보여야 합니다');
+    await page.keyboard.press('Escape');
+    await page.locator('[data-action="table-refresh"]').click();
+    await expect(page.locator('[data-action="table-refresh"]')).toHaveAttribute('title', '불러오는 중입니다');
+  });
+});
+
+test.describe('㉒ 표 아래 안내 한 줄', () => {
+  test('작은 흐린 글 한 줄 · 넘치면 「…」 · 마우스 올리면 전체(title)', async ({ page, backend }) => {
+    void backend;
+    await openList(page);
+    const note = page.locator('[data-tk-stage] [data-part="screen-note"]');
+    const text = await note.textContent();
+    expect(text!.length).toBeGreaterThan(100);
+    await expect(note).toHaveAttribute('title', text!);
+    const look = await note.evaluate((e) => {
+      const c = getComputedStyle(e);
+      return { fs: c.fontSize, ws: c.whiteSpace, of: c.overflow, to: c.textOverflow, color: c.color, cut: e.scrollWidth > e.clientWidth };
+    });
+    expect(look).toEqual({ fs: '12px', ws: 'nowrap', of: 'hidden', to: 'ellipsis', color: await cssVar(page, '--text-3'), cut: true });
+  });
+});
+
+test.describe('㉓ 동작 끝말 → 색(lib/actionTone.ts)', () => {
+  test('삭제 · 해제 · 정지 = 위험 / 적용 · 내보내기 · 반영 = 정보 / 수정 · 변경 · 되돌리기 · 되돌림 · 초기화 = 주의 / 등록 · 생성 · 추가 = 정상 / 그 밖 = 회색', async () => {
+    const { actionTone } = (await import(/* @vite-ignore */ AT)) as { actionTone: (name: string) => string };
+    const want: Record<string, string> = {
+      '정책 삭제': 'danger', '차단 해제': 'danger', '감시 정지': 'danger',
+      '정책 적용': 'info', 'CSV 내보내기': 'info', '설정 반영': 'info',
+      '정책 수정': 'warn', '규칙 변경': 'warn', '정책 되돌리기': 'warn', '정책 되돌림': 'warn', '비밀번호 초기화': 'warn',
+      '계정 등록': 'ok', '정책 생성': 'ok', '예외 추가': 'ok',
+      로그인: 'neutral', '': 'neutral', '연결 테스트': 'neutral',
+    };
+    for (const [name, tone] of Object.entries(want)) expect(actionTone(name), name).toBe(tone);
+    expect(actionTone('  정책 삭제  '), '앞뒤 공백 무시').toBe('danger');
+  });
+});
+
+test.describe('㉔ 화면 설명 저장소(lib/screenCopy.ts)', () => {
+  test('등록된 설명은 모두 「니다.」로 끝나는 20~50자 한 문장 · 마침표 앞 기호 없음 · 검사기는 틀린 문장을 잡는다', async () => {
+    const m = (await import(/* @vite-ignore */ SC)) as {
+      SCREEN_COPY: Record<string, string>;
+      SCREEN_NOTE: Record<string, string>;
+      screenCopy: (k: string) => string;
+      screenNote: (k: string) => string;
+      checkScreenCopy: (t: string) => string[];
+    };
+    expect(m.checkScreenCopy('컨테이너 행동을 판정하는 정책을 만들고 적용 범위를 관리합니다.')).toEqual([]);
+    expect(m.checkScreenCopy('정책을 관리합니다.')).toContain('length');
+    expect(m.checkScreenCopy('컨테이너 행동을 판정하는 정책을 만들고 적용 범위를 관리함')).toContain('ending');
+    expect(m.checkScreenCopy('컨테이너 행동을 판정하는 정책(규칙)을 만들고 적용 범위를 관리합니다.')).toContain('symbol');
+    expect(m.checkScreenCopy('컨테이너 행동을 판정하는 정책을 만들고 · 적용 범위를 관리합니다.')).toContain('symbol');
+    expect(m.checkScreenCopy('컨테이너 행동을 판정합니다. 적용 범위를 관리하고 기록을 봅니다.')).toContain('symbol');
+    for (const [k, v] of Object.entries(m.SCREEN_COPY)) expect(m.checkScreenCopy(v), `SCREEN_COPY.${k}`).toEqual([]);
+    for (const [k, v] of Object.entries(m.SCREEN_NOTE)) expect(v, `SCREEN_NOTE.${k}`).toMatch(/[^.…]\.$/);
+    expect(m.screenCopy('없는-화면')).toBe('');
+    expect(m.screenNote('없는-화면')).toBe('');
   });
 });
