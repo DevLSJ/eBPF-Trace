@@ -24,10 +24,10 @@ const contrast = (a: string, b: string) => {
 };
 const token = (page: Page, name: string) => page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
 const themeOf = (page: Page) => page.evaluate(() => document.documentElement.dataset.theme);
-async function pickTheme(page: Page, t: 'system' | 'light' | 'dark') {
-  const btn = page.locator('[data-part="account"]');
-  if ((await btn.getAttribute('aria-expanded')) !== 'true') await btn.click();
-  await page.locator(`[data-part="account-menu"] [data-theme-pick="${t}"]`).click();
+async function pickTheme(page: Page, t: 'light' | 'dark') {
+  // 11/09 G01: 테마는 상단 해/달 단추 하나 — 지금과 다르면 누르고, 색 전환(450ms)이 끝날 때까지 기다린다
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== t) await page.locator('[data-part="theme-toggle"]').click();
+  await page.waitForFunction(() => !document.documentElement.classList.contains('sg-theme-anim'));
 }
 // 공급망 검사 목록 API 는 가짜 백엔드에 없다(scans.spec 처럼 화면 스텁) — 빈 목록
 const stubScans = (page: Page) => page.route(/\/api\/scans(\/|$|\?)/, (route) => route.fulfill({ contentType: 'application/json', body: '[]' }));
@@ -130,16 +130,11 @@ test.describe('F7 다크 모드', () => {
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('light');
   });
 
-  test('계정 메뉴 「테마」(시스템 · 라이트 · 다크) → localStorage 저장 · 새로고침 뒤에도 · 토큰이 다크 값', async ({ page, backend }) => {
+  test('상단 해/달 단추(11/09 G01 — 계정 메뉴 「테마」 3단 칸을 옮김) → localStorage 저장 · 새로고침 뒤에도 · 토큰이 다크 값', async ({ page, backend }) => {
     void backend;
     await page.goto('/');
     await expect(page.getByTestId('pending')).toBeVisible();
-    await page.locator('[data-part="account"]').click();
-    const picks = page.locator('[data-part="account-menu"] [data-theme-pick]');
-    expect(await picks.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.themePick))).toEqual(['system', 'light', 'dark']);
-    await expect(page.locator('[data-part="account-menu"]')).toContainText('테마');
-    await expect(picks.nth(0)).toHaveAttribute('aria-checked', 'true');
-    await picks.nth(2).click();
+    await pickTheme(page, 'dark');
     expect(await themeOf(page)).toBe('dark');
     expect(await page.evaluate((k) => localStorage.getItem(k), THEME_KEY)).toBe('dark');
     for (const [k, v] of [['--bg', '#11131A'], ['--surface', '#1B1E28'], ['--text', '#F2F3F7'], ['--accent', '#1769E8'], ['--danger', '#E4516F'], ['--warn', '#F5A623'], ['--warn-soft', '#423627']])
@@ -156,9 +151,6 @@ test.describe('F7 다크 모드', () => {
     await pickTheme(page, 'light');
     expect(await themeOf(page)).toBe('light');
     expect(await page.evaluate((k) => localStorage.getItem(k), THEME_KEY)).toBe('light');
-    await pickTheme(page, 'system');
-    expect(await themeOf(page)).toBe('dark');
-    expect(await page.evaluate((k) => localStorage.getItem(k), THEME_KEY)).toBe('system');
   });
 
   test('다크에서 본문 대비 AA(text · text-2 · text-3 on surface) · 차트 · 토폴로지 색이 토큰', async ({ page, backend }) => {

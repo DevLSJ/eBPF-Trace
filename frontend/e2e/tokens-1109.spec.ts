@@ -12,10 +12,9 @@ const cs = (loc: Locator, props: string[]) =>
     return Object.fromEntries(ps.map((p) => [p, c.getPropertyValue(p)]));
   }, props);
 async function pickTheme(page: Page, t: 'light' | 'dark') {
-  const btn = page.locator('[data-part="account"]');
-  if ((await btn.getAttribute('aria-expanded')) !== 'true') await btn.click();
-  await page.locator(`[data-part="account-menu"] [data-theme-pick="${t}"]`).click();
-  await page.keyboard.press('Escape');
+  // 11/09 G01: 테마는 상단 해/달 단추 하나 — 지금과 다르면 누르고, 색 전환(450ms)이 끝날 때까지 기다린다
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== t) await page.locator('[data-part="theme-toggle"]').click();
+  await page.waitForFunction(() => !document.documentElement.classList.contains('sg-theme-anim'));
 }
 // rgb(...) → 상대 휘도
 const lumRgb = (s: string) => {

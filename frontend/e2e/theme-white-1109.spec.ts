@@ -52,10 +52,9 @@ const css = (page: Page, sel: string, props: string[]) =>
 const tokens = (page: Page, names: string[]) =>
   page.evaluate((ns) => Object.fromEntries(ns.map((n) => [n, getComputedStyle(document.documentElement).getPropertyValue(n).trim().toUpperCase()])), names);
 async function pickTheme(page: Page, t: 'light' | 'dark') {
-  const btn = page.locator('[data-part="account"]');
-  if ((await btn.getAttribute('aria-expanded')) !== 'true') await btn.click();
-  await page.locator(`[data-part="account-menu"] [data-theme-pick="${t}"]`).click();
-  await page.keyboard.press('Escape');
+  // 11/09 G01: 테마는 상단 해/달 단추 하나 — 지금과 다르면 누르고, 색 전환(450ms)이 끝날 때까지 기다린다
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== t) await page.locator('[data-part="theme-toggle"]').click();
+  await page.waitForFunction(() => !document.documentElement.classList.contains('sg-theme-anim'));
 }
 // 버튼 클래스 견본 — 화면마다 있는 버튼 종류가 달라 본문에 견본을 붙여 클래스 값만 본다
 async function mountButtons(page: Page) {
@@ -118,7 +117,7 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     expect(b['background-color']).toBe(rgb('#F6F7FB'));
     expect(b.color).toBe(rgb('#202534'));
     expect(b['line-height']).toBe('26.4px'); // 16 × 1.65
-    expect(await css(page, '[data-testid="page-title"]', ['font-size', 'letter-spacing', 'color'])).toEqual({ 'font-size': '26.4px', 'letter-spacing': '-0.528px', color: rgb('#202534') });
+    expect(await css(page, '[data-testid="page-title"]', ['font-size', 'letter-spacing', 'color'])).toEqual({ 'font-size': '21px', 'letter-spacing': '-0.42px', color: rgb('#202534') }); // 11/09 G43: 화면 제목 21/700(--fs-xl)
     expect(await css(page, '.sg-panel-title', ['font-size', 'font-weight'])).toEqual({ 'font-size': '17.92px', 'font-weight': '700' });
     const origin = new URL(page.url()).origin;
     expect(fonts.filter((u) => new URL(u).origin !== origin), '외부 도메인 글꼴 요청').toEqual([]);

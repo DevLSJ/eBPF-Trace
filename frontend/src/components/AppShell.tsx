@@ -12,6 +12,7 @@ import { NoticeCenter } from './shell/NoticeCenter';
 import { SearchBox } from './shell/SearchBox';
 import { StreamBanners } from './shell/StreamBanners';
 import { useSidebar } from './shell/useSidebar';
+import { ThemeToggle } from './ThemeToggle';
 import { useSortable } from '../hooks/useSortable';
 import { WsStatus } from './WsStatus';
 import { FRESH } from '../lib/nav';
@@ -207,13 +208,16 @@ export function AppShell() {
               <Menu className="size-5" aria-hidden />
             </button>
           )}
-          <h1 className="shrink-0 text-[1.65rem] leading-tight font-bold tracking-[-0.02em] text-text" data-testid="page-title">
+          {/* 화면 제목 21/700(--fs-xl, 11/09 G43) */}
+          <h1 className="shrink-0 text-[length:var(--fs-xl)] leading-tight font-bold tracking-[-0.02em] text-text" data-testid="page-title">
             {TITLES[pathname] ?? ''}
           </h1>
           {/* 768 미만: 머리 칸의 화면 버튼은 가로로 넘기며 본다(머리 높이 56px 유지) */}
           <div ref={setSlot} className="flex min-w-0 flex-1 items-center gap-3 max-md:overflow-x-auto max-md:[scrollbar-width:none]" data-testid="page-actions" />
           <WsStatus />
           <NoticeCenter />
+          {/* 테마 = 해/달 단추 하나(11/09 G01) — 계정 메뉴의 테마 칸을 옮겼다 */}
+          <ThemeToggle />
           <button
             type="button"
             onClick={() => setHelp(true)}

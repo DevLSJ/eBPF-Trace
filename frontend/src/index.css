@@ -827,3 +827,17 @@ html.sg-sorting, html.sg-sorting * { cursor: grabbing !important; -webkit-user-s
   .sg-sheet-body { padding: 0 16px 16px; }
   .sg-sheet-layer dl { grid-template-columns: 6.5rem minmax(0, 1fr); }
 }
+
+/* 테마 전환(11/09 G01): 해/달 단추 · PC 설정 변경 때 lib/theme.ts 가 html.sg-theme-anim 을 --dur-slow 동안 붙인다 — 색만 450ms 로 넘어간다.
+   층 밖 · 파일 끝 규칙이라 전환 동안은 화면 쪽 transition 유틸리티 · 같은 무게 규칙보다 이긴다. 동작 줄이기면 규칙이 없다(JS 도 붙이지 않음) */
+@media (prefers-reduced-motion: no-preference) {
+  html.sg-theme-anim,
+  html.sg-theme-anim *,
+  html.sg-theme-anim *::before,
+  html.sg-theme-anim *::after {
+    transition-property: background-color, border-color, color, fill, stroke, outline-color, text-decoration-color, box-shadow;
+    transition-duration: var(--dur-slow);
+    transition-timing-function: var(--ease-color);
+    transition-delay: 0s;
+  }
+}
