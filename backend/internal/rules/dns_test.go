@@ -29,8 +29,8 @@ func TestDNSRules(t *testing.T) {
 		reason string
 	}{
 		{"deny host (subdomain)", c2, dnsEv("c2.attacker.test", "A"), "block-c2-dns", "금지 도메인 질의: c2.attacker.test (A)"},
-		{"deny qtype", c2, dnsEv("other.example", "TXT"), "block-c2-dns", "금지 질의 유형: TXT — other.example"},
-		{"deny qtype ALL", c2, dnsEv("other.example", "ALL"), "block-c2-dns", "금지 질의 유형: ALL — other.example"},
+		{"deny qtype", c2, dnsEv("other.example", "TXT"), "block-c2-dns", "금지 질의 유형: other.example (TXT)"},
+		{"deny qtype ALL", c2, dnsEv("other.example", "ALL"), "block-c2-dns", "금지 질의 유형: other.example (ALL)"},
 		{"normal query passes deny rule", c2, dnsEv("pypi.org", "A"), "", ""},
 		{"long label", exfil, dnsEv(long, "A"), "exfil", "긴 DNS 라벨(유출 의심): " + long + " (라벨 48자 > 40)"},
 		{"long name", exfil, dnsEv(wide, "AAAA"), "exfil", "긴 DNS 이름(유출 의심): " + wide + " (131자 > 120)"},
@@ -39,7 +39,7 @@ func TestDNSRules(t *testing.T) {
 		{"outside allowlist", allow, dnsEv("files.pythonhosted.org", "A"), "allow", "허용 목록 밖 도메인 질의: files.pythonhosted.org (A)"},
 		{"allowed host passes", allow, dnsEv("files.pypi.org", "A"), "", ""},
 		{"allowed host beats deny qtype", allow, dnsEv("pypi.org", "TXT"), "", ""},
-		{"deny qtype outside allowlist", allow, dnsEv("data.exfil.example", "TXT"), "allow", "금지 질의 유형: TXT — data.exfil.example"},
+		{"deny qtype outside allowlist", allow, dnsEv("data.exfil.example", "TXT"), "allow", "금지 질의 유형: data.exfil.example (TXT)"},
 		{"single label excluded", allow, dnsEv("localhost", "A"), "", ""},
 		{"arpa excluded", allow, dnsEv("11.0.0.127.in-addr.arpa", "PTR"), "", ""},
 		{"local excluded", allow, dnsEv("printer.local", "A"), "", ""},
@@ -127,7 +127,7 @@ func TestDefaultPolicyDNS(t *testing.T) {
 	if v := e.Evaluate(dnsEv(long, "A")); !v.Matched || v.RuleID != "runtime-dns-exfil" || v.Action != model.ActionAlert || !strings.HasPrefix(v.Reason, "긴 DNS 라벨(유출 의심)") {
 		t.Fatalf("48-char label at runtime: %+v", v)
 	}
-	if v := e.Evaluate(dnsEv("data.exfil.example", "TXT")); !v.Matched || v.RuleID != "runtime-dns-exfil" || v.Reason != "금지 질의 유형: TXT — data.exfil.example" {
+	if v := e.Evaluate(dnsEv("data.exfil.example", "TXT")); !v.Matched || v.RuleID != "runtime-dns-exfil" || v.Reason != "금지 질의 유형: data.exfil.example (TXT)" {
 		t.Fatalf("TXT at runtime: %+v", v)
 	}
 	if v := e.Evaluate(dnsEv("files.pythonhosted.org", "A")); v.Matched {
