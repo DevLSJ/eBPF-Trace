@@ -121,7 +121,7 @@ test.describe('평가 화면(11/04)', () => {
     // 지연 범위: 격리한 시나리오만(연쇄는 dryRun — 빠짐 안내)
     const lat = await page.locator('[data-chart="latency"] g[data-row]').evaluateAll((gs) => gs.map((g) => [(g as SVGGElement).dataset.row, (g as SVGGElement).dataset.p50, (g as SVGGElement).dataset.p95]));
     expect(lat).toEqual([['sandbox-typosquat', '293.7', '332.4'], ['sandbox-dns-exfil', '308.8', '484.6']]);
-    await expect(page.locator('[data-part="latency"] [data-part="latency-skipped"]')).toHaveText('격리하지 않아 빠짐: 런타임 — 연쇄(다운로드 → 외부 연결 → 자격 증명 파일) (시험 운영)');
+    await expect(page.locator('[data-part="latency"] [data-part="latency-skipped"]')).toHaveText('격리하지 않아 빠짐: 런타임 · 연쇄(다운로드 → 외부 연결 → 자격 증명 파일) (시험 운영)');
     // 규칙 적중 상위 10: 합 → 악성 적중 → 이름 순서
     const ruleRows = await rows(page, 'rule-hits');
     expect(ruleRows).toHaveLength(10);
@@ -130,7 +130,7 @@ test.describe('평가 화면(11/04)', () => {
     await page.locator('[data-chart="scenario-rate"] g[data-row="sandbox-dns-exfil"] rect[data-hit]').hover();
     const tip = page.locator('[data-chart="scenario-rate"] [data-part="chart-tip"]');
     await expect(tip).toBeVisible();
-    await expect(tip.locator('> div')).toHaveText(['설치 샌드박스 — DNS 유출 질의', '공격 · 탐지 10 / 10회', '격리 10회 · 규칙 sandbox-dns']);
+    await expect(tip.locator('> div')).toHaveText(['설치 샌드박스 · DNS 유출 질의', '공격 · 탐지 10 / 10회', '격리 10회 · 규칙 sandbox-dns']);
   });
 
   test('4 지연 카드 단계별 p50 누적 막대(판정 → 증거 수집 → kill 호출) · x축은 범위 그림과 따로', async ({ page, backend }) => {
