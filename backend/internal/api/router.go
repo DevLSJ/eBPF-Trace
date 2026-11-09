@@ -50,6 +50,8 @@ type Deps struct {
 	SandboxToken string
 	// SGInstallFile: 「사용 방법」 내려받기용 sg-install 스크립트 경로(SG_INSTALL_FILE, 이미지는 /tools/sg-install). 비거나 없으면 내려받기 없음
 	SGInstallFile string
+	// SGInstallAPI: 「사용 방법」의 SUPPLYGUARD_API(SG_INSTALL_API). 비면 추정 — compose(nginx 80) 는 http://127.0.0.1, mock 은 :8000
+	SGInstallAPI string
 	// AllowAnonymousWrites: EVENT_SOURCE=mock — 비어 있는 토큰의 쓰기를 토큰 없이 허용 (로컬 개발 전용)
 	AllowAnonymousWrites bool
 	// Review: 설치 세션 · 건 · 제안 · 차단 목록 · 변경 이력. nil 이면 해당 엔드포인트를 열지 않는다.

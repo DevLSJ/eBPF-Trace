@@ -32,6 +32,9 @@ func (h *handlers) sginstallSetup(w http.ResponseWriter, r *http.Request) {
 	if h.Info.Source == "mock" {
 		out.API = "http://127.0.0.1:8000"
 	}
+	if h.SGInstallAPI != "" { // make dev(실제 가젯 · nginx 없음) 처럼 추정이 틀리는 곳은 설정으로
+		out.API = h.SGInstallAPI
+	}
 	if h.sginstallFileOK() {
 		out.Download = "/api/tools/sg-install"
 	}

@@ -54,6 +54,8 @@ type Config struct {
 	EvalReportsDir string
 	// SGInstallFile: 설치 검사 「사용 방법」이 내려주는 sg-install 스크립트(11/09). 기본은 배포 이미지 안 경로, make dev 는 저장소 tools/sg-install
 	SGInstallFile string
+	// SGInstallAPI: 「사용 방법」에 보일 SUPPLYGUARD_API(SG_INSTALL_API, 11/09). 비면 화면이 추정(compose = nginx 80, mock = :8000)
+	SGInstallAPI string
 
 	AdminToken string
 	// SandboxToken: sg-install CLI 의 세션 보고 · 차단 확인 전용 (ADMIN_TOKEN 과 달라야 한다)
@@ -112,6 +114,7 @@ func Load() (Config, error) {
 		PolicyFile:         env("POLICY_FILE", "policies/default.yaml"),
 		EvalReportsDir:     env("EVAL_REPORTS_DIR", "/bench/reports"),
 		SGInstallFile:      env("SG_INSTALL_FILE", "/tools/sg-install"),
+		SGInstallAPI:       env("SG_INSTALL_API", ""),
 		AdminToken:         env("ADMIN_TOKEN", ""),
 		SandboxToken:       env("SANDBOX_TOKEN", ""),
 		ActorName:          env("ACTOR_NAME", "보안 담당자"),

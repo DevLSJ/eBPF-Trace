@@ -323,6 +323,7 @@ func run() error {
 		AdminToken:           cfg.AdminToken,
 		SandboxToken:         cfg.SandboxToken,
 		SGInstallFile:        cfg.SGInstallFile,
+		SGInstallAPI:         cfg.SGInstallAPI,
 		AllowAnonymousWrites: cfg.EventSource == "mock", // 비어 있는 토큰만 익명 허용 (정한 토큰은 mock 이어도 검사)
 		Review:               rv,
 		Summary:              sum,
