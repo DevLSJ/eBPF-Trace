@@ -62,12 +62,13 @@ tools/     sg-install
 | 명령 | 내용 |
 |---|---|
 | `make setup` | 새 PC · 새 clone 에서 처음 한 번 — 도구 확인 · Go 모듈 · `npm ci` · Playwright chromium(11/06). `make dev` · `make test` 는 `node_modules` 가 없으면 `npm ci` 부터 |
-| `make dev` | 저장소 루트 `.env.local`(gitignore · 600)의 `ANTHROPIC_API_KEY` 를 읽어 AI 도우미를 Claude 로 켬(11/09). 백엔드(mock 이벤트, :8000, 로그인 켜짐 · `admin`/`admin` 으로 바로 대시보드 — Makefile `DEV_AUTH` 가 OTP 를 끄고 `AUTH_DEV_MODE=true`(mock 소스 전용)로 비밀번호 변경 · 라이선스 단계를 건너뜀) + Vite(:5173). 공급망 검사는 Docker Desktop 이 켜져 있어야 하고 작업 폴더는 `.scan-work`(검사기에 bind, 11/06) |
+| `make dev` | [11/09 「5173 메인만 활용」] Docker Desktop 안 실제 가젯 백엔드(127.0.0.1:8000) + 개발 DB(Postgres 25433 · Redis 26380 — 다른 로컬 프로젝트와 겹치지 않게) + Vite(:5173), 구성은 `deploy/docker-compose.dev.yml`. 로그인 `admin`/`admin`(비밀번호 변경 단계 없음, `AUTH_DEV_MODE` + `LOCAL_DEV=true` — `LOCAL_DEV` 는 서버 `.env` 에 넣지 않음) · 평가판 라이선스는 DB 에 한 번 등록 · OTP 켬(첫 로그인에 QR 등록). 감시 = 전체, 격리 = `sg-install-*` · 시연 · `supplyguard.enforce=true` 라벨만. `.env.local`(gitignore · 600)에 없는 `AUTH_SECRET_KEY` · `ADMIN_TOKEN` · `SANDBOX_TOKEN` 을 한 번 만듦(`AUTH_SECRET_KEY` 가 바뀌면 OTP 등록을 못 읽음), `ANTHROPIC_API_KEY` 가 있으면 AI 도우미는 Claude. 「사용 방법」 주소 `SG_INSTALL_API`. 한계: Docker Desktop 은 fanotify 가 없어 docker-events — 시작 직후 약 0.1초 동작은 놓칠 수 있음. 백엔드 코드를 고치면 다시 `make dev` · 로그 `make dev-logs` · 내림 `make dev-down`(DB 볼륨은 남김) |
+| `make dev-mock` | 예전 `make dev` — Docker 없이 빠른 화면 개발. 백엔드(mock 소스, go run :8000, 메모리 저장, OTP 끔 · `admin`/`admin` 으로 바로 대시보드 — Makefile `DEV_AUTH`) + Vite(:5173). 공급망 검사는 Docker Desktop 이 켜져 있어야 하고 작업 폴더는 `.scan-work`(검사기에 bind, 11/06) |
 | `make mock` | 옛 목업 :8766 — 11/05 부터 개발 · 검증에 쓰지 않음(기록 열람용). **8765는 참고 제품 목업 — 끄지 않는다** |
 | `make test` | 백엔드 vet · race 테스트 + 프론트 lint · build |
 | `cd frontend && npx playwright test` | React e2e(가짜 백엔드, CI 에도 있음) |
 | `make stack-up` / `stack-down` | 전체 스택 컨테이너(mock 소스, `.env` 에 `ADMIN_INITIAL_PASSWORD` 필요) |
-| `make sandbox-up` / `sandbox-down` | 실제 가젯 백엔드, `WATCH_CONTAINERS=sg-install-*`, 실행마다 `AUTH_SECRET_KEY` 새로 생성 · OTP 켬 |
+| `make sandbox-up` / `sandbox-down` | 실제 가젯 백엔드, `WATCH_CONTAINERS=sg-install-*`, 실행마다 `AUTH_SECRET_KEY` 새로 생성 · OTP 켬 — `make dev` 와 달리 감시도 `sg-install-*` 만 · 메모리 저장 · 개발 로그인 없음, 같은 :8000 이라 함께 띄우지 않음 |
 | `make vm-open` / `vm-close` | sg-vm 화면을 http://localhost:8080 으로(SSH 터널, `VM_PORT=` 로 바꿈). UTM VM 이 켜져 있어야 함. 로그인 Origin 은 같은 호스트로 통과 — `ALLOWED_ORIGINS` 안 바꿈(11/05 실측) |
 | `cd backend && GOOS=linux go vet ./...` | 리눅스 전용 코드 검사 |
 | `ADMIN_TOKEN=… tools/sg-bench [-a API] [-l 목록] [-o 결과]` | 공급망 검사 오탐률 하네스 — 인기 패키지 20개 + 취약 버전을 실제 백엔드로 검사, 인기 패키지가 「악성」이면 실패. sg-vm 에서는 `-t ~/sg/.tokens` |
@@ -88,7 +89,7 @@ tools/     sg-install
 
 ### 화면 개발 [2026-11-05 사용자 결정 — 목업 단계 · 목업 테스트 없앰]
 
-**로컬 서버(React · 백엔드) 위주로 개발하고 테스트한다.** 화면 변경은 `make dev`(:5173 · admin/admin)에서 바로 만들어 띄워 보여 주고 확정한다. 검증은 `make test` + React e2e(`frontend/e2e`), 새 회귀 테스트도 React e2e 로만 쓴다. 개인 규칙의 「목업 먼저(mockup-first)」는 이 저장소에서 쓰지 않는다.
+**로컬 서버(React · 백엔드) 위주로 개발하고 테스트한다.** 화면 변경은 `make dev`(:5173 · admin/admin · 첫 로그인에 OTP 등록 · 실제 가젯 백엔드 [11/09])에서 바로 만들어 띄워 보여 주고 확정한다. Docker 없이 화면만 볼 때는 `make dev-mock`(같은 :5173 · OTP 없음). 검증은 `make test` + React e2e(`frontend/e2e`), 새 회귀 테스트도 React e2e 로만 쓴다. 개인 규칙의 「목업 먼저(mockup-first)」는 이 저장소에서 쓰지 않는다.
 
 디자인 [2026-11-09 — 11/05 참고 대시보드 값 대체]: 공통 토큰(값은 `frontend/src/index.css`)은 **참고 홈페이지 구조값** — 미색 회색 단계(바탕 `#FAF9F5` · 보조 `#F5F4ED`/`#F0EEE6` · 글자 `#141413`/`#30302E`/`#5E5D59`, 다크 `#141413`/`#1F1E1D`/`#262624`) · **주 버튼 거의 검정**(`bg-primary text-primary-fg`, 다크는 반대) · 보조 버튼 미색 채움 + 1px 링 · 반경 버튼 · 칩 8 / 입력 12 / 카드 16 / 대화상자 24 · 그림자 알파 4% · 가는 테두리 · 전환 .2s / .25s · **강조 파랑 `#1769E8` 유지**(링크 · 포커스 · 선택 · 정보 · 차트) · 세리프 · 테라코타 안 씀 · 글꼴 `Inter, Pretendard, …`(내려받지 않음). 그대로 둔 것: 표 머리 42 · 행 48 · 상태 배지 크기 · 쪽 넘김 「총 N건 · p/P 페이지」 · 빈 상태 아이콘 없음 · 격리 배지 위험 톤 · 작은 외곽선 단추 `sg-btn sg-btn-sm sg-btn-secondary`. 값만 옮기고 참고 사이트의 이름 · 로고 · 아이콘 · 문구 · 일러스트 · 브랜드 색 이름은 넣지 않는다(공개 저장소). 종류 색(실행 · 파일 · 통신 · 조회) · 코드 창 · 차트 모양은 이 제품 고유. 빨강은 위험에만. 외부 CSS · 웹폰트 · 로고 금지. 다크 모드(`supplyguard.theme`) · 768px 미만(서랍 사이드바 · 1열, 단 종합 숫자 칸은 2열) 포함. 회귀 `frontend/e2e/theme-1109.spec.ts`.
 

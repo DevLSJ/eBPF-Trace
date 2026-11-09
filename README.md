@@ -78,32 +78,49 @@ REST · WS 앞: 로그인(쿠키 세션 · 역할 · OTP) — CLI 는 Bearer ADM
 
 | 도구 | 버전 | 쓰는 곳 |
 |---|---|---|
-| Go | 1.26 이상(`backend/go.mod`) | 백엔드 · `make test` |
+| Go | 1.26 이상(`backend/go.mod`) | 백엔드 · `make test` · `make dev-mock` |
 | Node.js | 22.12 이상(`frontend/.nvmrc` = 24) | 화면 · e2e |
-| make · bash | — | 모든 명령(Windows 는 WSL2) |
-| Docker | 선택 | 공급망 검사 · `make stack-up` · `make sandbox-up`(없어도 `make dev` · `make test` 는 됨) |
+| make · bash · openssl | — | 모든 명령(Windows 는 WSL2) · `make dev` 비밀값 생성 |
+| Docker Desktop | `make dev` 에 필요 | `make dev`(실제 가젯 백엔드 · 개발 DB) · 공급망 검사 · `make stack-up` · `make sandbox-up`(없으면 `make dev-mock` · `make test` 만) |
 | Python 3 | 선택 | `make mock`(옛 목업 열람)만 |
 
 ```bash
 git clone https://github.com/DevLSJ/eBPF-Trace.git && cd eBPF-Trace
 make setup      # 도구 확인 → Go 모듈 · npm ci · Playwright chromium
-make dev        # http://127.0.0.1:5173 (admin / admin)
+make dev        # http://localhost:5173 (admin / admin, 첫 로그인에 OTP 등록) — Docker Desktop 필요
 make test       # 백엔드 vet · race 테스트 + 프론트 lint · build
 cd frontend && npx playwright test   # React e2e(가짜 백엔드)
 ```
 
-- `make dev` · `make test` 는 `frontend/node_modules` 가 없으면 먼저 `npm ci` 를 실행함
-- 저장소에 없는 것: `.env`(비밀 값 — `.env.example` 에서 만듦) · 기획 문서 · 개인 Claude 설정(공개 저장소라 넣지 않음)
+- `make dev` · `make dev-mock` · `make test` 는 `frontend/node_modules` 가 없으면 먼저 `npm ci` 를 실행함
+- 저장소에 없는 것: `.env`(비밀 값 — `.env.example` 에서 만듦) · `.env.local`(로컬 개발 비밀값 — 아래 「로컬 개발」) · 기획 문서 · 개인 Claude 설정(공개 저장소라 넣지 않음)
 
-## 빠른 시작 (로컬, 커널 없이)
+## 로컬 개발 (`make dev`)
 
-macOS/Windows 에서는 eBPF 를 못 돌리므로 `EVENT_SOURCE=mock` 이 데모 시나리오(정상 컨테이너 + 타이포스쿼팅 패키지 `pkg-reqeusts`)를 재생한다.
+Docker Desktop 안에서 실제 eBPF 가젯 백엔드 + 개발 DB 를 띄우고, 화면은 Vite :5173 이 백엔드로 넘김(`deploy/docker-compose.dev.yml`).
 
 ```bash
-make dev        # 백엔드(mock, :8000) + Vite(:5173) → http://127.0.0.1:5173
+make dev        # 이미지 빌드 → DB · 백엔드 기동 → Vite :5173. Ctrl-C 면 Vite · 백엔드 멈춤(DB 는 남김)
+make dev-logs   # 백엔드 로그
+make dev-down   # 백엔드 · DB 내림(DB 볼륨은 남김 — 지우려면 docker compose -f deploy/docker-compose.dev.yml down -v)
+make dev-mock   # Docker 없이 화면만 — mock 소스 · go run(:8000) · 메모리 저장 · OTP 끔
 ```
 
-- 로그인은 켜져 있다. 개발용 관리자 계정은 `admin` / `admin`(Makefile `DEV_ADMIN_PW`)으로 바로 대시보드에 들어간다 — `DEV_AUTH` 가 OTP 를 끄고 `AUTH_DEV_MODE=true` 로 첫 로그인 비밀번호 변경 · 라이선스 단계를 건너뛴다. `AUTH_DEV_MODE` 는 `EVENT_SOURCE=mock` 에서만 켜진다(가젯 소스면 백엔드가 시작하지 않는다). `make sandbox-up`(실제 가젯)은 개발 모드 없이 원래 단계 그대로
+| 항목 | `make dev` |
+|---|---|
+| 백엔드 | 실제 가젯(`EVENT_SOURCE=gadget`), `127.0.0.1:8000` 에만 열림 |
+| 개발 DB | Postgres `127.0.0.1:25433` · Redis `127.0.0.1:26380`(`DEV_PG_PORT` · `DEV_REDIS_PORT` 로 바꿈) |
+| 로그인 | `admin` / `admin`(비밀번호 변경 단계 없음) · 첫 로그인에 OTP 등록(QR) · 평가판 라이선스는 DB 에 한 번 등록 |
+| 감시 · 격리 | 감시 = 전체 컨테이너(자기 스택 `supplyguard-*` 제외) · 격리 = `sg-install-*` · 시연 · 라벨 `supplyguard.enforce=true` 만(그 밖은 보류) |
+| AI 도우미 | `.env.local` 의 `ANTHROPIC_API_KEY` 가 있으면 Claude, 없으면 꺼짐 |
+| 설치 검사 「사용 방법」 | 실행 주소 = `SG_INSTALL_API`(`http://127.0.0.1:8000`) |
+
+- `.env.local`(저장소 루트 · gitignore · 600): `make dev` 가 없는 `AUTH_SECRET_KEY` · `ADMIN_TOKEN` · `SANDBOX_TOKEN` 을 한 번 만들어 계속 씀. `AUTH_SECRET_KEY` 가 바뀌면 DB 의 OTP 등록을 못 읽음
+- 백엔드 코드를 고친 뒤에는 다시 `make dev`(이미지를 다시 만듦)
+- 개발 전용 로그인: `AUTH_DEV_MODE=true` 는 mock 소스에서만 켜짐 — 가젯 소스는 `LOCAL_DEV=true` 가 함께 있어야 시작함. `LOCAL_DEV` 는 `make dev` 만 켜고, 혼자서는 아무것도 바꾸지 않음. 서버 `.env` 에는 넣지 않음
+- 한계: Docker Desktop 은 fanotify 가 없어 컨테이너 발견이 docker-events — 컨테이너 시작 직후 약 0.1초 안의 동작은 놓칠 수 있음
+- `make dev-mock`: 데모 시나리오(정상 컨테이너 + 타이포스쿼팅 패키지 `pkg-reqeusts`) 재생 · `admin` / `admin` 으로 바로 대시보드(`AUTH_DEV_MODE` 로 비밀번호 변경 · 라이선스 단계 건너뜀) · 재시작마다 저장 내용 초기화. 공급망 검사는 Docker Desktop 이 켜져 있어야 하고 작업 폴더는 `.scan-work`
+- `make sandbox-up`(실제 가젯 · 감시 `sg-install-*` 만 · 메모리 저장 · 개발 로그인 없음)도 `127.0.0.1:8000` 을 씀 — `make dev` 와 함께 띄우지 않음
 - 목업: `make mock` → http://127.0.0.1:8766 (`?source=sim&as=admin` 로 로그인 건너뜀)
 
 전체 스택을 컨테이너로 보려면 (nginx 경유, 실제 Postgres·Redis):
