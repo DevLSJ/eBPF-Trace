@@ -513,6 +513,8 @@ test.describe('⑧ 화면 사진(1440 밝은 · 어두운, 390 밝은)', () => {
 test.describe('통합 검색 — 차단 목록 결과는 차단 목록 화면으로(11/09 메인)', () => {
   test('차단된 패키지 · 도메인 결과를 누르면 /policies/blocklist', async ({ page, backend }) => {
     void backend;
+    // 검색 칸은 공급망 검사 목록도 읽는다 — mock-backend 에 /api/scans 가 없어 w19 처럼 여기서 빈 목록을 준다
+    await page.route(/\/api\/scans(\/|$|\?)/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
     await page.goto('/');
     const box = page.getByRole('combobox', { name: /통합 검색/ });
     for (const q of ['colourama', 'cdn.colourama.test']) {
