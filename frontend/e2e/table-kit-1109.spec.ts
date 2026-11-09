@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
+import { actionTone } from '../src/lib/actionTone';
+import * as copy from '../src/lib/screenCopy';
 import { expect, test } from './fixtures';
 
 // 11/09 P2 — 공통 부품(다음 차례 정책 · 다른 목록 화면이 그대로 가져다 쓴다). 무대 e2e/table-kit-harness.tsx 위에서 본다.
@@ -182,7 +184,8 @@ test.describe('④ 칸 폭', () => {
     expect(Math.round(await thW(page, 'kind'))).toBe(64);
     await expect(h).toHaveAttribute('aria-valuenow', '64');
     await h.dblclick();
-    expect(Math.abs((await thW(page, 'kind')) - w0)).toBeLessThanOrEqual(2);
+    // 기본 폭 = 내용 폭(정해 둔 폭 없음) — 다른 칸의 폭에 따라 남는 자리 나눔이 달라 px 로는 비교하지 않는다
+    expect(await page.locator(`${T} th[data-col="kind"]`).evaluate((e) => (e as HTMLElement).style.width)).toBe('');
     expect(JSON.parse((await saved(page))!).w.kind).toBeUndefined();
     // 좁힌 칸의 글은 잘리고 말줄임
     await drag('owner', -1000);
@@ -781,8 +784,6 @@ test.describe('⑱ 화면 제목 · 로그인(11/05 값)', () => {
 
 // ── 11/09 3차: SPEC-1109 §7 화면 문구(공통 부품 몫) ──
 // 확인 창 · 화면 상태 기본 문구 · 꺼진 단추 사유(마침표 없음) · 아이콘 단추 이름 · 표 아래 안내 · 동작 끝말 색 · 화면 설명 저장소
-const AT = '../src/lib/actionTone'; // 구현 전에도 타입 검사를 통과하도록 실행할 때 불러온다
-const SC = '../src/lib/screenCopy';
 
 test.describe('⑲ 확인 창', () => {
   test('제목 「~할까요?」 · 본문 · 영향 범위 줄 · 확인 체크 · 위험 단추 — 체크 전 확인은 aria-disabled + 사유(마침표 없음)', async ({ page, backend }) => {
@@ -809,7 +810,7 @@ test.describe('⑲ 확인 창', () => {
     await expect(ok).toHaveClass(/sg-btn-danger/);
     await expect(ok).toHaveAttribute('aria-disabled', 'true');
     await expect(ok).toHaveAttribute('title', '확인 칸을 먼저 고르세요');
-    await ok.click();
+    await ok.click({ force: true }); // 꺼진 단추(aria-disabled)는 눌러도 아무 일 없음 — Playwright 는 꺼진 단추를 기다리므로 force
     await expect(page.locator('[data-tk-confirmed]')).toHaveCount(0);
     await d.getByRole('checkbox', { name: '삭제하면 되돌릴 수 없음을 확인했습니다' }).check();
     await expect(ok).not.toHaveAttribute('aria-disabled', 'true');
@@ -827,7 +828,7 @@ test.describe('⑲ 확인 창', () => {
     const ok = d.locator('[data-confirm="ok"]');
     await expect(ok).toHaveAttribute('aria-disabled', 'true');
     await expect(ok).toHaveAttribute('title', '시스템 규칙은 지울 수 없습니다');
-    await ok.click();
+    await ok.click({ force: true });
     await expect(page.locator('[data-tk-confirmed]')).toHaveCount(0);
     await stage(page, 'confirm', { title: '정책 egress-allowlist 를 저장할까요?', body: '저장하면 바로 적용됩니다.', confirmLabel: '저장', danger: false });
     await expect(d.locator('[data-confirm="ok"]')).toHaveClass(/sg-btn-primary/);
@@ -905,7 +906,6 @@ test.describe('㉒ 표 아래 안내 한 줄', () => {
 
 test.describe('㉓ 동작 끝말 → 색(lib/actionTone.ts)', () => {
   test('삭제 · 해제 · 정지 = 위험 / 적용 · 내보내기 · 반영 = 정보 / 수정 · 변경 · 되돌리기 · 되돌림 · 초기화 = 주의 / 등록 · 생성 · 추가 = 정상 / 그 밖 = 회색', async () => {
-    const { actionTone } = (await import(/* @vite-ignore */ AT)) as { actionTone: (name: string) => string };
     const want: Record<string, string> = {
       '정책 삭제': 'danger', '차단 해제': 'danger', '감시 정지': 'danger',
       '정책 적용': 'info', 'CSV 내보내기': 'info', '설정 반영': 'info',
@@ -920,13 +920,7 @@ test.describe('㉓ 동작 끝말 → 색(lib/actionTone.ts)', () => {
 
 test.describe('㉔ 화면 설명 저장소(lib/screenCopy.ts)', () => {
   test('등록된 설명은 모두 「니다.」로 끝나는 20~50자 한 문장 · 마침표 앞 기호 없음 · 검사기는 틀린 문장을 잡는다', async () => {
-    const m = (await import(/* @vite-ignore */ SC)) as {
-      SCREEN_COPY: Record<string, string>;
-      SCREEN_NOTE: Record<string, string>;
-      screenCopy: (k: string) => string;
-      screenNote: (k: string) => string;
-      checkScreenCopy: (t: string) => string[];
-    };
+    const m = copy;
     expect(m.checkScreenCopy('컨테이너 행동을 판정하는 정책을 만들고 적용 범위를 관리합니다.')).toEqual([]);
     expect(m.checkScreenCopy('정책을 관리합니다.')).toContain('length');
     expect(m.checkScreenCopy('컨테이너 행동을 판정하는 정책을 만들고 적용 범위를 관리함')).toContain('ending');

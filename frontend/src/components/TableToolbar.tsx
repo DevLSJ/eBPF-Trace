@@ -53,7 +53,7 @@ export function TableToolbar<T>({
           </span>
         )}
         {onRefresh && (
-          <ActionButton className="tk-icon-btn" data-action="table-refresh" aria-label="새로고침" title="새로고침" reason={refreshing && '불러오는 중'} onClick={onRefresh}>
+          <ActionButton className="tk-icon-btn" data-action="table-refresh" aria-label="새로고침" title="새로고침" reason={refreshing && '불러오는 중입니다'} onClick={onRefresh}>
             <RefreshCw className={refreshing ? 'sg-spin' : undefined} aria-hidden />
           </ActionButton>
         )}
@@ -109,14 +109,14 @@ export function ColumnPicker<T>({ kit }: { kit: TableKit<T> }) {
             {kit.picks.map((p) => {
               const last = p.visible && shown <= 1;
               return (
-                <label key={p.key} data-col={p.key} className="tk-check" title={last ? '칸은 하나 이상 보여야 함' : undefined}>
+                <label key={p.key} data-col={p.key} className="tk-check" title={last ? '칸은 하나 이상 보여야 합니다' : undefined}>
                   <input type="checkbox" checked={p.visible} aria-disabled={last ? 'true' : undefined} onChange={(e) => !last && kit.setVisible(p.key, e.target.checked)} />
                   <span>{p.name}</span>
                 </label>
               );
             })}
             <div className="tk-pop-foot">
-              <ActionButton className="tk-link" data-action="columns-reset" reason={kit.isDefault && '이미 기본 칸'} onClick={kit.resetColumns} title="보이기 · 폭 · 순서를 기본으로">
+              <ActionButton className="tk-link" data-action="columns-reset" reason={kit.isDefault && '이미 기본 칸입니다'} onClick={kit.resetColumns} title="보이기 · 폭 · 순서를 기본으로">
                 칸 기본으로
               </ActionButton>
             </div>

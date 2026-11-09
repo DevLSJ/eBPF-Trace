@@ -291,6 +291,7 @@ export function TablePager({
       data-page={o.key ?? String(p)}
       aria-current={o.cur ? 'page' : undefined}
       aria-label={o.aria ?? `${p}쪽`}
+      title={o.aria ?? `${p}쪽`}
       disabled={o.disabled}
       onClick={() => onPage(p)}
     >

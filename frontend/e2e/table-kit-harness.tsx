@@ -1,18 +1,22 @@
 // 11/09 P2 — 공통 부품(표 도구줄 · 칸 고르기/폭/순서 · 필터 Select · 검색칸 · 주소 쿼리 목록 상태 · 시트 탭 · 큰 2단 창 · 미저장 경고)을
 // 앱 화면 위 무대에서 띄워 본다(r1-harness.tsx 와 같은 방식 — 앱을 연 뒤 page.evaluate(() => import('/e2e/table-kit-harness.tsx'))).
-// window.__tk.mount('list' | 'modal', props) → Promise<{ unmount() }>. 무대는 화면 전체를 덮는 고정 상자 [data-tk-stage](z 65 — 도우미 60 위, 펼침 상자 70 아래).
+// window.__tk.mount('list' | 'modal' | 'confirm' | 'states', props) → Promise<{ unmount() }>. 무대는 화면 전체를 덮는 고정 상자 [data-tk-stage](z 65 — 도우미 60 위, 펼침 상자 70 아래).
 // 'list' 는 BrowserRouter 로 진짜 주소 쿼리를 쓴다(앱 라우터는 popstate 만 듣기에 서로 건드리지 않는다).
 /* eslint-disable react-refresh/only-export-components */
-import { createElement, useMemo, useState, type ReactNode } from 'react';
+import { RotateCcw } from 'lucide-react';
+import { createElement, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import { IconAction } from '../src/components/ActionButton';
 import { GridCells, SortHead, StatusPill, TablePager, TableScroll } from '../src/components/DataTable';
+import { EmptyState, ListError, NoPermission, NoResults, Skeleton } from '../src/components/list/ListStates';
+import { ScreenNote } from '../src/components/ScreenNote';
 import { fmtLog } from '../src/components/list/cell-format';
 import { TimeText, TwoLine } from '../src/components/list/cells';
 import { rowState } from '../src/components/list/hooks';
 import { FilterBar, SearchField } from '../src/components/list/SearchField';
 import { downloadCSV } from '../src/components/list/csv';
-import { Modal } from '../src/components/Modal';
+import { ConfirmDialog, Modal } from '../src/components/Modal';
 import { Select } from '../src/components/Select';
 import { Sheet } from '../src/components/Sheet';
 import { sheetNav } from '../src/components/sheet-nav';
@@ -65,7 +69,15 @@ function columns(picked: Set<string>, toggle: (id: string) => void): Column<Row>
     { key: 'hits', label: '위반', num: true, sort: (r: Row) => r.hits, cell: (r: Row) => r.hits },
     { key: 'note', label: '메모', hidden: true, cell: (r: Row) => r.note, csv: (r: Row) => r.note },
     { key: 'seen', label: '시각', hidden: true, width: COL_W.time, sort: (r: Row) => r.seen, cell: (r: Row) => <TimeText value={r.seen} kind="log" />, csv: (r: Row) => fmtLog(r.seen) },
-    { key: 'act', label: '', fixed: true, stick: 'end', cell: () => <button type="button" aria-label="행 동작" onClick={(e) => e.stopPropagation()}>…</button> },
+    {
+      key: 'act',
+      label: '',
+      fixed: true,
+      stick: 'end',
+      cell: (r: Row) => (
+        <IconAction icon={RotateCcw} label="되돌리기" target={r.id} reason={r.action === 'kill' && '시스템 규칙은 되돌릴 수 없습니다.'} onClick={(e) => e.stopPropagation()} />
+      ),
+    },
   ];
 }
 const TABS = [
@@ -128,6 +140,7 @@ function ListDemo({ grid }: { grid: string }) {
         </K.TableScroll>
         <K.TablePager name="demo" total={view.total} from={view.from} to={view.to} page={view.page} size={kit.size} onPage={kit.setPage} onSize={kit.setSize} />
       </div>
+      <ScreenNote text={NOTE} />
       {cur && (
         <K.Sheet
           kind="demo"
@@ -154,6 +167,33 @@ function ListDemo({ grid }: { grid: string }) {
           </div>
         </K.Sheet>
       )}
+    </div>
+  );
+}
+
+const NOTE = '되돌리기는 정책 상세의 변경 이력에서 합니다. 시스템 규칙은 지우거나 되돌릴 수 없고 시험 운영으로만 바꿀 수 있으며 바꾼 내용은 저장하는 즉시 모든 감시 컨테이너에 적용됩니다.'.repeat(2);
+
+// ── 확인 창 무대(props 그대로) · 화면 상태 무대 ──
+function Stamp({ k, n }: { k: string; n: number }) {
+  return <div {...{ [`data-tk-${k}`]: n }} />;
+}
+function StatesDemo() {
+  const [cleared, setCleared] = useState(0);
+  const box = (k: string, el: ReactNode) => (
+    <div key={k} data-state={k} className="sg-card min-h-0" style={{ height: 200, overflow: 'hidden' }}>
+      {el}
+    </div>
+  );
+  return (
+    <div className="grid grid-cols-3 gap-3 p-4">
+      {box('empty', <EmptyState what="정책" hint="정책 생성으로 첫 정책을 만드세요." actions={<button type="button" className="sg-btn sg-btn-primary">정책 생성</button>} />)}
+      {box('empty-log', <EmptyState what="감사 로그" />)}
+      {box('empty-default', <EmptyState />)}
+      {box('no-results', <NoResults onClear={() => setCleared((n) => n + 1)} />)}
+      {box('error', <ListError error={new Error('연결이 끊겼습니다')} what="정책" onRetry={() => {}} />)}
+      {box('denied', <NoPermission />)}
+      {box('loading', <Skeleton rows={3} />)}
+      {cleared > 0 && <Stamp k="cleared" n={cleared} />}
     </div>
   );
 }
@@ -195,7 +235,7 @@ function Closed({ n }: { n: number }) {
   return <div data-tk-closed={n} />;
 }
 
-async function mount(kind: string, props: { grid?: string } = {}) {
+async function mount(kind: string, props: { grid?: string } & Record<string, unknown> = {}) {
   await ready();
   const host = document.createElement('div');
   Object.assign(host.style, { position: 'fixed', inset: '0', zIndex: '65', background: 'var(--bg)', display: 'flex', flexDirection: 'column' });
@@ -203,7 +243,17 @@ async function mount(kind: string, props: { grid?: string } = {}) {
   document.body.append(host);
   const root = createRoot(host);
   if (kind === 'list') root.render(createElement(BrowserRouter, null, createElement(ListDemo, { grid: props.grid ?? 'tk-demo' })));
-  else {
+  else if (kind === 'states') root.render(createElement(StatesDemo));
+  else if (kind === 'confirm') {
+    let done = 0;
+    const draw = () =>
+      root.render(
+        done
+          ? createElement(Stamp, { k: 'confirmed', n: done })
+          : createElement(ConfirmDialog, { ...(props as unknown as ComponentProps<typeof ConfirmDialog>), onConfirm: () => ((done += 1), draw()), onCancel: () => {} }),
+      );
+    draw();
+  } else {
     let closed = 0;
     const draw = () => root.render(closed ? createElement(Closed, { n: closed }) : createElement(ModalDemo, { onClosed: () => ((closed += 1), draw()) }));
     draw();

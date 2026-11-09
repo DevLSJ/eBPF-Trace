@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { useCallback, useContext, useEffect, useId, useRef, useState, type KeyboardEvent as RKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { fmtNum } from '../lib/format';
 import { dialogOpen, typingTarget } from '../lib/shell';
 import { SheetHostContext } from './header-slot';
 import { Skeleton } from './list/ListStates';
@@ -229,7 +230,7 @@ export function Sheet({
                   {t.label}
                   {t.count != null && (
                     <span className="tk-tab-count num" data-part="tab-count">
-                      {t.count}
+                      {fmtNum(t.count)}
                     </span>
                   )}
                 </button>

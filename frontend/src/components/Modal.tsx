@@ -120,7 +120,7 @@ export function Modal({
         <div className="tk-xl">
           <header className="tk-xl-head">
             <h3 className="min-w-0 flex-1 truncate text-base font-semibold">{title}</h3>
-            <ActionButton aria-label="닫기" reason={busy && '저장 중'} onClick={tryClose} className="tk-icon-btn">
+            <ActionButton aria-label="닫기" reason={busy && '저장 중입니다'} onClick={tryClose} className="tk-icon-btn">
               <X className="size-4" aria-hidden />
             </ActionButton>
           </header>
@@ -160,7 +160,7 @@ export function Modal({
       <div className="grid gap-4 p-5">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-base font-semibold">{title}</h3>
-          <button type="button" aria-label="닫기" onClick={tryClose} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <button type="button" aria-label="닫기" title="닫기" onClick={tryClose} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
             <X className="size-4" aria-hidden />
           </button>
         </div>
@@ -255,30 +255,54 @@ const EFFECT_TONE: Record<string, string> = {
 
 // 확인 대화상자(10/20 B — 두 번 누르기 대체): 대상 · 함께 일어나는 일 · (선택) 사유 · 되돌리기 안내. 확인이면 onConfirm(사유)
 // effects 는 바로 아는 것, loadEffects 는 서버가 계산하는 것(판정 미리보기) — 계산 중 · 실패도 목록 안에 보인다
+// 11/09 SPEC-1109 §7 양식(선택 props — 안 주면 옛 모양 그대로):
+//   title 「[대상]을 [동작]할까요?」 · body 한두 문장 · impact 영향 범위 줄마다 하나(개수 포함 — 주면 옛 「함께 일어나는 일」 칸 대신)
+//   blocked 막는 사유(있으면 확인이 aria-disabled + 그 사유, 확인 체크 없음) · requireCheck 위험하면 확인 체크 「~ㅁ을 확인했습니다」(체크 전엔 확인 꺼짐)
+//   confirmLabel 확인 단추 동작 한 단어(삭제 · 저장 · 되돌리기, okLabel 과 같음) · danger 지우기 · 되돌릴 수 없는 일은 위험 단추(tone 과 같음)
+//   <ConfirmDialog title="정책 a 를 삭제할까요?" body="…" impact={['컨테이너 3개의 판정이 바뀝니다.']} requireCheck="삭제하면 되돌릴 수 없음을 확인했습니다" confirmLabel="삭제" danger onConfirm={…} onCancel={…} />
 export function ConfirmDialog({
   title,
   target,
   effects,
   loadEffects,
   undo,
-  okLabel = '확인',
-  tone = 'danger',
+  okLabel,
+  tone,
   reason = false,
+  body,
+  impact,
+  blocked,
+  requireCheck,
+  confirmLabel,
+  danger,
   onConfirm,
   onCancel,
 }: {
   title: string;
-  target: string;
+  target?: string;
   effects?: EffectItem[];
   loadEffects?: () => Promise<EffectItem[]>;
   undo?: string;
   okLabel?: string;
   tone?: 'danger' | 'primary';
   reason?: boolean;
+  body?: ReactNode;
+  impact?: EffectItem[];
+  blocked?: string | null;
+  requireCheck?: string;
+  confirmLabel?: string;
+  danger?: boolean;
   onConfirm: (reason: string) => void;
   onCancel: () => void;
 }) {
   const [text, setText] = useState('');
+  const [checked, setChecked] = useState(false);
+  const label = confirmLabel ?? okLabel ?? '확인';
+  const isDanger = danger ?? (tone ? tone === 'danger' : true);
+  const needCheck = !!requireCheck && !blocked;
+  const offReason = blocked || (needCheck && !checked ? '확인 칸을 먼저 고르세요' : null);
+  // 옛 「함께 일어나는 일」 칸 — effects · loadEffects 를 주거나, 새 양식(body · impact)을 하나도 안 줄 때
+  const legacyEffects = !!effects || !!loadEffects || (body === undefined && impact === undefined);
   const [loaded, setLoaded] = useState<{ items?: EffectItem[]; error?: string } | null>(null);
   // 처음 받은 계산 함수만 쓴다(부모가 다시 그려도 한 번)
   const [load] = useState(() => loadEffects);
@@ -311,23 +335,43 @@ export function ConfirmDialog({
           <button type="button" data-confirm="cancel" onClick={onCancel} className="sg-btn text-text-2 hover:bg-surface-3">
             취소
           </button>
-          <button
-            type="button"
-            data-confirm="ok"
-            onClick={() => onConfirm(text.trim())}
-            className={`sg-btn ${tone === 'primary' ? 'sg-btn-primary' : 'sg-btn-danger'}`}
-          >
-            {okLabel}
-          </button>
+          <ActionButton data-confirm="ok" reason={offReason} onClick={() => onConfirm(text.trim())} className={`sg-btn ${isDanger ? 'sg-btn-danger' : 'sg-btn-primary'}`}>
+            {label}
+          </ActionButton>
         </>
       }
     >
-      <dl className="grid grid-cols-[3rem_1fr] gap-x-2 text-sm">
-        <dt className="text-slate-500">대상</dt>
-        <dd className="font-mono break-all" data-part="confirm-target">
-          {target}
-        </dd>
-      </dl>
+      {target !== undefined && (
+        <dl className="grid grid-cols-[3rem_1fr] gap-x-2 text-sm">
+          <dt className="text-slate-500">대상</dt>
+          <dd className="font-mono break-all" data-part="confirm-target">
+            {target}
+          </dd>
+        </dl>
+      )}
+      {body != null && (
+        <p className="text-sm text-text-2" data-part="confirm-body">
+          {body}
+        </p>
+      )}
+      {blocked && (
+        <p role="alert" className="rounded-[var(--r-sm)] bg-danger-soft px-3 py-2 text-sm text-danger-text" data-part="confirm-blocked">
+          {blocked}
+        </p>
+      )}
+      {!!impact?.length && (
+        <div className="text-sm">
+          <div className="font-medium">영향 범위</div>
+          <ul className="mt-1 grid max-h-[168px] list-disc gap-0.5 overflow-y-auto pl-5" data-part="confirm-impact">
+            {impact.map((x, i) => (
+              <li key={i} data-kind={typeof x === 'string' ? undefined : x.kind} className="text-text-2">
+                {typeof x === 'string' ? x : x.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {legacyEffects && (
       <div className="text-sm">
         <div className="font-medium">함께 일어나는 일</div>
         <ul className="mt-1 grid list-disc gap-0.5 pl-5" data-part="confirm-effects" aria-live="polite">
@@ -341,6 +385,13 @@ export function ConfirmDialog({
           })}
         </ul>
       </div>
+      )}
+      {needCheck && (
+        <label className="flex items-center gap-2 text-sm" data-part="confirm-check">
+          <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+          <span>{requireCheck}</span>
+        </label>
+      )}
       {reason && (
         <label className="grid gap-1 text-sm">
           <span>

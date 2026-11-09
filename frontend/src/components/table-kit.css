@@ -167,3 +167,6 @@ dialog.tk-dialog::backdrop { animation: tk-fade 150ms var(--ease-color, cubic-be
 .tk-2l-sub { font-size: var(--fs-xs, 12px); font-family: var(--mono); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tk-time { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tk-time[data-kind='log'] { font-family: var(--mono); }
+
+/* ── 표 아래 안내 한 줄(ScreenNote, 11/09 §7): 작은 흐린 글 한 줄 · 넘치면 「…」(전체는 title) ── */
+.tk-screen-note { flex-shrink: 0; min-width: 0; margin: 0; font-size: var(--fs-xs, 12px); line-height: 1.5; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
