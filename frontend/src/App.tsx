@@ -20,6 +20,8 @@ import { SettingsPage } from './features/settings/SettingsPage';
 import { ReportPage } from './features/report/ReportPage';
 import { DemoPage } from './features/demo/DemoPage';
 import { IntegrationPage } from './features/integration/IntegrationPage';
+import { IntegrationEnvPage } from './features/integration/EnvPage';
+import { IntegrationWatchPage } from './features/integration/WatchPage';
 
 // 로그인(W16): AuthProvider 가 active 세션일 때만 아래(실시간 연결 · 건 목록 · 화면)를 그린다
 // 화면마다 공통 틀 <Page>(R1 11/04 — 스크롤 없는 페이지, 스크롤은 화면 안 채움 칸 [data-fill] 에서만)
@@ -44,7 +46,10 @@ export default function App() {
                 <Route path="audit" element={<Page><AuditPage /></Page>} />
                 <Route path="settings" element={<Page><SettingsPage /></Page>} />
                 <Route path="report" element={<Page><ReportPage /></Page>} />
+                {/* 11/09 밤 연동 3페이지 — 사이드바 「연동」 아래 연동 · 환경 점검 · 감시 중 컨테이너 */}
                 <Route path="integration" element={<Page><IntegrationPage /></Page>} />
+                <Route path="integration/env" element={<Page><IntegrationEnvPage /></Page>} />
+                <Route path="integration/watch" element={<Page><IntegrationWatchPage /></Page>} />
                 <Route path="demo" element={<Page><DemoPage /></Page>} />
                 {/* 11/09 G04: 없는 주소는 대시보드로 몰래 옮기지 않고 「화면을 찾을 수 없습니다」(주소는 그대로) */}
                 <Route path="*" element={<Page><NotFound /></Page>} />

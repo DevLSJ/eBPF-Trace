@@ -24,6 +24,7 @@ import {
   multiValid,
   outcomeOf,
   pkgError,
+  SCENARIO_NOTES,
   SCENARIOS,
   singleApply,
   singleErrors,
@@ -41,6 +42,7 @@ import {
 } from './model';
 
 // 시나리오 따라 하기(11/06 요구 1 수정): 시나리오 고르기 → 1 입력(설정 자동 생성) → 2 적용(감시 목록에서 자동 감지) → 3 확인(내 컨테이너 시험 동작).
+// 카드(11/09 밤) = 제목 + 한 줄 설명 + 예 하나 — 세부는 고른 뒤 1단계 안 설명(SCENARIO_NOTES)으로
 // 진행 · 입력값은 이 브라우저에 저장(새로고침해도 이어짐, 저장이 막혀 있으면 이번 화면만). 문구 규칙: 개조식 명사형 종결
 const KEY = 'supplyguard.integrate.wizard.v1';
 interface Saved {
@@ -96,12 +98,12 @@ export function ScenarioWizard({ env, containers }: { env: IntegrationEnv; conta
             onClick={() => sc !== s.id && set({ scenario: s.id, step: 1, armedAt: undefined, installSince: undefined, target: undefined })}
           >
             <b className="int-scn-title">{s.title}</b>
-            <span className="int-scn-sub">{s.sub}</span>
-            <ul className="int-scn-points">
-              {s.points.map((p) => (
-                <li key={p}>{p}</li>
-              ))}
-            </ul>
+            <span className="int-scn-desc" data-part="int-scn-desc">
+              {s.desc}
+            </span>
+            <span className="int-scn-ex" data-part="int-scn-example">
+              예) <code>{s.example}</code>
+            </span>
           </button>
         ))}
       </div>
@@ -134,6 +136,13 @@ export function ScenarioWizard({ env, containers }: { env: IntegrationEnv; conta
             {st.step === 1 && sc === 'single' && <SingleForm v={st.single} onChange={(single) => set({ single })} />}
             {st.step === 1 && sc === 'multi' && <MultiForm v={st.multi} onChange={(multi) => set({ multi })} />}
             {st.step === 1 && sc === 'install' && <InstallForm v={st.install} onChange={(install) => set({ install })} />}
+            {st.step === 1 && (
+              <ul className="int-points" data-part="int-scn-notes">
+                {SCENARIO_NOTES[sc].map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            )}
             {st.step === 1 && (
               <div className="int-wiz-foot">
                 <ActionButton className="sg-btn sg-btn-primary" data-part="wizard-next" reason={!valid && '입력 칸의 오류를 먼저 고치세요'} onClick={() => set({ step: 2 })}>
@@ -270,10 +279,6 @@ function InstallForm({ v, onChange }: { v: InstallInput; onChange: (v: InstallIn
           <input name="pkg" className="int-input" value={v.pkg} onChange={(x) => onChange({ ...v, pkg: x.target.value.trim() })} />
         </Field>
       </div>
-      <ul className="int-points">
-        <li>설치는 감시 컨테이너(sg-install-*) 안에서 실행됨, 호스트에 설치되지 않음</li>
-        <li>악성 동작 시 설치 완료 전에 격리됨, 결과는 설치 검사 화면에 기록됨</li>
-      </ul>
     </div>
   );
 }
@@ -322,7 +327,12 @@ function ApplyStep({ sc, st, env, containers, onNext }: { sc: 'single' | 'multi'
         <div>
           <h4 className="int-h4">② 서버에서 실행(컨테이너 다시 만들기)</h4>
           <Code part="gen-apply" text={sc === 'single' ? singleApply(st.single, env) : multiApply()} />
-          <h4 className="int-h4">③ 자동 감지 {found.length > 1 && <span className="int-muted" data-part="detect-count">{n} / {found.length}</span>}</h4>
+          <div className="int-h4-row">
+            <h4 className="int-h4">③ 자동 감지 {found.length > 1 && <span className="int-muted" data-part="detect-count">{n} / {found.length}</span>}</h4>
+            <Link to="/integration/watch" className="int-link" data-part="detect-watch-link">
+              감시 중 컨테이너 보기 ›
+            </Link>
+          </div>
           <ul className="int-detect" data-part="detect">
             {found.map((f) => (
               <li key={f.name} data-detect={f.name} data-found={String(!!f.row)} className={`int-detect-row ${f.row ? 'found' : ''}`}>
@@ -336,7 +346,17 @@ function ApplyStep({ sc, st, env, containers, onNext }: { sc: 'single' | 'multi'
         </div>
       </div>
       <div className="int-wiz-foot">
-        {all ? <span className="int-ok" data-part="detect-done">[감지 완료] 확인 단계 진행 가능</span> : <span className="int-muted">감지 전에도 다음 단계로 이동 가능</span>}
+        {all ? (
+          <span className="int-ok" data-part="detect-done">[감지 완료] 확인 단계 진행 가능</span>
+        ) : (
+          <span className="int-muted">
+            감지 전에도 다음 단계로 이동 가능, 감지가 안 되면{' '}
+            <Link to="/integration/env" className="int-link" data-part="detect-env-link">
+              환경 점검
+            </Link>{' '}
+            확인
+          </span>
+        )}
         <button type="button" className={`sg-btn ${all ? 'sg-btn-primary' : 'sg-btn-secondary'}`} data-part="wizard-next" onClick={onNext}>
           확인 단계 →
         </button>

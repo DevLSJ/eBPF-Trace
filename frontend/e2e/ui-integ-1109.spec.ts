@@ -71,7 +71,7 @@ test.describe('실패 알림 — 「~하지 못했습니다.」 + 서버 문장(
   test('연동: 연결 테스트 시작 실패 토스트', async ({ page, backend, allowConsole }) => {
     void backend;
     allowConsole(NET_CONSOLE);
-    await page.goto('/integration');
+    await page.goto('/integration/env'); // 11/09 밤: 연결 테스트는 연동 › 환경 점검
     await expect(page.locator('[data-part="integration"][data-state="ready"]')).toBeVisible();
     await page.route(/\/api\/integration\/test$/, abort);
     await page.locator('[data-part="test-step"] [data-part="test-start"]').click();

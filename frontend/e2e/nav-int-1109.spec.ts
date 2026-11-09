@@ -60,7 +60,8 @@ test.describe('① 연동 3페이지', () => {
     await up.click();
     await expect(page).toHaveURL(/\/integration$/);
     await expect(title).toHaveText('연동');
-    // 통합 검색 「화면」: 새 화면 두 개 · 보조 줄은 상위(연동)
+    // 통합 검색 「화면」: 새 화면 두 개 · 보조 줄은 상위(연동). 가짜 백엔드에 공급망 검사 목록이 없어 빈 목록으로 답한다(ui-a-1109 G07 과 같음)
+    await page.route(/\/api\/scans(\/|$|\?)/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
     const box = page.getByRole('combobox', { name: /통합 검색/ });
     const results = page.locator('[data-part="search-results"]');
     await box.fill('환경 점검');
@@ -245,6 +246,11 @@ test.describe('② 사이드바 그룹 접고 펴기', () => {
     await expect(toggle(page, 'integration')).toHaveAttribute('aria-expanded', 'false');
     await expect(toggle(page, 'policies')).toHaveAttribute('aria-expanded', 'true');
     await expect(sub(page, 'policies').getByRole('link', { name: '차단 목록' })).toBeVisible();
+    // 키보드: 머리에 초점 → Enter · Space 로 접고 펴기
+    await toggle(page, 'integration').press('Enter');
+    await expect(toggle(page, 'integration')).toHaveAttribute('aria-expanded', 'true');
+    await toggle(page, 'integration').press(' ');
+    await expect(toggle(page, 'integration')).toHaveAttribute('aria-expanded', 'false');
     // 펼친 하위 메뉴로 이동
     await sub(page, 'policies').getByRole('link', { name: '변경 이력' }).click();
     await expect(page).toHaveURL(/\/policies\/changes$/);
@@ -264,7 +270,9 @@ test.describe('② 사이드바 그룹 접고 펴기', () => {
     await expect(sub(page, 'policies').getByRole('link', { name: '차단 목록' })).toBeVisible();
     await expect(toggle(page, 'policies')).toHaveAttribute('aria-disabled', 'true');
     await expect(toggle(page, 'policies')).toHaveAttribute('title', '지금 화면이 속한 메뉴는 접을 수 없습니다');
-    await toggle(page, 'policies').click();
+    // 꺼진 머리(aria-disabled)도 사용자는 누를 수 있다 — 눌러도 · Enter 여도 그대로
+    await toggle(page, 'policies').click({ force: true });
+    await toggle(page, 'policies').press('Enter');
     await expect(toggle(page, 'policies')).toHaveAttribute('aria-expanded', 'true');
     await expect(sub(page, 'policies').getByRole('link', { name: '변경 이력' })).toBeVisible();
     await expect(toggle(page, 'integration')).toHaveAttribute('aria-expanded', 'false');
@@ -277,6 +285,26 @@ test.describe('② 사이드바 그룹 접고 펴기', () => {
     await expect(toggle(page, 'policies')).not.toHaveAttribute('aria-disabled', 'true');
     expect(JSON.parse((await stored(page))!)).toEqual({ integration: false, policies: false }); // 강제 펼침은 저장하지 않는다
     await page.screenshot({ path: `${SHOT}/nav-fold-1440.png` });
+  });
+
+  test('정책 묶음 머리를 길게 눌러 옮기기는 그대로(접고 펴기와 겹치지 않음) · Alt+↓ 도 그대로', async ({ page, backend }) => {
+    void backend;
+    await page.goto('/');
+    const head = toggle(page, 'policies');
+    const a = (await head.boundingBox())!;
+    const b = (await page.locator(`${NAV} [data-nav-group="설정 · 기록"] a[href="/settings"]`).boundingBox())!;
+    await page.mouse.move(a.x + a.width / 3, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(520);
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height - 4, { steps: 10 });
+    await page.mouse.up();
+    const order = () => page.locator(`${NAV} [data-nav-group="설정 · 기록"] > [data-sort-id]`).evaluateAll((els) => els.map((e) => e.getAttribute('data-sort-id')));
+    await expect.poll(order).toEqual(['audit', 'settings', 'policies']);
+    await expect(head).toHaveAttribute('aria-expanded', 'false'); // 집은 뒤 뗀 것은 누름이 아니다
+    await expect(page).toHaveURL(/\/$/);
+    await sub(page, 'policies').focus();
+    await page.keyboard.press('Alt+ArrowUp');
+    await expect.poll(order).toEqual(['audit', 'policies', 'settings']);
   });
 
   test('움직임 — 펼침 전환 --dur-base(180ms) · 동작 줄이기면 전환 없음', async ({ page, backend }) => {

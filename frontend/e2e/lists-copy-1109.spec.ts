@@ -213,14 +213,14 @@ test.describe('③ 화면 문구', () => {
 
   test('꺼진 단추 = aria-disabled + 사유(마침표 없음) · 행을 흐리게 하지 않음 — 연동', async ({ page, backend }) => {
     backend.auth.asViewer();
-    await page.goto('/integration');
+    await page.goto('/integration/env'); // 11/09 밤: 연결 테스트는 연동 › 환경 점검
     await expect(page.locator('[data-part="integration"]')).toHaveAttribute('data-state', 'ready');
-    const env = page.locator('[data-part="step-env"]');
-    if ((await env.getAttribute('data-open')) !== 'true') await env.locator('[data-part="env-toggle"]').click();
     const btn = page.locator('[data-part="test-start"]');
     await expect(btn).toHaveAttribute('aria-disabled', 'true');
     await expect(btn).toHaveAttribute('title', '연결 테스트를 실행할 권한이 없습니다');
     await expect(btn).not.toHaveAttribute('disabled'); // 진짜 disabled 아님 — 초점이 가고 사유가 읽힌다
+    await page.goto('/integration/watch'); // 감시 목록은 연동 › 감시 중 컨테이너
+    await expect(page.locator('[data-part="watch-rows"]')).toBeVisible();
     const out = page.locator('[data-part="watch-rows"] li[data-watched="false"]').first();
     if (await out.count()) expect(await cs(out, ['opacity'])).toEqual({ opacity: '1' });
   });

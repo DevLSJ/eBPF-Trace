@@ -1,7 +1,7 @@
 import type { FlowNode } from '../../components/FlowHero';
 import type { Info, InstallSession, IntegrationContainer, IntegrationEnv, IntegrationStatus, Kind, Verdict } from '../../lib/types';
 
-// 연동 페이지(11/06)의 흐름 그림 · 환경 점검 · 라벨 예시 — 화면과 e2e 가 같이 쓴다. 문구 규칙: 개조식 명사형 종결
+// 연동 페이지(11/06 · 11/09 밤 3페이지로)의 흐름 그림 · 환경 점검 · 라벨 예시 — 화면과 e2e 가 같이 쓴다. 문구 규칙: 개조식 명사형 종결
 
 export const FLOW: FlowNode[] = [
   { id: 'label', title: '내 컨테이너', sub: '라벨 한 줄', point: '컨테이너에 supplyguard.watch=true 라벨 추가됨' },
@@ -69,12 +69,23 @@ export function needsIntegration(st: IntegrationStatus | undefined): boolean {
 
 
 // ── 시나리오(11/06 요구 1 수정 — 사용자가 값을 넣으면 설정 생성 → 적용 뒤 자동 감지 → 내 컨테이너에서 시험 동작) ──
+// 카드(11/09 밤 사용자 결정) = 제목 + 한 줄 설명 + 예 하나. 세부(대상 · 라벨 · 자동 감지 · 감지 진행)는 고른 뒤 1단계 안 NOTES 로만
 export type ScenarioId = 'single' | 'multi' | 'install';
-export const SCENARIOS: { id: ScenarioId; title: string; sub: string; points: string[] }[] = [
-  { id: 'single', title: '내 서비스 하나', sub: 'compose 서비스 1개 또는 docker run', points: ['라벨 2줄로 감시 · 격리 설정됨', '다시 만들면 화면이 자동 감지함'] },
-  { id: 'multi', title: '여러 컨테이너 한 번에', sub: 'compose 프로젝트 전체', points: ['서비스별 감시 · 격리 선택됨', '감지 진행 n / m 표시됨'] },
-  { id: 'install', title: '패키지 설치 검사', sub: 'pip · npm · cargo 설치를 격리 환경에서', points: ['설치 중 악성 동작 시 즉시 격리됨', '같은 패키지 정적 검사 함께 시작됨'] },
+export const SCENARIOS: { id: ScenarioId; title: string; desc: string; example: string }[] = [
+  { id: 'single', title: '내 서비스 하나', desc: '컨테이너 하나를 감시합니다.', example: 'docker run my-app' },
+  { id: 'multi', title: '여러 컨테이너 한 번에', desc: 'compose 프로젝트를 한 번에 감시합니다.', example: 'web · api · db' },
+  { id: 'install', title: '패키지 설치 검사', desc: '설치 전에 격리 환경에서 검사합니다.', example: 'pip install requests' },
 ];
+// 1단계 안 설명 — 11/06 카드의 부제 · 요점을 옮겼다(개조식 명사형 종결)
+export const SCENARIO_NOTES: Record<ScenarioId, string[]> = {
+  single: ['compose 서비스 1개 또는 docker run 컨테이너 1개 대상', '라벨 2줄로 감시 · 격리 설정됨', '다시 만들면 화면이 자동 감지함'],
+  multi: ['compose 프로젝트 전체 대상', '서비스별 감시 · 격리 선택됨', '적용 뒤 감지 진행(감지 수 / 전체) 표시됨'],
+  install: [
+    'pip · npm · cargo 설치를 감시 컨테이너(sg-install-*) 안에서 실행됨, 호스트에 설치되지 않음',
+    '설치 중 악성 동작 시 설치 완료 전에 격리됨, 결과는 설치 검사 화면에 기록됨',
+    '같은 패키지 정적 검사 함께 시작됨',
+  ],
+};
 export const STEPS = ['입력', '적용', '확인'] as const;
 
 export interface SingleInput { mode: 'compose' | 'run'; name: string; image: string; enforce: boolean }

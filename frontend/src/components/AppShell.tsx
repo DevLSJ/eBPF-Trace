@@ -1,4 +1,4 @@
-import { ChartColumn, ChevronsLeft, ChevronsRight, CircleHelp, FileClock, LayoutDashboard, ListTree, Menu, MonitorPlay, Network, Plug, PackageSearch, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
+import { ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, CircleHelp, FileClock, LayoutDashboard, ListTree, Menu, MonitorPlay, Network, Plug, PackageSearch, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/auth-context';
@@ -17,7 +17,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { useSortable } from '../hooks/useSortable';
 import { WsStatus } from './WsStatus';
 import { FRESH } from '../lib/nav';
-import { dialogOpen, screenOf, typingTarget } from '../lib/shell';
+import { dialogOpen, loadJSON, saveJSON, screenOf, typingTarget } from '../lib/shell';
 
 interface NavItem {
   to: string;
@@ -72,8 +72,18 @@ const groups: { id?: 'install' | 'runtime' | 'records'; label?: string; items: N
 
 // R3 11/04: 「시연」 — 대시보드 바로 아래 고정(home 줄 — 길게 눌러 옮기기 · 순서 저장 대상 아님), 관리자 + /api/info.demo 일 때만 groups 에 끼운다
 const DEMO_ITEM: NavItem = { to: '/demo', label: '시연', icon: MonitorPlay };
-// 11/06: 「연동」 — 모두에게(연결 테스트 버튼만 관리자), 대시보드 바로 아래 고정(home 줄)
-const INTEGRATION_ITEM: NavItem = { to: '/integration', label: '연동', icon: Plug };
+// 11/06: 「연동」 — 모두에게(연결 테스트 버튼만 관리자), 대시보드 바로 아래 고정(home 줄).
+// 11/09 밤 사용자 결정: 하위 메뉴 3개(연동 · 환경 점검 · 감시 중 컨테이너)를 가진 묶음 — 정책 묶음과 같은 모양
+const INTEGRATION_ITEM: NavItem = {
+  to: '/integration',
+  label: '연동',
+  icon: Plug,
+  children: [
+    { to: '/integration', label: '연동' },
+    { to: '/integration/env', label: '환경 점검' },
+    { to: '/integration/watch', label: '감시 중 컨테이너' },
+  ],
+};
 
 // 화면 제목 · 하위 화면의 상위(「정책 ›」)는 lib/shell SCREENS 한 곳(통합 검색 「화면」과 같은 이름).
 // 건 보고서(/report)는 사이드바에는 없고 시트 · 판정 카드 · 판정 대기 행에서 연다
@@ -312,8 +322,16 @@ function NavGroup({ g, collapsed, pending }: { g: (typeof groups)[number]; colla
   );
 }
 
-// 하위 메뉴(11/09 정책 화면 분리, SPEC-1109 §5): 펼친 사이드바 · 서랍 = 묶음 제목 + 들여 쓴 링크.
+// 하위 메뉴(11/09 정책 화면 분리, SPEC-1109 §5): 펼친 사이드바 · 서랍 = 묶음 머리 + 들여 쓴 링크.
 // 접힌 사이드바(56px) = 아이콘만, 올리면 120ms 뒤 · 초점이 들어오면 바로 오른쪽에 하위 메뉴만 겹쳐 뜬다(나가면 150ms 뒤 닫힘 — 틈을 건너는 동안)
+// 접고 펴기(11/09 밤 사용자 결정): 펼친 사이드바 · 서랍에서 묶음 머리를 누르면(Enter · Space) 하위 메뉴가 접히고 펴진다(--dur-base, 동작 줄이기면 바로).
+//   지금 화면이 속한 묶음은 늘 펼침(눌러도 접히지 않음 · 저장하지 않음), 다른 묶음은 마지막 상태를 이 브라우저에 기억 · 처음엔 접힘.
+//   머리는 role="button" 칸 — 진짜 <button> 이면 useSortable 이 칸 안 단추로 보고 길게 눌러 옮기기를 막는다
+const NAV_OPEN_KEY = 'supplyguard.nav.open.v1'; // { 묶음 id: 펼침 여부 } — 막혀 있거나 깨졌으면 처음처럼
+function navOpenMap(): Record<string, unknown> {
+  const v = loadJSON<unknown>(NAV_OPEN_KEY, {});
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
 const subLink = (collapsed: boolean) => ({ isActive }: { isActive: boolean }) =>
   `flex items-center rounded-[var(--r-sm)] py-1.5 text-sm transition-colors duration-[var(--t-fast)] ${collapsed ? 'px-3' : 'pr-3 pl-2'} ${
     isActive ? 'bg-accent-soft font-medium text-accent-text' : 'text-text-2 hover:bg-surface-2 hover:text-text'
@@ -337,6 +355,13 @@ function SubNav({
 }) {
   const { pathname } = useLocation();
   const here = items.some((x) => pathname === x.to);
+  const [saved, setSaved] = useState(() => navOpenMap()[id] === true);
+  const open = here || saved;
+  const toggle = () => {
+    if (here) return;
+    setSaved(!saved);
+    saveJSON(NAV_OPEN_KEY, { ...navOpenMap(), [id]: !saved });
+  };
   const box = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState(false);
   const [focusIn, setFocusIn] = useState(false);
@@ -352,6 +377,9 @@ function SubNav({
     timer.current = window.setTimeout(fn, ms);
   };
   const shown = collapsed && (hover || focusIn) && pos;
+  // 묶음 칸 초점: 정렬 묶음은 useSortable 이 준 tabIndex(Alt+↑/↓), 아니면 접힌 사이드바에서만(초점으로 하위 메뉴를 띄운다)
+  const tab = typeof sortProps.tabIndex === 'number' ? sortProps.tabIndex : collapsed ? 0 : undefined;
+  const foldId = `sg-subnav-${id}`;
   const links = items.map((x) => (
     <NavLink
       key={x.to}
@@ -372,10 +400,12 @@ function SubNav({
     <div
       ref={box}
       {...sortProps}
+      tabIndex={tab}
       data-nav-sub={id}
+      data-open={String(open)}
       role="group"
       aria-label={label}
-      className={`relative flex flex-col gap-0.5 rounded-[var(--r-sm)] ${pickedClass}`}
+      className={`relative flex flex-col rounded-[var(--r-sm)] ${pickedClass}`}
       onMouseEnter={() => collapsed && later(() => (place(), setHover(true)), 120)}
       onMouseLeave={() => collapsed && later(() => setHover(false), 150)}
       onFocus={() => {
@@ -387,16 +417,50 @@ function SubNav({
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusIn(false);
       }}
     >
-      <div
-        className={`flex items-center gap-3 py-2 text-sm ${collapsed ? 'justify-center px-0' : 'px-3'} ${here ? (collapsed ? 'rounded-[var(--r-sm)] bg-accent-soft text-accent-text' : 'font-medium text-text') : ''}`}
-        title={collapsed ? label : undefined}
-      >
-        <Icon className="size-4 shrink-0" aria-hidden />
-        <span className={collapsed ? 'sr-only' : 'flex-1'}>{label}</span>
-      </div>
+      {collapsed ? (
+        <div className={`flex items-center justify-center gap-3 px-0 py-2 text-sm ${here ? 'rounded-[var(--r-sm)] bg-accent-soft text-accent-text' : ''}`} title={label}>
+          <Icon className="size-4 shrink-0" aria-hidden />
+          <span className="sr-only">{label}</span>
+        </div>
+      ) : (
+        <div
+          role="button"
+          tabIndex={0}
+          data-part="subnav-toggle"
+          aria-expanded={open}
+          aria-controls={foldId}
+          aria-disabled={here ? 'true' : undefined}
+          title={here ? '지금 화면이 속한 메뉴는 접을 수 없습니다' : undefined}
+          onClick={toggle}
+          onKeyDown={(e) => {
+            if ((e.key !== 'Enter' && e.key !== ' ') || e.altKey || e.ctrlKey || e.metaKey) return;
+            e.preventDefault();
+            toggle();
+          }}
+          className={`flex items-center gap-3 rounded-[var(--r-sm)] py-2 pr-2 pl-3 text-sm transition-colors duration-[var(--dur-fast)] ${here ? 'cursor-default font-medium text-text' : 'cursor-pointer hover:bg-surface-2 hover:text-text'}`}
+        >
+          <Icon className="size-4 shrink-0" aria-hidden />
+          <span className="flex-1">{label}</span>
+          <ChevronDown
+            data-part="subnav-chevron"
+            className={`size-4 shrink-0 text-text-3 transition-transform duration-[var(--dur-fast)] ease-[var(--ease-move)] motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </div>
+      )}
       {!collapsed ? (
-        <div className="ml-[1.4rem] flex flex-col gap-0.5 border-l border-border pl-2" data-part="subnav">
-          {links}
+        // 접힘 = 높이 0 + visibility hidden(초점 · 화면 읽기에서 빠진다). 펼칠 때 grid 행 0fr → 1fr
+        <div
+          id={foldId}
+          data-part="subnav-fold"
+          className={`grid transition-[grid-template-rows,visibility] duration-[var(--dur-base)] ease-[var(--ease-move)] motion-reduce:transition-none ${open ? 'visible grid-rows-[1fr]' : 'invisible grid-rows-[0fr]'}`}
+        >
+          <div className="min-h-0 overflow-hidden">
+            {/* 위아래 · 오른쪽 여백 = 링크 초점 링(바깥 2px)이 잘리지 않게 */}
+            <div className="ml-[1.4rem] flex flex-col gap-0.5 border-l border-border py-[3px] pr-[3px] pl-2" data-part="subnav">
+              {links}
+            </div>
+          </div>
         </div>
       ) : (
         shown && (

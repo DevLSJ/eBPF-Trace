@@ -218,7 +218,8 @@ test.describe('인증 — 앱 안에서', () => {
     await expect(page.getByTestId('page-title')).toHaveText('감사 로그'); // 다시 로그인하면 보던 화면으로
     backend.auth.session = null; // 세션 만료
     // 화면의 주기 요청(5초 갱신 등)이 클릭보다 먼저 401 을 받아 로그인 화면으로 갈 수 있다 — 어느 쪽이 먼저든 결과는 같아야 한다(10/20 간헐 실패 원인)
-    await page.getByRole('link', { name: '정책' }).click({ timeout: 2000 }).catch(() => {});
+    // 11/09 밤: 「정책」은 접힌 묶음 안(지금 화면이 아니면 처음엔 접힘)이라 늘 보이는 사이드바 링크를 누른다
+    await page.getByRole('navigation', { name: '화면' }).getByRole('link', { name: '설치 검사', exact: true }).click({ timeout: 2000 }).catch(() => {});
     await expect(step(page)).toHaveAttribute('data-step', 'login');
     await expect(page.locator(ERR)).toHaveText(MSG.login);
   });

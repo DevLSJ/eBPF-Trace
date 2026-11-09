@@ -2,7 +2,7 @@
 //   SCREEN_COPY  제목 아래 설명 한 줄 — 「[대상]을 [동작]하고 [동작]합니다.」 20~50자 한 문장 · 마침표 앞 기호 없음 · 제약 안내는 넣지 않음.
 //                대시보드는 설명 없음
 //   SCREEN_NOTE  표 아래 안내 한 줄 — 설명에서 뺀 제약 · 위치 안내(부품 components/ScreenNote.tsx 가 넘치면 「…」 + 마우스 올리면 전체)
-// 키는 화면 경로에서 앞 「/」를 뺀 것(예: 'policies' · 'policies/blocklist'). 화면별 문장은 각 화면 작업이 채운다.
+// 키는 화면 경로에서 앞 「/」를 뺀 것(예: 'policies' · 'policies/blocklist' · 'integration/env'). 화면별 문장은 각 화면 작업이 채운다.
 // e2e(table-kit-1109 ㉔)가 등록된 설명을 모두 checkScreenCopy 로 검사한다.
 //   <p className="…">{screenCopy('policies')}</p>   ·   <ScreenNote screen="policies" />
 export const SCREEN_COPY: Record<string, string> = {
@@ -18,7 +18,10 @@ export const SCREEN_COPY: Record<string, string> = {
   topology: '컨테이너의 실행과 통신 관계를 그래프로 보고 위반 경로를 확인합니다.',
   audit: '지난 위반 기록과 판정 변경 이력을 기간별로 조회하고 내보냅니다.',
   settings: '서버 동작을 확인하고 계정과 라이선스 인증 기록을 관리합니다.',
-  integration: '내 컨테이너를 라벨로 연동하고 실제 수집이 되는지 확인합니다.',
+  // 연동 · 환경 점검 · 감시 중 컨테이너(11/09 밤 연동 3페이지)
+  integration: '내 컨테이너의 라벨 설정을 만들고 연동 결과를 확인합니다.',
+  'integration/env': '이 서버의 수집 준비 상태를 점검하고 연결 테스트를 실행합니다.',
+  'integration/watch': '실행 중인 컨테이너의 감시 여부와 격리 대상을 확인합니다.',
   demo: '무해한 시연 패키지로 탐지와 격리 과정을 실행하고 결과를 확인합니다.',
   report: '판정 건의 탐지 경위와 조치를 보고서로 정리하고 인쇄하거나 복사합니다.',
 };

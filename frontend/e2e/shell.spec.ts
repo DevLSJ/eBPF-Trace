@@ -20,6 +20,7 @@ test.describe('셸', () => {
       ['설정', '설정'],
       ['대시보드', '대시보드'],
     ]) {
+      if (label === '정책') await nav.locator('[data-nav-sub="policies"] [data-part="subnav-toggle"]').click(); // 11/09 밤: 하위 메뉴 묶음은 처음엔 접힘
       await nav.getByRole('link', { name: label, exact: false }).first().click();
       await expect(page.getByTestId('page-title')).toHaveText(title);
     }

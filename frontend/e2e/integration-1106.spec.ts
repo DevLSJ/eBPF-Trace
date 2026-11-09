@@ -5,6 +5,7 @@ import { killedVerdict } from './mock-backend';
 // 11/06 사용자 결정 — 「연동」 페이지: 라벨 한 줄(supplyguard.watch)로 내 컨테이너 연동.
 //   메뉴 = 대시보드 바로 아래(모두에게) · 흐름 그림 자동 재생 · 시나리오 3종(입력 → 설정 생성 → 자동 감지 → 내 컨테이너 시험 동작) · 환경 점검 + 수집 확인(관리자)
 //   · 감시 목록(3초 갱신 — 들어온 행 강조, 나간 행 흐려짐) · 대시보드 위 「연동 시작하기」 띠(실제 수집인데 내 컨테이너 0개)
+// 11/09 밤: 사이드바 「연동」 묶음(하위 연동 · 환경 점검 · 감시 중 컨테이너)으로 나눔 — 환경 점검 · 수집 확인은 /integration/env, 감시 목록은 /integration/watch
 const NAV = '[data-part="sidebar"] nav';
 const P = '[data-part="integration"]';
 const ready = (page: Page) => expect(page.locator(`${P}[data-state="ready"]`)).toBeVisible();
@@ -13,8 +14,9 @@ test.describe('11/06 연동 페이지', () => {
   test('메뉴: 대시보드 아래 고정 줄 · 조회자에게도 보임 · 누르면 「연동」', async ({ page, backend }) => {
     backend.auth.asViewer();
     await page.goto('/');
-    const home = page.locator(`${NAV} [data-nav-group="home"] > a`);
-    expect(await home.evaluateAll((els) => els.map((e) => e.getAttribute('href')))).toEqual(['/', '/integration']);
+    const home = page.locator(`${NAV} [data-nav-group="home"]`);
+    expect(await home.evaluate((g) => [...g.children].map((e) => e.getAttribute('href') ?? `sub:${e.getAttribute('data-nav-sub')}`))).toEqual(['/', 'sub:integration']);
+    await page.locator(`${NAV} [data-nav-sub="integration"] [data-part="subnav-toggle"]`).click(); // 11/09 밤: 묶음은 처음엔 접힘
     await page.locator(`${NAV} a[href="/integration"]`).click();
     await expect(page).toHaveURL(/\/integration$/);
     await expect(page.getByTestId('page-title')).toHaveText('연동');
@@ -40,30 +42,26 @@ test.describe('11/06 연동 페이지', () => {
     await expect(flow.locator('[data-state="on"]')).toHaveAttribute('data-node', 'act');
   });
 
-  test('환경 점검: 확인 필요가 있으면 펼친 채 현상 → 조치, 모두 정상이면 요약 한 줄로 접힘', async ({ page, backend }) => {
-    await page.goto('/integration');
+  test('환경 점검(/integration/env): 확인 필요는 현상 → 조치, 모두 정상이면 요약 한 줄 + 항목 모두 정상', async ({ page, backend }) => {
+    await page.goto('/integration/env');
     await ready(page);
-    const env = page.locator('[data-part="step-env"]');
-    await expect(env).toHaveAttribute('data-open', 'true'); // mock — 모의 이벤트 확인 필요
-    await expect(env.locator('[data-check="source"]')).toHaveAttribute('data-tone', 'warn');
+    const env = page.getByTestId('int-env');
+    await expect(env.locator('[data-check="source"]')).toHaveAttribute('data-tone', 'warn'); // mock — 모의 이벤트 확인 필요
     await expect(env.locator('[data-check="source"]')).toContainText('EVENT_SOURCE=gadget');
     await expect(env.locator('[data-part="env-verdict"]')).toContainText('확인 필요');
-    // 실제 서버처럼 — 모두 정상이면 접힘(요약만), 펼치면 항목 6개 정상
+    // 실제 서버처럼 — 모두 정상이면 요약 한 줄 · 항목 6개 정상(11/09 밤: 페이지로 나눠 늘 펼침)
     backend.integration = { ...backend.integration, env: { ...backend.integration.env, source: 'gadget', kernel: '5.15.0-160-generic', os: 'Ubuntu 22.04.5 LTS' } };
     backend.info = { ...backend.info, source: 'gadget', discovery: 'fanotify', dnsResolve: 'ok', gadgets: ['exec', 'open', 'connect', 'dns'], enforceKill: true };
     await page.reload();
     await ready(page);
-    await expect(env).toHaveAttribute('data-open', 'false');
     await expect(env.locator('[data-part="env-verdict"]')).toHaveText('실제 수집 준비됨');
-    await expect(env.locator('[data-check]')).toHaveCount(0);
-    await env.locator('[data-part="env-toggle"]').click();
+    await expect(env.locator('[data-check]')).toHaveCount(6);
     for (const id of ['source', 'kernel', 'os', 'gadgets', 'discovery', 'enforce']) await expect(env.locator(`[data-check="${id}"]`), id).toHaveAttribute('data-tone', 'ok');
     // 커널 7.0 · docker-events · 격리 꺼짐 → 각각 확인 필요 + 조치
     backend.integration = { ...backend.integration, env: { ...backend.integration.env, kernel: '7.0.0-10-generic', enforceKill: false } };
     backend.info = { ...backend.info, discovery: 'docker-events', discoveryNote: '컨테이너 시작 직후 약 0.1초 안의 동작은 놓칠 수 있습니다' };
     await page.reload();
     await ready(page);
-    await expect(env).toHaveAttribute('data-open', 'true');
     await expect(env.locator('[data-check="kernel"]')).toContainText('이벤트 유실');
     await expect(env.locator('[data-check="discovery"]')).toContainText('0.1초');
     await expect(env.locator('[data-check="enforce"]')).toContainText('ENFORCE_KILL=false');
@@ -195,7 +193,7 @@ test.describe('11/06 연동 페이지', () => {
   });
 
   test('수집 확인(시험 컨테이너): 관리자 → 진행 → 통과(종류별 수), 진행 중엔 버튼 잠김', async ({ page, backend }) => {
-    await page.goto('/integration');
+    await page.goto('/integration/env');
     await ready(page);
     const step = page.locator('[data-part="test-step"]');
     await step.locator('[data-part="test-start"]').click();
@@ -213,14 +211,14 @@ test.describe('11/06 연동 페이지', () => {
 
   test('수집 확인 — 조회자: 버튼 잠김 + 이유', async ({ page, backend }) => {
     backend.auth.asViewer();
-    await page.goto('/integration');
+    await page.goto('/integration/env');
     await ready(page);
     await expect(page.locator('[data-part="test-start"]')).toBeDisabled();
     await expect(page.locator('[data-part="test-step"]')).toContainText('연결 테스트를 실행할 권한이 없습니다');
   });
 
   test('감시 목록: 감시 · 격리 이유 배지, 새 컨테이너는 강조하며 들어오고 사라진 것은 흐려진 뒤 빠짐', async ({ page, backend }) => {
-    await page.goto('/integration');
+    await page.goto('/integration/watch');
     await ready(page);
     const list = page.locator('[data-part="watch-rows"]');
     await expect(list.locator('[data-container]')).toHaveCount(3);
@@ -244,8 +242,9 @@ test.describe('11/06 연동 페이지', () => {
 });
 
 test.describe('11/06 연동 페이지 — 화면 틀', () => {
+  // 11/09 밤: 세 페이지 — 연동(흐름 그림 + 시나리오) · 환경 점검 · 감시 중 컨테이너, 각각 화면 안에 들고 문서 넘침 0
   for (const [w, h] of [[1920, 1080], [1440, 900]] as const)
-    test(`${w}×${h}: 흐름 그림 · 시나리오(가운데) · 환경 점검 + 감시 목록(오른쪽) · 문서 넘침 0`, async ({ page, backend }) => {
+    test(`${w}×${h}: 흐름 그림 · 시나리오 / 환경 점검 / 감시 목록 · 문서 넘침 0`, async ({ page, backend }) => {
       void backend;
       await page.setViewportSize({ width: w, height: h });
       await page.goto('/integration');
@@ -253,12 +252,17 @@ test.describe('11/06 연동 페이지 — 화면 틀', () => {
       await page.locator('[data-scn="multi"]').click();
       await page.locator('[data-part="wizard-next"]').click();
       await noPageOverflow(page);
-      const [wiz, watch] = await Promise.all([page.locator('[data-part="wizard"]').boundingBox(), page.getByTestId('int-watch').boundingBox()]);
-      expect(watch!.x).toBeGreaterThan(wiz!.x + wiz!.width - 1);
+      const wiz = await page.locator('[data-part="wizard"]').boundingBox();
       expect(wiz!.y + wiz!.height).toBeLessThanOrEqual(h);
-      expect(watch!.y + watch!.height).toBeLessThanOrEqual(h);
       await page.waitForTimeout(700);
       await page.screenshot({ path: `${SHOTS}/1106-integration-${w}.png` });
+      for (const [path, id] of [['/integration/env', 'int-test'], ['/integration/watch', 'int-watch']] as const) {
+        await page.goto(path);
+        await ready(page);
+        await noPageOverflow(page);
+        const box = await page.getByTestId(id).boundingBox();
+        expect(box!.y + box!.height, path).toBeLessThanOrEqual(h);
+      }
     });
 });
 

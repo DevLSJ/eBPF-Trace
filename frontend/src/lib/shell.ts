@@ -86,7 +86,7 @@ export function computeNotices(x: NoticeInput): Notice[] {
   return out;
 }
 
-// ── 화면 이름(11/09) — 머리 제목 · 하위 화면 위치(G17 「정책 ›」) · 통합 검색 「화면」(G07)이 같은 표를 쓴다. 이름은 사이드바와 같다 ──
+// ── 화면 이름(11/09) — 머리 제목 · 하위 화면 위치(G17 「정책 ›」 · 11/09 밤 「연동 ›」) · 통합 검색 「화면」(G07)이 같은 표를 쓴다. 이름은 사이드바와 같다 ──
 // where = 사이드바 묶음, parent = 하위 화면의 상위, search: false = 검색에 넣지 않음(건 보고서는 건을 골라 연다), demo = 관리자 + 시연 켜짐일 때만
 export interface ScreenInfo {
   to: string;
@@ -99,6 +99,8 @@ export interface ScreenInfo {
 export const SCREENS: ScreenInfo[] = [
   { to: '/', label: '대시보드' },
   { to: '/integration', label: '연동' },
+  { to: '/integration/env', label: '환경 점검', parent: '/integration' },
+  { to: '/integration/watch', label: '감시 중 컨테이너', parent: '/integration' },
   { to: '/demo', label: '시연', demo: true },
   { to: '/installs', label: '설치 검사', where: '설치 검사' },
   { to: '/scans', label: '공급망 검사', where: '설치 검사' },

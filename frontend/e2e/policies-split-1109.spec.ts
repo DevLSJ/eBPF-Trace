@@ -82,6 +82,7 @@ test.describe('① 사이드바 하위 메뉴', () => {
     await page.getByRole('button', { name: '메뉴', exact: true }).click();
     const sub = page.locator(`${NAV} [data-nav-sub="policies"]`);
     await expect(sub.locator('a')).toHaveText(['정책', '차단 목록', '변경 이력']);
+    await sub.locator('[data-part="subnav-toggle"]').click(); // 11/09 밤: 지금 화면이 아닌 묶음은 처음엔 접힘
     await sub.getByRole('link', { name: '차단 목록' }).click();
     await expect(page).toHaveURL(/\/policies\/blocklist$/);
     await expect(page.locator('[data-part="sidebar"]')).toHaveCount(0);
