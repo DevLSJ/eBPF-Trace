@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AuthScreens, SessionCheckError, SessionChecking, type AuthStep } from '../components/AuthScreens';
-import { ApiError, authApi, setAuthHooks } from '../lib/api';
+import { ApiError, authApi, errorText, NET_FAIL_TEXT, setAuthHooks } from '../lib/api';
 import type { Me, SessionState, UserBrief } from '../lib/types';
 import { useToast } from './toast-context';
 
@@ -16,9 +16,11 @@ const STEP_OF: Record<Exclude<SessionState, 'active'>, AuthStep> = {
 
 type Gate = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'step'; step: AuthStep; notice: string; codes?: string[] } | { kind: 'active' };
 
-// 세션 확인 실패 문구(11/09 G03): 서버가 JSON 문장을 주면 그 문장만(상태 코드 없이), 그 밖(연결 실패 · 프록시 오류)은 고정 문장
-const CONNECT_FAIL = '서버에 연결하지 못했습니다. 네트워크를 확인한 뒤 다시 시도하세요.';
-const checkError = (e: unknown) => (e instanceof ApiError && e.json && e.message ? e.message : CONNECT_FAIL);
+// 세션 확인 실패 문구(11/09 G03 · INTEG): 문장은 lib/api.ts 의 errorText 한 곳에서 — 같은 문장을 이 파일에 따로 두지 않는다.
+//   API 오류: 서버 문장(상태 코드 없이), 서버 문장이 없으면(프록시 502 등 텍스트 본문) 상태별 고정 문장, 요청 자체가 끊기면 연결 실패 고정 문장(상태 0)
+//   그 밖의 오류(응답 본문을 읽다 남 등): 브라우저 글 대신 연결 실패 고정 문장 — 예전과 같다
+// 화면 문구만 고른다 — 어느 단계 화면으로 갈지(401 · 404 · 오류)와 다시 시도 요청은 아래 finish 가 그대로 정한다
+const checkError = (e: unknown) => (e instanceof ApiError ? errorText(e) : NET_FAIL_TEXT);
 
 interface Ctx {
   me: Me | null;
