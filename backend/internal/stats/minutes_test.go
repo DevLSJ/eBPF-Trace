@@ -12,8 +12,14 @@ func TestTakeMinutes(t *testing.T) {
 	a := New()
 	now := time.Date(2026, 10, 16, 9, 30, 10, 0, time.UTC)
 	a.now = func() time.Time { return now }
-	for _, k := range []model.Kind{model.KindExec, model.KindOpen, model.KindOpen, model.KindConnect} {
-		a.Observe(model.Verdict{Event: model.Event{Kind: k}})
+	// 11/10: 같은 1분 안 같은 대상 반복은 1건이라 서로 다른 대상으로 센다
+	for _, ev := range []model.Event{
+		{Kind: model.KindExec, Args: "sh -c true"},
+		{Kind: model.KindOpen, Path: "/etc/a"},
+		{Kind: model.KindOpen, Path: "/etc/b"},
+		{Kind: model.KindConnect, DstIP: "203.0.113.7", DstPort: 443},
+	} {
+		a.Observe(model.Verdict{Event: ev})
 	}
 	now = now.Add(time.Minute)
 	a.Observe(model.Verdict{Event: model.Event{Kind: model.KindOpen}})
@@ -38,10 +44,14 @@ func TestTakeMinutesDNS(t *testing.T) {
 	a := New()
 	now := time.Date(2026, 10, 30, 9, 30, 10, 0, time.UTC)
 	a.now = func() time.Time { return now }
-	for _, k := range []model.Kind{model.KindDNS, model.KindDNS, model.KindConnect} {
-		a.Observe(model.Verdict{Event: model.Event{Kind: k}})
+	for _, ev := range []model.Event{
+		{Kind: model.KindDNS, DstHost: "a.example", Qtype: "A"},
+		{Kind: model.KindDNS, DstHost: "b.example", Qtype: "A"},
+		{Kind: model.KindConnect, DstIP: "203.0.113.7", DstPort: 443},
+	} {
+		a.Observe(model.Verdict{Event: ev})
 	}
-	a.Observe(model.Verdict{Matched: true, Action: model.ActionAlert, Event: model.Event{Kind: model.KindDNS, ContainerName: "web-api"}})
+	a.Observe(model.Verdict{Matched: true, Action: model.ActionAlert, Event: model.Event{Kind: model.KindDNS, ContainerName: "web-api", DstHost: "a.example", Qtype: "A"}})
 	now = now.Add(time.Second)
 	s := a.Snapshot()
 	if s.TotalEvents != 4 || s.TotalViolations != 1 || s.EventsPerSec != 4 || s.EventsLastMinute != 4 {
