@@ -70,6 +70,28 @@ test.describe('로그인 — 입력 · 진행 · 실패(G25 · G26 · G27)', () 
     await expect(page.getByTestId('page-title')).toHaveText('대시보드');
   });
 
+  // 11/09 메인 통합 실측: 실패 응답이 늦게 오면 그 사이 새로 입력한 비밀번호까지 지워져, 다음 「로그인」이 빈 값 검사(G25)에 걸려 서버로 가지 않았다
+  // (auth-1020 「5번 틀리면 잠김」에서 5번째 시도가 사라짐). 실패하면 보낸 값이 칸에 그대로 있을 때만 비운다
+  test('G27 늦게 온 실패 응답은 그 사이 새로 입력한 비밀번호를 지우지 않는다', async ({ page, backend }) => {
+    backend.auth.loggedOut();
+    await page.route('**/api/auth/login', async (r: Route) => {
+      await new Promise((ok) => setTimeout(ok, 400));
+      await r.fallback();
+    });
+    await page.goto('/');
+    const pw = step(page).getByLabel('비밀번호', { exact: true });
+    await step(page).getByLabel('아이디').fill('admin');
+    await pw.fill('wrong-0');
+    const answered = page.waitForResponse('**/api/auth/login');
+    await step(page).getByRole('button', { name: '로그인' }).click();
+    await pw.fill('wrong-1'); // 첫 요청이 아직 응답 전
+    await answered;
+    await expect(step(page).locator(ERR)).toBeVisible();
+    await expect(pw).toHaveValue('wrong-1');
+    await step(page).getByRole('button', { name: '로그인' }).click();
+    await expect.poll(() => sent(backend, '/auth/login').map((b) => b.password)).toEqual(['wrong-0', 'wrong-1']);
+  });
+
   test('G26 비밀번호 보기(눈) · Caps Lock 켜짐 안내', async ({ page, backend }) => {
     backend.auth.loggedOut();
     await page.goto('/');
