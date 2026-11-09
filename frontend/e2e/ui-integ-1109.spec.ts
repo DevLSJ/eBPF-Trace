@@ -274,7 +274,18 @@ test.describe('쉬운 말 · 글자 크기', () => {
 });
 
 test.describe('사진(다크 · 390)', () => {
-  const shoot = async (page: Page, name: string) => page.screenshot({ path: `${OUT}/ui-integ-${name}.png` });
+  // 화면 들어오기 움직임이 끝난 뒤 찍는다(흐린 사진 방지)
+  const shoot = async (page: Page, name: string) => {
+    await page.evaluate(() =>
+      Promise.all(
+        document
+          .getAnimations()
+          .filter((a) => Number.isFinite(Number(a.effect?.getComputedTiming().endTime))) // 깜빡임 같은 끝없는 움직임은 빼고
+          .map((a) => a.finished.catch(() => undefined)),
+      ),
+    );
+    await page.screenshot({ path: `${OUT}/ui-integ-${name}.png` });
+  };
   test('다크: 셸 띠 실패 문장', async ({ page, backend, allowConsole }) => {
     void backend;
     allowConsole(NET_CONSOLE);
