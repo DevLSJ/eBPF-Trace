@@ -325,7 +325,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
               type="button"
               onClick={() => setAskDelete(true)}
               disabled={busy || readOnly}
-              className="sg-btn text-danger hover:bg-danger-soft"
+              className="sg-btn text-danger-text hover:bg-danger-soft"
             >
               <Trash2 className="size-4" aria-hidden /> 삭제
             </button>

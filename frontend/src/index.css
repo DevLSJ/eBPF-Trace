@@ -45,7 +45,7 @@
 }
 /* 다크 — 흐림(--text-3)만 실측 #87867F 가 3단 바탕 · 입력창(#262624) 위 4.15:1 이라 한 단계 밝힘(#9C9A92 = 5.38:1). 그림자는 라이트와 같은 값 */
 :root[data-theme="dark"] {
-  --bg: #141413; --surface: #1F1E1D; --surface-2: #1A1918; --surface-3: #262624; --surface-raised: #1A1918;
+  --bg: #141413; --surface: #1F1E1D; --surface-2: #1A1918; --surface-3: #262624; --surface-raised: #1F1E1D; /* 떠 있는 면은 카드 값 — #1A1918 이면 안의 보조 바탕(--surface-2)과 같아 상자가 사라진다 */
   --card-line: #30302E; --border: #30302E; --border-strong: #3D3D3A; --border-heavy: #5E5D59;
   --text: #FAF9F5; --text-2: #B0AEA5; --text-3: #9C9A92; --text-inverse: #FFFFFF;
   --field-bg: #262624; --field-placeholder: #9C9A92; --field-line: #3D3D3A;
@@ -766,6 +766,8 @@ html.sg-sorting, html.sg-sorting * { cursor: grabbing !important; -webkit-user-s
 @media (prefers-reduced-motion: reduce) { .sg-sheet-layer, .sg-sheet-layer > .sg-sheet { animation: none !important; } }
 :root[data-theme='dark'] .sg-sheet-layer { background: rgba(0, 0, 0, 0.45); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .sg-sheet-layer { background: rgba(0, 0, 0, 0.45); } }
+/* 11/09 다크 대비: 강조 파랑 글자(#1769E8)는 카드(#1F1E1D) 위 3.35:1 — 글자에만 밝은 짝(--accent-text)을 쓴다. 채움 · 테두리는 그대로 파랑 */
+:root[data-theme='dark'] :is(.text-accent, .text-indigo-500, .text-indigo-600, .text-indigo-700, .text-indigo-800) { color: var(--accent-text); }
 .sg-sheet-head { height: 52px; padding: 0 16px 0 24px; }
 .sg-sheet-body { padding: 4px 24px 24px; font-size: 14px; }
 .sg-sheet-body > :first-child:not(.sg-sheet-section):not(:has(.sg-sheet-section)) { margin-top: 20px; }

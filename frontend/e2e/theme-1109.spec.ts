@@ -74,7 +74,7 @@ const LIGHT: Record<string, string> = {
   '--r-sm': '8PX', '--r-md': '12PX', '--r-lg': '16PX', '--r-xl': '24PX', '--t-btn': '200MS', '--t-panel': '250MS',
 };
 const DARK: Record<string, string> = {
-  '--bg': '#141413', '--surface-2': '#1A1918', '--surface-3': '#262624', '--surface-raised': '#1A1918', '--surface': '#1F1E1D', '--card-line': '#30302E',
+  '--bg': '#141413', '--surface-2': '#1A1918', '--surface-3': '#262624', '--surface-raised': '#1F1E1D', // 떠 있는 면 = 카드(11/09 메인: 안의 보조 바탕과 구분) '--surface': '#1F1E1D', '--card-line': '#30302E',
   '--field-bg': '#262624', '--field-placeholder': '#9C9A92',
   '--text': '#FAF9F5', '--text-2': '#B0AEA5', '--text-3': '#9C9A92',
   '--border-heavy': '#5E5D59', '--border-strong': '#3D3D3A', '--border': '#30302E',
@@ -264,7 +264,13 @@ test.describe('11/09 참고 홈페이지 구조값', () => {
     await page.getByRole('button', { name: '사용 안내 (?)' }).click();
     const dlg = page.locator('dialog[data-part="help"]');
     await expect(dlg).toBeVisible();
-    expect(await dlg.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#1A1918'));
+    expect(await dlg.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#1F1E1D'));
+    await page.keyboard.press('Escape');
+    // 강조 파랑 글자는 다크 카드 위 3.35:1 — 글자에만 밝은 짝(--accent-text #DCE9FF). 채움(현재 쪽 · 선택 칩)은 그대로 파랑
+    await page.goto('/');
+    const more = page.locator('.sg-panel a[data-more]').first();
+    await expect(more).toBeVisible();
+    expect(await more.evaluate((e) => getComputedStyle(e).color)).toBe(rgb('#DCE9FF'));
   });
 
   test('대비: 글자 3단 · 안내 글자 · 버튼 글자가 모든 바탕 위에서 4.5:1 이상(라이트 · 다크)', async ({ page, backend }) => {
