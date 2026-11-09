@@ -393,3 +393,15 @@ test.describe('③ 화면 사진', () => {
     });
   });
 });
+
+// 11/10 메인 통합: 연동 세 페이지도 다른 화면과 같은 설명 줄 부품(ScreenHead — 오른쪽 끝 주 버튼 칸)
+test('연동 세 페이지 설명 줄 = 공통 ScreenHead(설명 + 주 버튼 칸)', async ({ page, backend }) => {
+  void backend;
+  for (const [path, screen] of [['/integration', 'integration'], ['/integration/env', 'integration/env'], ['/integration/watch', 'integration/watch']] as const) {
+    await page.goto(path);
+    const head = page.locator('main [data-part="screen-head"]');
+    await expect(head).toHaveCount(1);
+    await expect(head.locator(`[data-part="screen-copy"][data-screen="${screen}"]`)).toBeVisible();
+    await expect(head.locator('[data-part="page-actions"]')).toHaveCount(1);
+  }
+});

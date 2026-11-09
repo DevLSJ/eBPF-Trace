@@ -107,6 +107,8 @@ const PAGES: [string, string][] = [
   ['건 보고서(설치)', '/report?install=ins-0012'],
   ['건 보고서(건)', '/report?case=case-0005'],
   ['연동', '/integration'],
+  ['환경 점검', '/integration/env'], // 11/10 연동 3페이지
+  ['감시 중 컨테이너', '/integration/watch'],
   ['시연', '/demo'],
 ];
 
