@@ -311,7 +311,8 @@ test.describe('사진(다크 · 390)', () => {
 
 // 11/09 메인 마무리(INTEG 질문 두 개 — 사용자 결정 「칸 · 단추 모두 통일」 · 「내부 이름 전부 쉬운 말」 그대로)
 test.describe('마무리 — 보고서 요약 이름 · 옛 백엔드 시연 404', () => {
-  test('건 보고서 요약 줄 이름은 「어떤 정책」(위반 칸 「정책」과 같음)', async ({ page }) => {
+  test('건 보고서 요약 줄 이름은 「어떤 정책」(위반 칸 「정책」과 같음)', async ({ page, backend }) => {
+    void backend; // 가짜 백엔드(로그인 · 보고서 응답)를 켠다
     await page.goto('/report?case=case-0005');
     const summary = page.locator('[data-section="summary"]');
     await expect(summary).toContainText('어떤 정책');
