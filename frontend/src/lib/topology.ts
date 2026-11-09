@@ -32,6 +32,14 @@ export interface TopoEdge extends TopoStats {
   kind: Kind;
 }
 
+// 컨테이너별 창 안의 전체 수(정상 말단 상한 전) — 접힌 컨테이너 노드의 요약 「파일 N · 연결 M」(11/09)
+export interface ContainerTotals {
+  procs: number;
+  files: number;
+  connects: number; // 연결 목적지(IP:포트)
+  queries: number; // DNS 질의 이름
+}
+
 const RETAIN_MS = 15 * 60_000;
 const MAX_NORMAL_LEAVES = 6; // 컨테이너당 정상 파일/목적지 노드 상한 (위험 노드는 전부 표시)
 
@@ -113,15 +121,21 @@ export class TopologyStore {
     this.mark(ed, now, v);
   }
 
-  // windowMs 안에 보인 노드만, 컨테이너별 정상 말단 노드는 상한까지
-  snapshot(windowMs: number, container?: string): { nodes: TopoNode[]; edges: TopoEdge[] } {
+  // windowMs 안에 보인 노드만, 컨테이너별 정상 말단 노드는 상한까지. totals 는 상한 전 전체 수
+  snapshot(windowMs: number, container?: string): { nodes: TopoNode[]; edges: TopoEdge[]; totals: Map<string, ContainerTotals> } {
     const now = Date.now();
     this.prune(now);
     const cut = now - windowMs;
     const leavesPer = new Map<string, TopoNode[]>();
     const keep = new Set<string>();
+    const totals = new Map<string, ContainerTotals>();
     for (const n of this.nodes.values()) {
       if (n.lastSeen < cut || (container && n.container !== container)) continue;
+      const t = totals.get(n.container) ?? { procs: 0, files: 0, connects: 0, queries: 0 };
+      if (n.type === 'process') t.procs++;
+      else if (n.type === 'file') t.files++;
+      else if (n.type === 'dest') t[n.kind === 'dns' ? 'queries' : 'connects']++;
+      totals.set(n.container, t);
       if ((n.type === 'file' || n.type === 'dest') && n.level === 'normal') {
         const arr = leavesPer.get(n.container) ?? [];
         arr.push(n);
@@ -142,7 +156,7 @@ export class TopologyStore {
     const nodes = [...keep]
       .map((id) => this.nodes.get(id)!)
       .filter((n) => n.type === 'container' || linked.has(n.id));
-    return { nodes, edges };
+    return { nodes, edges, totals };
   }
 
   containers(): string[] {
