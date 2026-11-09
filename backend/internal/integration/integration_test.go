@@ -127,7 +127,9 @@ func TestStartTestFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Wait()
-	if got := s.Status(context.Background()).Test; got.State != "failed" || got.Error == "" {
+	// 원인 안내(11/09 「— 표기 없앰」): 두 문장으로 나눈다
+	if got := s.Status(context.Background()).Test; got.State != "failed" ||
+		got.Error != "시험 컨테이너의 이벤트가 들어오지 않았습니다. 가젯 · 컨테이너 발견 방식 · 감시 범위를 확인하세요" {
 		t.Fatalf("no events = %+v", got)
 	}
 	p2 := &fakeProber{err: errors.New("pull busybox: denied"), events: []model.Kind{model.KindExec}}
