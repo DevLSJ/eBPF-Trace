@@ -6,6 +6,7 @@ import type {
   BlockList,
   Case,
   Change,
+  ChangesPage,
   DecisionEffect,
   DecisionPreview,
   DemoDecider,
@@ -23,6 +24,7 @@ import type {
   Level,
   OsvResult,
   PolicyDefaults,
+  PolicyView,
   Preview,
   Proposal,
   ProposalChange,
@@ -44,6 +46,20 @@ export { ACTOR };
 
 const ago = (now: number, sec: number) => new Date(now - sec * 1000).toISOString();
 const levelOf = (v: Verdict): Level => (!v.matched ? 'normal' : v.action !== 'kill' ? 'alert' : v.enforced ? 'killed' : 'held');
+// 11/09 정책 이력(backend review/history.go · api policyView) — 저장 본문이 받는 칸(rules.Rule JSON). 그 밖의 칸은 400(DisallowUnknownFields)
+const RULE_KEYS = new Set(['id', 'description', 'kind', 'action', 'dryRun', 'disabled', 'containers', 'denyComms', 'denyArgs', 'denyPaths', 'allowPaths', 'allowPorts', 'allowCidrs', 'denyPorts', 'denyCidrs', 'allowHosts', 'denyHosts', 'directIp', 'denyQtypes', 'maxNameLength', 'maxLabelLength', 'windowSeconds', 'steps']);
+const stable = (v: unknown): string =>
+  Array.isArray(v)
+    ? `[${v.map(stable).join(',')}]`
+    : v && typeof v === 'object'
+      ? `{${Object.keys(v as object)
+          .sort()
+          .filter((k) => (v as Record<string, unknown>)[k] !== undefined)
+          .map((k) => `${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`)
+          .join(',')}}`
+      : JSON.stringify(v);
+const sameRule = (a: Rule, b: Rule) => stable(a) === stable(b);
+const clone = <T,>(v: T): T => structuredClone(v);
 
 function ev(now: number, sec: number, container: string, image: string, e: Partial<Event> & Pick<Event, 'kind' | 'comm'>): Event {
   // W20: 백엔드처럼 connect 에는 dnsTraced 를 늘 명시한다(가짜 /api/info dnsResolve 'ok' → true)
@@ -365,7 +381,7 @@ export class MockBackend {
       images: [],
       hosts: [{ value: 'cdn.colourama.test', caseId: 'case-0002', at: ago(now, 1390), by: ACTOR }],
     };
-    this.changes = [{ id: 'chg-0001', at: ago(now, 1390), by: ACTOR, kind: 'proposal_applied', caseId: 'case-0002', proposalId: 'prop-0001', summary: '패키지 pip:colourama 차단 · 도메인 1개 차단' }];
+    this.changes = [{ id: 'chg-0001', at: ago(now, 1390), by: ACTOR, kind: 'proposal_applied', caseId: 'case-0002', proposalId: 'prop-0001', summary: '패키지 pip:colourama 차단 · 도메인 1개 차단', ruleIds: ['blocklist-hosts'] }];
 
     // 런타임 공격(pkg-reqeusts) + 정상 컨테이너 + 설치 검사 컨테이너 이벤트
     const RT = 'pkg-reqeusts';
@@ -842,7 +858,7 @@ export class MockBackend {
     if (method === 'GET' && path === '/info') return json(this.info);
     if (method === 'GET' && path === '/stats') return json(this.stats);
     if (method === 'GET' && path === '/events/recent') return json(this.recent.slice(0, Number(q.get('limit') ?? 500)));
-    if (method === 'GET' && path === '/policies') return json(this.rules);
+    if (method === 'GET' && path === '/policies') return json(this.rules.map((r) => this.view(r)));
     if (method === 'GET' && path === '/policies/export') return route.fulfill({ status: 200, contentType: 'application/yaml', body: this.rules.map((r) => `- id: ${r.id}\n  kind: ${r.kind}\n  action: ${r.action}\n`).join('') });
     // eBPF 수집 종합(10/16) — 백엔드 internal/summary 와 같은 규칙
     if (method === 'GET' && path === '/summary') return json(this.summary(q.get('range') || '24h'), this.summaryRanges[q.get('range') || '24h'] ? 200 : 400);
@@ -860,22 +876,57 @@ export class MockBackend {
     }
     if (method === 'POST' && path === '/policies') {
       const r = JSON.parse(body ?? '{}') as Rule;
+      // 11/09: 백엔드는 모르는 칸을 거절한다(updatedAt · updatedBy 는 응답에만 있는 칸)
+      const unknown = Object.keys(r).find((k) => !RULE_KEYS.has(k));
+      if (unknown) return fail(400, `JSON 형식 오류: json: unknown field "${unknown}"`);
       // 11/04: 연쇄 규칙 검사(backend rules.Rule.Validate 422 문구)
       const bad = validateSequence(r);
       if (bad.length) return fail(422, bad.join('\n'));
       const i = this.rules.findIndex((x) => x.id === r.id);
+      const before = i >= 0 ? clone(this.rules[i]) : undefined;
       if (i >= 0) this.rules[i] = r;
       else this.rules.push(r);
-      this.addChange('policy_edit', `정책 ${r.id} 저장`);
-      return json(r);
+      this.addChange('policy_edit', `정책 ${r.id} 저장`, null, null, '', { ruleIds: [r.id], before: before && { [r.id]: before }, after: { [r.id]: clone(r) } });
+      return json(this.view(r));
     }
     if (method === 'PUT' && path === '/policies') {
       this.addChange('policy_replace', `정책 ${this.rules.length}개 YAML 교체`);
-      return json(this.rules);
+      return json(this.rules.map((r) => this.view(r)));
+    }
+    // 11/09 정책 되돌리기(backend review.RevertPolicy) — 사유 필수 · 그 변경 직전 값으로 정책 하나 전체
+    if (method === 'POST' && (m = path.match(/^\/policies\/([^/]+)\/revert$/))) {
+      const id = decodeURIComponent(m[1]);
+      let inp: { changeId?: string; reason?: string };
+      try {
+        inp = JSON.parse(body || '') as typeof inp;
+      } catch {
+        return fail(400, 'JSON 형식 오류: invalid character');
+      }
+      const extra = Object.keys(inp).find((k) => k !== 'changeId' && k !== 'reason');
+      if (extra) return fail(400, `JSON 형식 오류: json: unknown field "${extra}"`);
+      if (id === 'blocklist-hosts') return fail(409, 'blocklist-hosts 는 차단 목록에서 관리하는 시스템 규칙 — 차단 목록(/api/blocklist)에서 바꾼다');
+      const reason = (inp.reason ?? '').trim();
+      if (!reason) return fail(400, 'reason: 되돌리는 사유가 필요함');
+      if (!inp.changeId) return fail(400, 'changeId 가 필요함');
+      const src = this.changes.find((c) => c.id === inp.changeId);
+      if (!src) return fail(404, '변경 기록 없음');
+      if (!(src.ruleIds ?? []).includes(id)) return fail(404, `정책 ${id} 의 변경 기록이 아님`);
+      const restored = src.before?.[id];
+      if (!restored) return fail(409, src.after?.[id] ? `이 변경 전에는 정책 ${id} 없음(새로 만든 기록) — 지우려면 정책 삭제 사용` : `이 변경에는 정책 ${id} 의 변경 전 값 없음`);
+      const i = this.rules.findIndex((x) => x.id === id);
+      const cur = i >= 0 ? clone(this.rules[i]) : undefined;
+      if (cur && sameRule(cur, restored)) return fail(409, `정책 ${id}: 이미 그 변경 전 값과 같음`);
+      const next = clone(restored);
+      if (i >= 0) this.rules[i] = next;
+      else this.rules.push(next);
+      this.addChange('policy_revert', `정책 ${id} 되돌림(${src.id} 이전 값)`, null, null, reason, { ruleIds: [id], before: cur && { [id]: cur }, after: { [id]: clone(next) }, revertOf: src.id });
+      return json(this.view(next));
     }
     if (method === 'DELETE' && (m = path.match(/^\/policies\/(.+)$/))) {
-      this.rules = this.rules.filter((r) => r.id !== decodeURIComponent(m![1]));
-      this.addChange('policy_edit', `정책 ${decodeURIComponent(m[1])} 삭제`);
+      const id = decodeURIComponent(m[1]);
+      const cur = this.rules.find((r) => r.id === id);
+      this.rules = this.rules.filter((r) => r.id !== id);
+      this.addChange('policy_edit', `정책 ${id} 삭제`, null, null, '', cur ? { ruleIds: [id], before: { [id]: clone(cur) } } : { ruleIds: [id] });
       return route.fulfill({ status: 204 });
     }
     if (method === 'GET' && path === '/audit') {
@@ -887,7 +938,8 @@ export class MockBackend {
         return (
           (!q.get('kind') || a.event.kind === q.get('kind')) &&
           (!q.get('action') || a.action === q.get('action')) &&
-          (!q.get('rule') || (a.ruleId ?? '').includes(q.get('rule')!)) &&
+          // 규칙은 완전 일치(backend store rule_id = $ · memory.go) — 11/09 정책 「차단 이력」
+          (!q.get('rule') || (a.ruleId ?? '') === q.get('rule')) &&
           (!q.get('container') || a.event.containerName.includes(q.get('container')!)) &&
           t >= since &&
           t <= until &&
@@ -970,16 +1022,24 @@ export class MockBackend {
       const at = new Date().toISOString();
       const reason = ((JSON.parse(body || '{}') as { reason?: string }).reason ?? '').trim(); // W15 · W18: 사유 → 변경 이력
       if (m[2] === 'apply') {
+        // 11/09: 예외를 더한 규칙 + 도메인을 새로 막았으면 blocklist-hosts(backend review/proposals.go ruleIds)
+        const ids = new Set<string>();
+        const before: Record<string, Rule> = {};
         for (const ch of p.changes) {
-          if (ch.op === 'block') this.blocklist[ch.list].unshift({ value: ch.value, caseId: c.id, at, by: this.auth.actorName() });
-          else {
+          if (ch.op === 'block') {
+            this.blocklist[ch.list].unshift({ value: ch.value, caseId: c.id, at, by: this.auth.actorName() });
+            if (ch.list === 'hosts') ids.add('blocklist-hosts');
+          } else {
             const r = this.rules.find((x) => x.id === ch.ruleId)!;
+            if (!ids.has(r.id)) before[r.id] = clone(r);
+            ids.add(r.id);
             const key = ch.field as keyof Rule;
             (r[key] as unknown as string[]) = [...((r[key] as unknown as string[]) ?? []), ch.value];
           }
         }
+        const after = Object.fromEntries(Object.keys(before).map((id) => [id, clone(this.rules.find((x) => x.id === id)!)]));
         Object.assign(p, { state: 'applied', appliedAt: at, appliedBy: this.auth.actorName() });
-        this.addChange('proposal_applied', this.changeSummary(p), c.id, p.id, reason);
+        this.addChange('proposal_applied', this.changeSummary(p), c.id, p.id, reason, { ruleIds: [...ids].sort(), ...(Object.keys(before).length ? { before, after } : {}) });
       } else {
         Object.assign(p, { state: 'discarded' });
         this.addChange('proposal_discarded', `제안 ${p.id} 버림 — 변경 없이 건 종결`, c.id, p.id, reason);
@@ -995,10 +1055,31 @@ export class MockBackend {
       const list = m[1] as BlockList;
       const value = decodeURIComponent(m[2]);
       this.blocklist[list] = this.blocklist[list].filter((e) => e.value !== value);
-      this.addChange('blocklist_remove', `${value} 차단 해제`, null, null, ((JSON.parse(body || '{}') as { reason?: string }).reason ?? '').trim());
+      this.addChange('blocklist_remove', `${value} 차단 해제`, null, null, ((JSON.parse(body || '{}') as { reason?: string }).reason ?? '').trim(), list === 'hosts' ? { ruleIds: ['blocklist-hosts'] } : {});
       return route.fulfill({ status: 204 });
     }
-    if (method === 'GET' && path === '/changes') return json(this.changes.slice(0, Number(q.get('limit') ?? 100)));
+    // 11/09: rule · kind 거르기 · offset 쪽 번호({items, total, offset, limit}) — rule 로 거르면 전후 값도 그 정책 것만(backend review.QueryChanges)
+    if (method === 'GET' && path === '/changes') {
+      const rule = q.get('rule') ?? '';
+      const kind = q.get('kind') ?? '';
+      const rows = this.changes
+        .filter((c) => (!rule || (c.ruleIds ?? []).includes(rule)) && (!kind || c.kind === kind))
+        .map((c) => {
+          const out: Change = { ...c, ruleIds: c.ruleIds ?? [] };
+          if (rule) {
+            const pick = (x?: Record<string, Rule>) => (x && x[rule] ? { [rule]: x[rule] } : undefined);
+            out.before = pick(c.before);
+            out.after = pick(c.after);
+            if (!out.before) delete out.before;
+            if (!out.after) delete out.after;
+          }
+          return out;
+        });
+      if (!q.has('offset')) return json(rows.slice(0, Number(q.get('limit') ?? 100)));
+      const limit = Math.min(500, Number(q.get('limit') ?? 50) || 50);
+      const offset = Number(q.get('offset'));
+      return json({ items: rows.slice(offset, offset + limit), total: rows.length, offset, limit } satisfies ChangesPage);
+    }
     if (method === 'GET' && path === '/osv') {
       const eco = q.get('ecosystem') ?? '';
       const name = q.get('name') ?? '';
@@ -1146,8 +1227,37 @@ export class MockBackend {
     return { s, has };
   }
 
-  private addChange(kind: Change['kind'], summary: string, caseId: string | null = null, proposalId: string | null = null, reason = '') {
-    this.changes.unshift({ id: `chg-${String(++this.seq).padStart(4, '0')}`, at: new Date().toISOString(), by: this.auth.actorName(), kind, caseId, proposalId, summary, reason });
+  private addChange(kind: Change['kind'], summary: string, caseId: string | null = null, proposalId: string | null = null, reason = '', extra: Pick<Change, 'ruleIds' | 'before' | 'after' | 'revertOf'> = {}) {
+    const x = Object.fromEntries(Object.entries(extra).filter(([, v]) => v !== undefined));
+    this.changes.unshift({ id: `chg-${String(++this.seq).padStart(4, '0')}`, at: new Date().toISOString(), by: this.auth.actorName(), kind, caseId, proposalId, summary, reason, ...x });
+  }
+
+  // 정책 API 응답(11/09 backend api.policyView): 그 정책을 다룬 마지막 변경 기록의 시각 · 처리자. 기록이 없으면 키 없음
+  view(r: Rule): PolicyView {
+    const last = this.changes.find((c) => (c.ruleIds ?? []).includes(r.id));
+    return last ? { ...r, updatedAt: last.at, updatedBy: last.by } : { ...r };
+  }
+
+  // 11/09 정책 이력 시나리오: sensitive-files 를 만들고(경고 · 경로 1개) → 격리 · 경로 3개로(지금 값), egress-allowlist 예외 추가, 시연 실행.
+  // 시각은 3시간 · 2시간 · 1시간 · 30분 전. 반환 = 만든 변경 id(오래된 순)
+  seedPolicyHistory(): string[] {
+    const now = Date.now();
+    const sf = clone(this.rules.find((r) => r.id === 'sensitive-files')!);
+    const eg = clone(this.rules.find((r) => r.id === 'egress-allowlist')!);
+    const at = (min: number) => new Date(now - min * 60_000).toISOString();
+    const mk = (n: number, min: number, kind: string, summary: string, extra: Partial<Change>): Change => ({ id: `chg-${String(n).padStart(4, '0')}`, at: at(min), by: ACTOR, kind, caseId: null, proposalId: null, summary, reason: '', ...extra });
+    const alertSf: Rule = { ...clone(sf), action: 'alert', denyPaths: ['/etc/shadow'] };
+    const egBefore: Rule = { ...clone(eg), allowCidrs: ['10.0.0.0/8'] };
+    eg.allowCidrs = ['10.0.0.0/8', '140.82.112.3/32'];
+    this.rules = this.rules.map((r) => (r.id === 'egress-allowlist' ? clone(eg) : r));
+    const rows: Change[] = [
+      mk(11, 180, 'policy_edit', '정책 sensitive-files 저장', { ruleIds: ['sensitive-files'], after: { 'sensitive-files': clone(alertSf) } }),
+      mk(12, 120, 'policy_edit', '정책 sensitive-files 저장', { ruleIds: ['sensitive-files'], before: { 'sensitive-files': clone(alertSf) }, after: { 'sensitive-files': clone(sf) }, reason: '격리로 올림' }),
+      mk(13, 60, 'proposal_applied', '예외 1개 추가(egress-allowlist)', { ruleIds: ['egress-allowlist'], before: { 'egress-allowlist': egBefore }, after: { 'egress-allowlist': clone(eg) }, caseId: 'case-0003' }),
+      mk(14, 30, 'demo_run', '시연 실행: shell', { ruleIds: [] }),
+    ];
+    this.changes = [...rows, ...this.changes].sort((a, b) => b.at.localeCompare(a.at));
+    return rows.map((r) => r.id);
   }
 
   // W18: 판정 미리보기 effects — 백엔드와 같은 kind(blocklist · already_blocked · package · image · host · exception · none · note · next)
