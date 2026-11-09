@@ -26,7 +26,7 @@ test.describe('AI 도우미 Claude 연결 (11/09)', () => {
     await expect(head).toHaveAttribute('data-provider', 'claude');
     await expect(head).toHaveText('Claude claude-opus-5-5 · 질문과 조회한 사실이 Anthropic API 로 전송됨 · 예비 로컬 Ollama');
     await expect(chat(page)).not.toContainText('서버 밖으로 나가지 않음');
-    await expect(chat(page)).toContainText('읽기 전용 — 판정 · 정책 변경은 하지 않습니다.');
+    await expect(chat(page)).toContainText('읽기 전용, 판정 · 정책 변경은 하지 않습니다.');
     await expect(chat(page)).not.toContainText('1분 넘게');
   });
 

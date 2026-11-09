@@ -8,9 +8,9 @@ import { SEQ_PATHS, SEQ_RULE_ID, sequenceRule } from './mock-backend';
 
 const ED = '[data-view="rule-editor"]';
 const YAML_TA = `${ED} textarea[aria-label="정책 YAML"]`;
-const NO_PREVIEW = '연쇄 규칙은 미리보기를 할 수 없습니다 — 감사 로그에는 위반만 저장돼 연쇄의 앞 단계(정상 실행 · 연결)가 남아 있지 않습니다. 시험 운영(dryRun)으로 저장해 실제 판정을 지켜본 뒤 격리로 바꾸세요';
-const KILL_WARN = '시험 운영(dryRun) 없이 격리(kill)로 저장합니다 — 오탐이면 정상 컨테이너가 바로 종료됩니다. 먼저 dryRun: true 로 지켜보기를 권합니다';
-const SEQ_LINE = `규칙 ${SEQ_RULE_ID} — exec wget(0.0초) → connect 203.0.113.7:80(+2.1초) → open /root/.netrc(+2.4초)`;
+const NO_PREVIEW = '연쇄 규칙은 미리보기를 할 수 없습니다. 감사 로그에는 위반만 저장돼 연쇄의 앞 단계(정상 실행 · 연결)가 남아 있지 않습니다. 시험 운영(dryRun)으로 저장해 실제 판정을 지켜본 뒤 격리로 바꾸세요';
+const KILL_WARN = '시험 운영(dryRun) 없이 격리(kill)로 저장합니다. 오탐이면 정상 컨테이너가 바로 종료됩니다. 먼저 dryRun: true 로 지켜보기를 권합니다';
+const SEQ_LINE = `규칙 ${SEQ_RULE_ID}: exec wget(0.0초) → connect 203.0.113.7:80(+2.1초) → open /root/.netrc(+2.4초)`;
 const SUMMARY_DRY = '연쇄 3단계 · 10초 안 · 시험(격리 대상)';
 
 const openSeq = async (page: Page) => {
@@ -196,7 +196,7 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
     await page.locator('li[data-key]', { hasText: '/root/.ssh/id_rsa' }).first().click();
     await expect(sheet).toBeVisible();
     expect(await seqRows(page, 'event')).toEqual([
-      `규칙 ${SEQ_RULE_ID} — exec wget(0.0초) → connect 203.0.113.7:80(+2.1초) → open /root/.ssh/id_rsa(+2.4초) · 판정은 sensitive-files`,
+      `규칙 ${SEQ_RULE_ID}: exec wget(0.0초) → connect 203.0.113.7:80(+2.1초) → open /root/.ssh/id_rsa(+2.4초) · 판정은 sensitive-files`,
     ]);
     await expect(sheet.locator('[data-action="allow-this"]')).toContainText('sensitive-files');
     await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
