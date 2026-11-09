@@ -300,7 +300,7 @@ test.describe('11/09 시연 — 상세 탭 · 흐름 그림', () => {
     await expect(flow.locator('[data-node="outcome"]')).toHaveAttribute('data-tone', 'ok');
     await expect(flow.locator('[data-node="outcome"] .flow-title')).toHaveText('통과');
     const ok = await probe(page, '--ok');
-    expect(await flow.locator('[data-node="outcome"]').evaluate((e) => getComputedStyle(e).borderTopColor)).toBe(ok);
+    await expect.poll(() => flow.locator('[data-node="outcome"]').evaluate((e) => getComputedStyle(e).borderTopColor)).toBe(ok);
   });
 
   test('움직임 줄이기: 자동 재생 · 흐르는 점 없이 정지 그림, 실행하면 실제 단계만 정적으로 켬', async ({ page, backend }) => {
