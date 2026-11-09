@@ -52,7 +52,10 @@ func (m *Memory) LoadReview(context.Context) (ReviewSnapshot, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	r := &m.review
-	s := ReviewSnapshot{Blocklist: slices.Clone(r.blocklist), Changes: slices.Clone(r.changes)}
+	s := ReviewSnapshot{Blocklist: slices.Clone(r.blocklist)}
+	for _, x := range r.changes {
+		s.Changes = append(s.Changes, x.Clone())
+	}
 	for _, x := range r.installs {
 		s.Installs = append(s.Installs, x.Clone())
 	}
@@ -88,7 +91,7 @@ func (m *Memory) CommitReview(_ context.Context, c ReviewCommit) error {
 		m.upsertPolicyLocked(p)
 	}
 	for _, x := range c.Changes {
-		r.changes = upsertBy(r.changes, x, func(a model.Change) string { return a.ID })
+		r.changes = upsertBy(r.changes, x.Clone(), func(a model.Change) string { return a.ID })
 	}
 	return nil
 }

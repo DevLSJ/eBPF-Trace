@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"slices"
 	"time"
 )
@@ -322,6 +323,8 @@ const (
 	ChangeProposalDiscarded ChangeKind = "proposal_discarded"
 	// ChangeDemoRun: POST /api/demo/run — 시연 실행(10/30). 요약 「시연 실행: <scenario>」
 	ChangeDemoRun ChangeKind = "demo_run"
+	// ChangePolicyRevert: POST /api/policies/{id}/revert — 정책 하나를 그 변경 직전 값으로 되돌림(11/09). revertOf = 되돌린 변경 id
+	ChangePolicyRevert ChangeKind = "policy_revert"
 )
 
 // MaxReasonRunes: 적용 · 버림 · 차단 해제 사유(Change.reason)의 상한(문자 수, W15)
@@ -335,9 +338,46 @@ type Change struct {
 	CaseID     *string    `json:"caseId"`
 	ProposalID *string    `json:"proposalId"`
 	Summary    string     `json:"summary"`
-	// Reason: 확인 대화상자의 사유(선택, 500자) — 적용 · 버림 · 차단 해제. 판정 사유는 건 메모(Case.note). 없으면 ""
+	// Reason: 확인 대화상자의 사유(선택, 500자) — 적용 · 버림 · 차단 해제 · 되돌리기(필수). 판정 사유는 건 메모(Case.note). 없으면 ""
 	Reason string `json:"reason"`
+	// RuleIDs: 이 변경이 다룬 정책 id(11/09, 정렬). 저장 · 삭제 · 되돌리기 = [id] · YAML 교체 = 실제로 바뀐 정책 ·
+	// 제안 적용 = 예외를 더한 규칙 + 도메인을 새로 막았으면 blocklist-hosts · 도메인 차단 해제 = [blocklist-hosts].
+	// 패키지 · 이미지 차단 해제 · 버림 · 시연 · 연결 테스트 · 옛 행은 없음(응답은 [])
+	RuleIDs []string `json:"ruleIds"`
+	// Before · After: 정책 id → 변경 전 · 후 정책 전체(정책 API 의 Rule JSON). 키가 없으면 그때 그 정책이 없었다(만듦 · 지움).
+	// 시스템 규칙(차단 목록이 기준) · 정책과 무관한 변경 · 옛 행은 없음
+	Before map[string]json.RawMessage `json:"before,omitempty"`
+	After  map[string]json.RawMessage `json:"after,omitempty"`
+	// RevertOf: 되돌리기(policy_revert)가 되돌린 변경 id
+	RevertOf *string `json:"revertOf,omitempty"`
 }
+
+// Touches: 이 변경이 그 정책을 다뤘는지(ruleIds)
+func (c Change) Touches(ruleID string) bool { return slices.Contains(c.RuleIDs, ruleID) }
+
+// Clone: 저장소 · 캐시가 가질 사본 — ruleIds · before · after · revertOf 를 나눠 갖지 않는다
+func (c Change) Clone() Change {
+	d := c
+	d.RuleIDs = slices.Clone(c.RuleIDs)
+	d.Before, d.After = cloneRaw(c.Before), cloneRaw(c.After)
+	if c.RevertOf != nil {
+		d.RevertOf = ptrTo(*c.RevertOf)
+	}
+	return d
+}
+
+func cloneRaw(m map[string]json.RawMessage) map[string]json.RawMessage {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]json.RawMessage, len(m))
+	for k, v := range m {
+		out[k] = slices.Clone(v)
+	}
+	return out
+}
+
+func ptrTo[T any](v T) *T { return &v }
 
 // Osv: GET /api/osv 응답
 type Osv struct {
