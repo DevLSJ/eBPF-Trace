@@ -16,7 +16,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { useSortable } from '../hooks/useSortable';
 import { WsStatus } from './WsStatus';
 import { FRESH } from '../lib/nav';
-import { dialogOpen, typingTarget } from '../lib/shell';
+import { dialogOpen, screenOf, typingTarget } from '../lib/shell';
 
 interface NavItem {
   to: string;
@@ -74,22 +74,10 @@ const DEMO_ITEM: NavItem = { to: '/demo', label: '시연', icon: MonitorPlay };
 // 11/06: 「연동」 — 모두에게(연결 테스트 버튼만 관리자), 대시보드 바로 아래 고정(home 줄)
 const INTEGRATION_ITEM: NavItem = { to: '/integration', label: '연동', icon: Plug };
 
-const TITLES: Record<string, string> = {
-  '/': '대시보드',
-  '/integration': '연동',
-  '/demo': '시연',
-  '/installs': '설치 검사',
-  '/scans': '공급망 검사',
-  '/evaluation': '평가',
-  '/events': '이벤트',
-  '/topology': '토폴로지',
-  '/policies': '정책',
-  '/policies/blocklist': '차단 목록',
-  '/policies/changes': '변경 이력',
-  '/audit': '감사 로그',
-  '/settings': '설정',
-  '/report': '건 보고서', // 10/30 — 사이드바에는 없고 시트 · 판정 카드 · 판정 대기 행에서 연다
-};
+// 화면 제목 · 하위 화면의 상위(「정책 ›」)는 lib/shell SCREENS 한 곳(통합 검색 「화면」과 같은 이름).
+// 건 보고서(/report)는 사이드바에는 없고 시트 · 판정 카드 · 판정 대기 행에서 연다
+// 사이드바 아래 상태 칸(11/09 G38): 내부 이름은 툴팁으로만
+const SOURCE_KO: Record<string, string> = { mock: '모의 재생', gadget: '실시간 수집(eBPF)' };
 
 // W19(10/20 C · D · E): 알림 센터(종) · 통합 검색(/) · 사이드바 접기([, 1100px 이하 자동) · ? 도움말 · 실시간 끊김 배너.
 // 폭 고정(min-w-[1024px])을 없앴다 — 좁은 화면은 사이드바가 56px 로 접히고, 펼치면 본문 위에 겹쳐 뜬다(본문을 밀지 않음)
@@ -107,6 +95,9 @@ export function AppShell() {
   const source = stats?.source ?? info?.source;
   const pending = cases?.filter((c) => c.state === 'open').length ?? 0;
   const overlay = narrow && !mobile && !collapsed;
+  const screen = screenOf(pathname);
+  const parent = screen?.parent ? screenOf(screen.parent) : undefined;
+  const sideName = collapsed ? '사이드바 펼치기 ([)' : '사이드바 접기 ([)';
 
   // 토스트(toast-context)가 사이드바 바로 옆에 붙도록 본문이 차지하는 사이드바 폭을 알린다(10/20). 겹쳐 뜬 펼침은 접힌 폭 기준, 서랍(768 미만)은 0
   useEffect(() => {
@@ -154,7 +145,7 @@ export function AppShell() {
             <ShieldCheck className="size-5 shrink-0 text-accent" aria-hidden />
             <span className={collapsed ? 'sr-only' : 'font-semibold tracking-tight'}>SupplyGuard</span>
             {mobile && (
-              <button type="button" onClick={closeMobile} aria-label="메뉴 닫기" className="ml-auto rounded-md p-1.5 text-text-3 hover:bg-surface-2 hover:text-text">
+              <button type="button" onClick={closeMobile} aria-label="메뉴 닫기" title="메뉴 닫기" className="ml-auto rounded-md p-1.5 text-text-3 hover:bg-surface-2 hover:text-text">
                 <X className="size-4" aria-hidden />
               </button>
             )}
@@ -171,17 +162,21 @@ export function AppShell() {
             <div className="mt-auto space-y-1 border-t border-border px-5 py-4 text-xs">
               <div className="flex justify-between">
                 <span className="text-text-3">수집</span>
-                <span className="text-text">{source === 'mock' ? 'Mock 데모' : source === 'gadget' ? 'eBPF 가젯' : ''}</span>
+                <span className="text-text" title={source}>
+                  {SOURCE_KO[source ?? ''] ?? ''}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-text-3">격리</span>
                 <span className={enforce ? 'text-danger-text' : 'text-warn-text'}>
-                  {enforce === undefined ? '' : enforce ? '자동 종료' : 'dry-run'}
+                  {enforce === undefined ? '' : enforce ? '자동 종료' : '알림만(dry-run)'}
                 </span>
               </div>
               {info?.gadgetVersion && (
                 <div className="flex justify-between">
-                  <span className="text-text-3">IG</span>
+                  <span className="text-text-3" title="Inspektor Gadget">
+                    수집기 버전
+                  </span>
                   <span className="num text-text">{info.gadgetVersion}</span>
                 </div>
               )}
@@ -191,8 +186,8 @@ export function AppShell() {
             <button
               type="button"
               onClick={toggle}
-              aria-label={collapsed ? '사이드바 펼치기' : '사이드바 접기'}
-              title="사이드바 접기 · 펼치기 ([)"
+              aria-label={sideName}
+              title={sideName}
               className={`flex h-10 shrink-0 items-center border-t border-border text-text-3 hover:text-text ${collapsed ? 'mt-auto justify-center' : 'justify-end px-4'}`}
             >
               {collapsed ? <ChevronsRight className="size-4" aria-hidden /> : <ChevronsLeft className="size-4" aria-hidden />}
@@ -204,14 +199,26 @@ export function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <header data-part="header" className="flex h-[var(--header-h)] shrink-0 items-center gap-3 border-b border-border bg-surface px-4 md:gap-4 md:px-6">
           {mobile && (
-            <button type="button" onClick={openMobile} aria-label="메뉴" aria-expanded={mobileOpen} className="rounded-md p-1.5 text-text-2 hover:bg-surface-2 hover:text-text">
+            <button type="button" onClick={openMobile} aria-label="메뉴" title="메뉴" aria-expanded={mobileOpen} className="rounded-md p-1.5 text-text-2 hover:bg-surface-2 hover:text-text">
               <Menu className="size-5" aria-hidden />
             </button>
           )}
-          {/* 화면 제목 21/700(--fs-xl, 11/09 G43) */}
-          <h1 className="shrink-0 text-[length:var(--fs-xl)] leading-tight font-bold tracking-[-0.02em] text-text" data-testid="page-title">
-            {TITLES[pathname] ?? ''}
-          </h1>
+          {/* 화면 제목 21/700(--fs-xl, 11/09 G43). 하위 화면(정책 › 차단 목록 · 변경 이력)은 앞에 상위 화면 링크(11/09 G17) */}
+          <div className="flex min-w-0 shrink-0 items-baseline gap-1.5 text-[length:var(--fs-xl)] leading-tight font-bold tracking-[-0.02em]">
+            {parent && (
+              <>
+                <Link to={parent.to} state={FRESH} data-part="title-parent" className="text-text-3 hover:text-accent-text">
+                  {parent.label}
+                </Link>
+                <span data-part="title-sep" aria-hidden className="font-normal text-text-3">
+                  ›
+                </span>
+              </>
+            )}
+            <h1 className="text-text" data-testid="page-title">
+              {screen?.label ?? ''}
+            </h1>
+          </div>
           {/* 768 미만: 머리 칸의 화면 버튼은 가로로 넘기며 본다(머리 높이 56px 유지) */}
           <div ref={setSlot} className="flex min-w-0 flex-1 items-center gap-3 max-md:overflow-x-auto max-md:[scrollbar-width:none]" data-testid="page-actions" />
           <WsStatus />
@@ -425,7 +432,12 @@ function DnsBanner() {
   return (
     <div data-banner="dns" role="alert" style={{ '--banner-color': 'var(--warn)' } as CSSProperties} className="sg-banner flex shrink-0 items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[13px] text-amber-900 md:px-6">
       <span className="min-w-0 flex-1">
-        <b>도메인 판단 꺼짐</b>, trace_dns 가 뜨지 않아 도메인 기준 규칙(allowHosts · denyHosts · 차단 도메인)과 DNS 질의 규칙(kind: dns)이 통과 처리됩니다. IP · 포트 규칙만 동작합니다.{' '}
+        {/* 11/09 G38: 내부 이름(trace_dns · allowHosts · denyHosts · kind: dns)은 툴팁으로만 */}
+        <b>도메인 판단 꺼짐</b>{' '}
+        <span title="trace_dns 가젯 · allowHosts · denyHosts · 차단 목록 도메인 · kind: dns 규칙" className="underline decoration-dotted underline-offset-2">
+          도메인 조회 감시가 뜨지 않아
+        </span>{' '}
+        도메인 기준 규칙(허용 · 금지 · 차단 도메인)과 DNS 질의 규칙이 통과 처리됩니다. IP · 포트 규칙만 동작합니다.{' '}
         <Link to="/settings" className="text-amber-800 underline">
           서버 설정 보기 →
         </Link>
@@ -433,6 +445,7 @@ function DnsBanner() {
       <button
         type="button"
         aria-label="닫기"
+        title="닫기"
         className="rounded p-0.5 text-amber-800 hover:bg-amber-100"
         onClick={() => {
           try {

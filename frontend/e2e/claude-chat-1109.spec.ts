@@ -71,7 +71,8 @@ test.describe('AI 도우미 Claude 연결 (11/09)', () => {
     delete backend.info.chatEngine;
     await page.reload();
     await expect(ai).toContainText('꺼짐');
-    await expect(ai).toContainText('ANTHROPIC_API_KEY 나 OLLAMA_URL 이 있으면 켜짐');
+    await expect(ai).toContainText('Claude API 키나 로컬 Ollama 주소가 있으면 켜짐'); // 11/09 G38: 문장은 쉬운 말
+    await expect(ai.locator('[data-part="setting-name"]').first()).toHaveText('ANTHROPIC_API_KEY · OLLAMA_URL');
   });
 
   test('5 답 속 **굵게** 는 굵은 글자로(별표를 그대로 보이지 않음) · 개조식 줄바꿈 유지 · 코드 블록은 그대로 코드 창', async ({ page, backend }) => {

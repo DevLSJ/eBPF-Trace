@@ -212,7 +212,10 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
   test('도메인 판단 꺼짐: 배너 · 설정 문구에 「DNS 질의 규칙(kind: dns)」', async ({ page, backend }) => {
     backend.info.dnsResolve = 'off';
     await page.goto('/settings');
-    await expect(page.locator('[data-part="dns"]')).toContainText('DNS 질의 규칙(kind: dns)이 통과 처리됩니다');
-    await expect(page.locator('[data-banner="dns"]')).toContainText('DNS 질의 규칙(kind: dns)');
+    // 11/09 G38: 보이는 문장은 쉬운 말 — kind: dns 같은 내부 이름은 툴팁으로만
+    await expect(page.locator('[data-part="dns"]')).toContainText('DNS 질의 규칙이 통과 처리됩니다');
+    await expect(page.locator('[data-part="dns"] [title*="kind: dns"]')).toHaveCount(1);
+    await expect(page.locator('[data-banner="dns"]')).toContainText('DNS 질의 규칙');
+    await expect(page.locator('[data-banner="dns"] [title*="kind: dns"]')).toHaveCount(1);
   });
 });

@@ -23,7 +23,7 @@ export function Assistant() {
   const { cases, error } = useCases();
   const { subscribe, info } = useStream();
   const chatOn = info?.chat === true;
-  // 11/02 결정: 꺼져 있어도(ANTHROPIC_API_KEY · OLLAMA_URL 없음) 탭은 보이고, 탭 안에서 이유를 알린다
+  // 11/02 결정: 꺼져 있어도(Claude API 키 · 로컬 Ollama 주소 없음) 탭은 보이고, 탭 안에서 이유를 알린다
   const TABS = [GUIDE_TAB, CHAT_TAB];
   const toast = useToast();
   const { pathname, search } = useLocation();
@@ -125,6 +125,7 @@ export function Assistant() {
 
   const list = cases ?? [];
   const pend = pendingGuides(list);
+  const fabName = pend ? `도우미 열기(미완료 가이드 ${pend}건)` : '도우미 열기';
 
   return (
     <>
@@ -133,7 +134,8 @@ export function Assistant() {
         type="button"
         data-part="assistant-fab"
         data-ready={String(cases !== null || error != null)}
-        aria-label={pend ? `도우미 열기(미완료 가이드 ${pend}건)` : '도우미 열기'}
+        aria-label={fabName}
+        title={fabName}
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => (open ? close() : show(tab))}
@@ -161,7 +163,7 @@ export function Assistant() {
             <ShieldCheck className="mr-1.5 inline size-4 align-[-3px] text-accent" aria-hidden />
             도우미
           </span>
-          <button type="button" className="assist-close" aria-label="닫기" onClick={() => close()}>
+          <button type="button" className="assist-close" aria-label="닫기" title="닫기" onClick={() => close()}>
             <span className="x-line" />
             <span className="x-line" />
           </button>
@@ -219,7 +221,11 @@ export function Assistant() {
           ) : (
             <div data-part="chat-off" role="note" className="m-3 grid gap-1.5 rounded-lg border-l-4 border-amber-500 bg-slate-50 p-4 text-sm">
               <b className="text-slate-800">AI 도우미가 꺼져 있습니다</b>
-              <p className="text-xs text-slate-600">서버에 Claude API 키(ANTHROPIC_API_KEY)나 로컬 Ollama(OLLAMA_URL)를 넣으면 켜집니다. 대응 가이드 탭은 그대로 쓸 수 있습니다.</p>
+              {/* 11/09 G38: 문장은 쉬운 말, 설정 이름은 아래 보조 글로만 */}
+              <p className="text-xs text-slate-600">서버에 Claude API 키나 로컬 Ollama 주소를 넣으면 켜집니다. 대응 가이드 탭은 그대로 쓸 수 있습니다.</p>
+              <p className="text-[11px] text-text-3">
+                서버 설정 <code data-part="setting-name">ANTHROPIC_API_KEY · OLLAMA_URL</code>
+              </p>
             </div>
           )}
         </div>

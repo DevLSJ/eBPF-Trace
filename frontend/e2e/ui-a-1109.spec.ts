@@ -370,7 +370,10 @@ test.describe('G38 내부 이름 → 쉬운 말', () => {
   });
 });
 
-// 화면 사진(1440 밝은 · 어두운, 390) — 하위 화면 제목 · 해/달 단추 · 알림 팝오버 · 계정 메뉴 · 설정
+// 화면 사진(1440 밝은 · 어두운, 390) — 하위 화면 제목 · 해/달 단추 · 알림 팝오버 · 계정 메뉴 · 설정.
+// 찍기 전에 들어오는 움직임(팝오버 · 서랍 · 화면 전환)이 끝날 때까지(반복 애니메이션은 빼고)
+const still = (p: Page) =>
+  p.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity));
 test.describe('화면 사진', () => {
   test('1440 밝은 · 어두운', async ({ page, backend }) => {
     backend.info.dnsResolve = 'off';
@@ -378,14 +381,17 @@ test.describe('화면 사진', () => {
       await page.emulateMedia({ colorScheme: theme });
       await ready(page, '/policies/blocklist');
       expect(await themeOf(page)).toBe(theme);
+      await still(page);
       await page.screenshot({ path: `${SHOT}/1440-${theme}-blocklist.png` });
       await page.locator('[data-part="bell"]').click();
       await expect(page.locator('[data-part="notices"]')).toBeVisible();
+      await still(page);
       await page.screenshot({ path: `${SHOT}/1440-${theme}-notices.png` });
       await page.keyboard.press('Escape');
       await ready(page, '/settings');
       await page.locator('[data-part="account"]').click();
       await expect(page.locator('[data-part="account-menu"]')).toBeVisible();
+      await still(page);
       await page.screenshot({ path: `${SHOT}/1440-${theme}-settings-account.png` });
       await noPageOverflow(page);
     }
@@ -399,11 +405,13 @@ test.describe('화면 사진', () => {
         await page.emulateMedia({ colorScheme: theme });
         await page.goto('/policies/blocklist');
         await expect(page.getByTestId('page-title')).toHaveText('차단 목록');
+        await still(page);
         await page.screenshot({ path: `${SHOT}/390-${theme}-blocklist.png` });
         await noPageOverflow(page);
       }
       await page.getByRole('button', { name: '메뉴', exact: true }).click();
       await expect(page.locator('aside[data-part="sidebar"]')).toBeVisible();
+      await still(page);
       await page.screenshot({ path: `${SHOT}/390-dark-drawer.png` });
     });
   });

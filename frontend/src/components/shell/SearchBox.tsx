@@ -1,20 +1,23 @@
 import { Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/auth-context';
 import { useStream } from '../../hooks/stream-context';
 import { api } from '../../lib/api';
-import { buildIndex, dialogOpen, searchIndex, searchKey, SEARCH_TYPE_KO, typingTarget, type SearchSources } from '../../lib/shell';
+import { buildIndex, dialogOpen, SCREENS, searchIndex, searchKey, SEARCH_TYPE_KO, typingTarget, type SearchSources } from '../../lib/shell';
 import '../table-kit.css';
 
 // E. 사이드바 통합 검색(10/20 확정) — 목업 shared/shell-plus.js searchBox.
-// 패키지 · 컨테이너 · 규칙 id · 도메인 · 검사를 화면이 이미 쓰는 목록 API(설치 검사 · 공급망 검사 · 정책 · 차단 목록)와
+// 화면 이름(11/09 G07 — 결과 맨 앞, 누르면 그 화면) · 패키지 · 컨테이너 · 규칙 id · 도메인 · 검사를 화면이 이미 쓰는 목록 API(설치 검사 · 공급망 검사 · 정책 · 차단 목록)와
 // 실시간 피드 · 토폴로지로 클라이언트에서 찾는다. 목록은 검색 칸에 들어올 때 읽는다(15초 안에는 다시 읽지 않음).
 // `/` 로 포커스, ↑↓ 고르고 Enter 이동, Esc 닫기. 사이드바가 접혀 있으면 아이콘 → 옆으로 뜨는 칸
 
 const RELOAD_MS = 15_000;
 
 export function SearchBox({ collapsed }: { collapsed: boolean }) {
-  const { verdicts, topology, topologyVersion } = useStream();
+  const { verdicts, topology, topologyVersion, info } = useStream();
+  const { isAdmin } = useAuth();
+  const demoOn = isAdmin && info?.demo === true; // 시연 화면은 사이드바와 같은 조건일 때만
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
@@ -39,10 +42,10 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
   };
 
   const index = useMemo(
-    () => buildIndex({ ...src, containers: topology.containers(), verdicts }),
+    () => buildIndex({ ...src, screens: SCREENS.filter((x) => !x.demo || demoOn), containers: topology.containers(), verdicts }),
     // topologyVersion: 토폴로지 저장소는 같은 객체라 판 번호로 다시 계산한다
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [src, verdicts, topology, topologyVersion],
+    [src, verdicts, topology, topologyVersion, demoOn],
   );
   const items = useMemo(() => searchIndex(index, q), [index, q]);
   const sel = Math.min(active, Math.max(0, items.length - 1));
@@ -81,7 +84,7 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
           ref={input}
           type="search"
           role="combobox"
-          aria-label="통합 검색 (패키지 · 컨테이너 · 규칙 id · 도메인 · 검사)"
+          aria-label="통합 검색 (화면 · 패키지 · 컨테이너 · 규칙 id · 도메인 · 검사)"
           aria-expanded={showResults}
           aria-controls="shell-search-results"
           autoComplete="off"
@@ -135,7 +138,11 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
           ) : (
             items.map((x, i) => (
               <div key={searchKey(x)}>
-                {(i === 0 || items[i - 1].type !== x.type) && <div className="px-3 pt-2 pb-1 text-[11px] font-medium text-slate-400">{SEARCH_TYPE_KO[x.type]}</div>}
+                {(i === 0 || items[i - 1].type !== x.type) && (
+                  <div data-part="search-group" className="px-3 pt-2 pb-1 text-[11px] font-medium text-slate-400">
+                    {SEARCH_TYPE_KO[x.type]}
+                  </div>
+                )}
                 <Link
                   to={x.to}
                   state={x.state}
@@ -147,7 +154,7 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
                   onClick={() => reset()}
                   className={`grid gap-0.5 px-3 py-1.5 ${i === sel ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
                 >
-                  <span className="truncate font-mono text-[13px]">{x.label}</span>
+                  <span className={`truncate text-[13px] ${x.type === 'screen' ? 'font-medium' : 'font-mono'}`}>{x.label}</span>
                   {x.sub && <span className="truncate text-[11px] text-slate-500">{x.sub}</span>}
                 </Link>
               </div>

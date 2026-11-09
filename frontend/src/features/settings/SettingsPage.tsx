@@ -98,20 +98,36 @@ function Section({ title, part, children, actions }: { title: string; part?: str
     </section>
   );
 }
-function Row({ label, value, env, desc }: { label: string; value: ReactNode; env: string; desc: string }) {
+// 11/09 G38: 화면 문장은 쉬운 말. 설정 이름(ENFORCE_KILL · NOTIFY_* · OLLAMA_URL …)은 값 아래 보조 글(data-part="setting-name") · 툴팁으로만
+function Row({ label, value, env, desc, hint }: { label: string; value: ReactNode; env: string; desc: string; hint?: string }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-slate-100 pt-2 first:border-t-0 first:pt-0">
       <div>
         <b className="text-sm font-medium text-slate-800">{label}</b>
-        <div className="text-xs text-slate-500">{desc}</div>
+        <div className="text-xs text-slate-500" title={hint}>
+          {desc}
+        </div>
       </div>
       <div className="grid justify-items-end gap-0.5">
         <span className="text-sm font-semibold text-slate-800">{value}</span>
-        <code className="text-xs text-slate-500">{env}</code>
+        <code data-part="setting-name" className="text-xs text-slate-500">
+          {env}
+        </code>
       </div>
     </div>
   );
 }
+// 보조 글 한 줄(문장 아래 설정 이름)
+function SettingNames({ names }: { names: string }) {
+  return (
+    <span className="mt-0.5 block">
+      <code data-part="setting-name" className="text-[11px] text-text-3">
+        {names}
+      </code>
+    </span>
+  );
+}
+const DISCOVERY_KO: Record<string, string> = { fanotify: '커널 알림(fanotify)', 'docker-events': 'Docker 이벤트(docker-events)' };
 
 // 서버 설정 — 보기만. 바꾸는 방법은 서버 .env + 재시작 (10/16 확정: 범위를 잘못 넓히면 다른 컨테이너가 격리된다)
 function ServerTab() {
@@ -141,7 +157,7 @@ function ServerTab() {
   return (
     <div data-view="server">
       <Section title="동작">
-        <Row label="자동 격리" value={i.enforceKill ? '켜짐' : '꺼짐 (알림만)'} env="ENFORCE_KILL" desc={i.enforceKill ? '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다' : '모든 정책이 알림만 보냅니다'} />
+        <Row label="자동 격리" value={i.enforceKill ? '켜짐' : '꺼짐(알림만)'} env="ENFORCE_KILL" desc={i.enforceKill ? '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다' : '모든 정책이 알림만 보냅니다'} />
         <Row label="감시 범위" value={watch.length ? watch.join(', ') : '모든 컨테이너'} env="WATCH_CONTAINERS" desc="이 범위의 컨테이너만 평가 · 격리합니다" />
         <Row label="제외" value={ignore.length ? ignore.join(', ') : '없음'} env="IGNORE_CONTAINERS" desc="SupplyGuard 자신처럼 보지 않을 컨테이너" />
       </Section>
@@ -160,7 +176,8 @@ function ServerTab() {
           <p className="text-xs text-slate-500">이 백엔드는 알림 상태를 알려 주지 않습니다.</p>
         ) : !n.channels.length ? (
           <p className="text-xs text-slate-500">
-            알림 채널이 없습니다. 서버 .env 에 <code>NOTIFY_WEBHOOK_URL</code> · <code>NOTIFY_SLACK_URL</code> 을 넣고 다시 시작하세요.
+            알림 채널이 없습니다. 서버 설정에 웹훅 · Slack 주소를 넣고 다시 시작하세요.
+            <SettingNames names="NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL" />
           </p>
         ) : (
           <>
@@ -197,7 +214,8 @@ function ServerTab() {
             </div>
             <p className="text-xs text-slate-500">
               합계 보냄 {fmtNum(n.sent)} · 실패 {fmtNum(n.failed)}
-              {n.suppressed ? ` · 같은 알림 묶음 ${fmtNum(n.suppressed)}` : ''}. 채널은 <code>NOTIFY_WEBHOOK_URL</code> · <code>NOTIFY_SLACK_URL</code> 로 정합니다.
+              {n.suppressed ? ` · 같은 알림 묶음 ${fmtNum(n.suppressed)}` : ''}. 채널은 서버 설정의 웹훅 · Slack 주소로 정합니다.
+              <SettingNames names="NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL" />
             </p>
           </>
         )}
@@ -205,7 +223,7 @@ function ServerTab() {
       <Section title="컨테이너 발견 방식" part="discovery">
         <Row
           label="발견 방식"
-          value={i.discovery || (i.source === 'mock' ? 'mock (해당 없음)' : '시작 전')}
+          value={i.discovery ? (DISCOVERY_KO[i.discovery] ?? i.discovery) : i.source === 'mock' ? '해당 없음(모의 재생)' : '시작 전'}
           env="CONTAINER_DISCOVERY"
           desc={i.discoveryNote || (i.discovery === 'fanotify' ? '컨테이너가 시작되는 순간부터 관찰합니다' : '새 컨테이너를 어떻게 찾아 감시에 붙이는지')}
         />
@@ -213,14 +231,15 @@ function ServerTab() {
       <AiSection info={i} />
       <Section title="도메인 판단" part="dns">
         <Row
-          label="trace_dns"
+          label="도메인 조회 감시"
           value={i.dnsResolve === 'off' ? '꺼짐' : i.dnsResolve === 'ok' ? '켜짐' : ''}
-          env="dnsResolve"
-          desc={i.dnsResolve === 'off' ? '도메인 기준 규칙(allowHosts · denyHosts · 차단 도메인)과 DNS 질의 규칙(kind: dns)이 통과 처리됩니다. IP · 포트 규칙만 동작합니다' : '연결 대상 IP 를 DNS 응답으로 도메인에 맞춰 판단하고, DNS 질의 규칙(kind: dns)을 평가합니다'}
+          env="trace_dns"
+          hint="allowHosts · denyHosts · 차단 목록 도메인 · kind: dns 규칙"
+          desc={i.dnsResolve === 'off' ? '도메인 기준 규칙(허용 · 금지 · 차단 도메인)과 DNS 질의 규칙이 통과 처리됩니다. IP · 포트 규칙만 동작합니다' : '연결 대상 IP 를 DNS 응답으로 도메인에 맞춰 판단하고, DNS 질의 규칙을 평가합니다'}
         />
       </Section>
       <p className="px-5 py-4 text-xs text-slate-500">
-        바꾸는 방법: 서버의 .env 에서 위 값을 고친 뒤 백엔드를 다시 시작하세요. 화면에서는 바꾸지 않습니다. 범위를 잘못 넓히면 다른 컨테이너가 격리될 수 있습니다.
+        바꾸는 방법: 서버 설정 파일(.env)에서 위 값을 고친 뒤 백엔드를 다시 시작하세요. 화면에서는 바꾸지 않습니다. 범위를 잘못 넓히면 다른 컨테이너가 격리될 수 있습니다.
       </p>
     </div>
   );
@@ -236,8 +255,8 @@ function AiSection({ info }: { info: Info }) {
       <Row
         label="모델"
         value={on ? engineName(e) : '꺼짐'}
-        env="CHAT_PROVIDER · CLAUDE_MODEL"
-        desc={!on ? 'ANTHROPIC_API_KEY 나 OLLAMA_URL 이 있으면 켜짐' : claude ? '질문과 조회한 사실을 Anthropic API 로 보내 답을 받음' : LOCAL_ONLY}
+        env={on ? 'CHAT_PROVIDER · CLAUDE_MODEL' : 'ANTHROPIC_API_KEY · OLLAMA_URL'}
+        desc={!on ? 'Claude API 키나 로컬 Ollama 주소가 있으면 켜짐' : claude ? '질문과 조회한 사실을 Anthropic API 로 보내 답을 받음' : LOCAL_ONLY}
       />
       {on && <Row label="예비" value={e?.backup ? '로컬 Ollama' : '없음'} env="OLLAMA_URL" desc="기본 모델에 닿지 않거나 답을 거절할 때 같은 질문을 넘김" />}
       {claude && (
@@ -258,7 +277,8 @@ function AiSection({ info }: { info: Info }) {
               ))}
             </ul>
             <p className="mt-2">
-              서버 밖으로 보내지 않으려면 <code>CHAT_PROVIDER=ollama</code>
+              서버 밖으로 보내지 않으려면 로컬 Ollama 만 쓰도록 서버 설정을 바꿈
+              <SettingNames names="CHAT_PROVIDER=ollama" />
             </p>
           </div>
         </div>

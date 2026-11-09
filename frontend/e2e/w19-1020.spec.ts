@@ -82,7 +82,7 @@ test.describe('W19 알림 센터 (C)', () => {
     await expect(page.getByText('실시간 연결됨')).toBeVisible();
     await openBell(page);
     await expect(page.locator(`${NOTICES} [data-notice]`)).toHaveCount(0);
-    await expect(page.locator(NOTICES)).toContainText('새 알림 없음');
+    await expect(page.locator(NOTICES)).toContainText('새 알림이 없습니다.'); // 11/09 G09 문장
     await expect(bellBadge(page)).toBeHidden();
   });
 

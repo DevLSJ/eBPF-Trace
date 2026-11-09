@@ -7,6 +7,7 @@ import { useStream } from '../../hooks/stream-context';
 import { api } from '../../lib/api';
 import { computeNotices, loadJSON, NOTICE_READ_KEY, saveJSON, type Notice } from '../../lib/shell';
 import type { Proposal } from '../../lib/types';
+import { ActionButton } from '../ActionButton';
 import '../table-kit.css';
 
 // C. 알림 센터(상단 종, 10/20 확정) — 목업 shared/shell-plus.js bellCenter.
@@ -107,6 +108,7 @@ export function NoticeCenter() {
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`알림 ${unread}건 안 읽음`}
+        title={`알림 ${unread}건 안 읽음`}
         onClick={() => {
           if (!open) setNonce((n) => n + 1);
           setOpen(!open);
@@ -129,12 +131,17 @@ export function NoticeCenter() {
         >
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
             <b className="text-sm">알림</b>
-            <button type="button" onClick={() => markRead(notices)} className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">
+            {/* 11/09 G09: 안 읽은 알림이 없으면 꺼짐 + 사유(aria-disabled · 툴팁) */}
+            <ActionButton
+              reason={unread === 0 && '안 읽은 알림이 없습니다'}
+              onClick={() => markRead(notices)}
+              className="rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:bg-transparent"
+            >
               모두 읽음
-            </button>
+            </ActionButton>
           </div>
           {notices.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-slate-400">새 알림 없음</p>
+            <p className="px-4 py-6 text-center text-sm text-slate-400">새 알림이 없습니다.</p>
           ) : (
             <ul className="max-h-[min(28rem,calc(100vh-6rem))] overflow-y-auto py-1">
               {notices.map((x) => {

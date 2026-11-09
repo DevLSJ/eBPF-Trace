@@ -1,5 +1,5 @@
 import { ChevronDown, UserRound } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/auth-context';
 import { useToast } from '../hooks/toast-context';
@@ -87,18 +87,24 @@ export function AccountMenu() {
                     ['비밀번호 변경', () => setDialog('password')],
                     ['로그아웃', () => void logout()],
                   ] as const)),
-            ].map(([label, run], i) => (
-              <button
-                key={label}
-                type="button"
-                role="menuitem"
-                autoFocus={i === 0}
-                onClick={pick(run)}
-                className="rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-slate-100 focus:bg-slate-100 focus:outline-none"
-              >
-                {label}
-              </button>
-            ))}
+            ].map(([label, run], i) => {
+              // 11/09 G11: 로그아웃은 위험 글자색(토큰) + 위 구분선
+              const out = label === '로그아웃';
+              return (
+                <Fragment key={label}>
+                  {out && <div className="my-1 border-t border-border" role="separator" />}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    autoFocus={i === 0}
+                    onClick={pick(run)}
+                    className={`rounded-md px-2.5 py-2 text-left text-[13px] focus:outline-none ${out ? 'text-danger-text hover:bg-danger-soft focus:bg-danger-soft' : 'hover:bg-slate-100 focus:bg-slate-100'}`}
+                  >
+                    {label}
+                  </button>
+                </Fragment>
+              );
+            })}
             {/* 테마는 11/09(G01) 상단 해/달 단추(ThemeToggle) 하나로 옮겼다 */}
           </div>
         )}
@@ -150,7 +156,7 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
     try {
       await authApi.password(cur, next, false);
       onClose();
-      toast('비밀번호를 바꿨습니다', { key: 'password', tone: 'ok' });
+      toast('비밀번호를 바꿨습니다.', { key: 'password', tone: 'ok' });
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
     } finally {

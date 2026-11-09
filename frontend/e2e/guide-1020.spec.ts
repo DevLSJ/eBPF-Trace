@@ -265,7 +265,7 @@ test.describe('도우미 · 대응 가이드 (10/20)', () => {
     await page.reload();
     await expect(banner).toBeVisible();
     await expect(banner).toContainText('도메인 판단 꺼짐');
-    await expect(banner).toContainText('trace_dns');
+    await expect(banner.locator('[title*="trace_dns"]')).toHaveCount(1); // 11/09 G38: 내부 이름은 툴팁으로만
     await banner.getByRole('button', { name: '닫기' }).click();
     await expect(banner).toHaveCount(0);
     await page.reload();
