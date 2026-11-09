@@ -1003,3 +1003,16 @@ test.describe('㉕ 꺼진 단추 모양 — aria-disabled 는 진짜 disabled �
     }
   });
 });
+
+test.describe('㉖ 명령 복사 알림 문구(SPEC 7절 — 성공 「~했습니다.」 · 실패 「~하지 못했습니다 — ~하세요.」)', () => {
+  test('설치 검사 「명령 복사」: 성공은 「「명령」 명령을 복사했습니다.」, 실패는 「명령을 복사하지 못했습니다 — 「명령」을(를) 직접 입력하세요.」', async ({ page, backend, context }) => {
+    void backend;
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('/installs');
+    await page.getByTestId('page-actions').getByRole('button', { name: '명령 복사' }).click();
+    await expect(page.locator('[data-toast="copy"]')).toHaveText(/「tools\/sg-install pip requests」 명령을 복사했습니다\.$/);
+    await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('denied')) }, configurable: true }); });
+    await page.getByTestId('page-actions').getByRole('button', { name: '명령 복사' }).click();
+    await expect(page.locator('[data-toast="copy"]')).toHaveText(/명령을 복사하지 못했습니다 — 「tools\/sg-install pip requests」을\(를\) 직접 입력하세요\.$/);
+  });
+});
