@@ -147,7 +147,7 @@ make sandbox-down
 
 종료 코드: 0 통과 · 1 설치 실패 · 2 위반 · 3 차단 목록이라 거부 · 4 결과 확인 불가(통과로 보지 않음) · 69 연결 실패 · 77 토큰 거부.
 데모 공격 시나리오(`deploy/demo/README.md`): `SCENARIO=all|shell|revshell|direct-ip|domain|dns-exfil|udp bash deploy/demo/run-attacker.sh`.
-시연 패널: `DEMO_ENABLED=true`(`make dev` 는 켜져 있음, 운영은 끈다)면 관리자가 대시보드 「시연」 카드에서 같은 데모 패키지를 감시 컨테이너에 설치해 컨테이너 시작 → 위반 → 격리 → 판정 대기까지 단계 레일로 본다.
+시연 패널: `DEMO_ENABLED=true`(`make dev` 는 켜져 있음, 운영은 끈다)면 관리자가 「시연」 화면(`/demo`)에서 같은 데모 패키지를 감시 컨테이너에 설치해 컨테이너 시작 → 위반 → 격리 → 판정 대기까지 단계 레일로 본다.
 
 ## 운영 배포 (EC2 · VM, 실제 eBPF)
 
@@ -211,7 +211,7 @@ cd backend && test -z "$(gofmt -l .)" && go vet ./... && GOOS=linux go vet ./...
 cd frontend && npm run lint && npm run build && npx playwright test
 ```
 
-eBPF 가젯 실행 검증은 커널이 있는 EC2/VM 에서만 한다.
+eBPF 가젯 실행 검증은 `make dev`(Docker Desktop 안 실제 가젯 — 컨테이너 시작 직후 약 0.1초를 놓칠 수 있음) 또는 커널이 있는 VM · EC2(fanotify)에서 한다.
 
 ## 문서
 

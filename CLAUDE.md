@@ -73,7 +73,7 @@ tools/     sg-install
 | `cd backend && GOOS=linux go vet ./...` | 리눅스 전용 코드 검사 |
 | `ADMIN_TOKEN=… tools/sg-bench [-a API] [-l 목록] [-o 결과]` | 공급망 검사 오탐률 하네스 — 인기 패키지 20개 + 취약 버전을 실제 백엔드로 검사, 인기 패키지가 「악성」이면 실패. sg-vm 에서는 `-t ~/sg/.tokens` |
 
-**주의**: 맥에서 실제 가젯 소스 + `ENFORCE_KILL`을 쓸 때는 반드시 `WATCH_CONTAINERS=sg-install-*`. 범위 없이 돌려 minikube 컨테이너가 두 번 죽은 적이 있다.
+**주의**: 맥에서 실제 가젯 소스 + `ENFORCE_KILL`을 쓸 때는 격리 범위를 반드시 좁힌다 — 11/06 부터 격리는 `sg-install-*` · 시연 · `supplyguard.enforce=true` 라벨(`ENFORCE_CONTAINERS`)만이라 make dev 는 전체를 감시해도 다른 컨테이너를 죽이지 않는다(그 밖은 `enforceSkip: "label"` 로 보류). 11/06 이전 코드로 돌릴 때는 `WATCH_CONTAINERS=sg-install-*` — 범위 없이 돌려 minikube 컨테이너가 두 번 죽은 적이 있다.
 
 ### 서버
 
@@ -132,7 +132,7 @@ tools/     sg-install
 
 1. 계획 승인 → 구현. 계획과 실측이 다르면 멈추고 정정 보고
 2. 결함은 원인 실측 후 설계. 수정 전 코드에서 새 테스트 실패를 먼저 보인다
-3. 자가 검증: `make test` + React e2e(바뀐 화면은 e2e 로 지킨다) + 콘솔 오류 0. 목업 회귀는 돌리지 않는다 [11/05]. 가젯 동작은 `sg-vm`에서만 실측
+3. 자가 검증: `make test` + React e2e(바뀐 화면은 e2e 로 지킨다) + 콘솔 오류 0. 목업 회귀는 돌리지 않는다 [11/05]. 가젯 동작은 `make dev`(Docker Desktop · docker-events — 시작 직후 약 0.1초를 놓칠 수 있음) 또는 `sg-vm`(fanotify)에서 실측 [11/09]
 4. 화면 질문은 앱을 띄워 열어 준 뒤 한다
 
 ### 문서
