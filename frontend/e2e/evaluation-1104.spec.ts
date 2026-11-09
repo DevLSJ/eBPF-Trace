@@ -5,6 +5,7 @@ import { expect, noPageOverflow, SHOTS, test } from './fixtures';
 // 11/04 「평가」 화면 React 이식(목업 mock/shared/eval.js · mock/tests/eval-1104.cjs 확정본 + 11/04c).
 // 데이터 = GET /api/evaluation → {static, runtime, model, modelAll}(없는 쪽 null, 결과 없음 404).
 // 픽스처는 bench/reports 실측 파일 그대로(e2e/evaluation/*.json 사본, main 672a1e6 — static 은 benign-npm 포함 재생성본) — 화면에 실측 수치가 그대로 나와야 한다.
+// 11/09(요점 3줄 · 쉬운 이름 · 용어 툴팁 · 자세한 표 접기): 기대 문구를 쉬운 이름으로 바꿈, 접힌 규칙 적중 차트는 「자세히」를 눌러 본다. 새 동작은 evaluation-easy-1109.spec.ts
 
 type Json = Record<string, unknown>;
 const load = (f: string) => JSON.parse(readFileSync(new URL(`./evaluation/${f}.json`, import.meta.url), 'utf8')) as Json;
@@ -67,9 +68,11 @@ test.describe('평가 화면(11/04)', () => {
     await page.goto('/evaluation');
     await ready(page);
     await expect(page.locator('[data-part="sample-badge"]')).toHaveCount(0);
-    await expect(page.locator('[data-part="conclusion"]')).toHaveText(
-      '정적 검사: 실제 악성 594개 중 404개 탐지 · 정상 600개 중 9개 오탐 — 런타임: 공격 30회 중 30회 탐지 · 정상 설치 50건 중 0건 위반',
-    );
+    await expect(page.locator('[data-part="key-points"] [data-basis]')).toHaveText([
+      '실제 악성 패키지 594개 중 404개 탐지됨',
+      '정상 패키지 600개 중 9개 오판 · 정상 설치 50건 중 위반 0건',
+      '공격 30회 모두 탐지 · 20회 격리 · 격리까지 중간값 296.9 ms',
+    ]);
     // 출처 태그: 세트 5개 · 런타임 호스트 · 생성 시각 · 백엔드 커밋(앞 7자리)
     const tags = await page.locator('[data-part="tags"] [data-tag]').evaluateAll((els) => els.map((e) => [(e as HTMLElement).dataset.tag, e.textContent]));
     expect(tags.map((t) => t[0])).toEqual(['dataset-datadog-pypi', 'dataset-datadog-npm', 'dataset-benign-pypi', 'dataset-benign-pypi-sdist', 'dataset-benign-npm', 'host', 'generated', 'commit']);
@@ -80,12 +83,12 @@ test.describe('평가 화면(11/04)', () => {
     expect(tags[6][1]).toBe('생성2026-11-04 10:47'); // 가장 늦은 생성 시각(model-all 01:47Z) — 서울 시각
     expect(tags[7][1]).toBe('백엔드a5af1f9 · 845907c');
     expect(await kpis(page)).toEqual([
-      ['static-detection', '68.0%', '악성 404 / 594 · 주의 포함 79.0%'],
-      ['static-fpr', '1.5%', '인기 패키지 9 / 600 · 주의 포함 2.8%'],
-      ['runtime-detection', '100.0%', '공격 30 / 30회 · 3종'],
-      ['runtime-fpr', '0.0%', '위반 0 / 50건 · pip 35, npm 15'],
-      ['latency', '296.9 / 395.3 ms', '격리된 공격 20회 기준 · 백엔드 수신→격리'],
-      ['model-f1', '0.87', 'HistGradientBoosting · 운영 미적용'],
+      ['static-detection', '68.0%', '악성 594개 중 404개 · 재현율'],
+      ['static-fpr', '1.5%', '정상 600개 중 9개 · 오탐률'],
+      ['runtime-detection', '100.0%', '공격 30회 중 30회 · 3종'],
+      ['runtime-fpr', '0.0%', '정상 설치 50건 중 0건 · 오탐률'],
+      ['latency', '296.9 ms', '중간값 · 95% 이내 395.3 ms'],
+      ['model-f1', '0.87', 'HistGradientBoosting · 운영 미적용 · F1'],
     ]);
     // 숫자는 기본 글자색 — 빨강은 위험에만
     const colors = await page.locator('[data-part="kpis"] [data-value]').evaluateAll((els) => [...new Set(els.map((e) => getComputedStyle(e).color))]);
@@ -107,6 +110,7 @@ test.describe('평가 화면(11/04)', () => {
     await evalApi(page, ok());
     await page.goto('/evaluation');
     await ready(page);
+    await page.locator('[data-part="rules"] [data-action="toggle-detail"]').click(); // 11/09: 규칙 적중 차트는 기본 접힘
     for (const c of ['verdict-dist', 'rule-hits', 'scenario-rate', 'latency', 'kill-stages']) await expect(page.locator(`[data-chart="${c}"] svg`), c).toBeVisible();
     expect(await rows(page, 'verdict-dist')).toEqual(['datadog-pypi', 'datadog-npm', 'benign-pypi', 'benign-pypi-sdist', 'benign-npm']);
     // 쌓은 막대 조각 = 판정 비율(악성 → 주의 → 취약 → 정상 → 오류 순서, 0 인 조각은 없음)
@@ -117,7 +121,7 @@ test.describe('평가 화면(11/04)', () => {
     // 지연 범위: 격리한 시나리오만(연쇄는 dryRun — 빠짐 안내)
     const lat = await page.locator('[data-chart="latency"] g[data-row]').evaluateAll((gs) => gs.map((g) => [(g as SVGGElement).dataset.row, (g as SVGGElement).dataset.p50, (g as SVGGElement).dataset.p95]));
     expect(lat).toEqual([['sandbox-typosquat', '293.7', '332.4'], ['sandbox-dns-exfil', '308.8', '484.6']]);
-    await expect(page.locator('[data-part="latency"] [data-part="latency-skipped"]')).toHaveText('격리하지 않아 빠짐: 런타임 — 연쇄(다운로드 → 외부 연결 → 자격 증명 파일) (dryRun)');
+    await expect(page.locator('[data-part="latency"] [data-part="latency-skipped"]')).toHaveText('격리하지 않아 빠짐: 런타임 — 연쇄(다운로드 → 외부 연결 → 자격 증명 파일) (시험 운영)');
     // 규칙 적중 상위 10: 합 → 악성 적중 → 이름 순서
     const ruleRows = await rows(page, 'rule-hits');
     expect(ruleRows).toHaveLength(10);
@@ -135,7 +139,7 @@ test.describe('평가 화면(11/04)', () => {
     await page.goto('/evaluation');
     await ready(page);
     const C = '[data-chart="kill-stages"]';
-    await expect(page.locator('[data-part="stages-title"]')).toHaveText('단계별 시간 (p50)');
+    await expect(page.locator('[data-part="stages-title"]')).toHaveText('단계별 시간 (중간값)');
     const st = await page.locator(`${C} g[data-row]`).evaluateAll((gs) =>
       gs.map((g) => [(g as SVGGElement).dataset.row, [...g.querySelectorAll('rect[data-key]')].map((r) => [(r as SVGRectElement).dataset.key, Number((r as SVGRectElement).dataset.v)]), g.querySelector('[data-part="row-value"]')!.textContent]),
     );
@@ -145,7 +149,7 @@ test.describe('평가 화면(11/04)', () => {
       ['sandbox-dns-exfil', [['match', 0.1], ['evidence', 138.3], ['killApi', 185.6]], '합계 324 ms'],
     ]);
     await expect(page.locator(`${C} g[data-row="all"] [data-part="row-label"]`)).toHaveText('격리된 공격 전체');
-    await expect(page.locator(`${C} [data-part="legend"] > span`)).toHaveText(['판정', '증거 수집', 'kill 호출']);
+    await expect(page.locator(`${C} [data-part="legend"] > span`)).toHaveText(['규칙 판정', '증거 수집', '격리 명령']);
     await expect(page.locator('[data-part="stages-caption"]')).toHaveText('증거를 먼저 모으고(≤0.7초) 격리합니다');
     // 「판정」 조각은 최소 폭 없음 — 0.1ms 는 1px 보다 좁다
     const matchW = await page.locator(`${C} g[data-row="all"] rect[data-key="match"]`).evaluate((e) => (e as SVGRectElement).width.baseVal.value);
@@ -164,7 +168,7 @@ test.describe('평가 화면(11/04)', () => {
     expect(fills).not.toContain(danger);
     // 툴팁: 단계마다 p50 · p95 + 격리 n회
     await page.locator(`${C} g[data-row="all"] rect[data-hit]`).hover();
-    await expect(page.locator(`${C} [data-part="chart-tip"] > div`)).toHaveText(['격리된 공격 전체', '판정 p50 0.1 ms · p95 0.1 ms', '증거 수집 p50 132 ms · p95 162 ms', 'kill 호출 p50 182 ms · p95 234 ms', '격리 20회 기준']);
+    await expect(page.locator(`${C} [data-part="chart-tip"] > div`)).toHaveText(['격리된 공격 전체', '규칙 판정 중간값 0.1 ms · 95% 이내 0.1 ms', '증거 수집 중간값 132 ms · 95% 이내 162 ms', '격리 명령 중간값 182 ms · 95% 이내 234 ms', '격리 20회 기준']);
     // 두 그림 x축은 따로(범위 그림 max 484.6 → 600, 단계 합 max 324 → 400)
     const ticks = (c: string) => page.locator(`[data-chart="${c}"] text[data-part="tick"]`).allTextContents();
     expect(await ticks('latency')).toEqual(['0', '200', '400', '600']);
@@ -177,7 +181,7 @@ test.describe('평가 화면(11/04)', () => {
     await page.goto('/evaluation');
     await ready(page);
     const M = '[data-part="model"]';
-    await expect(page.locator(`${M} [data-table="models"] thead th`)).toHaveText(['후보', '보정 F1', '시험 F1', '정밀도', '재현율', '오탐률']);
+    await expect(page.locator(`${M} [data-table="models"] thead th`)).toHaveText(['후보', '종합 점수(선택용)', '종합 점수(시험)', '적중률', '탐지율', '오판율']);
     const trs = await page.locator(`${M} [data-table="models"] tbody tr`).evaluateAll((els) =>
       els.map((e) => [(e as HTMLElement).dataset.model, e.getAttribute('aria-current'), [...e.querySelectorAll('td')].map((td) => td.textContent)]),
     );
@@ -185,7 +189,7 @@ test.describe('평가 화면(11/04)', () => {
       ['rule-malicious', null, ['규칙 판정 (악성)', '0.75', '0.90', '98.0%', '83.0%', '0.8%']],
       ['rule-suspicious', null, ['규칙 판정 (악성+주의)', '0.80', '0.94', '98.2%', '89.8%', '0.8%']],
       ['logreg', null, ['로지스틱 회귀', '0.88', '0.85', '77.8%', '94.9%', '13.3%']],
-      ['hgb', 'true', ['HistGradientBoosting보정 기준 선택', '0.89', '0.87', '80.9%', '93.2%', '10.8%']],
+      ['hgb', 'true', ['HistGradientBoosting선택한 모델', '0.89', '0.87', '80.9%', '93.2%', '10.8%']],
     ]);
     await expect(page.locator(`${M} [data-part="pick-badge"]`)).toHaveCount(1);
     await expect(page.locator(`${M} [data-part="rule-wins"]`)).toHaveText('시험에서는 규칙 판정이 우세 — 운영은 규칙');
@@ -220,17 +224,17 @@ test.describe('평가 화면(11/04)', () => {
       ['rule-malicious', ['규칙 판정 (악성)', '0.85', '0.77', '98.7%', '62.8%', '0.6%']],
       ['rule-suspicious', ['규칙 판정 (악성+주의)', '0.90', '0.86', '96.9%', '76.9%', '1.7%']],
       ['logreg', ['로지스틱 회귀', '0.92', '0.88', '93.5%', '82.6%', '3.9%']],
-      ['hgb', ['HistGradientBoosting보정 기준 선택', '0.94', '0.89', '96.2%', '82.6%', '2.2%']],
+      ['hgb', ['HistGradientBoosting선택한 모델', '0.94', '0.89', '96.2%', '82.6%', '2.2%']],
     ]);
     await expect(page.locator(`${M} [data-part="rule-wins"]`)).toHaveCount(0);
     await expect(page.locator(`${M} [data-part="protocol"]`)).toContainText('packageGroup 그룹 분할 60/20/20 (PyPI + npm, 생태계 · 라벨 층화)');
     await expect(page.locator(`${M} [data-part="protocol"]`)).toContainText('시험 악성 121 · 정상 180');
     // 생태계별 시험 표(byEcosystem)
     const eco = page.locator(`${M} [data-table="models-by-ecosystem"]`);
-    await expect(eco.locator('thead th')).toHaveText(['생태계별 시험', 'npm F1 · 오탐률', 'pypi F1 · 오탐률']);
+    await expect(eco.locator('thead th')).toHaveText(['생태계별 시험', 'npm 종합 점수 · 오판율', 'pypi 종합 점수 · 오판율']);
     await expect(eco.locator('tr[data-model="hgb"] td')).toHaveText(['HistGradientBoosting', '0.89', '6.7%', '0.88', '0.0%']);
     // 지표 칸은 PyPI 모델 그대로
-    expect((await kpis(page))[5]).toEqual(['model-f1', '0.87', 'HistGradientBoosting · 운영 미적용']);
+    expect((await kpis(page))[5]).toEqual(['model-f1', '0.87', 'HistGradientBoosting · 운영 미적용 · F1']);
     // 한계: 전체 범위 모델만의 한계는 「모델(전체)」 태그로 덧붙는다
     const lim = await page.locator('[data-part="limits"] li').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.src));
     expect(lim.filter((x) => x === 'modelAll')).toHaveLength(2);
@@ -287,7 +291,7 @@ test.describe('평가 화면(11/04)', () => {
     await expect(page.locator('[data-part="model"] [data-part="none"]')).toHaveText('모델 결과 없음');
     const k = await kpis(page);
     expect(k.map((x) => x[1])).toEqual(['68.0%', '1.5%', '—', '—', '—', '—']);
-    await expect(page.locator('[data-part="conclusion"]')).toHaveText('정적 검사: 실제 악성 594개 중 404개 탐지 · 정상 600개 중 9개 오탐');
+    await expect(page.locator('[data-part="key-points"] [data-basis]')).toHaveText(['실제 악성 패키지 594개 중 404개 탐지됨', '정상 패키지 600개 중 9개 오판', '런타임 결과 없음']);
     await expect(page.locator('[data-part="limits"] li')).toHaveCount((REAL.static.limits as string[]).length);
 
     // 런타임만 + 옛 파일(killLatencyMs · killStagesMs 없음)
@@ -300,7 +304,7 @@ test.describe('평가 화면(11/04)', () => {
     await ready(page);
     for (const p of ['dist', 'rules', 'confusion']) await expect(page.locator(`[data-part="${p}"] [data-part="none"]`), p).toHaveText('정적 결과 없음');
     const k2 = await kpis(page);
-    expect(k2[4]).toEqual(['latency', '308.8 / 484.6 ms', '공격 시나리오 중 가장 느린 값']);
+    expect(k2[4]).toEqual(['latency', '308.8 ms', '중간값 · 95% 이내 484.6 ms · 가장 느린 시나리오 기준']);
     await expect(page.locator('[data-chart="latency"]')).toBeVisible();
     await expect(page.locator('[data-chart="kill-stages"]')).toHaveCount(0);
     await expect(page.locator('[data-part="stages-caption"]')).toHaveCount(0);
