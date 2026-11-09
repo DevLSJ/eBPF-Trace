@@ -5,6 +5,7 @@ import { expect, noPageOverflow, SHOTS, test } from './fixtures';
 // 11/09 저녁 사용자 결정 — 평가 화면 = 「위 큰 숫자 3칸 + 접고 펼치는 목록 8줄」(참고 그림의 가독성 원리, A안).
 //   목록 줄 = ▶ · 항목 이름 · 핵심 값 · 비율이면 얇은 막대 · 상태 칩(글자). 여러 줄 동시에 열림 · 머리 「모두 펼치기 · 모두 접기」 단추 하나 ·
 //   기본 모두 접힘(기억하지 않음). 요점 3줄 · 지표 6칸은 없애고 그 정보는 위 3칸과 줄 요약으로 옮겼다. 펼친 안쪽 = 예전 카드 내용 그대로.
+// 11/09 저녁 사용자 답 「정적 줄에 목표치」: ③ 판정 4칸 = 탐지율 80% 이상 · 오판율 2% 이하 둘 다 맞으면 통과, 하나라도 못 미치면 주의(①② 는 참고 그대로).
 // 데이터는 evaluation-1104 와 같은 실측 사본(e2e/evaluation/*.json). 숫자는 응답에서 계산 — 응답을 바꾸면 따라 바뀌어야 한다.
 
 type Json = Record<string, unknown>;
@@ -106,7 +107,7 @@ const REAL_TILES = [
 const REAL_SUMS = [
   ['dist', '정적 · 데이터별 판정', '1,494 / 1,500개 검사', '세트 5개 · 오류 1건 · 건너뜀 6건', '참고', 'ref', '0.996'],
   ['rules', '정적 · 규칙 적중', '1위 capability-process-spawn', '악성 350개 · 정상 179개에서 걸림 · 적중 규칙 50개', '참고', 'ref', null],
-  ['confusion', '정적 · 판정 4칸', '0.80 종합 점수', '적중률 97.8% · 탐지율 68.0%', '참고', 'ref', '0.8024'],
+  ['confusion', '정적 · 판정 4칸', '0.80 종합 점수', '적중률 97.8% · 탐지율 68.0%', '주의', 'warn', '0.8024'], // 탐지율 68.0% < 목표 80%
   ['scenarios', '런타임 · 공격 시나리오', '30 / 30회 탐지', '공격 3종 · 대조군 5회 중 탐지 0회', '통과', 'pass', '1'],
   ['latency', '런타임 · 격리까지 걸린 시간', '296.9 ms 중간값', '95% 이내 395.3 ms · 격리 20회 기준', '참고', 'ref', null],
   ['benign', '런타임 · 정상 설치 위반', '0 / 50건 위반', '오판율 0.0% · pip 35 · npm 15', '통과', 'pass', '0'],
@@ -145,12 +146,15 @@ test.describe('평가 접는 목록(11/09 저녁)', () => {
     // 칸 머리 (?) 세 개 — 용어 단추(툴팁), 설명 문장은 줄에 없다
     const q = page.locator('[data-part="eval-list-head"] [data-term]');
     await expect(q).toHaveCount(3);
+    // (?) 글자도 12px 이상(화면 글자 하한 — r4-tables G)
+    expect(await q.evaluateAll((els) => els.map((e) => parseFloat(getComputedStyle(e).fontSize)))).toEqual([12, 12, 12]);
     expect(await q.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))).toEqual(['항목 설명', '결과 설명', '상태 설명']);
     await q.nth(2).hover();
     const tip = page.locator('[role="tooltip"][data-part="term-tip"]:visible');
     await expect(tip).toHaveCount(1);
     await expect(tip).toContainText('통과');
     await expect(tip).toContainText('결과 없음');
+    await expect(tip).toContainText('탐지율 80% 이상 · 오판율 2% 이하');
     await q.nth(0).hover();
     await expect(tip).toContainText('정적');
     await expect(tip).toContainText('런타임');
@@ -174,11 +178,35 @@ test.describe('평가 접는 목록(11/09 저녁)', () => {
       ['runtime-detection', '런타임 공격 탐지율', '90.0%', '공격 30회 중 27회 · 격리 17회'],
     ]);
     const s = await sums(page);
-    expect(s[2].slice(2)).toEqual(['0.60 종합 점수', '적중률 93.8% · 탐지율 50.0%', '참고', 'ref', '0.6']);
+    expect(s[2].slice(2)).toEqual(['0.60 종합 점수', '적중률 93.8% · 탐지율 50.0%', '주의', 'warn', '0.6']); // 탐지율 50% · 오판율 2.5% 둘 다 못 미침
     expect(s[3].slice(2)).toEqual(['27 / 30회 탐지', '공격 3종 · 대조군 5회 중 탐지 1회', '주의', 'warn', '0.9']);
     expect(s[4].slice(2)).toEqual(['123.4 ms 중간값', '95% 이내 395.3 ms · 격리 20회 기준', '참고', 'ref', null]);
     expect(s[5].slice(2)).toEqual(['2 / 40건 위반', '오판율 5.0% · pip 35 · npm 15', '주의', 'warn', '0.05']);
     expect(s[6].slice(2)).toEqual(['0.94 규칙 · 0.95 ML 모델', '종합 점수(시험) · HistGradientBoosting · 운영 미적용', '참고', 'ref', null]);
+  });
+
+  test('2-1 ③ 판정 4칸 칩 = 정적 목표치(탐지율 80% 이상 · 오판율 2% 이하) — 경계 포함 · 하나라도 못 미치면 주의 · 칩 툴팁', async ({ page, backend }) => {
+    void backend;
+    const chip = page.locator('[data-item="confusion"] [data-action="toggle-row"] [data-chip]');
+    const at = async (detectionRate: number, falsePositiveRate: number) => {
+      const body = clone(REAL) as Any;
+      Object.assign(body.static.metrics, { detectionRate, falsePositiveRate });
+      await open(page, body);
+      return [await chip.textContent(), await chip.getAttribute('data-chip')];
+    };
+    expect(await at(0.8, 0.02)).toEqual(['통과', 'pass']); // 경계 = 목표 충족
+    expect(await at(0.93, 0.004)).toEqual(['통과', 'pass']);
+    expect(await at(0.7999, 0.01)).toEqual(['주의', 'warn']); // 탐지율만 못 미침
+    expect(await at(0.95, 0.0201)).toEqual(['주의', 'warn']); // 오판율만 못 미침
+    // 칩 툴팁 · 화면 낭독(줄 머리 설명에 목표 포함)
+    await expect(chip).toHaveAttribute('title', '목표: 탐지율 80% 이상 · 오판율 2% 이하');
+    const desc = await page.locator('[data-item="confusion"] [data-action="toggle-row"]').evaluate((b) =>
+      b.getAttribute('aria-describedby')!.split(' ').map((id) => document.getElementById(id)?.textContent ?? '').join(' '),
+    );
+    expect(desc).toContain('목표: 탐지율 80% 이상 · 오판율 2% 이하');
+    // ① ② 는 참고 그대로, 다른 줄에는 목표 툴팁 없음
+    for (const id of ['dist', 'rules']) await expect(page.locator(`[data-item="${id}"] [data-chip]`), id).toHaveText('참고');
+    await expect(page.locator('[data-chip][title]')).toHaveCount(1);
   });
 
   test('3 줄 하나씩: 누른 줄만 열림 · 두 줄 동시에 · 다시 누르면 닫힘 · 움직임 토큰 · 동작 줄이기면 즉시', async ({ page, backend }) => {

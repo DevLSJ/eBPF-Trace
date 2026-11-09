@@ -94,6 +94,8 @@ test.describe('11/06 상세 안 작은 표 = 참고 대시보드 표 값', () =>
     const body = { static: load('static'), runtime, model: load('model'), modelAll: load('model-all') };
     await page.route(/\/api\/evaluation$/, (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) }));
     await page.goto('/evaluation');
+    // 11/09 저녁: 평가는 접는 목록 — 「런타임 · 정상 설치 위반」 줄을 펼쳐야 표가 보인다
+    await page.locator('[data-item="benign"] [data-action="toggle-row"]').click();
     await expectRefTable(page.locator('table[data-table="benign-violations"]'), '정상 설치 위반');
   });
 });

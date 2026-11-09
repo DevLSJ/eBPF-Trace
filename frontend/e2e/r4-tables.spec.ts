@@ -511,23 +511,25 @@ test.describe('D 다른 표 — 변경 이력 · 설정 · 이벤트', () => {
 });
 
 // ── E 평가 ──
-test.describe('E 평가 — 머리 · 지표 6칸 고정, 몸통만 스크롤', () => {
+// 11/09 저녁: 머리(요점) · 지표 6칸 → 위 3칸, 몸통 = 접는 목록 한 장(eval-accordion-1109). 고정 · 스크롤 규칙은 그대로 — 목록을 모두 펼쳐 스크롤을 만든다
+test.describe('E 평가 — 위 3칸 고정, 몸통(목록)만 스크롤', () => {
   test.use({ viewport: { width: 1280, height: 720 } });
-  test('몸통(eval-body)만 data-fill 로 스크롤 · 스크롤해도 지표 제자리 · 길게 눌러 옮기기 그대로', async ({ page, backend }) => {
+  test('몸통(eval-body)만 data-fill 로 스크롤 · 스크롤해도 위 3칸 제자리 · 길게 눌러 옮기기 그대로', async ({ page, backend }) => {
     void backend;
     await evalApi(page);
     await page.goto('/evaluation');
     await expect(page.locator('[data-part="evaluation"][data-state="ready"]')).toBeVisible();
+    await page.locator('[data-action="toggle-all"]').click();
+    await page.waitForTimeout(300);
     const body = page.locator('[data-part="eval-body"]');
     const r = await page.evaluate(() => {
       const b = document.querySelector('[data-part="eval-body"]')!;
-      const k = document.querySelector('[data-part="kpis"]')!;
-      const head = document.querySelector('[data-part="eval-head"]')!;
+      const k = document.querySelector('[data-part="eval-top"]')!;
       return {
         fill: b.hasAttribute('data-fill'),
         scrolls: b.scrollHeight > b.clientHeight,
         kpiAbove: k.getBoundingClientRect().bottom <= b.getBoundingClientRect().top,
-        headOut: !b.contains(head) && !b.contains(k),
+        headOut: !b.contains(k),
       };
     });
     expect(r).toEqual({
@@ -536,12 +538,12 @@ test.describe('E 평가 — 머리 · 지표 6칸 고정, 몸통만 스크롤', 
       kpiAbove: true,
       headOut: true,
     });
-    const top0 = await page.locator('[data-part="kpis"]').evaluate((e) => e.getBoundingClientRect().top);
+    const top0 = await page.locator('[data-part="eval-top"]').evaluate((e) => e.getBoundingClientRect().top);
     await body.evaluate((e) => (e.scrollTop = 400));
     await page.waitForTimeout(100);
     expect(await body.evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
-    expect(await page.locator('[data-part="kpis"]').evaluate((e) => e.getBoundingClientRect().top)).toBeCloseTo(top0, 0);
-    expect(await page.locator('[data-part="kpis"] [data-sort-id]').count()).toBe(6);
+    expect(await page.locator('[data-part="eval-top"]').evaluate((e) => e.getBoundingClientRect().top)).toBeCloseTo(top0, 0);
+    expect(await page.locator('[data-part="eval-top"] [data-sort-id]').count()).toBe(3);
     const sa = await scrollAudit(page);
     expect(sa).toMatchObject({ doc: 0, main: 0, bad: [] });
     await page.screenshot({ path: `${SCRATCH}/r4-evaluation.png` });

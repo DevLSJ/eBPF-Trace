@@ -244,13 +244,14 @@ test.describe('C KPI 카드', () => {
     expect(await page.locator(`${STAGE} [data-kpi="collected"]`).evaluate((e) => getComputedStyle(e).animationName)).toBe('none');
   });
 
-  test('평가 지표 6칸 = KPI 카드 모양(띠 · 아이콘 칩 · 28/700)', async ({ page, backend }) => {
+  // 11/09 저녁: 평가 지표 6칸 → 위 3칸(나머지 3칸은 목록 줄 요약, eval-accordion-1109) — 모양 규칙은 그대로
+  test('평가 위 3칸 = KPI 카드 모양(띠 · 아이콘 칩 · 28/700)', async ({ page, backend }) => {
     void backend;
     await evalApi(page);
     await page.goto('/evaluation');
     await expect(page.locator('[data-part="evaluation"][data-state="ready"]')).toBeVisible();
-    const cards = page.locator('[data-part="kpis"] [data-kpi]');
-    await expect(cards).toHaveCount(6);
+    const cards = page.locator('[data-part="eval-top"] [data-kpi]');
+    await expect(cards).toHaveCount(3);
     const m = await cards.evaluateAll((els) => els.map((e) => [e.classList.contains('kpi-card'), getComputedStyle(e).borderLeftWidth, !!e.querySelector('.kpi-ico[data-icon]'), getComputedStyle(e.querySelector('.kpi-val')!).fontSize, getComputedStyle(e.querySelector('.kpi-val')!).fontWeight]));
     for (const x of m) expect(x).toEqual([true, '4px', true, '28px', '700']);
   });
@@ -722,25 +723,28 @@ test.describe('G 길게 눌러 옮기기', () => {
     await expect(groupLinks(page, '설정 · 기록')).toHaveText(['정책', '차단 목록', '변경 이력', '감사 로그', '설정']); // 11/09 정책 하위 메뉴
   });
 
-  test('평가 지표 6칸: Alt+←/→ · 길게 눌러 끌기(그리드) · 저장 evaluationKpi · 칸은 tabindex 0', async ({ page, backend }) => {
+  // 11/09 저녁: 지표 6칸 → 위 3칸(같은 저장 키 evaluationKpi) — 옮기기 동작은 그대로
+  test('평가 위 3칸: Alt+←/→ · 길게 눌러 끌기(그리드) · 저장 evaluationKpi · 칸은 tabindex 0', async ({ page, backend }) => {
     void backend;
     await evalApi(page);
     await page.goto('/evaluation');
     await expect(page.locator('[data-part="evaluation"][data-state="ready"]')).toBeVisible();
-    const ids = () => page.locator('[data-part="kpis"] [data-kpi]').evaluateAll((e) => e.map((x) => (x as HTMLElement).dataset.kpi));
-    const DEF = ['static-detection', 'static-fpr', 'runtime-detection', 'runtime-fpr', 'latency', 'model-f1'];
+    const ids = () => page.locator('[data-part="eval-top"] [data-kpi]').evaluateAll((e) => e.map((x) => (x as HTMLElement).dataset.kpi));
+    const DEF = ['static-detection', 'static-fpr', 'runtime-detection'];
     expect(await ids()).toEqual(DEF);
     await expect(page.locator('[data-kpi="static-detection"]')).toHaveAttribute('tabindex', '0');
     await page.locator('[data-kpi="static-detection"]').focus();
     await page.keyboard.press('Alt+ArrowRight');
     expect(await ids()).toEqual(['static-fpr', 'static-detection', ...DEF.slice(2)]);
     await expect(page.locator('#sg-sort-live')).toHaveText('정적 악성 탐지율을 2번째로 옮김');
-    await longPressDrag(page, '[data-kpi="model-f1"]', '[data-kpi="static-fpr"]', { below: false, xFrac: 0.2 }); // 같은 줄 왼쪽 절반 = 그 칸 앞
-    await expect.poll(ids).toEqual(['model-f1', 'static-fpr', 'static-detection', 'runtime-detection', 'runtime-fpr', 'latency']);
-    expect(JSON.parse((await layout(page))!).evaluationKpi).toEqual(['model-f1', 'static-fpr', 'static-detection', 'runtime-detection', 'runtime-fpr', 'latency']);
+    // Alt+→ 뒤 미끄러짐(FLIP)이 끝난 자리에서 잰다 — 3칸은 폭이 넓어 움직이는 중에 재면 왼쪽 절반을 벗어난다
+    await expect.poll(() => page.locator('[data-part="eval-top"] [data-kpi]').evaluateAll((els) => els.every((e) => getComputedStyle(e).transform === 'none'))).toBe(true);
+    await longPressDrag(page, '[data-kpi="runtime-detection"]', '[data-kpi="static-fpr"]', { below: false, xFrac: 0.2 }); // 같은 줄 왼쪽 절반 = 그 칸 앞
+    await expect.poll(ids).toEqual(['runtime-detection', 'static-fpr', 'static-detection']);
+    expect(JSON.parse((await layout(page))!).evaluationKpi).toEqual(['runtime-detection', 'static-fpr', 'static-detection']);
     await page.reload();
     await expect(page.locator('[data-part="evaluation"][data-state="ready"]')).toBeVisible();
-    expect((await ids())[0]).toBe('model-f1');
+    expect((await ids())[0]).toBe('runtime-detection');
   });
 
   test('설정 머리 오른쪽 「화면 배치 기본 순서로」: 즉시 · 토스트 · 사이드바 바로 기본 순서 · 조회자도', async ({ page, backend }) => {
