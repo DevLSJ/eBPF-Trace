@@ -241,7 +241,7 @@ func (s *Service) run(name string) {
 	case err != nil:
 		t.State, t.Error = "failed", err.Error()
 	case n == 0:
-		t.State, t.Error = "failed", "시험 컨테이너의 이벤트가 들어오지 않았습니다 — 가젯 · 컨테이너 발견 방식 · 감시 범위를 확인하세요"
+		t.State, t.Error = "failed", "시험 컨테이너의 이벤트가 들어오지 않았습니다. 가젯 · 컨테이너 발견 방식 · 감시 범위를 확인하세요"
 	default:
 		t.State = "passed"
 	}
