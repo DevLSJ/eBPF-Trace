@@ -136,7 +136,7 @@ func (r Rule) validateSequence() []error {
 	}
 	// V4: 조건은 단계에만
 	if r.hasConditions() {
-		errs = append(errs, fmt.Errorf("sequence 규칙 최상위에는 조건을 쓸 수 없음 — 조건은 steps 에"))
+		errs = append(errs, fmt.Errorf("sequence 규칙 최상위에는 조건을 쓸 수 없음(조건은 steps 에)"))
 	}
 	for i, s := range r.Steps {
 		// V6: 단계 kind 는 이벤트 kind 4개만(중첩 sequence 금지)
@@ -146,7 +146,7 @@ func (r Rule) validateSequence() []error {
 		}
 		// V7: 단계에는 kind 와 조건만
 		if s.ID != "" || s.Description != "" || s.Action != "" || s.DryRun || s.Disabled || len(s.Containers) > 0 || len(s.Steps) > 0 || s.WindowSeconds != 0 {
-			errs = append(errs, fmt.Errorf("steps[%d]: 단계에는 kind 와 조건만 — id · description · action · dryRun · disabled · containers · steps · windowSeconds 는 쓸 수 없음", i))
+			errs = append(errs, fmt.Errorf("steps[%d]: 단계에는 kind 와 조건만 쓸 수 있음(id · description · action · dryRun · disabled · containers · steps · windowSeconds 는 쓸 수 없음)", i))
 		}
 		// V8: 조건은 단일 규칙과 같은 검사(형식 · 「조건이 없음」)
 		for _, err := range s.validateConditions() {
@@ -284,7 +284,7 @@ func BlocklistHostsRule(hosts []string) (Rule, bool) {
 	}
 	return Rule{
 		ID:          SystemBlocklistHosts,
-		Description: "차단 목록에서 관리 — 악성 판정으로 차단한 도메인",
+		Description: "악성 판정으로 차단한 도메인(차단 목록에서 관리)",
 		Kind:        model.KindConnect,
 		Action:      model.ActionKill,
 		DenyHosts:   append([]string(nil), hosts...),

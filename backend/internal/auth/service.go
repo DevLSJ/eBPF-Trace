@@ -340,7 +340,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 			return LoginResult{}, err
 		}
 		if locked {
-			s.audit(ctx, u.Username, "login_lock", u.Username, in.IP, false, "5회 연속 실패 — 5분 잠금")
+			s.audit(ctx, u.Username, "login_lock", u.Username, in.IP, false, "5회 연속 실패로 5분 잠금")
 		}
 		return bad("비밀번호 틀림")
 	}
@@ -456,7 +456,7 @@ func (s *Service) ChangePassword(ctx context.Context, token, current, next, ip s
 		}
 		if locked { // 세션을 쥔 채 현재 비밀번호를 추측하는 것도 잠금에 넣는다
 			_ = s.o.Store.DeleteUserSessions(ctx, u.ID)
-			s.audit(ctx, u.Username, "login_lock", u.Username, ip, false, "비밀번호 변경 5회 실패 — 5분 잠금")
+			s.audit(ctx, u.Username, "login_lock", u.Username, ip, false, "비밀번호 변경 5회 실패로 5분 잠금")
 			return "", fail(http.StatusUnauthorized, msgPWLockedOut)
 		}
 		return sess.State, &Error{Status: http.StatusBadRequest, Msg: msgBadCurrentPW, State: sess.State}
@@ -719,7 +719,7 @@ func (s *Service) otpFail(ctx context.Context, sess *model.Session, u model.User
 	sess.OTPFailures++
 	if locked || sess.OTPFailures >= maxOTPFailures {
 		if locked {
-			s.audit(ctx, u.Username, "login_lock", u.Username, ip, false, "OTP 5회 실패 — 5분 잠금")
+			s.audit(ctx, u.Username, "login_lock", u.Username, ip, false, "OTP 5회 실패로 5분 잠금")
 		}
 		_ = s.o.Store.DeleteSession(ctx, sess.Hash)
 		return fail(http.StatusUnauthorized, msgOTPRestart)
