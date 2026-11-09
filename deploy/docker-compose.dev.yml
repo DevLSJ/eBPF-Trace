@@ -1,7 +1,9 @@
-# 로컬 개발용 Postgres·Redis 만 (백엔드는 go run, 프론트는 vite 로 직접 띄운다).
-#   docker compose -f deploy/docker-compose.dev.yml up -d
-#   DATABASE_URL=postgres://supplyguard:supplyguard-dev@127.0.0.1:25432/supplyguard?sslmode=disable
-#   REDIS_URL=redis://127.0.0.1:26379
+# 로컬 개발(11/09 사용자 결정 — make dev): Postgres · Redis + 실제 가젯 백엔드(Docker Desktop 안, 127.0.0.1:8000). 화면은 Vite :5173 이 프록시한다.
+#   make dev            # 이 파일로 DB · 백엔드를 올리고(--build --wait) Vite :5173 을 띄운다. Ctrl-C 면 백엔드만 멈춘다(DB 는 남김)
+#   make dev-mock       # 예전처럼 mock 이벤트 · go run(Docker 없이 빠른 화면 개발)
+#   DB 를 직접 볼 때: postgres://supplyguard:supplyguard-dev@127.0.0.1:25433/supplyguard?sslmode=disable · redis://127.0.0.1:26380
+# 옛 캡스톤/eBPF-project 의 개발 DB 가 25432 · 26379 를 써서 25433 · 26380 으로 옮겼다(11/09, DEV_PG_PORT · DEV_REDIS_PORT 로 바꿈).
+# 비밀값(ANTHROPIC_API_KEY · AUTH_SECRET_KEY · ADMIN_TOKEN · SANDBOX_TOKEN)은 저장소 루트 .env.local(gitignore · 600) — make dev 가 없는 값을 만든다.
 name: supplyguard-dev
 services:
   postgres:
@@ -10,7 +12,7 @@ services:
       POSTGRES_USER: supplyguard
       POSTGRES_PASSWORD: ${DEV_POSTGRES_PASSWORD:-supplyguard-dev}
       POSTGRES_DB: supplyguard
-    ports: ["127.0.0.1:25432:5432"]
+    ports: ["127.0.0.1:${DEV_PG_PORT:-25433}:5432"]
     volumes: ["postgres_dev_data:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U supplyguard -d supplyguard"]
@@ -20,12 +22,76 @@ services:
     restart: unless-stopped
   redis:
     image: redis:7-alpine
-    ports: ["127.0.0.1:26379:6379"]
+    ports: ["127.0.0.1:${DEV_REDIS_PORT:-26380}:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
     restart: unless-stopped
+
+  # 실제 가젯 백엔드 — 운영 compose 의 backend 와 같은 권한 · 마운트. Docker Desktop 은 fanotify 가 없어 발견은 docker-events
+  # (컨테이너 시작 직후 약 0.1초 안의 동작은 놓칠 수 있음). 감시는 전체, 격리는 sg-install-* · 시연 · supplyguard.enforce 라벨만(11/06)
+  backend:
+    image: local/supplyguard-backend:dev-local
+    build:
+      context: ../backend
+      dockerfile: ../deploy/Dockerfile.backend
+      additional_contexts:
+        eval-reports: ../bench/reports
+        sg-tools: ../tools
+    env_file:
+      - path: ../.env.local
+        required: true
+    environment:
+      BACKEND_PORT: "8000"
+      EVENT_SOURCE: gadget
+      RESOLVE_DNS: "true"
+      CONTAINER_DISCOVERY: auto
+      WATCH_CONTAINERS: ""
+      IGNORE_CONTAINERS: supplyguard-*
+      ENFORCE_KILL: "true"
+      DEMO_ENABLED: "true"
+      # 개발 전용 로그인 admin/admin(비밀번호 변경 단계 없음) — 가젯 소스에서는 LOCAL_DEV=true 가 함께 있어야 시작한다(Tier 1, 11/09)
+      AUTH_DEV_MODE: "true"
+      LOCAL_DEV: "true"
+      ADMIN_USER: admin
+      ADMIN_INITIAL_PASSWORD: admin
+      AUTH_OTP_REQUIRED: "true"
+      AUTH_COOKIE_SECURE: "false"
+      ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      PUBLIC_URL: http://localhost:5173
+      DATABASE_URL: postgres://supplyguard:${DEV_POSTGRES_PASSWORD:-supplyguard-dev}@postgres:5432/supplyguard?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      POLICY_FILE: /policies/default.yaml
+      HOST_ROOT: /host
+      DOCKER_HOST: unix:///var/run/docker.sock
+      SCAN_VOLUME: supplyguard-dev_scan_work
+      SG_INSTALL_API: http://127.0.0.1:8000
+    privileged: true
+    pid: host
+    ports: ["127.0.0.1:8000:8000"]
+    volumes:
+      - /:/host:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys/kernel/debug:/sys/kernel/debug
+      - /sys/fs/bpf:/sys/fs/bpf
+      - ig_store:/var/lib/ig
+      - scan_work:/scan
+    healthcheck:
+      test: ["CMD", "/healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+
 volumes:
   postgres_dev_data:
+  ig_store:
+  scan_work:

@@ -1,8 +1,8 @@
-# SupplyGuard 로컬 개발 진입점. 커널이 없는 macOS/Windows 에서는 mock 이벤트 소스로 돈다.
+# SupplyGuard 로컬 개발 진입점. make dev(11/09) = Docker Desktop 안 실제 가젯 백엔드 + 개발 DB + Vite :5173, make dev-mock = mock 이벤트 · go run.
 SHELL := /bin/bash
 COMPOSE_MOCK := docker compose -p supplyguard-mock --project-directory . -f deploy/docker-compose.yml -f deploy/docker-compose.mock.yml
 MOCK_ORIGINS := http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:8766,http://localhost:8766,null
-# 로컬 개발 로그인(11/04): admin / admin 으로 바로 대시보드 — OTP 끔 · AUTH_DEV_MODE 로 비밀번호 변경 · 라이선스 단계 건너뜀.
+# dev-mock 로그인(11/04): admin / admin 으로 바로 대시보드 — OTP 끔 · AUTH_DEV_MODE 로 비밀번호 변경 · 라이선스 단계 건너뜀.
 # AUTH_DEV_MODE 는 EVENT_SOURCE=mock 에서만 켜진다(가젯이면 백엔드가 시작 거부). 메모리 저장소라 재시작마다 이 비밀번호로 다시 시작한다.
 # 개발 전용 고정값 — 운영 .env 에 쓰지 않는다 (.env.example 참고)
 DEV_ADMIN_PW := admin
@@ -17,7 +17,12 @@ DEV_EVAL := EVAL_REPORTS_DIR=$(CURDIR)/bench/reports SG_INSTALL_FILE=$(CURDIR)/t
 # 저장소 안 .scan-work 를 작업 폴더로 쓰고 검사기에는 같은 폴더를 bind(SCAN_VOLUME 이 절대 경로면 bind). Docker Desktop 이 켜져 있어야 한다
 DEV_SCAN := SCAN_DIR=$(CURDIR)/.scan-work SCAN_VOLUME=$(CURDIR)/.scan-work
 
-.PHONY: setup dev backend frontend mock stack-up stack-down test build sandbox-up sandbox-down vm-open vm-close
+.PHONY: setup dev dev-mock dev-down dev-logs backend frontend mock stack-up stack-down test build sandbox-up sandbox-down vm-open vm-close
+
+# make dev(11/09 사용자 결정): 실제 가젯 백엔드 · 개발 DB 는 deploy/docker-compose.dev.yml. 로그인 admin/admin · OTP 켬 · 라이선스는 DB 에 한 번 등록
+COMPOSE_DEV := docker compose -f deploy/docker-compose.dev.yml
+# .env.local 에 없으면 만드는 비밀값 — AUTH_SECRET_KEY 가 바뀌면 DB 의 OTP 등록을 못 읽으므로 한 번 만들어 계속 쓴다(값은 출력하지 않는다)
+DEV_SECRETS := AUTH_SECRET_KEY ADMIN_TOKEN SANDBOX_TOKEN
 
 # sg-vm(이 Mac 의 UTM VM) 화면을 http://localhost:$(VM_PORT) 로 — SSH 터널(별칭 sg-vm)이 VM 의 nginx 80 으로 넘긴다(11/05).
 # nginx 가 Host 를 포트 없이 넘겨 로그인 Origin 검사는 같은 호스트로 통과한다 — ALLOWED_ORIGINS 를 바꾸지 않는다. UTM VM 이 켜져 있어야 한다
@@ -34,13 +39,30 @@ setup:
 	cd frontend && npm ci --no-audit --no-fund && npx playwright install chromium
 	@echo "준비 끝 — make dev(http://127.0.0.1:5173, admin/admin) · make test · cd frontend && npx playwright test"
 
-## dev: 백엔드(mock, :8000) + Vite(:5173) 를 같이 띄운다. Ctrl-C 로 둘 다 종료. 프론트 의존성이 없으면 먼저 npm ci(새 clone)
+## dev: 실제 가젯 백엔드(Docker Desktop, 127.0.0.1:8000) + 개발 DB(25433 · 26380) + Vite(:5173). Ctrl-C 면 Vite 와 백엔드를 멈춘다(DB 는 남김)
+## 로그인 admin/admin · 첫 로그인에 OTP 등록(QR). 백엔드 코드를 고쳤으면 다시 make dev(이미지를 다시 만든다)
 dev:
+	@test -d frontend/node_modules || { echo "frontend 의존성이 없어 먼저 설치합니다(npm ci) — 처음 한 번은 make setup 권장"; cd frontend && npm ci --no-audit --no-fund; }
+	@docker info >/dev/null 2>&1 || { echo "Docker Desktop 이 꺼져 있습니다 — 켜고 다시 make dev (Docker 없이 화면만: make dev-mock)"; exit 1; }
+	@touch .env.local && chmod 600 .env.local; for k in $(DEV_SECRETS); do grep -q "^$$k=" .env.local || echo "$$k=$$(openssl rand -hex 32)" >> .env.local; done
+	$(COMPOSE_DEV) up -d --build --wait
+	@echo "백엔드 준비 — http://localhost:5173 (admin/admin, 첫 로그인에 OTP 등록) · 로그: make dev-logs"
+	@trap '$(COMPOSE_DEV) stop backend >/dev/null 2>&1' EXIT INT TERM; cd frontend && npm run dev
+
+## dev-mock: 예전 make dev — 백엔드(mock 이벤트, go run, :8000) + Vite(:5173). Docker 없이 빠른 화면 개발, 메모리 저장 · OTP 끔
+dev-mock:
 	@test -d frontend/node_modules || { echo "frontend 의존성이 없어 먼저 설치합니다(npm ci) — 처음 한 번은 make setup 권장"; cd frontend && npm ci --no-audit --no-fund; }
 	@trap 'kill 0' EXIT INT TERM; $(LOCAL_ENV) \
 	  (cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true DEMO_ENABLED=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) $(DEV_EVAL) $(DEV_SCAN) go run ./cmd/server) & \
 	  (cd frontend && npm run dev) & \
 	  wait
+
+## dev-down: make dev 의 백엔드 · DB 를 내린다(DB 볼륨은 남김 — 지우려면 docker compose -f deploy/docker-compose.dev.yml down -v)
+dev-down:
+	$(COMPOSE_DEV) down
+
+dev-logs:
+	$(COMPOSE_DEV) logs -f --tail=100 backend
 
 ## backend: mock 소스 백엔드만 (목업 '실제 백엔드' 모드가 붙을 수 있게 CORS 출처 포함)
 backend:
