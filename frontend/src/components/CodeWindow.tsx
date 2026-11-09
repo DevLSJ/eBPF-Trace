@@ -8,7 +8,7 @@ import type { Dest } from '../lib/nav';
 //   body    'pre'(기본 — children 을 <pre class="cw-body"> 로) · 'div' · 'raw'(children 이 스스로 className={CW_BODY} 를 단 요소 — textarea · 줄 번호 코드)
 //   wrap    로그 · 원문만 true(pre-wrap). 코드 · YAML · JSON 은 가로 스크롤
 //   fill    남은 높이 채움(정책 YAML)
-//   to · onClick  눌러서 여는 카드일 때만 — hover 떠오름(translateY -5px) + pointer. 읽기 전용은 그림자만 한 단계(--sh-1 → --sh-2)
+//   to · onClick  눌러서 여는 카드일 때만 — hover 떠오름(translateY -5px) + pointer. 읽기 전용은 선만 한 단계(11/09 밤 평평 — 그림자 없음)
 // 점 색은 창 장식(위험 의미 아님) — 「빨강은 위험에만」의 예외, 채도를 낮춘 --win-* 토큰
 export const CW_BODY = 'cw-body';
 
