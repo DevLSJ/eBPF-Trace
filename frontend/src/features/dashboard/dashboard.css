@@ -9,8 +9,6 @@
 /* 11/09 G31: 머리 줄 = 신호등 · 감시 중 · 최종 갱신 · 새로고침 · 기간. 좁으면(≤1120: 1366 · 1280 창) 한 줄을 지키려고
    「eBPF 감시 중 ·」 글자는 화면 읽기에만 남기고(신호등 「가젯 · 커널 감시 중」과 같은 뜻) 알약 · 기간 칩 좌우 여백을 8 로 */
 .sg-dash-top { container: dash-top / inline-size; }
-.sg-dash-top > .sg-dash-updated { white-space: nowrap; }
-.sg-dash-top > .sg-dash-refresh { margin-left: -6px; }
 @container dash-top (max-width: 1120px) {
   .sg-dash-live-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .sg-pills > a, .sg-range-chips > button { padding-inline: 8px; }
