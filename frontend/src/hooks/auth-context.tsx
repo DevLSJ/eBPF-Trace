@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setMe({ state: 'active', user: { id: '', username: '(인증 없음)', displayName: '인증 없는 백엔드', role: 'admin' }, mustChangePassword: false, license: null, otpRequired: false });
           setGate({ kind: 'active' });
         } else if (e instanceof ApiError && e.status === 401) toStep(e.state);
-        else setGate({ kind: 'step', step: 'login', notice: `백엔드에 연결할 수 없습니다 — ${e instanceof Error ? e.message : String(e)}` });
+        else setGate({ kind: 'step', step: 'login', notice: `백엔드에 연결할 수 없습니다(${e instanceof Error ? e.message : String(e)}).` });
       },
     );
   }, [toStep]);
@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         toStep(state, message);
       },
       forbidden: (message) => {
-        toast(`관리자만 할 수 있습니다 — ${message}`, { key: 'forbidden', tone: 'warn' });
+        toast(`관리자만 할 수 있습니다(${message}).`, { key: 'forbidden', tone: 'warn' });
         void refresh(); // 역할이 바뀌었으면 쓰기 버튼을 숨긴다
       },
     });

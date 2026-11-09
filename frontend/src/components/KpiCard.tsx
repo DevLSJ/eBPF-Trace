@@ -35,13 +35,13 @@ export interface KpiCardProps {
 }
 
 export function KpiCard({ k, label, icon = '▦', stripe = 'accent', value, text, unit, tone, delta, sub, subTitle, to, wrapSub, className = '', attrs }: KpiCardProps) {
-  // 0 · 값 없음(「—」)이면 띠만 색 — 글자 값(퍼센트 등)은 value 를 주지 않아도 된다
-  const zero = value === 0 || (value == null && (text == null || text === '—'));
+  // 0 · 값 없음(빈 글자)이면 띠만 색 — 글자 값(퍼센트 등)은 value 를 주지 않아도 된다
+  const zero = value === 0 || (value == null && (text == null || text === ''));
   const n = useCountUp(value ?? 0);
   const [ring, ringDone] = useRing(value ?? null);
   const onAnim = (e: AnimationEvent) => e.animationName === 'kpi-ring' && e.target === e.currentTarget && ringDone();
   const d: KpiDelta = delta ?? { dir: 'none' };
-  const arrow = d.dir === 'up' ? '▲' : d.dir === 'down' ? '▼' : '—';
+  const arrow = d.dir === 'up' ? '▲ ' : d.dir === 'down' ? '▼ ' : ''; // 변화 없음은 표시 없이 글자만
   const cls = `kpi-card stripe-${stripe}${zero ? ' is-zero' : ''}${ring ? ' kpi-ring' : ''} ${to ? 'kpi-link' : ''} ${className}`;
   const body = (
     <>
@@ -57,7 +57,7 @@ export function KpiCard({ k, label, icon = '▦', stripe = 'accent', value, text
             <small className="kpi-note">{d.note ?? '이전 기간 정보 없음'}</small>
           ) : (
             <>
-              <b className="num">{`${arrow} ${d.text ?? ''}`}</b>
+              <b className="num">{`${arrow}${d.text ?? ''}`}</b>
               {d.note && <small className="kpi-note">{d.note}</small>}
             </>
           )}

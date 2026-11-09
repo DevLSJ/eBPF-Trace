@@ -170,12 +170,12 @@ export function AppShell() {
             <div className="mt-auto space-y-1 border-t border-border px-5 py-4 text-xs">
               <div className="flex justify-between">
                 <span className="text-text-3">수집</span>
-                <span className="text-text">{source === 'mock' ? 'Mock 데모' : source === 'gadget' ? 'eBPF 가젯' : '—'}</span>
+                <span className="text-text">{source === 'mock' ? 'Mock 데모' : source === 'gadget' ? 'eBPF 가젯' : ''}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-text-3">격리</span>
                 <span className={enforce ? 'text-danger-text' : 'text-warn-text'}>
-                  {enforce === undefined ? '—' : enforce ? '자동 종료' : 'dry-run'}
+                  {enforce === undefined ? '' : enforce ? '자동 종료' : 'dry-run'}
                 </span>
               </div>
               {info?.gadgetVersion && (
@@ -421,7 +421,7 @@ function DnsBanner() {
   return (
     <div data-banner="dns" role="alert" style={{ '--banner-color': 'var(--warn)' } as CSSProperties} className="sg-banner flex shrink-0 items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[13px] text-amber-900 md:px-6">
       <span className="min-w-0 flex-1">
-        <b>도메인 판단 꺼짐</b> — trace_dns 가 뜨지 않아 도메인 기준 규칙(allowHosts · denyHosts · 차단 도메인)과 DNS 질의 규칙(kind: dns)이 통과 처리됩니다. IP · 포트 규칙만 동작합니다.{' '}
+        <b>도메인 판단 꺼짐</b>, trace_dns 가 뜨지 않아 도메인 기준 규칙(allowHosts · denyHosts · 차단 도메인)과 DNS 질의 규칙(kind: dns)이 통과 처리됩니다. IP · 포트 규칙만 동작합니다.{' '}
         <Link to="/settings" className="text-amber-800 underline">
           서버 설정 보기 →
         </Link>

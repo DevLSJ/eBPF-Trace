@@ -58,7 +58,8 @@ export function CasesProvider({ children }: { children: ReactNode }) {
         else if (m.type === 'verdict' && levelOf(m.data) === 'killed') {
           const name = m.data.event.containerName;
           const install = isInstallContainer(name);
-          toast(`${install ? '설치 검사 격리' : `${name} 격리됨`} — ${m.data.reason ?? m.data.ruleId ?? ''}`, {
+          const why = m.data.reason ?? m.data.ruleId ?? '';
+          toast(`${install ? '설치 검사 격리' : `${name} 격리됨`}${why ? `(${why})` : ''}`, {
             key: `kill:${name}`,
             tone: 'danger',
             action: install ? { label: '설치 검사', to: '/installs' } : { label: '이벤트 보기', ...dest('/events', { container: name }) },

@@ -157,7 +157,7 @@ function PasswordStep({ run, busy, onState, who, setError }: StepProps) {
   };
   return (
     <>
-      <Head title="비밀번호 변경" desc="처음 로그인했습니다. 새 비밀번호를 정하세요 — 5자 이상, 아이디와 다르게." />
+      <Head title="비밀번호 변경" desc="처음 로그인했습니다. 새 비밀번호를 정하세요(5자 이상, 아이디와 다르게)." />
       <form className="grid gap-3" onSubmit={submitting(submit)}>
         <Field label="지금 비밀번호">
           <input className={input} type="password" name="current" autoComplete="current-password" autoFocus value={cur} onChange={(e) => setCur(e.target.value)} />
@@ -224,7 +224,7 @@ function OtpEnrollStep({ run, busy, onCodes, setError }: StepProps) {
         <div className="grid justify-items-center gap-2 py-2" data-part="qr">
           {enroll ? (
             <>
-              <img src={enroll.qr} width={168} height={168} alt="OTP 등록 QR — 인증 앱으로 찍으세요" className="rounded border border-slate-200 bg-white" />
+              <img src={enroll.qr} width={168} height={168} alt="OTP 등록 QR(인증 앱으로 찍으세요)" className="rounded border border-slate-200 bg-white" />
               <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs">
                 <span className="text-slate-500">직접 입력할 키</span>
                 <code className="rounded bg-slate-100 px-2 py-1 font-mono" data-part="otp-secret">
@@ -266,7 +266,7 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
   };
   return (
     <>
-      <Head title="복구 코드 — 지금 한 번만 보입니다" desc="휴대폰을 잃어버렸을 때 OTP 대신 쓰는 코드입니다. 안전한 곳에 보관하세요. 코드 하나는 한 번만 쓸 수 있습니다." />
+      <Head title="복구 코드(지금 한 번만 보입니다)" desc="휴대폰을 잃어버렸을 때 OTP 대신 쓰는 코드입니다. 안전한 곳에 보관하세요. 코드 하나는 한 번만 쓸 수 있습니다." />
       <div className="grid gap-3">
         <ol className="grid list-inside list-decimal grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg bg-slate-50 px-4 py-3 font-mono text-[13px]" data-part="recovery-codes">
           {codes.map((c) => (

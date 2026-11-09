@@ -6,9 +6,9 @@ export function useCopyCommand() {
   const toast = useToast();
   return useCallback(
     (cmd: string) => {
-      // 문구 양식(11/09 SPEC 7절): 성공 「~했습니다.」 · 실패 「~하지 못했습니다 — ~하세요.」, 화면 속 값은 「」
+      // 문구 양식(11/09 SPEC 7절): 성공 「~했습니다.」 · 실패 「~하지 못했습니다. ~하세요.」, 화면 속 값은 「」
       const ok = () => toast(`「${cmd}」 명령을 복사했습니다.`, { key: 'copy', tone: 'ok' });
-      const fail = () => toast(`명령을 복사하지 못했습니다 — 「${cmd}」을(를) 직접 입력하세요.`, { key: 'copy', tone: 'warn' });
+      const fail = () => toast(`명령을 복사하지 못했습니다. 「${cmd}」을(를) 직접 입력하세요.`, { key: 'copy', tone: 'warn' });
       try {
         navigator.clipboard.writeText(cmd).then(ok, fail);
       } catch {

@@ -136,7 +136,7 @@ export function classifyDns(v: string): Classified {
   if (HOST.test(v)) return { type: 'host' };
   return { error: '도메인(예: attacker.test) 또는 질의 유형(예: TXT) 으로 써 주세요' };
 }
-const classifyDnsHost = (v: string): Classified => (HOST.test(v) ? { type: 'host' } : { error: '도메인(예: pypi.org)으로 써 주세요 — *.pypi.org 도 포함됩니다' });
+const classifyDnsHost = (v: string): Classified => (HOST.test(v) ? { type: 'host' } : { error: '도메인(예: pypi.org)으로 써 주세요. *.pypi.org 도 포함됩니다' });
 
 export interface ChipGroupDef {
   label: string;
@@ -150,7 +150,7 @@ export interface ChipGroupDef {
 export const GROUPS: Record<Kind, { block: ChipGroupDef; allow?: ChipGroupDef }> = {
   open: {
     block: { label: '막을 파일 · 폴더', hint: '폴더는 끝에 / (예: /root/.ssh/), * 로 여러 개(예: /home/*/.ssh/*)', classify: classifyPath, fields: { path: 'denyPaths' }, suggest: ['/etc/shadow', '/root/.ssh/', '/home/*/.ssh/*', '/root/.aws/credentials'] },
-    allow: { label: '예외 — 열어도 되는 파일', hint: '막을 목록보다 먼저 봅니다', classify: classifyPath, fields: { path: 'allowPaths' }, suggest: [] },
+    allow: { label: '예외(열어도 되는 파일)', hint: '막을 목록보다 먼저 봅니다', classify: classifyPath, fields: { path: 'allowPaths' }, suggest: [] },
   },
   exec: {
     block: { label: '막을 프로그램 · 명령 모양', hint: '프로그램 이름(curl) 또는 명령에 들어간 글자(| sh)', classify: classifyExec, fields: { prog: 'denyComms', args: 'denyArgs' }, suggest: ['curl', 'wget', 'nc', '| sh', '| bash', 'base64 -d'] },
@@ -161,8 +161,8 @@ export const GROUPS: Record<Kind, { block: ChipGroupDef; allow?: ChipGroupDef }>
   },
   // 10/30 계약 §1 「② 어떤 값」 문구 그대로
   dns: {
-    block: { label: '막을 도메인 · 질의 유형', hint: '도메인(예: attacker.test) 또는 질의 유형(TXT) — 허용 목록과 상관없이 위반', classify: classifyDns, fields: { host: 'denyHosts', qtype: 'denyQtypes' }, suggest: ['TXT', 'ALL'] },
-    allow: { label: '허용할 도메인', hint: '하나라도 넣으면 여기 없는 도메인 질의는 모두 위반 — 점 없는 이름 · *.arpa 는 제외', classify: classifyDnsHost, fields: { host: 'allowHosts' }, suggest: ['pypi.org', 'registry.npmjs.org', 'github.com'] },
+    block: { label: '막을 도메인 · 질의 유형', hint: '도메인(예: attacker.test) 또는 질의 유형(TXT), 허용 목록과 상관없이 위반', classify: classifyDns, fields: { host: 'denyHosts', qtype: 'denyQtypes' }, suggest: ['TXT', 'ALL'] },
+    allow: { label: '허용할 도메인', hint: '하나라도 넣으면 여기 없는 도메인 질의는 모두 위반(점 없는 이름 · *.arpa 는 제외)', classify: classifyDnsHost, fields: { host: 'allowHosts' }, suggest: ['pypi.org', 'registry.npmjs.org', 'github.com'] },
   },
 };
 export const CONTAINERS_GROUP: ChipGroupDef = { label: '컨테이너', hint: '이름 또는 패턴(예: pkg-*)', classify: classifyName, fields: { name: 'containers' }, suggest: [] };

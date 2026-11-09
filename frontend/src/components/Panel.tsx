@@ -66,7 +66,7 @@ export function LoadError({ error, what, compact }: { error: unknown; what: stri
       <span>
         {unsupported ? (
           <>
-            <b>백엔드 미지원</b> — {what} API가 아직 백엔드에 없습니다.
+            <b>백엔드 미지원</b>, {what} API가 아직 백엔드에 없습니다.
           </>
         ) : (
           <>

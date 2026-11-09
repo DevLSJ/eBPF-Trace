@@ -108,7 +108,7 @@ export function EventFeed({ verdicts, selectedKey, onSelect, empty = '이벤트 
               {full ? (
                 showImage && (
                   <span className={`w-36 shrink-0 truncate text-xs text-slate-500 ${WIDE_ONLY}`} title={v.reason}>
-                    {v.ruleId ?? '—'}
+                    {v.ruleId ?? ''}
                   </span>
                 )
               ) : (

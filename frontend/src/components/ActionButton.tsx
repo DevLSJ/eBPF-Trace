@@ -26,7 +26,7 @@ export function ActionButton({ reason, onClick, title, type = 'button', ...rest 
   );
 }
 
-// 아이콘 단추(§7): title 과 aria-label 을 같은 이름으로 — 동작 명사구, 대상이 있으면 「동작 — 대상」(예: 「되돌리기 — chg-0002」).
+// 아이콘 단추(§7): title 과 aria-label 을 같은 이름으로 — 동작 명사구, 대상이 있으면 「동작(대상)」(예: 「되돌리기(chg-0002)」).
 // 꺼지면 title 은 사유, aria-label 은 이름 그대로(화면 읽기는 이름 + 사유)
 //   <IconAction icon={RotateCcw} label="되돌리기" target={c.id} reason={c.locked && '시스템 규칙은 되돌릴 수 없습니다'} onClick={…} />
 export function IconAction({
@@ -36,7 +36,7 @@ export function IconAction({
   className = 'tk-icon-btn',
   ...rest
 }: { icon: LucideIcon; label: string; target?: string } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'aria-label' | 'title'> & { reason?: string | null | false }) {
-  const name = target ? `${label} — ${target}` : label;
+  const name = target ? `${label}(${target})` : label;
   return (
     <ActionButton {...rest} className={className} aria-label={name} title={name}>
       <Icon aria-hidden />

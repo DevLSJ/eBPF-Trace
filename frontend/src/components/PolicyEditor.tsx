@@ -33,8 +33,8 @@ const fieldsByKind: Record<Kind, { field: ListField; label: string; hint: string
   // dns(10/30 계약 §1 고급 폼): 길이 상한 2개는 아래 숫자 칸(dns 에서만)
   dns: [
     { field: 'allowHosts', label: '허용 도메인', hint: '하나라도 있으면 여기 없는 도메인 질의는 위반(점 없는 이름 · *.arpa · *.local · *.internal 제외)' },
-    { field: 'denyHosts', label: '금지 도메인', hint: '접미사 일치 — 허용 목록과 무관하게 항상 위반' },
-    { field: 'denyQtypes', label: '금지 질의 유형', hint: '대문자(예: TXT, ALL) — 허용 목록과 무관하게 항상 위반' },
+    { field: 'denyHosts', label: '금지 도메인', hint: '접미사 일치, 허용 목록과 무관하게 항상 위반' },
+    { field: 'denyQtypes', label: '금지 질의 유형', hint: '대문자(예: TXT, ALL), 허용 목록과 무관하게 항상 위반' },
   ],
 };
 
@@ -123,7 +123,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
         if (!parsed || typeof parsed !== 'object') throw new Error('YAML 최상위는 규칙 객체여야 함');
         // 단일 규칙 YAML 에 kind: sequence 를 쓰고 다른 탭으로 가면 거절 — 쉬운 설정 · 폼으로 가면 단계를 잃는다(11/04)
         if (!isSingleRule(parsed)) throw new Error(SEQ_YAML_ONLY);
-        if (!isNew && parsed.id !== rule.id) throw new Error('기존 정책의 id는 바꿀 수 없음 — 새 정책으로 만드세요');
+        if (!isNew && parsed.id !== rule.id) throw new Error('기존 정책의 id는 바꿀 수 없음, 새 정책으로 만드세요');
         const d = toDraft(parsed);
         setDraft(d);
         setScope(scopeOf(d));
@@ -147,7 +147,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
     try {
       r = current();
       if (!ID_PATTERN.test(r.id ?? '')) throw new Error('정책 이름은 영문 소문자 · 숫자 · 하이픈(-)만 쓸 수 있습니다');
-      if (isNew && existingIds.includes(r.id)) throw new Error(`이미 있는 이름입니다: ${r.id} — 다른 이름을 쓰세요`);
+      if (isNew && existingIds.includes(r.id)) throw new Error(`이미 있는 이름입니다: ${r.id}. 다른 이름을 쓰세요`);
     } catch (e) {
       setError((e as Error).message);
       return;
@@ -321,7 +321,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
           ))}
         </div>
         {mode === 'easy' ? (
-          freshMark && <span className="text-xs text-emerald-700">예외 {freshMark.value} 를 더했습니다 — 확인 후 저장하세요</span>
+          freshMark && <span className="text-xs text-emerald-700">예외 {freshMark.value} 를 더했습니다. 확인 후 저장하세요</span>
         ) : (
           <span className="text-xs text-slate-500">
             적용 결과: <b className={head.action === 'kill' && !head.dryRun ? 'text-red-600' : 'text-amber-600'}>{effective}</b>
@@ -366,8 +366,8 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
               </Field>
               <Field label="action">
                 <select className={input} value={draft.action} onChange={(e) => update({ action: e.target.value as Rule['action'] })}>
-                  <option value="alert">alert — 알림</option>
-                  <option value="kill">kill — 컨테이너 강제 종료</option>
+                  <option value="alert">alert(알림)</option>
+                  <option value="kill">kill(컨테이너 강제 종료)</option>
                 </select>
               </Field>
             </div>
@@ -405,12 +405,12 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
               </Field>
             )}
             {draft.kind === 'connect' && (
-              <Field label="도메인 조회 없는 IP 직접 연결" hint="directIp — trace_dns 가 켜져 있을 때만 판단, 비우면 옛 동작">
+              <Field label="도메인 조회 없는 IP 직접 연결" hint="directIp(trace_dns 가 켜져 있을 때만 판단), 비우면 옛 동작">
                 <select className={input} data-field="directIp" value={draft.directIp} onChange={(e) => update({ directIp: e.target.value as DirectIp | '' })}>
                   <option value="">(비움)</option>
-                  <option value="allow">allow — 통과</option>
-                  <option value="alert">alert — 알림</option>
-                  <option value="kill">kill — 격리</option>
+                  <option value="allow">allow(통과)</option>
+                  <option value="alert">alert(알림)</option>
+                  <option value="kill">kill(격리)</option>
                 </select>
               </Field>
             )}
@@ -439,7 +439,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
           title="정책 삭제"
           target={rule.id}
           okLabel="삭제"
-          effects={['엔진에서 바로 빠집니다 — 이 정책으로 걸리던 행동은 다음 이벤트부터 통과', '지난 감사 로그는 그대로 남습니다', '변경 이력에 「정책 편집」으로 남습니다']}
+          effects={['엔진에서 바로 빠집니다(이 정책으로 걸리던 행동은 다음 이벤트부터 통과)', '지난 감사 로그는 그대로 남습니다', '변경 이력에 「정책 편집」으로 남습니다']}
           undo="YAML 을 복사해 두었다면 「새 정책 › 고급 · YAML」로 다시 만들 수 있습니다"
           onCancel={() => setAskDelete(false)}
           onConfirm={() => {
@@ -506,13 +506,13 @@ function SaveCheck({
               )}
             </>
           ) : check.error ? (
-            <p className="text-amber-700">미리보기를 계산하지 못했습니다 — {check.error}. 저장은 할 수 있습니다.</p>
+            <p className="text-amber-700">미리보기를 계산하지 못했습니다({check.error}). 저장은 할 수 있습니다.</p>
           ) : !pv ? (
             <p className="text-slate-500">최근 감사 로그로 미리 계산하는 중…</p>
           ) : (
             <>
               <p data-preview-count="">
-                최근 감사 로그 {fmtNum(pv.evaluated)}건을 이 정책으로 다시 평가 — 결과가 바뀌는 과거 위반 <b className="num">{fmtNum(pv.changed.length)}건</b>
+                최근 감사 로그 {fmtNum(pv.evaluated)}건을 이 정책으로 다시 평가, 결과가 바뀌는 과거 위반 <b className="num">{fmtNum(pv.changed.length)}건</b>
               </p>
               {groups.length ? (
                 <ul className="list-disc pl-5">

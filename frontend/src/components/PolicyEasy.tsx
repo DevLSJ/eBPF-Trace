@@ -23,7 +23,7 @@ import type { Kind } from '../lib/types';
 const ACT_TEXT: Record<Act, [string, string]> = {
   alert: ['알림만 보내기', '컨테이너는 그대로 두고 알립니다'],
   kill: ['즉시 격리', '컨테이너를 바로 멈춥니다'],
-  dry: ['시험 운영', '격리 대상으로 표시만 하고 멈추지 않습니다 — 새 정책을 먼저 써 볼 때'],
+  dry: ['시험 운영', '격리 대상으로 표시만 하고 멈추지 않습니다(새 정책을 먼저 써 볼 때)'],
 };
 
 export function PolicyEasy({
@@ -55,7 +55,7 @@ export function PolicyEasy({
         {g.allow ? (
           <ChipGroup groupKey="allow" def={g.allow} draft={d} onChange={onChange} fresh={fresh} />
         ) : (
-          <p className="text-xs text-slate-500">실행 정책에는 예외 목록이 없습니다 — 예외가 필요하면 ④ 에서 적용할 컨테이너를 좁히세요.</p>
+          <p className="text-xs text-slate-500">실행 정책에는 예외 목록이 없습니다. 예외가 필요하면 ④ 에서 적용할 컨테이너를 좁히세요.</p>
         )}
         {d.kind === 'dns' && (
           // 10/30: 유출 의심 길이 상한 2개(계약 §1 「숫자 칸」)
@@ -78,7 +78,7 @@ export function PolicyEasy({
           options={Object.entries(ACT_TEXT) as [Act, [string, string]][]}
           onPick={(v) => onChange({ ...d, action: v === 'alert' ? 'alert' : 'kill', dryRun: v === 'dry' })}
         />
-        {!enforceKill && <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">지금 서버의 자동 격리가 꺼져 있어 「즉시 격리」도 알림만 갑니다 — 서버 설정 참고</p>}
+        {!enforceKill && <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">지금 서버의 자동 격리가 꺼져 있어 「즉시 격리」도 알림만 갑니다(서버 설정 참고)</p>}
       </Step>
       {scope && (
         <Step id="scope" n={4} title="어디에 적용할까요?">
@@ -162,7 +162,7 @@ function ChipGroup({
     if (!v) return;
     const c = def.classify(v);
     if (!c.type) {
-      setErr(`「${v}」 — ${c.error}`);
+      setErr(`「${v}」: ${c.error}`);
       return;
     }
     const f = def.fields[c.type]!;

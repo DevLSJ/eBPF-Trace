@@ -317,7 +317,7 @@ export function Donut({ name, label, items, centerLabel, children }: { name: str
   return (
     <div ref={root} className="chart donut-chart" data-chart={name} data-inner={String(DONUT_INNER)} data-outer={String(DONUT_OUTER)}>
       <div ref={box} className="chart-box donut-box">
-        <svg width={S} height={S} viewBox={`0 0 ${S} ${S}`} className="chart-svg donut-svg" role="img" aria-label={`${label} — ${items.map((x) => `${x[1]} ${x[3]}`).join(', ')}`}>
+        <svg width={S} height={S} viewBox={`0 0 ${S} ${S}`} className="chart-svg donut-svg" role="img" aria-label={`${label}(${items.map((x) => `${x[1]} ${x[3]}`).join(', ')})`}>
           <g className={`slices${anim ? ' draw-in' : ''}`} onAnimationEnd={done}>
             {!total ? (
               <circle cx={R} cy={R} r={(r0 + r1) / 2} className="donut-zero" fill="none" strokeWidth={r1 - r0} />

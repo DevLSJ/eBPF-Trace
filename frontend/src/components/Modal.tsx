@@ -319,7 +319,7 @@ export function ConfirmDialog({
     ? !loaded
       ? [{ kind: 'loading', text: '계산 중…' }]
       : loaded.error !== undefined
-        ? [{ kind: 'error', text: `영향을 계산하지 못했습니다 — ${loaded.error}` }]
+        ? [{ kind: 'error', text: `영향을 계산하지 못했습니다(${loaded.error})` }]
         : (loaded.items ?? [])
     : (effects ?? []);
   const shown = items.length ? items : ['따로 바뀌는 것 없음'];

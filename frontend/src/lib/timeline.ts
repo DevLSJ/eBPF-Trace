@@ -30,4 +30,4 @@ export function segmentsOf(t: Timeline | null | undefined): Segment[] {
 // 격리까지 = killedAt − detectedAt(없으면 null)
 export const isolationMs = (t: Timeline | null | undefined) => (t?.killedAt ? Math.max(0, Date.parse(t.killedAt) - Date.parse(t.detectedAt)) : null);
 export const fmtSec = (v: number) => `${(v / 1000).toFixed(2)}초`;
-export const fmtMs = (v: number | null) => (v === null ? '—' : `${fmtNum(v)} ms`);
+export const fmtMs = (v: number | null) => (v === null ? '' : `${fmtNum(v)} ms`);

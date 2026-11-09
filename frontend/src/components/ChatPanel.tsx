@@ -15,7 +15,7 @@ const KEY = 'supplyguard.chat';
 const KEEP = 30;
 const HISTORY = 6;
 const SUGGEST = ['판정 대기 요약해 줘', '오늘 가장 많이 걸린 정책은?', '이 화면은 뭘 하는 곳이야?', '최근 공급망 검사 결과 알려 줘'];
-const STATUS_TITLE = '서버가 기록에서 확정한 상태 — 모델 문장보다 이 값이 우선입니다';
+const STATUS_TITLE = '서버가 기록에서 확정한 상태입니다. 모델 문장보다 이 값이 우선입니다';
 
 interface Msg {
   role: 'user' | 'assistant';

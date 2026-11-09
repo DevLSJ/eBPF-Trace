@@ -17,7 +17,7 @@ export const installCommand = (s: { manager: string; packages: string[] }) => `s
 
 // 걸린 시간: 시작 → 끝(끝 보고 또는 컨테이너 종료)
 export function duration(startIso: string, endIso?: string | null): string {
-  if (!endIso) return '—';
+  if (!endIso) return '';
   const sec = Math.max(0, Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000));
   return sec < 60 ? `${sec}초` : `${Math.floor(sec / 60)}분 ${sec % 60}초`;
 }

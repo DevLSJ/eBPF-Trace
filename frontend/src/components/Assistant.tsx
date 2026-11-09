@@ -114,7 +114,7 @@ export function Assistant() {
         setSelectedId(c.id);
         if (pathRef.current === '/') show('guide');
         else
-          toast(`대응 가이드 준비됨 — ${SOURCE_LABEL[c.source]} ${caseLabel(c)}`, {
+          toast(`대응 가이드를 준비했습니다(${SOURCE_LABEL[c.source]} ${caseLabel(c)}).`, {
             tone: 'warn',
             key: `guide:${c.id}`,
             action: { label: '가이드 열기', run: () => (setSelectedId(c.id), show('guide')) },
@@ -133,7 +133,7 @@ export function Assistant() {
         type="button"
         data-part="assistant-fab"
         data-ready={String(cases !== null || error != null)}
-        aria-label={pend ? `도우미 열기 — 미완료 가이드 ${pend}건` : '도우미 열기'}
+        aria-label={pend ? `도우미 열기(미완료 가이드 ${pend}건)` : '도우미 열기'}
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => (open ? close() : show(tab))}

@@ -69,7 +69,7 @@ export async function loadReport(q: { caseId: string | null; installId: string |
   };
 }
 
-export const statusText = (d: ReportData) => (d.session ? INSTALL_STATUS_LABEL[d.session.status] : d.case ? LEVEL_LABEL[d.case.level] : '—');
+export const statusText = (d: ReportData) => (d.session ? INSTALL_STATUS_LABEL[d.session.status] : d.case ? LEVEL_LABEL[d.case.level] : '');
 export const evidenceCounts = (e: Evidence) => ({
   logs: e.logs ? e.logs.split('\n').filter((l) => l.trim()).length : 0,
   changes: e.changes?.length ?? 0,
@@ -83,7 +83,7 @@ export function summaryLines(d: ReportData): [string, string][] {
   return [
     ['무엇이', `${d.label}${d.image ? ` (${d.image})` : ''}${d.container ? ` · 컨테이너 ${d.container}` : ''}`],
     ['언제', when],
-    ['어떤 규칙', `${d.ruleIds.length ? d.ruleIds.join(', ') : '—'} · 위반 ${violationCount(d)}건`],
+    ['어떤 규칙', `${d.ruleIds.length ? `${d.ruleIds.join(', ')} · ` : ''}위반 ${violationCount(d)}건`],
   ];
 }
 
@@ -91,27 +91,27 @@ export function reportMarkdown(d: ReportData, author: string, at = new Date()): 
   const segs = segmentsOf(d.timeline);
   const total = isolationMs(d.timeline);
   const out: string[] = [];
-  out.push(`# ${d.label} — 건 보고서`);
+  out.push(`# ${d.label} 건 보고서`);
   out.push(`${SOURCE_LABEL[d.source]} · ${statusText(d)}${d.case ? ` · 건 ${d.case.id}` : ''}${d.session ? ` · 세션 ${d.session.id}` : ''}`);
   out.push('', '## 요약');
-  for (const [k, v] of summaryLines(d)) out.push(`- ${k} — ${v}`);
+  for (const [k, v] of summaryLines(d)) out.push(`- ${k}: ${v}`);
   out.push('', '## 격리 타임라인');
-  out.push(`${segs.map((s) => `${s.label} ${fmtMs(s.ms)}`).join(' · ')} · 격리까지 ${total === null ? '—' : fmtSec(total)}`);
+  out.push(`${segs.map((s) => `${s.label} ${fmtMs(s.ms)}`).join(' · ')} · 격리까지 ${total === null ? '' : fmtSec(total)}`);
   out.push('', '## 위반', '| 시각 | 종류 | 규칙 | 상세 | 판정 |', '|---|---|---|---|---|');
   for (const v of d.violations) out.push(`| ${fmtDateTime(v.event.timestamp)} | ${v.event.kind} | ${v.ruleId ?? ''} | ${detailOf(v.event).replace(/\|/g, '\\|')} | ${LEVEL_LABEL[levelOf(v)]} |`);
-  if (!d.violations.length) out.push('| — | — | — | 위반 없음 | — |');
+  if (!d.violations.length) out.push('|  |  |  | 위반 없음 |  |');
   out.push('', '## 증거');
   if (d.evidence) {
     const n = evidenceCounts(d.evidence);
-    out.push(`로그 ${n.logs}줄 · 파일 변경 ${n.changes} · 프로세스 ${n.processes}${d.evidence.partial ? ` · 일부만 모음${d.evidence.error ? `(${d.evidence.error})` : ''}` : ''} — ${fmtDateTime(d.evidence.collectedAt)}`);
-  } else out.push('증거 없음 — 격리(kill) 직전에만 모읍니다');
+    out.push(`로그 ${n.logs}줄 · 파일 변경 ${n.changes} · 프로세스 ${n.processes}${d.evidence.partial ? ` · 일부만 모음${d.evidence.error ? `(${d.evidence.error})` : ''}` : ''} · 모은 시각 ${fmtDateTime(d.evidence.collectedAt)}`);
+  } else out.push('증거 없음, 격리(kill) 직전에만 모읍니다');
   out.push('', '## 판정');
   if (d.case) {
     out.push(`${DECISION_LABEL[d.case.decision]}${d.case.decidedBy ? ` · ${d.case.decidedBy}` : ''}${d.case.decidedAt ? ` · ${fmtDateTime(d.case.decidedAt)}` : ''}${d.case.note ? ` · 메모: ${d.case.note}` : ''}`);
   } else out.push('판정할 건 없음');
   out.push('', '## 정책 변경 · 차단 목록');
   if (d.proposal) {
-    out.push(`제안 ${d.proposal.id} — ${d.proposal.state === 'applied' ? `적용됨(${d.proposal.appliedBy ?? '—'})` : d.proposal.state === 'discarded' ? '버림' : '초안'}`);
+    out.push(`제안 ${d.proposal.id}: ${d.proposal.state === 'applied' ? `적용됨${d.proposal.appliedBy ? `(${d.proposal.appliedBy})` : ''}` : d.proposal.state === 'discarded' ? '버림' : '초안'}`);
     for (const ch of d.proposal.changes) out.push(`- ${changeText(ch)}`);
   }
   for (const b of d.blocks) out.push(`- 차단 목록 ${LIST_LABEL[b.list]} ${b.value} (${b.by} · ${fmtDateTime(b.at)})`);

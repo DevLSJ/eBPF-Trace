@@ -36,7 +36,7 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
       const r = await api.decide(c.id, d, note);
       upsert(r.case);
       toast(
-        d === 'malicious' ? `${what} 악성 확정 — 차단 제안을 만들었습니다` : `${what} 오탐 — 예외 제안을 만들었습니다`,
+        d === 'malicious' ? `${what} 악성 확정, 차단 제안을 만들었습니다.` : `${what} 오탐, 예외 제안을 만들었습니다.`,
         {
           key: `decide:${c.id}`,
           tone: 'ok',
@@ -60,7 +60,7 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
         </div>
       )}
       {c.decision === 'pending' && !canWrite ? (
-        <p className="text-xs text-slate-500">판정 대기 — 판정은 관리자가 합니다 (지금 계정은 조회자).</p>
+        <p className="text-xs text-slate-500">[판정 대기] 판정은 관리자가 합니다(지금 계정은 조회자).</p>
       ) : c.decision === 'pending' ? (
         <>
           <div className="flex gap-2">
@@ -110,9 +110,9 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
       ) : (
         <dl className="grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-1 text-xs">
           <dt className="text-slate-500">처리자</dt>
-          <dd data-testid="decided-by">{c.decidedBy ?? '—'}</dd>
+          <dd data-testid="decided-by">{c.decidedBy ?? ''}</dd>
           <dt className="text-slate-500">시각</dt>
-          <dd className="num">{c.decidedAt ? fmtDateTime(c.decidedAt) : '—'}</dd>
+          <dd className="num">{c.decidedAt ? fmtDateTime(c.decidedAt) : ''}</dd>
           {c.note && (
             <>
               <dt className="text-slate-500">메모</dt>

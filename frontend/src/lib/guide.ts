@@ -93,16 +93,16 @@ export type NotifyState = 'sent' | 'off' | 'failed' | 'unknown';
 export function notifyState(info: Info | null): { state: NotifyState; text: string } {
   const n = info?.notify;
   if (!n) return { state: 'unknown', text: '알림 발송 미확인 (백엔드가 알려 주지 않음)' };
-  if (!n.enabled || n.channels.length === 0) return { state: 'off', text: '웹훅 미설정 — 알림을 받으려면 NOTIFY_WEBHOOK_URL(또는 NOTIFY_SLACK_URL)을 설정하세요' };
+  if (!n.enabled || n.channels.length === 0) return { state: 'off', text: '웹훅 미설정, 알림을 받으려면 NOTIFY_WEBHOOK_URL(또는 NOTIFY_SLACK_URL)을 설정하세요' };
   const names = n.channels.map((c) => `${c.name} ${c.host}`).join(', ');
   // 한 번도 보내지 못하고 실패만 쌓인 채널이 있으면 실패로 본다(마지막 오류를 함께)
   const broken = n.channels.filter((c) => c.failed > 0 && c.sent === 0);
   if (broken.length) {
     const err = broken.map((c) => `${c.name} ${c.host}${c.lastError ? `: ${c.lastError}` : ''}`).join(' · ');
-    return { state: 'failed', text: `알림 발송 실패 — ${err}` };
+    return { state: 'failed', text: `알림 발송 실패: ${err}` };
   }
   const extra = n.failed > 0 ? ` · 실패 ${n.failed}건${n.lastError ? ` (${n.lastError})` : ''}` : '';
-  return { state: 'sent', text: `알림 발송됨 — ${names}${extra}` };
+  return { state: 'sent', text: `알림 발송됨: ${names}${extra}` };
 }
 
 export const INSTALL_CMD = 'sg-install pip requests';

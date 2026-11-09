@@ -42,8 +42,8 @@ export const PAGE_SIZES = [20, 50, 100];
 export const COL_MIN = 48;
 export const COL_MAX = 900;
 export const COL_STEP = 16;
-// 빈 값 글자(화면 · CSV 같음) — components/list/cells.tsx 의 DASH 와 같은 값
-export const EMPTY_TEXT = '—';
+// 빈 값 글자(화면 · CSV 같음) — components/list/cells.tsx 의 DASH 와 같은 값. 11/09 사용자 결정: 빈 값은 빈 칸(「—」 쓰지 않음)
+export const EMPTY_TEXT = '';
 
 // 정렬 · 쪽 상태를 바깥(목록 화면 상태)에 둘 때 — useListQuery(...).table 이 이 모양
 export interface TableQuery {
@@ -275,7 +275,7 @@ export function useTableKit<T>({
   const isDefault = !Object.keys(saved.vis).length && !Object.keys(saved.w).length && !saved.order.length;
   // 「칸 기본으로」 — 보이기 · 폭 · 순서를 모두 기본값으로(저장본을 지운다)
   const resetColumns = useCallback(() => update(() => null), [update]);
-  // CSV(머리 + 행) — 지금 보이는 이름 있는 칸 · 지금 순서 · 화면 글 그대로(빈 값 「—」), 행은 정렬만(쪽 나누기 없음)
+  // CSV(머리 + 행) — 지금 보이는 이름 있는 칸 · 지금 순서 · 화면 글 그대로(빈 값은 빈 칸), 행은 정렬만(쪽 나누기 없음)
   const csv = useCallback(
     (list: T[]) => {
       const out = cols.filter((c) => colName(c) !== null);
