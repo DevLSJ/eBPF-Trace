@@ -417,14 +417,14 @@ test.describe('I 증거 · 도메인 조회 없는 IP 직접 연결', () => {
     await page.locator('[data-sheet="install"]').getByRole('link', { name: '증거 보기' }).click();
     // 컨테이너 필터는 state 로 넘기고 주소에는 tab · id 만(10/21)
     await expect(page).toHaveURL(/\/audit\?tab=evidence&id=\d+$/);
-    await expect(page.getByRole('textbox', { name: '컨테이너' })).toHaveValue(ctr);
+    await expect(page.getByRole('searchbox', { name: '컨테이너 검색' })).toHaveValue(ctr); // 11/09 검색칸
     await expect(page.locator('[data-sheet="audit"] [data-evidence="ev-3"]')).toBeVisible();
 
     await page.goto('/topology?container=pkg-reqeusts&node=c%3Apkg-reqeusts');
     await expect(page).toHaveURL(/\/topology\?node=c%3Apkg-reqeusts$/);
     await page.getByTestId('topology-decision').getByRole('link', { name: '증거 보기' }).click();
     await expect(page).toHaveURL(/\/audit\?tab=evidence/);
-    await expect(page.getByRole('textbox', { name: '컨테이너' })).toHaveValue('pkg-reqeusts');
+    await expect(page.getByRole('searchbox', { name: '컨테이너 검색' })).toHaveValue('pkg-reqeusts'); // 11/09 검색칸
     await expect(page.locator('[data-sheet="audit"] [role="tab"][aria-selected="true"]')).toHaveText('증거');
     await expect(page.locator('[data-sheet="audit"] [data-part="evidence-empty"]')).toBeVisible();
   });
@@ -561,7 +561,7 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
     await expect(page).toHaveURL(/\/events$/);
     await chips.locator('[data-chip="kind"] button').click();
     await expect(chips.locator('[data-chip]')).toHaveCount(2);
-    await expect(page.getByLabel('탐지 결과')).toHaveValue('kill');
+    await expect(page.locator('[data-filter="level"]')).toHaveAttribute('data-value', 'kill'); // 11/09 공통 Select
     await chips.locator('[data-action="clear-filters"]').click();
     await expect(chips).toHaveCount(0);
     await expect(page).toHaveURL(/\/events$/);
@@ -597,8 +597,9 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
 
   test('감사 로그 CSV 내보내기 — 기간 필수, 지금 필터(화면 상태) 그대로, BOM', async ({ page, backend }) => {
     await page.goto('/audit');
-    await page.getByLabel('종류').selectOption('exec');
-    await page.locator('[data-action="export-csv"]').click();
+    await page.locator('[data-filter="kind"]').click(); // 11/09 공통 Select
+    await page.getByRole('option', { name: 'exec', exact: true }).click();
+    await page.locator('[data-table-tools="audit"] [data-action="table-export"]').click(); // 11/09: 내보내기는 표 도구줄 하나
     await expect(page.locator('[data-part="export-error"]')).toContainText('기간');
     // datetime-local 값은 브라우저 시간대(timezoneId Asia/Seoul)로 만든다 — Node(CI 는 UTC)에서 만들면 9시간 어긋나 0건(11/05 CI)
     const [since, until] = await page.evaluate(() => {
@@ -608,15 +609,17 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
     await page.getByLabel('기간 시작').fill(since);
     await page.getByLabel('기간 끝').fill(until);
     expect(new URL(page.url()).search).toBe('');
-    const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-action="export-csv"]').click()]);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-table-tools="audit"] [data-action="table-export"]').click()]);
     expect(dl.suggestedFilename()).toMatch(/^supplyguard-audit-\d{8}-\d{8}\.csv$/);
     const text = readFileSync((await dl.path())!, 'utf8');
     expect(text.charCodeAt(0)).toBe(0xfeff);
     const lines = text.slice(1).trim().split('\n');
-    expect(lines[0]).toBe('id,시각,컨테이너,이미지,종류,상세,규칙,탐지 결과,판정,사유');
+    // 11/09 G13: 표에 보이는 칸 · 순서 · 화면 글(이미지 · 사유는 숨긴 칸 — 칸 고르기로 켜면 함께 나간다)
+    expect(lines[0]).toBe('시각,#,컨테이너 · 패키지,종류,상세,규칙,탐지 결과,판정');
     const want = backend.audit.filter((a) => a.event.kind === 'exec');
     expect(lines).toHaveLength(want.length + 1);
-    expect(lines.slice(1).every((l) => l.split(',')[4] === 'exec')).toBe(true);
+    expect(lines.slice(1).every((l) => l.split(',')[3] === 'exec')).toBe(true);
+    expect(lines[1].split(',')[0]).toMatch(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/);
   });
 
   test('모든 행을 Tab 으로 닿고 Enter · Space 로 연다', async ({ page, backend }) => {

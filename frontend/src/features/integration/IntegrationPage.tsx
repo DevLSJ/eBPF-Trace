@@ -9,6 +9,7 @@ import { useInterval, useLoad } from '../../hooks/useLoad';
 import { useStream } from '../../hooks/stream-context';
 import { useToast } from '../../hooks/toast-context';
 import { api, ApiError } from '../../lib/api';
+import { screenCopy } from '../../lib/screenCopy';
 import { fmtNum } from '../../lib/format';
 import type { Info, IntegrationContainer, IntegrationEnv, IntegrationStatus, IntegrationTest, Kind } from '../../lib/types';
 import { envChecks, FLOW, type Tone } from './model';
@@ -29,9 +30,21 @@ export function IntegrationPage() {
   const { data, error, reload } = useLoad<IntegrationStatus>(load);
   const running = data?.test?.state === 'running';
   useInterval(reload, running ? 1000 : 3000);
-  if (error && !data) return <LoadError error={error} what="연동 상태" />;
+  const desc = (
+    <p data-part="screen-copy" data-screen="integration" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
+      {screenCopy('integration')}
+    </p>
+  );
+  if (error && !data)
+    return (
+      <div data-part="integration" data-state="error" className="int-page">
+        {desc}
+        <LoadError error={error} what="연동 상태" />
+      </div>
+    );
   return (
     <div data-part="integration" data-state={data ? 'ready' : 'loading'} className="int-page">
+      {desc}
       <section className="int-hero sg-card" data-part="int-hero">
         <div className="int-hero-head">
           <h2 className="int-hero-title">라벨 한 줄로 내 컨테이너 연동</h2>

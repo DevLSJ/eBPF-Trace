@@ -12,6 +12,7 @@ import { LevelBadge, VerdictBadge } from '../../components/VerdictBadge';
 import { useAuth } from '../../hooks/auth-context';
 import { useToast } from '../../hooks/toast-context';
 import { useLoad } from '../../hooks/useLoad';
+import { screenCopy } from '../../lib/screenCopy';
 import { fmtDateTime } from '../../lib/format';
 import { SOURCE_LABEL } from '../../lib/guide';
 import { installDest, topologyDest } from '../../lib/nav';
@@ -47,6 +48,9 @@ export function ReportPage() {
 
   return (
     <div data-fill="" className="h-full min-h-0 overflow-y-auto" data-part="report-scroll">
+      <p data-part="screen-copy" data-screen="report" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
+        {screenCopy('report')}
+      </p>
       <PageActions>
         <ActionButton onClick={() => window.print()} reason={!d && '보고서를 불러온 뒤 쓸 수 있습니다'} className="sg-btn sg-btn-sm sg-btn-secondary flex items-center gap-1.5">
           <Printer className="size-3.5" aria-hidden /> 인쇄

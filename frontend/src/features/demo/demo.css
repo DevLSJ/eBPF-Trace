@@ -1,6 +1,9 @@
 /* 「시연」 페이지(R3 11/04 — 목업 mock/shared/styles.css 「11/04e B」 시연 페이지 값). 색은 전부 토큰(라이트 · 다크), 움직임은 모션 토큰.
    1920×1080 한 화면 — 세 열(시나리오 · 실시간 단계 · 왜)이 남은 높이를 채우고, 열 몸통([data-fill])만 넘칠 때 스크롤(1920 에서는 넘치지 않게).
    768 미만은 1열(시나리오 → 흐름 → 왜), 페이지 자체가 스크롤 칸 */
+/* 화면 설명 한 줄(11/09) 아래에 세 열 — 감싼 칸이 높이를 나눈다 */
+.demo-wrap { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.demo-wrap > .demo-page { flex: 1 1 auto; height: auto; }
 .demo-page { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(300px, 340px) minmax(0, 1fr) minmax(360px, 460px); gap: 16px; overflow: hidden; }
 .demo-col { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .demo-col > section { flex: 1 1 auto; }

@@ -90,7 +90,7 @@ test.describe('W20 768px 넘침 0', () => {
         await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running')); // 11/05: 패널이 다 들어온 뒤
         await noPageOverflow(page);
         // 목록(11/05 부터 패널이 겹쳐 목록 폭은 그대로): 필터 이름이 글자 단위로 꺾이지 않고, 행의 탐지 결과가 패널 안에 보인다
-        const lbl = page.getByTestId('events').locator('label', { hasText: '컨테이너' });
+        const lbl = page.getByTestId('events').locator('[data-part="search"]'); // 11/09 검색칸(라벨 없음)
         expect((await lbl.boundingBox())!.height).toBeLessThanOrEqual(36);
         const panel = (await page.getByTestId('events').boundingBox())!;
         const badge = (await page.locator('li[data-key]').first().locator('span').last().boundingBox())!;

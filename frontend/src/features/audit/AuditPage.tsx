@@ -1,16 +1,21 @@
-import { Download } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DecisionBadge } from '../../components/Badges';
 import { DnsRow } from '../../components/DnsRow';
 import { SequenceRow } from '../../components/SequenceRow';
 import { downloadCSV } from '../../components/list/csv';
-import { barStyle, rowKeys, useAutoRetry, useBusy } from '../../components/list/hooks';
+import { rowKeys, rowState, useAutoRetry, useBusy } from '../../components/list/hooks';
 import { AppliedFilters, EmptyState, ListError, NoResults, PagerSlot, Skeleton } from '../../components/list/ListStates';
-import { TimeText } from '../../components/list/cells';
-import { ActionButton } from '../../components/ActionButton';
-import { BusyBar, SortHead, TablePager } from '../../components/DataTable';
-import { useTableKit, type Column } from '../../hooks/useTableKit';
+import { TimeText, TwoLine } from '../../components/list/cells';
+import { fmtLog } from '../../components/list/cell-format';
+import { FilterBar, SearchField } from '../../components/list/SearchField';
+import { ScreenNote } from '../../components/ScreenNote';
+import { Select } from '../../components/Select';
+import { TableToolbar } from '../../components/TableToolbar';
+import { screenCopy } from '../../lib/screenCopy';
+import { GridCells, SortHead, StatusPill, TablePager, TableScroll } from '../../components/DataTable';
+import { actionTone } from '../../lib/actionTone';
+import { useTableKit, type Column, type TableKit } from '../../hooks/useTableKit';
 import { KindBadge } from '../../components/KindBadge';
 import { PageActions } from '../../components/PageActions';
 import { Empty, LoadError, Panel } from '../../components/Panel';
@@ -39,23 +44,71 @@ type Filters = Record<FilterKey, string>;
 const toIso = (v: string) => (v ? new Date(v).toISOString() : '');
 const fdt = (v: string) => v.replace('T', ' ');
 const ACTION_KO: Record<string, string> = { alert: '경고', kill: '격리' };
+const KIND_OPTIONS = KINDS.map((k) => ({ value: k as string, label: k === 'dns' ? `dns (${KIND_LONG.dns})` : k }));
+const ACTION_OPTIONS = [
+  { value: 'alert', label: '경고 (alert)' },
+  { value: 'kill', label: '격리 (kill)' },
+];
 const LEVEL_RANK: Record<string, number> = { killed: 0, held: 1, alert: 2, normal: 3 };
-// 판정 · 변경 이력 한 줄 — 표 칸(R4 11/04): 머리 클릭 정렬, 기본은 시각 내림(받은 목록 안)
+// 판정 · 변경 이력 한 줄 — 표 칸(R4 11/04): 머리 클릭 정렬, 기본은 시각 내림(받은 목록 안).
+// 11/09 표 도구: 칸 보이기 · 폭 · 순서 = supplyguard.grid.audit-history.v1, CSV = 보이는 칸 · 화면 글
 interface HistoryItem {
   key: string;
   at: string;
   kind: string;
   badge: ReactNode;
+  // CSV 용 배지 글
+  badgeText: string;
   text: string;
   href: string | null;
   by: string;
   reason: string;
 }
 const HISTORY_COLUMNS: Column<HistoryItem>[] = [
-  { key: 'at', label: '시각', sort: (x) => x.at, short: true },
-  { key: 'kind', label: '종류', sort: (x) => x.kind, short: true },
-  { key: 'text', label: '내용', sort: (x) => x.text },
-  { key: 'by', label: '처리자', sort: (x) => x.by, short: true },
+  { key: 'at', label: '시각', sort: (x) => x.at, short: true, cellClass: 'text-xs text-slate-600', cell: (x) => <TimeText value={x.at} kind="log" />, csv: (x) => fmtLog(x.at) },
+  {
+    key: 'kind',
+    label: '종류',
+    sort: (x) => x.kind,
+    short: true,
+    cellClass: 'text-xs',
+    // 동작 태그 색은 끝말로(lib/actionTone — 해제 = 위험 · 적용 = 정보 · 수정 = 주의 · 등록 = 정상 · 그 밖 회색)
+    cell: (x) => (
+      <span className="flex items-center gap-1.5">
+        <StatusPill tone={actionTone(x.kind)} data-action-tone={actionTone(x.kind)}>
+          {x.kind}
+        </StatusPill>
+        {x.badge}
+      </span>
+    ),
+    csv: (x) => (x.badgeText ? `${x.kind} · ${x.badgeText}` : x.kind),
+  },
+  {
+    key: 'text',
+    label: '내용',
+    sort: (x) => x.text,
+    cellClass: 'text-slate-700',
+    cell: (x) => (
+      <>
+        {x.text}
+        {x.href && (
+          <>
+            {' '}
+            <Link to={x.href} className="text-xs text-indigo-600 hover:underline">
+              검사 결과 보기
+            </Link>
+          </>
+        )}
+        {x.reason && (
+          <div className="mt-0.5 text-xs text-slate-500" data-reason="">
+            사유: {x.reason}
+          </div>
+        )}
+      </>
+    ),
+    csv: (x) => (x.reason ? `${x.text} · 사유: ${x.reason}` : x.text),
+  },
+  { key: 'by', label: '처리자', sort: (x) => x.by, short: true, cellClass: 'text-xs text-slate-500', cell: (x) => x.by, csv: (x) => x.by },
 ];
 // CSV 내보내기(10/20 D): 백엔드 한 번에 최대 500행(store.MaxAuditLimit) — 나눠 받아 최대 10,000행
 const CSV_PAGE = 500;
@@ -116,7 +169,11 @@ export function AuditPage() {
   const filtered = chips.some(Boolean);
 
   return (
-    <div className="flex h-full min-h-0 gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <p data-part="screen-copy" data-screen="audit" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
+        {screenCopy('audit')}
+      </p>
+      <div className="flex min-h-0 flex-1 gap-4">
       <PageActions>
         <div className="flex rounded-md border border-slate-300 p-0.5" role="group" aria-label="보기">
           {(
@@ -146,36 +203,14 @@ export function AuditPage() {
       <Panel className="min-w-0 flex-1" testId="audit" title={view === 'changes' ? '판정 · 정책 변경 이력' : '위반 이력'}>
         <div className="flex h-full flex-col">
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-sm">
+            {/* 거르기 줄(11/09): 선택 상자 = 공통 Select(「○○ 전체」), 글 = 검색칸(Enter · 칸 벗어날 때 적용). 조건 지우기는 「적용된 필터」 줄 하나 */}
             {view === 'violations' && (
-              <>
-                <label className="flex items-center gap-1.5 text-slate-500">
-                  종류
-                  <select className={ctl} value={filters.kind} onChange={(e) => setFilter('kind', e.target.value)}>
-                    <option value="">전체</option>
-                    {KINDS.map((k) => (
-                      <option key={k} value={k}>
-                        {k === 'dns' ? `dns (${KIND_LONG.dns})` : k}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex items-center gap-1.5 text-slate-500">
-                  대응
-                  <select className={ctl} value={filters.action} onChange={(e) => setFilter('action', e.target.value)}>
-                    <option value="">전체</option>
-                    <option value="alert">경고 (alert)</option>
-                    <option value="kill">격리 (kill)</option>
-                  </select>
-                </label>
-                <label className="flex items-center gap-1.5 text-slate-500">
-                  규칙
-                  <input className={`${ctl} w-32`} placeholder="규칙 ID" value={filters.rule} onChange={(e) => setFilter('rule', e.target.value)} />
-                </label>
-                <label className="flex items-center gap-1.5 text-slate-500">
-                  컨테이너
-                  <input className={`${ctl} w-36`} placeholder="컨테이너 이름" value={filters.container} onChange={(e) => setFilter('container', e.target.value)} />
-                </label>
-              </>
+              <FilterBar name="audit" active={false} onClear={() => clearKeys(FILTERS)}>
+                <SearchField label="규칙 검색" placeholder="규칙 ID" width={180} value={filters.rule} onApply={(v) => setFilter('rule', v)} />
+                <SearchField label="컨테이너 검색" placeholder="컨테이너 이름" width={200} value={filters.container} onApply={(v) => setFilter('container', v)} />
+                <Select name="kind" label="종류" value={filters.kind} options={KIND_OPTIONS} onChange={(v) => setFilter('kind', v)} />
+                <Select name="action" label="대응" value={filters.action} options={ACTION_OPTIONS} onChange={(v) => setFilter('action', v)} />
+              </FilterBar>
             )}
             <label className="flex items-center gap-1.5 text-slate-500">
               기간
@@ -183,12 +218,12 @@ export function AuditPage() {
               ~
               <input type="datetime-local" className={ctl} value={filters.until} onChange={(e) => setFilter('until', e.target.value)} aria-label="기간 끝" />
             </label>
-            {view === 'violations' && <ExportCsv filters={filters} caseOf={caseOf} />}
           </div>
           <AppliedFilters items={chips} onClearAll={() => clearKeys(FILTERS)} />
           {view === 'violations' ? (
             <Violations
               filters={debounced}
+              current={filters}
               caseOf={caseOf}
               selectedId={id}
               edge={!id}
@@ -206,6 +241,8 @@ export function AuditPage() {
       {view === 'violations' && id && (
         <AuditSheetLoader id={Number(id)} caseOf={caseOf} tab={tab} onTab={(t) => set('tab', t === 'evidence' ? 'evidence' : '', true)} onClose={() => clearKeys([])} nav={sheetNav(shownIds, Number(id), (x) => set('id', String(x)))} />
       )}
+      </div>
+      <ScreenNote screen="audit" />
     </div>
   );
 }
@@ -230,6 +267,7 @@ interface Got {
 
 function Violations({
   filters,
+  current,
   caseOf,
   selectedId,
   edge,
@@ -240,6 +278,8 @@ function Violations({
   onRows,
 }: {
   filters: Filters;
+  // 지금 입력 칸의 값(디바운스 전) — 내보내기는 이 값 그대로
+  current: Filters;
   caseOf: Map<string, Case>;
   selectedId: string | null;
   // 표 패널이 화면 오른쪽 끝인가(시트 닫힘) — 바닥줄이 도우미 단추를 비켜 간다
@@ -296,21 +336,62 @@ function Violations({
   // 재조회: 이전 행은 그대로, 머리 위 2px 진행 띠
   const busy = useBusy(loading && loaded);
 
+  // 11/09 SPEC §4: 기록류 — 시각이 맨 앞(YYYY-MM-DD HH:mm:ss 고정폭). 표 도구: 칸 보이기 · 폭 · 순서 = supplyguard.grid.audit.v1,
+  // CSV 내보내기 = 보이는 칸 · 화면 글(기간 안 전체 — 이미지 · 사유는 숨긴 칸을 켜면 함께 나간다)
   const columns = useMemo<Column<AuditEntry>[]>(
     () => [
-      // 11/09 SPEC §4: 기록류 — 시각이 맨 앞(YYYY-MM-DD HH:mm:ss 고정폭)
-      { key: 'time', label: '시각', sort: (a) => Date.parse(a.event.timestamp), short: true },
-      { key: 'id', label: '#', num: true, sort: (a) => a.id, short: true },
-      { key: 'container', label: '컨테이너 · 패키지', sort: (a) => (a.install ? a.install.label : a.event.containerName), short: true },
-      { key: 'kind', label: '종류', sort: (a) => a.event.kind, short: true },
-      { key: 'detail', label: '상세', sort: (a) => detailOf(a.event) },
-      { key: 'rule', label: '규칙', sort: (a) => a.ruleId, short: true },
-      { key: 'level', label: '탐지 결과', sort: (a) => LEVEL_RANK[levelOf(a)], short: true },
-      { key: 'decision', label: '판정', sort: (a) => (a.caseId ? (caseOf.get(a.caseId)?.decision ?? null) : null), short: true },
+      { key: 'time', label: '시각', sort: (a) => Date.parse(a.event.timestamp), short: true, cellClass: 'text-xs text-slate-600', cell: (a) => <TimeText value={a.event.timestamp} kind="log" />, csv: (a) => fmtLog(a.event.timestamp) },
+      { key: 'id', label: '#', num: true, sort: (a) => a.id, short: true, cellClass: 'num text-xs text-slate-400', cell: (a) => a.id },
+      {
+        key: 'container',
+        label: '컨테이너 · 패키지',
+        sort: (a) => (a.install ? a.install.label : a.event.containerName),
+        width: 220,
+        // 두 줄 칸(11/09 G9) — 위 이름 · 아래 컨테이너 ID 12자. 행 48 을 지키려고 위아래 여백 6(.sg-table td 8 을 이 칸만 덮음)
+        cellClass: 'py-1.5!',
+        cell: (a) => (
+          <TwoLine
+            title={`${a.install ? a.install.label : a.event.containerName} · ${a.event.containerId}`}
+            top={
+              a.install ? (
+                <>
+                  <span className="mr-1.5 rounded bg-indigo-50 px-1.5 text-xs leading-4 text-accent-text">설치 검사</span>
+                  <span className="font-mono text-slate-800">{a.install.label}</span>
+                </>
+              ) : (
+                <span className="text-slate-800">{a.event.containerName}</span>
+              )
+            }
+            sub={shortId(a.event.containerId)}
+          />
+        ),
+        csv: (a) => (a.install ? a.install.label : a.event.containerName),
+      },
+      { key: 'kind', label: '종류', sort: (a) => a.event.kind, short: true, cell: (a) => <KindBadge kind={a.event.kind} />, csv: (a) => a.event.kind },
+      { key: 'detail', label: '상세', sort: (a) => detailOf(a.event), fill: true, cellClass: 'font-mono text-xs text-slate-600', cell: (a) => <span title={detailOf(a.event)}>{detailOf(a.event)}</span>, csv: (a) => detailOf(a.event) },
+      { key: 'rule', label: '규칙', sort: (a) => a.ruleId, short: true, cellClass: 'font-mono text-xs', cell: (a) => a.ruleId },
+      { key: 'level', label: '탐지 결과', sort: (a) => LEVEL_RANK[levelOf(a)], short: true, cell: (a) => <VerdictBadge v={a} />, csv: (a) => LEVEL_LABEL[levelOf(a)] },
+      {
+        key: 'decision',
+        label: '판정',
+        sort: (a) => (a.caseId ? (caseOf.get(a.caseId)?.decision ?? null) : null),
+        short: true,
+        cell: (a) => {
+          const c = a.caseId ? caseOf.get(a.caseId) : undefined;
+          return c ? <DecisionBadge decision={c.decision} /> : null;
+        },
+        csv: (a) => {
+          const c = a.caseId ? caseOf.get(a.caseId) : undefined;
+          return c ? DECISION_LABEL[c.decision] : null;
+        },
+      },
+      { key: 'image', label: '이미지', hidden: true, sort: (a) => a.event.imageName, short: true, cellClass: 'font-mono text-xs', cell: (a) => a.event.imageName },
+      { key: 'reason', label: '사유', hidden: true, sort: (a) => a.reason ?? null, cellClass: 'text-xs text-slate-600', cell: (a) => a.reason ?? null },
     ],
     [caseOf],
   );
-  const kit = useTableKit({ columns, sort: { key: 'id', dir: 'desc' } });
+  const kit = useTableKit({ columns, sort: { key: 'id', dir: 'desc' }, grid: 'audit' });
+  const exp = useAuditExport(current, kit);
   const { sorted } = kit;
   const rows = useMemo(() => (got ? sorted(got.rows) : []), [got, sorted]);
   useEffect(() => {
@@ -331,8 +412,17 @@ function Violations({
   return (
     <>
       {!!error && loaded && <LoadError error={error} what="감사 로그" compact />}
-      <BusyBar on={busy} />
-      <div data-fill="" className="min-h-0 flex-1 overflow-auto" data-testid="audit-scroll">
+      {got && (
+        <TableToolbar name="audit" total={got.total ?? got.rows.length} kit={kit} onRefresh={retry} refreshing={busy} onExport={exp.run} exportLabel="CSV 내려받기 — 지금 조건 · 기간">
+          {exp.err && (
+            <span className="max-w-80 truncate text-xs text-red-600" data-part="export-error" role="alert" title={exp.err}>
+              {exp.err}
+            </span>
+          )}
+          {exp.busy && <span className="text-xs">내보내는 중…</span>}
+        </TableToolbar>
+      )}
+      <TableScroll data-fill="" className="min-h-0 flex-1 overflow-auto" testId="audit-scroll">
         {failing ? (
           <ListError error={error} what="감사 로그" onRetry={retry} retrying={loading} />
         ) : !got ? (
@@ -345,61 +435,21 @@ function Violations({
           )
         ) : (
           <table className="sg-table" data-table="audit">
-            <SortHead columns={columns} sort={kit.sort} onSort={kit.sortBy} />
+            <SortHead kit={kit} />
             <tbody>
               {rows.map((a) => {
-                const c = a.caseId ? caseOf.get(a.caseId) : undefined;
-                const install = a.install ?? null;
                 const level = levelOf(a);
                 return (
-                  <tr
-                    key={a.id}
-                    {...rowKeys(() => onOpen(a.id))}
-                    data-audit={a.id}
-                    data-level={level}
-                    aria-selected={String(a.id) === selectedId}
-                    onClick={() => onOpen(a.id)}
-                    className={`cursor-pointer hover:bg-[var(--row-hover)] ${String(a.id) === selectedId ? 'bg-indigo-50' : ''}`}
-                  >
+                  <tr key={a.id} {...rowKeys(() => onOpen(a.id))} {...rowState({ open: String(a.id) === selectedId })} data-audit={a.id} data-level={level} onClick={() => onOpen(a.id)} className="cursor-pointer">
                     {/* 11/04e 막대: 격리된 행만(위험색) — 첫 칸 */}
-                    <td data-col="time" className="tk-short text-slate-600" style={barStyle(level === 'killed' && 'danger')}>
-                      <TimeText value={a.event.timestamp} kind="log" />
-                    </td>
-                    <td data-col="id" className="num num-col tk-short text-xs text-slate-400">
-                      {a.id}
-                    </td>
-                    <td data-col="container" className="tk-short max-w-52 truncate" title={a.event.containerName}>
-                      {install ? (
-                        <span className="flex items-center gap-1.5">
-                          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-accent-text">설치 검사</span>
-                          <span className="truncate font-mono text-slate-800">{install.label}</span>
-                        </span>
-                      ) : (
-                        <span className="font-medium text-slate-800">{a.event.containerName}</span>
-                      )}
-                    </td>
-                    <td data-col="kind" className="tk-short">
-                      <KindBadge kind={a.event.kind} />
-                    </td>
-                    <td data-col="detail" className="tk-fill font-mono text-xs text-slate-600" title={detailOf(a.event)}>
-                      {detailOf(a.event)}
-                    </td>
-                    <td data-col="rule" className="tk-short font-mono text-xs">
-                      {a.ruleId}
-                    </td>
-                    <td data-col="level" className="tk-short">
-                      <VerdictBadge v={a} />
-                    </td>
-                    <td data-col="decision" className="tk-short">
-                      {c ? <DecisionBadge decision={c.decision} /> : <span className="text-xs text-slate-300">—</span>}
-                    </td>
+                    <GridCells kit={kit} row={a} bar={level === 'killed' && 'danger'} />
                   </tr>
                 );
               })}
             </tbody>
           </table>
         )}
-      </div>
+      </TableScroll>
       {got && (
         <PagerSlot edge={edge}>
           <TablePager
@@ -570,7 +620,8 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
   const changes = useLoad(load);
   const failing = !!changes.error && !changes.data;
   useAutoRetry(failing, changes.error, changes.reload);
-  const kit = useTableKit({ columns: HISTORY_COLUMNS, sort: { key: 'at', dir: 'desc' } });
+  const kit = useTableKit({ columns: HISTORY_COLUMNS, sort: { key: 'at', dir: 'desc' }, grid: 'audit-history' });
+  const busy = useBusy(changes.loading && !!changes.data);
   const s = since ? new Date(since).getTime() : -Infinity;
   const u = until ? new Date(until).getTime() : Infinity;
   const inRange = (iso: string) => {
@@ -585,6 +636,7 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
         at: c.decidedAt!,
         kind: '판정',
         badge: <DecisionBadge decision={c.decision} />,
+        badgeText: DECISION_LABEL[c.decision],
         text: `${SOURCE_LABEL[c.source] ?? c.source} ${caseLabel(c)} — ${DECISION_LABEL[c.decision]}${c.note ? ` · ${c.note}` : ''}`,
         href: scanHref(c) as string | null,
         by: c.decidedBy ?? '—',
@@ -595,6 +647,7 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
       at: ch.at,
       kind: CHANGE_KIND_LABEL[ch.kind] ?? ch.kind,
       badge: null,
+      badgeText: '',
       text: ch.summary,
       href: null as string | null,
       by: ch.by,
@@ -607,7 +660,8 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
   return (
     <>
       {!!changes.error && !!changes.data && <LoadError error={changes.error} what="변경 이력" compact />}
-      <div data-fill="" className="min-h-0 flex-1 overflow-auto" data-testid="history">
+      {changes.data && <TableToolbar name="history" total={items.length} kit={kit} onRefresh={changes.reload} refreshing={busy} onExport={() => downloadCSV('supplyguard-changes.csv', kit.csv(items))} />}
+      <TableScroll data-fill="" className="min-h-0 flex-1 overflow-auto" testId="history">
         {failing ? (
           <ListError error={changes.error} what="변경 이력" onRetry={changes.reload} retrying={changes.loading} />
         ) : !changes.data ? (
@@ -620,53 +674,28 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
           )
         ) : (
           <table className="sg-table" data-table="history">
-            <SortHead columns={HISTORY_COLUMNS} sort={kit.sort} onSort={kit.sortBy} />
+            <SortHead kit={kit} />
             <tbody>
               {kit.sorted(items).map((x) => (
-                <tr key={x.key} data-history={x.key}>
-                  <td data-col="at" className="tk-short text-slate-600">
-                    <TimeText value={x.at} kind="log" />
-                  </td>
-                  <td data-col="kind" className="tk-short text-xs">
-                    <span className="flex items-center gap-1.5">
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">{x.kind}</span>
-                      {x.badge}
-                    </span>
-                  </td>
-                  <td data-col="text" className="text-slate-700">
-                    {x.text}
-                    {x.href && (
-                      <>
-                        {' '}
-                        <Link to={x.href} className="text-xs text-indigo-600 hover:underline">
-                          검사 결과 보기
-                        </Link>
-                      </>
-                    )}
-                    {x.reason && (
-                      <div className="mt-0.5 text-xs text-slate-500" data-reason="">
-                        사유: {x.reason}
-                      </div>
-                    )}
-                  </td>
-                  <td data-col="by" className="tk-short text-xs text-slate-500">
-                    {x.by}
-                  </td>
+                <tr key={x.key} data-history={x.key} data-kit-row="">
+                  <GridCells kit={kit} row={x} />
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-      </div>
+      </TableScroll>
     </>
   );
 }
 
-// CSV 내보내기(10/20 D) — 기간(시작 · 끝)이 있어야 한다. 지금 필터 그대로, 최대 10,000행, BOM
-function ExportCsv({ filters, caseOf }: { filters: Filters; caseOf: Map<string, Case> }) {
+// CSV 내보내기(10/20 D · 11/09 표 도구) — 기간(시작 · 끝)이 있어야 한다. 지금 조건 그대로, 최대 10,000행, BOM.
+// 칸은 표에 보이는 칸 · 순서 · 화면 글(11/09 G13) — 이미지 · 사유가 필요하면 칸 고르기로 켠다
+function useAuditExport(filters: Filters, kit: TableKit<AuditEntry>) {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const run = async () => {
+    if (busy) return;
     if (!filters.since || !filters.until) {
       setErr('기간을 먼저 고르세요.');
       return;
@@ -684,35 +713,12 @@ function ExportCsv({ filters, caseOf }: { filters: Filters; caseOf: Map<string, 
         before = page[page.length - 1].id;
       }
       const day = (v: string) => v.slice(0, 10).replace(/-/g, '');
-      downloadCSV(`supplyguard-audit-${day(filters.since)}-${day(filters.until)}.csv`, [
-        ['id', '시각', '컨테이너', '이미지', '종류', '상세', '규칙', '탐지 결과', '판정', '사유'],
-        ...all.slice(0, CSV_MAX).map((a) => {
-          const c = a.caseId ? caseOf.get(a.caseId) : undefined;
-          return [a.id, a.event.timestamp, a.install ? a.install.label : a.event.containerName, a.event.imageName, a.event.kind, detailOf(a.event), a.ruleId ?? '', LEVEL_LABEL[levelOf(a)], c ? DECISION_LABEL[c.decision] : '', a.reason ?? ''];
-        }),
-      ]);
+      downloadCSV(`supplyguard-audit-${day(filters.since)}-${day(filters.until)}.csv`, kit.csv(all.slice(0, CSV_MAX)));
     } catch (e) {
       setErr(`내보내지 못했습니다 — ${errorText(e)}`);
     } finally {
       setBusy(false);
     }
   };
-  return (
-    <span className="ml-auto flex items-center gap-2">
-      {err && (
-        <span className="max-w-72 truncate text-xs text-red-600" data-part="export-error" role="alert" title={err}>
-          {err}
-        </span>
-      )}
-      <ActionButton
-        data-action="export-csv"
-        reason={busy && '내보내는 중입니다'}
-        onClick={() => void run()}
-        title="지금 조건 · 기간의 위반 기록을 CSV로 내려받기(기간 안 최대 10,000건)"
-        className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 aria-disabled:opacity-50"
-      >
-        <Download className="size-3.5" aria-hidden /> CSV 내보내기
-      </ActionButton>
-    </span>
-  );
+  return { run: () => void run(), err, busy };
 }

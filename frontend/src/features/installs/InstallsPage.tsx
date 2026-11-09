@@ -2,22 +2,27 @@ import { Copy } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DecisionBadge, StatusBadge } from '../../components/Badges';
-import { BusyBar, SortHead, TablePager } from '../../components/DataTable';
+import { GridCells, SortHead, TablePager, TableScroll } from '../../components/DataTable';
 import { FilterChips } from '../../components/FilterChips';
 import { PageActions } from '../../components/PageActions';
 import { Panel } from '../../components/Panel';
 import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, NoResults, PagerSlot, Skeleton } from '../../components/list/ListStates';
 import { TimeText } from '../../components/list/cells';
-import { barStyle, rowKeys, useAutoRetry, useBusy } from '../../components/list/hooks';
+import { fmtStatus } from '../../components/list/cell-format';
+import { downloadCSV } from '../../components/list/csv';
+import { rowKeys, rowState, useAutoRetry, useBusy } from '../../components/list/hooks';
+import { ScreenNote } from '../../components/ScreenNote';
+import { TableToolbar } from '../../components/TableToolbar';
 import { useCases } from '../../hooks/cases-context';
 import { useFilters } from '../../hooks/useFilters';
 import { useCopyCommand } from '../../hooks/useCopyCommand';
 import { useInterval, useLoad } from '../../hooks/useLoad';
-import { useTableKit, type Column } from '../../hooks/useTableKit';
+import { useTableKit, type Column, type TableKit } from '../../hooks/useTableKit';
 import { api } from '../../lib/api';
+import { screenCopy } from '../../lib/screenCopy';
 import { fmtNum } from '../../lib/format';
 import { duration, EXAMPLE_COMMAND, sessionLabel, violationTotal } from '../../lib/pkg';
-import { INSTALL_STATUS_LABEL, INSTALL_STATUSES, MANAGERS, type Case, type InstallSession } from '../../lib/types';
+import { DECISION_LABEL, INSTALL_STATUS_LABEL, INSTALL_STATUSES, MANAGERS, SCAN_VERDICT_LABEL, type InstallSession } from '../../lib/types';
 import { InstallSheet } from './InstallSheet';
 import { UsageGuide } from './UsageGuide';
 import { sheetNav } from '../../components/sheet-nav';
@@ -31,6 +36,14 @@ const durSec = (s: InstallSession) => {
   const end = s.finishedAt ?? s.containerExitedAt;
   return s.status === 'refused' || !end ? null : (Date.parse(end) - Date.parse(s.startedAt)) / 1000;
 };
+
+// 정적 검사 칸의 화면 글(CSV — 「화면 글 그대로」, 11/09 G13): StaticBadge 와 같은 말
+const staticText = (s: InstallSession) => {
+  const sc = s.scan;
+  if (!sc || sc.status === 'skipped') return null;
+  return sc.status === 'running' ? '검사 중…' : sc.status === 'failed' ? '실패' : SCAN_VERDICT_LABEL[sc.verdict ?? 'clean'];
+};
+const durText = (s: InstallSession) => (s.status === 'running' ? '진행 중' : s.status === 'refused' ? null : duration(s.startedAt, s.finishedAt ?? s.containerExitedAt));
 
 // 결과 칩: 기본 「판정 대기」(목표 문서 완료 기준 ①), 그다음 전체 · 설치 결과별
 type StatusFilter = 'pending' | 'all' | (typeof INSTALL_STATUSES)[number];
@@ -59,20 +72,54 @@ export function InstallsPage() {
   useAutoRetry(failing, list.error, reload);
 
   const caseOf = useMemo(() => new Map((cases ?? []).map((c) => [c.id, c])), [cases]);
+  // 11/09 표 도구: 칸 보이기 · 폭 · 순서는 이 브라우저에(supplyguard.grid.installs.v1), CSV = 보이는 칸 · 화면 글.
+  // 11/04 결정: 시트가 열려 있으면 「걸린 시간」 칸을 뺀다(상세에 같은 값)
   const columns = useMemo<Column<InstallSession>[]>(
     () => [
-      { key: 'status', label: '설치 결과', sort: (s) => STATUS_RANK[s.status], short: true },
-      { key: 'static', label: '정적 검사', sort: (s) => (s.scan ? (s.scan.verdict ?? s.scan.status) : null), short: true },
-      { key: 'started', label: '시작', sort: (s) => Date.parse(s.startedAt), short: true },
-      { key: 'manager', label: '매니저', sort: (s) => s.manager, short: true },
-      { key: 'package', label: '패키지', sort: (s) => sessionLabel(s) },
-      { key: 'decision', label: '판정', sort: (s) => (s.caseId ? (caseOf.get(s.caseId)?.decision ?? null) : null), short: true },
-      { key: 'violations', label: '위반', num: true, sort: (s) => violationTotal(s) ?? null, short: true },
-      { key: 'duration', label: '걸린 시간', num: true, sort: durSec, short: true },
+      { key: 'status', label: '설치 결과', sort: (s) => STATUS_RANK[s.status], short: true, cell: (s) => <StatusBadge status={s.status} />, csv: (s) => INSTALL_STATUS_LABEL[s.status] },
+      { key: 'static', label: '정적 검사', sort: (s) => (s.scan ? (s.scan.verdict ?? s.scan.status) : null), short: true, cell: (s) => <StaticBadge s={s} />, csv: staticText },
+      { key: 'started', label: '시작', sort: (s) => Date.parse(s.startedAt), short: true, cellClass: 'text-slate-600', cell: (s) => <TimeText value={s.startedAt} kind="status" />, csv: (s) => fmtStatus(s.startedAt) },
+      {
+        key: 'manager',
+        label: '매니저',
+        sort: (s) => s.manager,
+        short: true,
+        cell: (s) => <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-600">{s.manager}</span>,
+        csv: (s) => s.manager,
+      },
+      { key: 'package', label: '패키지', sort: (s) => sessionLabel(s), fill: true, cellClass: 'font-mono text-slate-800', cell: (s) => <span title={sessionLabel(s)}>{sessionLabel(s)}</span>, csv: sessionLabel },
+      {
+        key: 'decision',
+        label: '판정',
+        sort: (s) => (s.caseId ? (caseOf.get(s.caseId)?.decision ?? null) : null),
+        short: true,
+        cell: (s) => {
+          const c = s.caseId ? caseOf.get(s.caseId) : undefined;
+          return c ? <DecisionBadge decision={c.decision} /> : null;
+        },
+        csv: (s) => {
+          const c = s.caseId ? caseOf.get(s.caseId) : undefined;
+          return c ? DECISION_LABEL[c.decision] : null;
+        },
+      },
+      {
+        key: 'violations',
+        label: '위반',
+        num: true,
+        sort: (s) => violationTotal(s) ?? null,
+        short: true,
+        cellClass: 'num',
+        cell: (s) => {
+          const n = violationTotal(s);
+          return n === undefined ? null : <span className={n ? 'font-semibold text-red-600' : 'text-slate-400'}>{fmtNum(n)}</span>;
+        },
+        csv: (s) => violationTotal(s) ?? null,
+      },
+      ...(id ? [] : [{ key: 'duration', label: '걸린 시간', num: true, sort: durSec, short: true, cellClass: 'num text-xs text-slate-500', cell: durText, csv: durText } satisfies Column<InstallSession>]),
     ],
-    [caseOf],
+    [caseOf, id],
   );
-  const kit = useTableKit({ columns, sort: { key: 'started', dir: 'desc' } });
+  const kit = useTableKit({ columns, sort: { key: 'started', dir: 'desc' }, grid: 'installs' });
   const busy = useBusy(list.loading && !!list.data);
 
   const set = (k: 'id' | 'status' | 'manager', v: string | null) => {
@@ -110,8 +157,6 @@ export function InstallsPage() {
     kit.reveal(rows, (s) => s.id === id);
   }
   const view = kit.view(rows);
-  // 11/04 결정: 시트가 열려 있으면 「걸린 시간」 열을 숨긴다(상세에 같은 값)
-  const shown = id ? columns.filter((c) => c.key !== 'duration') : columns;
 
   const managerOptions = [
     { value: '', label: '전체', count: sessions.length },
@@ -119,7 +164,11 @@ export function InstallsPage() {
   ];
 
   return (
-    <div className="flex h-full min-h-0 gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <p data-part="screen-copy" data-screen="installs" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
+        {screenCopy('installs')}
+      </p>
+      <div className="flex min-h-0 flex-1 gap-4">
       <PageActions>
         <button type="button" onClick={() => setGuide(true)} className="sg-btn sg-btn-sm sg-btn-secondary">
           사용 방법
@@ -132,17 +181,12 @@ export function InstallsPage() {
         >
           <Copy className="size-3.5" aria-hidden /> 명령 복사
         </button>
-        <span className="truncate text-xs text-slate-400">설치는 CLI(sg-install)로만 실행합니다</span>
       </PageActions>
 
       <Panel
         className="min-w-0 flex-1"
         testId="installs"
-        title={
-          <span>
-            설치 세션 <span className="num ml-1 font-normal text-slate-400">{fmtNum(rows.length)}건</span>
-          </span>
-        }
+        title="설치 세션"
       >
         <div className="flex h-full flex-col">
           <div className="grid shrink-0 gap-2 border-b border-slate-100 px-4 py-2.5">
@@ -170,17 +214,17 @@ export function InstallsPage() {
             )
           ) : (
             <>
-              <BusyBar on={busy} />
-              <div data-fill="" className="min-h-0 flex-1 overflow-auto">
+              <TableToolbar name="installs" total={rows.length} kit={kit} onRefresh={list.reload} refreshing={busy} onExport={() => downloadCSV('supplyguard-installs.csv', kit.csv(rows))} />
+              <TableScroll data-fill="" className="min-h-0 flex-1 overflow-auto">
                 <table className="sg-table" data-table="installs">
-                  <SortHead columns={shown} sort={kit.sort} onSort={kit.sortBy} />
+                  <SortHead kit={kit} />
                   <tbody>
                     {view.rows.map((s) => (
-                      <Row key={s.id} s={s} c={s.caseId ? caseOf.get(s.caseId) : undefined} pending={isPending(s)} selected={s.id === id} showDuration={!id} onOpen={() => set('id', s.id)} />
+                      <Row key={s.id} s={s} kit={kit} pending={isPending(s)} selected={s.id === id} onOpen={() => set('id', s.id)} />
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
               <PagerSlot edge={!id}>
                 <TablePager name="installs" total={view.total} from={view.from} to={view.to} page={view.page} size={kit.size} onPage={kit.setPage} onSize={kit.setSize} />
               </PagerSlot>
@@ -188,6 +232,8 @@ export function InstallsPage() {
           )}
         </div>
       </Panel>
+      </div>
+      <ScreenNote screen="installs" />
 
       {id && <InstallSheet id={id} onClose={() => set('id', null)} onChanged={list.reload} nav={sheetNav(view.rows.map((s) => s.id), id, (x) => set('id', x))} />}
       {guide && <UsageGuide onClose={() => setGuide(false)} />}
@@ -195,22 +241,7 @@ export function InstallsPage() {
   );
 }
 
-function Row({
-  s,
-  c,
-  pending,
-  selected,
-  showDuration,
-  onOpen,
-}: {
-  s: InstallSession;
-  c: Case | undefined;
-  pending: boolean;
-  selected: boolean;
-  showDuration: boolean;
-  onOpen: () => void;
-}) {
-  const n = violationTotal(s);
+function Row({ s, kit, pending, selected, onOpen }: { s: InstallSession; kit: TableKit<InstallSession>; pending: boolean; selected: boolean; onOpen: () => void }) {
   const danger = isDangerRow(s); // 11/04: 런타임 격리 · 경고 또는 정적 악성
   // 11/04e 막대: 판정 대기 · 격리 · 경고 · 정적 악성 행만 — 격리 · 정적 악성은 위험색, 나머지(판정 대기 · 경고)는 경고색
   const bar = s.status === 'isolated' || s.scan?.verdict === 'malicious' ? 'danger' : pending || danger ? 'warn' : null;
@@ -220,36 +251,11 @@ function Row({
       data-install={s.id}
       data-danger={danger || undefined}
       data-bar={bar ?? undefined}
-      aria-selected={selected}
+      {...rowState({ open: selected })}
       onClick={onOpen}
-      className={`cursor-pointer hover:bg-[var(--row-hover)] ${selected ? 'bg-indigo-50' : ''}`}
+      className="cursor-pointer"
     >
-      <td data-col="status" className="tk-short" style={barStyle(bar)}>
-        <StatusBadge status={s.status} />
-      </td>
-      <td data-col="static" className="tk-short">
-        <StaticBadge s={s} />
-      </td>
-      <td data-col="started" className="tk-short text-slate-600">
-        <TimeText value={s.startedAt} kind="status" />
-      </td>
-      <td data-col="manager" className="tk-short">
-        <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-600">{s.manager}</span>
-      </td>
-      <td data-col="package" className="tk-fill font-mono text-slate-800" title={sessionLabel(s)}>
-        {sessionLabel(s)}
-      </td>
-      <td data-col="decision" className="tk-short">
-        {c ? <DecisionBadge decision={c.decision} /> : <span className="text-xs text-slate-300">—</span>}
-      </td>
-      <td data-col="violations" className={`num num-col tk-short ${n ? 'font-semibold text-red-600' : 'text-slate-400'}`}>
-        {n === undefined ? '—' : fmtNum(n)}
-      </td>
-      {showDuration && (
-        <td className="num num-col tk-short text-xs text-slate-500" data-col="duration">
-          {s.status === 'running' ? '진행 중' : s.status === 'refused' ? '—' : duration(s.startedAt, s.finishedAt ?? s.containerExitedAt)}
-        </td>
-      )}
+      <GridCells kit={kit} row={s} bar={bar} />
     </tr>
   );
 }

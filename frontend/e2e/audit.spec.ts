@@ -30,8 +30,9 @@ test.describe('감사 로그 — 언제 무엇이 걸렸고, 어떻게 닫혔나
   test('③ 기간 조회는 여기만 — 필터는 주소에 남기지 않고(10/21) 서버에 넘긴다', async ({ page, backend }) => {
     await page.goto('/audit');
     await page.getByLabel('기간 시작').fill('2020-01-01T00:00');
-    await page.getByLabel('종류').selectOption('connect');
-    await expect(page.getByLabel('종류')).toHaveValue('connect');
+    await page.locator('[data-filter="kind"]').click(); // 11/09 공통 Select
+    await page.getByRole('option', { name: 'connect', exact: true }).click();
+    await expect(page.locator('[data-filter="kind"]')).toHaveAttribute('data-value', 'connect');
     await expect(page.getByLabel('기간 시작')).toHaveValue('2020-01-01T00:00');
     expect(new URL(page.url()).search).toBe('');
     await expect.poll(() => backend.requests.some((r) => r.path.startsWith('/audit?') && r.path.includes('kind=connect') && r.path.includes('since=2019-12-31T15'))).toBe(true);

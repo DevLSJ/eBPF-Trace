@@ -4,12 +4,17 @@ import { useSearchParams } from 'react-router-dom';
 import { KeyBoxes } from '../../components/KeyBoxes';
 import { AppliedFilters, EmptyState, NoResults } from '../../components/list/ListStates';
 import { TimeText } from '../../components/list/cells';
-import { fmtDay } from '../../components/list/cell-format';
 import { ActionButton } from '../../components/ActionButton';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { Empty, LoadError } from '../../components/Panel';
-import { SortHead } from '../../components/DataTable';
-import { useTableKit, type Column } from '../../hooks/useTableKit';
+import { GridCells, SortHead, TableScroll } from '../../components/DataTable';
+import { COL_W, useTableKit, type Column } from '../../hooks/useTableKit';
+import { downloadCSV } from '../../components/list/csv';
+import { fmtDay, fmtLog, fmtStatus } from '../../components/list/cell-format';
+import { rowState } from '../../components/list/hooks';
+import { Select } from '../../components/Select';
+import { TableToolbar } from '../../components/TableToolbar';
+import { screenCopy } from '../../lib/screenCopy';
 import { useAuth } from '../../hooks/auth-context';
 import { useToast } from '../../hooks/toast-context';
 import { PageActions } from '../../components/PageActions';
@@ -37,7 +42,11 @@ export function SettingsPage() {
   const tab = tabs.find((t) => t.key === params.get('tab'))?.key ?? 'server';
   const toast = useToast();
   return (
-    <div className="sg-card flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+    <p data-part="screen-copy" data-screen="settings" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
+      {screenCopy('settings')}
+    </p>
+    <div className="sg-card flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* 화면 머리 오른쪽 「화면 배치 기본 순서로」(11/04d, R1 11/04) — 확인 없이 즉시 · 토스트 · 조회자도(이 브라우저에만 저장된 값). 열린 사이드바는 바로 기본 순서 */}
       <PageActions>
         <button
@@ -73,6 +82,7 @@ export function SettingsPage() {
         {tab === 'license' && <LicenseTab />}
         {tab === 'auth-audit' && <AuthAuditTab />}
       </div>
+    </div>
     </div>
   );
 }
@@ -273,19 +283,88 @@ function AccountsTab() {
   const who = (u: UserView) => `${u.username} (${u.displayName})`;
   // 계정 표 칸(R4 11/04) — 머리 클릭 정렬, 기본은 받은 순서(정렬 없음). 버튼 칸은 정렬하지 않는다.
   // 11/09 SPEC §4: 현황 표 — 상태가 맨 앞, 마지막 로그인은 MM-DD HH:mm + 전체 시각 툴팁
+  // 11/09 표 도구: 칸 보이기 · 폭 · 순서 = supplyguard.grid.settings-users.v1, CSV = 보이는 칸 · 화면 글. 행 동작 칸은 이름이 없어 늘 보이고 고정
   const userCols = useMemo<Column<UserView>[]>(
     () => [
-      { key: 'status', label: '상태', sort: (u) => (u.disabled ? 3 : u.locked ? 0 : u.mustChangePassword ? 1 : 2), short: true },
-      { key: 'username', label: '아이디', sort: (u) => u.username, short: true },
-      { key: 'name', label: '이름', sort: (u) => u.displayName },
-      { key: 'role', label: '역할', sort: (u) => ROLE_KO[u.role], short: true },
-      { key: 'otp', label: 'OTP', sort: (u) => (u.otpEnabled ? 1 : 0), short: true },
-      { key: 'last', label: '마지막 로그인', sort: (u) => (u.lastLoginAt ? Date.parse(u.lastLoginAt) : null), short: true },
-      { key: 'actions', label: '', short: true },
+      {
+        key: 'status',
+        label: '상태',
+        sort: (u) => (u.disabled ? 3 : u.locked ? 0 : u.mustChangePassword ? 1 : 2),
+        short: true,
+        cellClass: 'text-xs',
+        cell: (u) => {
+          const [st, tone] = status(u);
+          return <span className={tone}>{st}</span>;
+        },
+        csv: (u) => status(u)[0],
+      },
+      {
+        key: 'username',
+        label: '아이디',
+        sort: (u) => u.username,
+        short: true,
+        cellClass: 'font-mono',
+        cell: (u) => (
+          <>
+            {u.username}
+            {u.id === me?.user.id && <span className="text-xs text-slate-400"> (나)</span>}
+          </>
+        ),
+        csv: (u) => u.username,
+      },
+      { key: 'name', label: '이름', sort: (u) => u.displayName, cell: (u) => u.displayName },
+      {
+        key: 'role',
+        label: '역할',
+        sort: (u) => ROLE_KO[u.role],
+        short: true,
+        cell: (u) => (
+          <>
+            <span className={`rounded px-1.5 py-0.5 text-xs ${u.role === 'admin' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>{ROLE_KO[u.role]}</span>
+            {u.role === 'admin' && !u.disabled && admins === 1 && (
+              <span className="text-xs text-slate-400" title={AUTH_MSG.lastAdmin}>
+                {' '}
+                · 마지막 관리자
+              </span>
+            )}
+          </>
+        ),
+        csv: (u) => ROLE_KO[u.role],
+      },
+      { key: 'otp', label: 'OTP', sort: (u) => (u.otpEnabled ? 1 : 0), short: true, cellClass: 'text-xs', cell: (u) => (u.otpEnabled ? '등록됨' : '미등록') },
+      {
+        key: 'last',
+        label: '마지막 로그인',
+        sort: (u) => (u.lastLoginAt ? Date.parse(u.lastLoginAt) : null),
+        short: true,
+        cellClass: 'text-slate-500',
+        cell: (u) => (u.lastLoginAt ? <TimeText value={u.lastLoginAt} kind="status" /> : null),
+        csv: (u) => (u.lastLoginAt ? fmtStatus(u.lastLoginAt) : null),
+      },
+      {
+        key: 'actions',
+        label: '',
+        short: true,
+        fixed: true,
+        cell: (u) => {
+          const last = u.role === 'admin' && !u.disabled && admins === 1;
+          const self = u.id === me?.user.id;
+          return (
+            <>
+              {/* 마지막 관리자 · 자기 자신은 강등 · 비활성 버튼을 그리지 않는다(누를 수 없는 버튼 금지) */}
+              {!last && (u.role === 'admin' ? act('조회자로', () => roleChange(u, 'viewer')) : act('관리자로', () => roleChange(u, 'admin')))}
+              {!last && !self && act(u.disabled ? '활성화' : '비활성', () => toggleDisabled(u), !u.disabled)}
+              {act('비밀번호 초기화', () => resetPw(u))}
+              {u.otpEnabled && act('OTP 초기화', () => resetOtp(u))}
+            </>
+          );
+        },
+      },
     ],
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 행 동작(act · roleChange …)은 렌더마다 새로 만들지만 같은 일을 한다
+    [admins, me?.user.id],
   );
-  const userKit = useTableKit({ columns: userCols });
+  const userKit = useTableKit({ columns: userCols, grid: 'settings-users' });
   const act = (label: string, onClick: () => void, danger = false) => (
     <button type="button" onClick={onClick} className={`rounded px-1.5 py-0.5 text-xs hover:bg-slate-100 ${danger ? 'text-red-600' : 'text-slate-600'}`}>
       {label}
@@ -358,48 +437,19 @@ function AccountsTab() {
         users.error ? <LoadError error={users.error} what="계정" /> : <Empty>불러오는 중…</Empty>
       ) : (
         <>
-          <div className="max-md:overflow-x-auto">
+          <TableToolbar name="users" total={users.data.length} kit={userKit} onRefresh={users.reload} refreshing={users.loading} onExport={() => downloadCSV('supplyguard-accounts.csv', userKit.csv(users.data!))} />
+          <TableScroll className="max-md:overflow-x-auto">
           <table className="sg-table" data-table="users">
-            <SortHead columns={userCols} sort={userKit.sort} onSort={userKit.sortBy} />
+            <SortHead kit={userKit} />
             <tbody>
-              {userKit.sorted(users.data).map((u) => {
-                const last = u.role === 'admin' && !u.disabled && admins === 1;
-                const self = u.id === me?.user.id;
-                const [st, tone] = status(u);
-                return (
-                  <tr key={u.id} data-user={u.username}>
-                    <td data-col="status" className={`tk-short text-xs ${tone}`}>{st}</td>
-                    <td data-col="username" className="tk-short font-mono">
-                      {u.username}
-                      {self && <span className="text-xs text-slate-400"> (나)</span>}
-                    </td>
-                    <td data-col="name">{u.displayName}</td>
-                    <td data-col="role" className="tk-short">
-                      <span className={`rounded px-1.5 py-0.5 text-xs ${u.role === 'admin' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>{ROLE_KO[u.role]}</span>
-                      {last && (
-                        <span className="text-xs text-slate-400" title={AUTH_MSG.lastAdmin}>
-                          {' '}
-                          · 마지막 관리자
-                        </span>
-                      )}
-                    </td>
-                    <td data-col="otp" className="tk-short text-xs">{u.otpEnabled ? '등록됨' : '미등록'}</td>
-                    <td data-col="last" className="tk-short text-slate-500">
-                      <TimeText value={u.lastLoginAt} kind="status" />
-                    </td>
-                    <td data-col="actions" className="tk-short">
-                      {/* 마지막 관리자 · 자기 자신은 강등 · 비활성 버튼을 그리지 않는다(누를 수 없는 버튼 금지) */}
-                      {!last && (u.role === 'admin' ? act('조회자로', () => roleChange(u, 'viewer')) : act('관리자로', () => roleChange(u, 'admin')))}
-                      {!last && !self && act(u.disabled ? '활성화' : '비활성', () => toggleDisabled(u), !u.disabled)}
-                      {act('비밀번호 초기화', () => resetPw(u))}
-                      {u.otpEnabled && act('OTP 초기화', () => resetOtp(u))}
-                    </td>
-                  </tr>
-                );
-              })}
+              {userKit.sorted(users.data).map((u) => (
+                <tr key={u.id} data-user={u.username} {...rowState({})}>
+                  <GridCells kit={userKit} row={u} />
+                </tr>
+              ))}
             </tbody>
           </table>
-          </div>
+          </TableScroll>
           <p className="px-5 py-3 text-xs text-slate-500" data-part="last-admin">
             관리자는 지금 {admins}명입니다. {AUTH_MSG.lastAdmin} — 다른 계정을 먼저 관리자로 올리세요.
           </p>
@@ -652,7 +702,7 @@ const ACTION_KO: Record<string, string> = {
 const AUDIT_ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_register', 'license_renew', 'otp_enroll', 'otp_verify', 'otp_recovery',
   'user_create', 'user_update', 'user_reset_password', 'user_reset_otp'];
 const AUDIT_PAGE = 200;
-const ctl = 'h-8 rounded-md border border-slate-300 bg-white px-2';
+const AUDIT_ACTION_OPTIONS = AUDIT_ACTIONS.map((a) => ({ value: a, label: ACTION_KO[a] ?? a }));
 
 // 필터(한 일 · 실패만)는 서버가 거른다 — GET /api/auth/audit?action=&failed=1, 「더 보기」는 마지막 행 id 를 before 로
 function AuthAuditTab() {
@@ -665,17 +715,7 @@ function AuthAuditTab() {
   return (
     <div data-view="auth-audit">
       <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-2.5 text-sm" data-part="auth-audit-filters">
-        <label className="flex items-center gap-1.5 text-slate-500">
-          한 일
-          <select className={ctl} data-field="action" value={action} onChange={(e) => setAction(e.target.value)}>
-            <option value="">전체</option>
-            {AUDIT_ACTIONS.map((a) => (
-              <option key={a} value={a}>
-                {ACTION_KO[a] ?? a}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select name="action" label="한 일" value={action} options={AUDIT_ACTION_OPTIONS} onChange={setAction} />
         <label className="flex cursor-pointer items-center gap-2 text-slate-600 select-none">
           <input type="checkbox" className="accent-indigo-600" data-field="failed" checked={failed} onChange={(e) => setFailed(e.target.checked)} />
           실패만
@@ -704,18 +744,19 @@ function AuthAuditTab() {
 
 // 인증 감사 표 칸(R4 11/04) — 머리 클릭 정렬(불러온 행 안), 기본은 시각 내림(받은 순서 그대로). 「더 보기」(커서)는 그대로.
 // 11/09 SPEC §4: 기록류 — 시각이 맨 앞(YYYY-MM-DD HH:mm:ss 고정폭)
+// 표 도구: 칸 보이기 · 폭 · 순서 = supplyguard.grid.settings-auth-audit.v1, CSV = 보이는 칸 · 화면 글(불러온 행)
 const AUTH_AUDIT_COLS: Column<AuthAuditEntry>[] = [
-  { key: 'at', label: '시각', sort: (a) => Date.parse(a.at), short: true },
-  { key: 'actor', label: '계정', sort: (a) => a.actor, short: true },
-  { key: 'action', label: '동작', sort: (a) => ACTION_KO[a.action] ?? a.action, short: true },
-  { key: 'target', label: '대상', sort: (a) => a.target, short: true },
-  { key: 'ip', label: 'IP', sort: (a) => a.ip, short: true },
-  { key: 'ok', label: '결과', sort: (a) => (a.ok ? 1 : 0), short: true },
-  { key: 'detail', label: '내용', sort: (a) => a.detail },
+  { key: 'at', label: '시각', sort: (a) => Date.parse(a.at), short: true, cellClass: 'text-xs', cell: (a) => <TimeText value={a.at} kind="log" />, csv: (a) => fmtLog(a.at) },
+  { key: 'actor', label: '계정', sort: (a) => a.actor, short: true, width: COL_W.user, cellClass: 'font-mono text-xs', cell: (a) => a.actor },
+  { key: 'action', label: '동작', sort: (a) => ACTION_KO[a.action] ?? a.action, short: true, cell: (a) => ACTION_KO[a.action] ?? a.action },
+  { key: 'target', label: '대상', sort: (a) => a.target, short: true, cellClass: 'font-mono text-xs', cell: (a) => a.target },
+  { key: 'ip', label: 'IP', sort: (a) => a.ip, short: true, cellClass: 'font-mono text-xs text-slate-500', cell: (a) => a.ip },
+  { key: 'ok', label: '결과', sort: (a) => (a.ok ? 1 : 0), short: true, cellClass: 'text-xs', cell: (a) => <span className={a.ok ? 'text-emerald-700' : 'text-red-600'}>{a.ok ? '성공' : '실패'}</span>, csv: (a) => (a.ok ? '성공' : '실패') },
+  { key: 'detail', label: '내용', sort: (a) => a.detail, fill: true, cellClass: 'text-xs text-slate-600', cell: (a) => <span title={a.detail}>{a.detail}</span>, csv: (a) => a.detail },
 ];
 
 function AuthAuditRows({ action, failed, onClear }: { action: string; failed: boolean; onClear: () => void }) {
-  const kit = useTableKit({ columns: AUTH_AUDIT_COLS, sort: { key: 'at', dir: 'desc' } });
+  const kit = useTableKit({ columns: AUTH_AUDIT_COLS, sort: { key: 'at', dir: 'desc' }, grid: 'settings-auth-audit' });
   const load = useCallback(() => authApi.audit({ limit: AUDIT_PAGE, action, failed }), [action, failed]);
   const rows = useLoad(load);
   const [extra, setExtra] = useState<AuthAuditEntry[]>([]);
@@ -741,26 +782,19 @@ function AuthAuditRows({ action, failed, onClear }: { action: string; failed: bo
   if (all.length === 0) return action || failed ? <NoResults onClear={onClear} /> : <EmptyState what="인증 감사 기록" hint="로그인 · 비밀번호 · OTP · 계정 · 라이선스 변경이 여기에 남습니다." />;
   return (
     <>
-      <div className="max-md:overflow-x-auto">
+      <TableToolbar name="auth-audit" total={all.length} kit={kit} onRefresh={rows.reload} refreshing={rows.loading} onExport={() => downloadCSV('supplyguard-auth-audit.csv', kit.csv(all))} />
+      <TableScroll className="max-md:overflow-x-auto">
       <table className="sg-table" data-table="auth-audit">
-        <SortHead columns={AUTH_AUDIT_COLS} sort={kit.sort} onSort={kit.sortBy} />
+        <SortHead kit={kit} />
         <tbody>
           {kit.sorted(all).map((a) => (
-            <tr key={a.id} data-audit={a.id}>
-              <td data-col="at" className="tk-short">
-                <TimeText value={a.at} kind="log" />
-              </td>
-              <td data-col="actor" className="tk-short font-mono text-xs">{a.actor || '—'}</td>
-              <td data-col="action" className="tk-short">{ACTION_KO[a.action] ?? a.action}</td>
-              <td data-col="target" className="tk-short font-mono text-xs">{a.target || '—'}</td>
-              <td data-col="ip" className="tk-short font-mono text-xs text-slate-500">{a.ip || '—'}</td>
-              <td data-col="ok" className={`tk-short text-xs ${a.ok ? 'text-emerald-700' : 'text-red-600'}`}>{a.ok ? '성공' : '실패'}</td>
-              <td data-col="detail" className="tk-fill text-xs text-slate-600" title={a.detail}>{a.detail}</td>
+            <tr key={a.id} data-audit={a.id} {...rowState({})}>
+              <GridCells kit={kit} row={a} />
             </tr>
           ))}
         </tbody>
       </table>
-      </div>
+      </TableScroll>
       {(hasMore || moreErr != null) && (
         <div className="flex flex-col items-center gap-1 border-t border-slate-100 py-3 text-xs">
           {moreErr != null && (

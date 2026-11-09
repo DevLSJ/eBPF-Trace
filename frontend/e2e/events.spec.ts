@@ -17,7 +17,8 @@ test.describe('이벤트 — 지금 무엇이 걸리고 있나?', () => {
     await expect(rows).toHaveCount(11);
     await page.getByLabel('정상 포함').click();
     await expect(page.getByLabel('정상 포함')).not.toBeChecked();
-    await page.getByLabel('탐지 결과').selectOption('alert');
+    await page.locator('[data-filter="level"]').click(); // 11/09 공통 Select
+    await page.getByRole('option', { name: '경고', exact: true }).click();
     await expect(rows).toHaveCount(1);
   });
 

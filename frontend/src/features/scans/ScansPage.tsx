@@ -4,9 +4,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFilters } from '../../hooks/useFilters';
 import { dest } from '../../lib/nav';
 import { FilterChips } from '../../components/FilterChips';
-import { barStyle, rowKeys, useAutoRetry, useBusy } from '../../components/list/hooks';
-import { BusyBar, SortHead, TablePager } from '../../components/DataTable';
+import { rowKeys, rowState, useAutoRetry, useBusy } from '../../components/list/hooks';
+import { GridCells, SortHead, TablePager, TableScroll } from '../../components/DataTable';
 import { useTableKit, type Column } from '../../hooks/useTableKit';
+import { fmtStatus } from '../../components/list/cell-format';
+import { downloadCSV } from '../../components/list/csv';
+import { ScreenNote } from '../../components/ScreenNote';
+import { TableToolbar } from '../../components/TableToolbar';
+import { screenCopy } from '../../lib/screenCopy';
 import { AppliedFilters, EmptyState, ListError, NoResults, PagerSlot, Skeleton } from '../../components/list/ListStates';
 import { TimeText } from '../../components/list/cells';
 import { ActionButton } from '../../components/ActionButton';
@@ -70,13 +75,34 @@ type VerdictFilter = '' | 'malicious' | 'vulnerable' | 'caution' | 'clean';
 // 표 칸(R4 11/04 — 목업 11/04e U.tableKit): 머리 클릭 정렬 · 기본은 시작 내림(목록 순서 그대로). 결과는 위험한 것부터(검사 중이 맨 앞).
 // 11/09 SPEC §4: 현황 표 — 상태(결과)가 맨 앞, 시작은 MM-DD HH:mm + 전체 시각 툴팁
 const VERDICT_RANK: Record<string, number> = { malicious: 0, vulnerable: 1, caution: 2, clean: 3 };
+// 11/09 표 도구: 칸 보이기 · 폭 · 순서는 이 브라우저에(supplyguard.grid.scans.v1), CSV = 보이는 칸 · 화면 글
+const verdictText = (x: Scan) => (x.status === 'running' ? '검사 중…' : x.status === 'failed' ? '실패' : VERDICT[x.verdict ?? 'clean']);
+const vulnText = (x: Scan) => (x.status === 'done' ? (x.vulnCount ? `${fmtNum(x.vulnCount)} (최고 ${x.vulnMax})` : '0') : null);
 const COLUMNS: Column<Scan>[] = [
-  { key: 'verdict', label: '결과', sort: (x) => (x.status === 'running' ? -1 : x.verdict ? VERDICT_RANK[x.verdict] : null), short: true },
-  { key: 'started', label: '시작', sort: (x) => Date.parse(x.startedAt), short: true },
-  { key: 'target', label: '대상', sort: (x) => x.target.label },
-  { key: 'risk', label: '위험 점수', num: true, sort: (x) => x.risk?.score ?? null, short: true },
-  { key: 'threats', label: '위협', num: true, sort: (x) => (x.status === 'done' ? x.threats : null), short: true },
-  { key: 'vulns', label: '취약점', num: true, sort: (x) => (x.status === 'done' ? x.vulnCount : null), short: true },
+  { key: 'verdict', label: '결과', sort: (x) => (x.status === 'running' ? -1 : x.verdict ? VERDICT_RANK[x.verdict] : null), short: true, cell: (x) => <StatusBadge s={x} />, csv: verdictText },
+  { key: 'started', label: '시작', sort: (x) => Date.parse(x.startedAt), short: true, cell: (x) => <TimeText value={x.startedAt} kind="status" />, csv: (x) => fmtStatus(x.startedAt) },
+  { key: 'target', label: '대상', sort: (x) => x.target.label, fill: true, cellClass: 'font-mono', cell: (x) => <span title={x.target.label}>{x.target.label}</span>, csv: (x) => x.target.label },
+  { key: 'risk', label: '위험 점수', num: true, sort: (x) => x.risk?.score ?? null, short: true, cellClass: 'num', cell: (x) => (x.risk ? x.risk.score.toFixed(1) : null) },
+  {
+    key: 'threats',
+    label: '위협',
+    num: true,
+    sort: (x) => (x.status === 'done' ? x.threats : null),
+    short: true,
+    cellClass: 'num',
+    cell: (x) => (x.status === 'done' ? <span className={x.threats ? 'text-red-600' : 'text-slate-400'}>{fmtNum(x.threats)}</span> : null),
+    csv: (x) => (x.status === 'done' ? x.threats : null),
+  },
+  {
+    key: 'vulns',
+    label: '취약점',
+    num: true,
+    sort: (x) => (x.status === 'done' ? x.vulnCount : null),
+    short: true,
+    cellClass: 'num',
+    cell: (x) => (x.status === 'done' ? <span className={x.vulnCount ? 'text-amber-700' : 'text-slate-400'}>{vulnText(x)}</span> : null),
+    csv: vulnText,
+  },
 ];
 
 export function ScansPage() {
@@ -97,7 +123,7 @@ export function ScansPage() {
   useInterval(poll, running ? 2000 : 15000);
   useAutoRetry(failing, list.error, reload);
   const canWrite = isAdmin; // 조회자는 검사 시작 · 차단 버튼을 그리지 않는다(W16)
-  const kit = useTableKit({ columns: COLUMNS, sort: { key: 'started', dir: 'desc' } });
+  const kit = useTableKit({ columns: COLUMNS, sort: { key: 'started', dir: 'desc' }, grid: 'scans' });
   const busy = useBusy(list.loading && !!list.data);
   const setQ = (k: 'id' | 'verdict', v: string) => {
     if (k === 'verdict') {
@@ -125,7 +151,10 @@ export function ScansPage() {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] gap-4">
-      <div className="flex min-h-0 flex-col gap-4">
+      <div className="flex min-h-0 flex-col gap-3">
+        <p data-part="screen-copy" data-screen="scans" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
+          {screenCopy('scans')}
+        </p>
         <ScanForm canWrite={canWrite} onStarted={() => { select(''); list.reload(); }} />
         <Panel title="검사 기록" testId="scans" className="min-h-0 flex-1" actions={list.data?.length ? <FilterChips label="결과" options={vOptions} value={vf} onChange={(v) => setQ('verdict', v)} /> : undefined}>
           <div className="flex h-full flex-col">
@@ -143,26 +172,20 @@ export function ScansPage() {
             <NoResults onClear={() => setQ('verdict', '')} />
           ) : (
             <>
-              <BusyBar on={busy} />
-              <div data-fill="" className="min-h-0 flex-1 overflow-auto">
+              <TableToolbar name="scans" total={rows.length} kit={kit} onRefresh={list.reload} refreshing={busy} onExport={() => downloadCSV('supplyguard-scans.csv', kit.csv(rows))} />
+              <TableScroll data-fill="" className="min-h-0 flex-1 overflow-auto">
                 <table className="sg-table" data-table="scans">
-                  <SortHead columns={COLUMNS} sort={kit.sort} onSort={kit.sortBy} />
+                  <SortHead kit={kit} />
                   <tbody>
                     {view.rows.map((s) => (
-                      <tr key={s.id} {...rowKeys(() => select(s.id))} data-scan={s.id} data-status={s.status} onClick={() => select(s.id)} aria-selected={s.id === selId}
-                        className={`cursor-pointer hover:bg-[var(--row-hover)] ${s.id === selId ? 'bg-indigo-50' : ''}`}>
+                      <tr key={s.id} {...rowKeys(() => select(s.id))} {...rowState({ open: s.id === selId })} data-scan={s.id} data-status={s.status} onClick={() => select(s.id)} className="cursor-pointer">
                         {/* 11/04e 막대: 악성 의심 행만(위험색) — 첫 칸 */}
-                        <td data-col="verdict" className="tk-short" style={barStyle(s.verdict === 'malicious' && 'danger')}><StatusBadge s={s} /></td>
-                        <td data-col="started" className="tk-short"><TimeText value={s.startedAt} kind="status" /></td>
-                        <td data-col="target" className="tk-fill font-mono" title={s.target.label}>{s.target.label}</td>
-                        <td data-col="risk" className="num num-col tk-short">{s.risk ? s.risk.score.toFixed(1) : '—'}</td>
-                        <td data-col="threats" className={`num num-col tk-short ${s.threats ? 'text-red-600' : 'text-slate-400'}`}>{s.status === 'done' ? s.threats : '—'}</td>
-                        <td data-col="vulns" className={`num num-col tk-short ${s.vulnCount ? 'text-amber-700' : 'text-slate-400'}`}>{s.status === 'done' ? (s.vulnCount ? `${fmtNum(s.vulnCount)} (최고 ${s.vulnMax})` : 0) : '—'}</td>
+                        <GridCells kit={kit} row={s} bar={s.verdict === 'malicious' && 'danger'} />
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
               <PagerSlot edge={!selId}>
                 <TablePager name="scans" total={view.total} from={view.from} to={view.to} page={view.page} size={kit.size} onPage={kit.setPage} onSize={kit.setSize} />
               </PagerSlot>
@@ -170,6 +193,7 @@ export function ScansPage() {
           )}
           </div>
         </Panel>
+        <ScreenNote screen="scans" />
       </div>
       {selId && <ScanSheet key={selId} id={selId} canWrite={canWrite} done={list.data?.find((s) => s.id === selId)?.status !== 'running'} onClose={() => select('')} nav={sheetNav(view.rows.map((s) => s.id), selId, select)} />}
     </div>
@@ -341,7 +365,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
           )}
           {s.status === 'done' && t.kind === 'package' && (
             <div className="flex flex-wrap gap-2">
-              <button type="button" aria-label="설치 검사로 실제 설치해 보기" onClick={() => { void navigator.clipboard?.writeText(cmd).catch(() => {}); toast(`명령을 복사했습니다 — ${cmd}`, { key: 'copy', tone: 'ok', action: { label: '설치 검사', ...dest('/installs', { status: 'all' }) } }); }}
+              <button type="button" aria-label="설치 검사로 실제 설치해 보기" onClick={() => { void navigator.clipboard?.writeText(cmd).catch(() => {}); toast(`「${cmd}」 명령을 복사했습니다.`, { key: 'copy', tone: 'ok', action: { label: '설치 검사', ...dest('/installs', { status: 'all' }) } }); }}
                 className="flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-white"><Play className="size-3.5" aria-hidden /> 설치 검사로 실제 설치해 보기</button>
               {canWrite && <button type="button" aria-label="차단 목록에 올리기" onClick={() => setAskBlock(true)}
                 className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs disabled:opacity-40 ${s.verdict === 'malicious' ? 'bg-red-600 text-white hover:bg-red-700' : 'border border-slate-300 hover:bg-white'}`}><OctagonX className="size-3.5" aria-hidden /> 차단 목록에 올리기</button>}

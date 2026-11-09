@@ -7,6 +7,10 @@ import { EventFeed, PauseToggle } from '../../components/EventFeed';
 import { AppliedFilters, EmptyState, ListError, NoResults, Skeleton } from '../../components/list/ListStates';
 import { TimeText } from '../../components/list/cells';
 import { useAutoRetry } from '../../components/list/hooks';
+import { FilterBar, SearchField } from '../../components/list/SearchField';
+import { ScreenNote } from '../../components/ScreenNote';
+import { Select } from '../../components/Select';
+import { screenCopy } from '../../lib/screenCopy';
 import { PageActions } from '../../components/PageActions';
 import { Panel } from '../../components/Panel';
 import { CodeWindow } from '../../components/CodeWindow';
@@ -25,15 +29,13 @@ import { isInstallContainer } from '../../lib/topology';
 import { detailOf, KIND_LONG, KINDS, levelOf, type Rule } from '../../lib/types';
 
 // 탐지 결과 필터 — 기본은 위반 전체. 「정상 포함」 토글을 켜야 정상 이벤트가 보인다.
+// 거르기 줄(11/09): 선택 상자 = 공통 Select(첫 항목 「○○ 전체」), 컨테이너 = 검색칸(Enter · 칸 벗어날 때 적용)
 type LevelFilter = '' | 'alert' | 'kill';
-const levelOptions: { value: LevelFilter; label: string }[] = [
-  { value: '', label: '전체' },
+const LEVEL_OPTIONS = [
   { value: 'alert', label: '경고' },
   { value: 'kill', label: '격리 (대상 포함)' },
 ];
-
-// 입력 글자 13.5 · 포커스 링은 전역 규칙 하나(11/09 SPEC §1)
-const ctl = 'h-8 rounded-[var(--r-md)] border border-slate-300 bg-field px-2';
+const KIND_OPTIONS = KINDS.map((k) => ({ value: k as string, label: k === 'dns' ? `dns (${KIND_LONG.dns})` : k }));
 
 const LEVEL_TEXT: Record<string, string> = { alert: '경고', kill: '격리 (대상 포함)' };
 
@@ -77,11 +79,14 @@ export function EventsPage() {
   const selected = id ? verdicts.find((v) => String(v.key) === id) : undefined;
 
   return (
-    <div className="flex h-full min-h-0 gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <p data-part="screen-copy" data-screen="events" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
+        {screenCopy('events')}
+      </p>
+      <div className="flex min-h-0 flex-1 gap-4">
       <PageActions>
         {/* 머리 칸이 좁으면(768px 등) 일시정지는 목록 필터 줄로 옮긴다(W20) */}
         <PauseToggle paused={paused} onPause={pause} onResume={resume} className="hidden lg:flex" />
-        <span className="hidden text-xs whitespace-nowrap text-slate-400 xl:inline">실시간 · 지난 기록은 감사 로그</span>
       </PageActions>
       <Panel
         className="min-w-0 flex-1"
@@ -94,31 +99,12 @@ export function EventsPage() {
       >
         <div className="flex h-full flex-col">
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-2.5 text-sm">
-            <label className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-slate-500">
-              종류
-              <select className={ctl} value={kind} onChange={(e) => set('kind', e.target.value)}>
-                <option value="">전체</option>
-                {KINDS.map((k) => (
-                  <option key={k} value={k}>
-                    {k === 'dns' ? `dns (${KIND_LONG.dns})` : k}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-slate-500">
-              탐지 결과
-              <select className={ctl} value={level} onChange={(e) => set('level', e.target.value)}>
-                {levelOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-slate-500">
-              컨테이너
-              <input className={`${ctl} w-44 min-w-0`} placeholder="컨테이너 이름" value={container} onChange={(e) => set('container', e.target.value)} />
-            </label>
+            {/* 조건 지우기는 아래 「적용된 필터」 줄의 「모두 해제」 하나(10/20 D) — FilterBar 의 같은 단추는 두지 않는다 */}
+            <FilterBar name="events" active={false} onClear={clearFilters}>
+              <SearchField label="컨테이너 검색" placeholder="컨테이너 이름" width={220} value={container} onApply={(v) => set('container', v)} />
+              <Select name="kind" label="종류" value={kind} options={KIND_OPTIONS} onChange={(v) => set('kind', v)} />
+              <Select name="level" label="탐지 결과" value={level} options={LEVEL_OPTIONS} onChange={(v) => set('level', v)} />
+            </FilterBar>
             <label className="ml-auto flex cursor-pointer items-center gap-2 text-slate-600 select-none">
               <input type="checkbox" className="accent-indigo-600" checked={withNormal} onChange={(e) => set('normal', e.target.checked ? '1' : '')} />
               정상 포함
@@ -155,6 +141,8 @@ export function EventsPage() {
         </div>
       </Panel>
       {id && <EventSheet v={selected} onClose={() => set('id', '')} nav={sheetNav(rows.map((v) => String(v.key)), id, (k) => set('id', k))} />}
+      </div>
+      <ScreenNote screen="events" />
     </div>
   );
 }

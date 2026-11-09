@@ -7,6 +7,7 @@ import type { Stripe } from '../../lib/kpi';
 import { useAutoRetry } from '../../components/list/hooks';
 import { EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
 import { PageActions } from '../../components/PageActions';
+import { screenCopy } from '../../lib/screenCopy';
 import { useLoad } from '../../hooks/useLoad';
 import { api } from '../../lib/api';
 import { fmtNum } from '../../lib/format';
@@ -1016,6 +1017,9 @@ export function EvaluationPage() {
     // R4 11/04(목업 11/04e .eval-body): 768 이상은 머리(요점) · 지표 6칸이 제자리, 아래 몸통(두 열 · 모델 비교 · 한계)만 채움 칸으로 스크롤.
     // 768 미만은 예전처럼 화면 전체가 한 칸으로 스크롤(몸통은 그대로 펼침)
     <div className="flex h-full min-h-0 flex-col gap-4 max-md:block max-md:overflow-y-auto" data-part="evaluation" data-state={state}>
+      <p data-part="screen-copy" data-screen="evaluation" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
+        {screenCopy('evaluation')}
+      </p>
       {state === 'ready' && d && (
         <PageActions>
           <button

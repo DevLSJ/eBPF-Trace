@@ -446,7 +446,8 @@ test.describe('C 감사 로그 쪽 번호', () => {
     await expect(page.locator('[data-table-foot="audit"] [data-part="range"]')).toHaveText(/ 2\/\d+ 페이지$/);
     const busy = page.locator('[data-testid="audit"] [data-part="busy"]');
     await expect(busy).toBeHidden();
-    await page.getByRole('combobox', { name: /^대응/ }).selectOption('kill');
+    await page.locator('[data-filter="action"]').click(); // 11/09 공통 Select
+    await page.getByRole('option', { name: '격리 (kill)' }).click();
     await expect(busy).toBeVisible();
     await expect(page.locator('table[data-table="audit"] tbody tr')).toHaveCount(20); // 이전 행 유지
     await expect(busy).toBeHidden({ timeout: 3000 });

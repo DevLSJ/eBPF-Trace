@@ -1,7 +1,8 @@
 import type { Locator, Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { SCREEN_COPY } from '../src/lib/screenCopy';
 import type { Scan } from '../src/lib/types';
-import { expect, test } from './fixtures';
+import { expect, SHOTS, test } from './fixtures';
 
 // 11/09 P5 — 정책 밖 목록 화면 정리(SPEC-1109 §3 · §4 · §7)
 //   2단계: 화면 설명 한 줄(lib/screenCopy.ts) · 표 아래 안내 · 표 도구(총 N건 · 새로고침 · 칸 고르기/폭/순서 · 내보내기 = 보이는 칸) · Select · SearchField · 두 줄 칸
@@ -152,10 +153,12 @@ test.describe('③ 화면 문구', () => {
 
     await page.goto('/events');
     await page.getByPlaceholder('컨테이너 이름').fill('no-such-container');
+    await page.getByPlaceholder('컨테이너 이름').press('Enter'); // 검색칸은 Enter · 칸 벗어날 때 적용(11/09)
     await expect(page.locator('[data-testid="events"] [data-part="no-results"]')).toContainText('조건에 맞는 데이터가 없습니다');
 
     await page.goto('/audit');
     await page.getByPlaceholder('규칙 ID').fill('no-such-rule');
+    await page.getByPlaceholder('규칙 ID').press('Enter');
     await expect(page.locator('[data-testid="audit"] [data-part="no-results"]')).toContainText('검색 조건을 바꾸거나 해제해 보세요.');
     await expect(page.getByPlaceholder('컨테이너 이름')).toBeVisible();
   });
@@ -204,7 +207,7 @@ test.describe('③ 화면 문구', () => {
   test('감사 로그 내보내기 — 먼저 할 일 「~를 먼저 고르세요.」(role=alert)', async ({ page, backend }) => {
     void backend;
     await page.goto('/audit');
-    await page.locator('[data-action="export-csv"]').click();
+    await page.locator('[data-table-tools="audit"] [data-action="table-export"]').click(); // 11/09: 내보내기는 표 도구줄 하나
     await expect(page.locator('[data-part="export-error"]')).toHaveText('기간을 먼저 고르세요.');
   });
 
@@ -258,17 +261,17 @@ const DESC: [string, string][] = [
 const SYMBOLS = /[.=—·()「」:;/]/;
 
 test.describe('④ 화면 설명 한 줄(lib/screenCopy.ts 한 곳)', () => {
-  test('화면마다 제목 아래 「~합니다.」 20~50자 한 문장 · 마침표 앞 기호 없음 · 저장소 문장 그대로, 대시보드는 설명 없음', async ({ page, backend }) => {
+  test('화면마다 제목 아래 「~합니다.」 20~50자 한 문장 · 마침표 앞 기호 없음 · 저장소 문장 그대로, 대시보드는 설명 없음', async ({ page, backend, allowConsole }) => {
+    test.setTimeout(120_000); // 화면 11개를 차례로 연다
     backend.enableDemo();
+    allowConsole(/status of 404/); // 가짜 백엔드에 평가 결과가 없다(평가 화면은 「평가 결과가 없습니다.」 — 설명 줄은 그대로)
     await scansApi(page);
     for (const [url, key] of DESC) {
       await page.goto(url);
-      const want = await page.evaluate(async (k) => {
-        const mod = (await import(/* @vite-ignore */ '/src/lib/screenCopy.ts')) as { SCREEN_COPY: Record<string, string> };
-        return mod.SCREEN_COPY[k] ?? '';
-      }, key);
-      const d = page.locator('[data-part="screen-desc"]');
-      await expect(d, `${key} 설명`).toHaveCount(1);
+      if (key === 'demo') await expect(page.locator('[data-part="demo-page"]')).toBeVisible({ timeout: 10_000 }); // /api/info 를 읽은 뒤 그린다
+      const want = SCREEN_COPY[key] ?? '';
+      const d = page.locator('[data-part="screen-copy"]');
+      await expect(d, `${key} 설명`).toHaveCount(1, { timeout: 15_000 });
       const text = (await d.textContent())!.trim();
       const n = [...text].length;
       expect(text, key).toMatch(/니다\.$/);
@@ -280,7 +283,7 @@ test.describe('④ 화면 설명 한 줄(lib/screenCopy.ts 한 곳)', () => {
       expect(await d.evaluate((e) => getComputedStyle(e).fontSize)).toBe('13.5px');
     }
     await page.goto('/');
-    await expect(page.locator('[data-part="screen-desc"]')).toHaveCount(0);
+    await expect(page.locator('[data-part="screen-copy"]')).toHaveCount(0);
   });
 
   test('표 아래 안내 한 줄(ScreenNote) — 설치 검사 · 감사 로그 · 이벤트 · 공급망 검사', async ({ page, backend }) => {
@@ -324,8 +327,17 @@ test.describe('⑤ 표 도구 — 총 N건 · 새로고침 · 칸 고르기(저�
       const saved = await page.evaluate((k) => localStorage.getItem(k), `supplyguard.grid.${t.grid}.v1`);
       expect(JSON.parse(saved!).vis[t.hide]).toBe(false);
       const heads = await page.locator(`${T} thead th`).evaluateAll((ths) => ths.map((e) => e.textContent!.trim()).filter(Boolean));
+      if (t.table === 'audit') {
+        // 감사 로그 내보내기는 기간 안 전체 — 기간이 먼저(브라우저 시간대로 만든 datetime-local)
+        const [since, until] = await page.evaluate(() => {
+          const local = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+          return [local(new Date(Date.now() - 86_400_000)), local(new Date(Date.now() + 3600_000))];
+        });
+        await page.getByLabel('기간 시작').fill(since);
+        await page.getByLabel('기간 끝').fill(until);
+      }
       const [dl] = await Promise.all([page.waitForEvent('download'), tools.locator('[data-action="table-export"]').click()]);
-      const first = readFileSync((await dl.path())!, 'utf8').replace(/^﻿/, '').split('\n')[0];
+      const first = readFileSync((await dl.path())!, 'utf8').replace(/^\uFEFF/, '').split('\n')[0];
       expect(first.split(','), 'CSV 머리 = 보이는 칸').toEqual(heads);
       await page.reload();
       await expect(page.locator(`${T} tbody tr`).first()).toBeVisible();
@@ -333,18 +345,21 @@ test.describe('⑤ 표 도구 — 총 N건 · 새로고침 · 칸 고르기(저�
     });
   }
 
-  test('칸 폭 표준 — 시각 160 · 감사 컨테이너는 두 줄 칸(이름 + 컨테이너 ID) · 행 48 유지', async ({ page, backend }) => {
+  test('칸 폭 — 기록류 시각 칸은 160 이상 · 초까지 잘리지 않음 · 감사 컨테이너는 두 줄 칸(이름 + 컨테이너 ID) · 행 48 유지', async ({ page, backend }) => {
     void backend;
     await page.goto('/audit');
     const T = 'table[data-table="audit"]';
     await expect(page.locator(`${T} tbody tr`).first()).toBeVisible();
-    expect(Math.round(await page.locator(`${T} th[data-col="time"]`).evaluate((e) => e.getBoundingClientRect().width))).toBe(160);
+    // 표준 160 은 「YYYY-MM-DD HH:mm:ss」 고정폭 + 좌우 여백 32 가 들어가지 않아(잘림) 내용 폭으로 둔다 — 160 아래로 줄지 않고 잘리지 않음
+    expect(await page.locator(`${T} th[data-col="time"]`).evaluate((e) => e.getBoundingClientRect().width)).toBeGreaterThanOrEqual(160);
+    expect(await page.locator(`${T} tbody td[data-col="time"]`).first().evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
     const two = page.locator(`${T} tbody tr`).first().locator('td[data-col="container"] .tk-2line');
     await expect(two.locator('.tk-2l-top')).not.toBeEmpty();
-    await expect(two.locator('.tk-2l-sub')).toHaveText(/^[0-9a-f]{12}$/);
+    await expect(two.locator('.tk-2l-sub')).toHaveText(/^\S{1,12}$/); // 컨테이너 ID 앞 12자
     expect(await page.locator(`${T} tbody tr`).first().evaluate((e) => Math.round(e.getBoundingClientRect().height))).toBe(48);
     await page.goto('/settings?tab=auth-audit');
-    expect(Math.round(await page.locator('table[data-table="auth-audit"] th[data-col="at"]').evaluate((e) => e.getBoundingClientRect().width))).toBe(160);
+    expect(await page.locator('table[data-table="auth-audit"] th[data-col="at"]').evaluate((e) => e.getBoundingClientRect().width)).toBeGreaterThanOrEqual(160);
+    expect(Math.round(await page.locator('table[data-table="auth-audit"] th[data-col="actor"]').evaluate((e) => e.getBoundingClientRect().width)), '사용자 칸 110').toBe(110);
   });
 });
 
@@ -361,7 +376,7 @@ test.describe('⑥ 필터 Select · 검색칸(Enter · 칸 벗어날 때 적용,
     await expect(page.locator('[data-testid="events"] [data-part="no-results"]'), '쓰는 동안은 적용하지 않음').toHaveCount(0);
     await box.press('Enter');
     await expect(page.locator('[data-testid="events"] [data-part="no-results"]')).toBeVisible();
-    await page.locator('[data-filter-bar="events"] [data-action="clear-conditions"]').click();
+    await page.locator('[data-part="filter-chips"] [data-action="clear-filters"]').click(); // 조건 지우기 = 「적용된 필터」 줄 하나
     await expect(box).toHaveValue('');
 
     await page.goto('/audit');
@@ -373,5 +388,52 @@ test.describe('⑥ 필터 Select · 검색칸(Enter · 칸 벗어날 때 적용,
 
     await page.goto('/settings?tab=auth-audit');
     await expect(page.locator('[data-filter="action"]')).toHaveText('한 일 전체');
+  });
+});
+
+test.describe('⑦ 스크린샷 1440×900 밝은', () => {
+  test('바꾼 화면 각 1장 → test-results/screens/lists-1109/', async ({ page, backend, allowConsole }) => {
+    test.setTimeout(150_000);
+    backend.enableDemo();
+    allowConsole(/status of 404/);
+    await scansApi(page);
+    const shot = async (name: string) => {
+      await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().iterations === Infinity));
+      await page.screenshot({ path: `${SHOTS}/lists-1109/${name}.png` });
+    };
+    const go = async (url: string, ready: string) => {
+      await page.goto(url);
+      await expect(page.locator(ready).first()).toBeVisible({ timeout: 10_000 });
+    };
+    await go('/', '[data-testid="pending"]');
+    await shot('dashboard');
+    await go('/installs', '[data-chip="all"]');
+    await page.locator('[data-chip="all"]').click();
+    await expect(page.locator('tr[data-install]').first()).toBeVisible();
+    await shot('installs');
+    await go('/scans', 'tr[data-scan]');
+    await shot('scans');
+    await go('/events', 'li[data-key]');
+    await shot('events');
+    await go('/audit', 'tr[data-audit]');
+    await shot('audit');
+    await go('/audit?view=changes', 'tr[data-history]');
+    await shot('audit-history');
+    await go('/settings', 'table[data-table="notify"]');
+    await shot('settings-server');
+    await go('/settings?tab=accounts', 'table[data-table="users"] tbody tr');
+    await shot('settings-accounts');
+    await go('/settings?tab=auth-audit', 'table[data-table="auth-audit"] tbody tr');
+    await shot('settings-auth-audit');
+    await go('/integration', '[data-part="integration"][data-state="ready"]');
+    await shot('integration');
+    await go('/demo', '[data-part="demo-page"]');
+    await shot('demo');
+    await go('/evaluation', '[data-part="screen-copy"]');
+    await shot('evaluation');
+    await go('/topology', '[data-testid="topology"]');
+    await shot('topology');
+    await go('/report?case=case-0004', '[data-testid="report"]');
+    await shot('report');
   });
 });

@@ -144,9 +144,12 @@ test.describe('설정 화면', () => {
     const rows = au.locator('tr[data-audit]');
     await expect(rows).toHaveCount(200);
     await expect(au.locator('[data-part="filter-chips"]')).toHaveCount(0);
-    // 「한 일」은 서버가 받는 13개 + 전체(system 은 처리자 값이라 없다)
-    await expect(au.getByLabel('한 일').locator('option')).toHaveCount(AUDIT_ACTIONS.length + 1);
-    expect(await au.getByLabel('한 일').locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).slice(1))).toEqual(AUDIT_ACTIONS);
+    // 「한 일」은 서버가 받는 13개 + 「한 일 전체」(system 은 처리자 값이라 없다) — 11/09 공통 Select(펼친 목록의 role=option)
+    await au.locator('[data-filter="action"]').click();
+    const acts = page.getByRole('listbox', { name: '한 일' }).getByRole('option');
+    await expect(acts).toHaveCount(AUDIT_ACTIONS.length + 1);
+    expect(await acts.evaluateAll((os) => os.map((o) => (o as HTMLElement).dataset.value).slice(1))).toEqual(AUDIT_ACTIONS);
+    await page.keyboard.press('Escape');
 
     // 「더 보기」 — 마지막 행 id(51)를 before 로, 받은 수(50) < limit 이면 버튼이 사라진다
     await au.getByRole('button', { name: '더 보기' }).click();
@@ -163,7 +166,8 @@ test.describe('설정 화면', () => {
     await expect(au.getByRole('button', { name: '더 보기' })).toHaveCount(0);
 
     // 한 일 고르기 → action= 이 붙는다(실패만과 함께)
-    await au.getByLabel('한 일').selectOption({ label: '로그인' });
+    await au.locator('[data-filter="action"]').click(); // 11/09 공통 Select
+    await page.getByRole('option', { name: '로그인', exact: true }).click();
     await expect.poll(() => auditReqs().at(-1)!.get('action')).toBe('login');
     expect(auditReqs().at(-1)!.get('failed')).toBe('1');
     await expect(rows).toHaveCount(41);
