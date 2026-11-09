@@ -431,7 +431,7 @@ func (h *handlers) savePolicy(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	err := h.policyWrite(r.Context(), model.ChangePolicyEdit, "정책 "+rule.ID+" 저장", func(ctx context.Context) error {
+	err := h.policyWrite(r.Context(), model.ChangePolicyEdit, "정책 "+rule.ID+" 저장", []string{rule.ID}, func(ctx context.Context) error {
 		return h.Policies.UpsertPolicy(ctx, rule)
 	})
 	if err != nil {
@@ -460,7 +460,7 @@ func (h *handlers) replacePolicies(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	err = h.policyWrite(r.Context(), model.ChangePolicyReplace, fmt.Sprintf("YAML 로 정책 %d개 교체", len(rs)), func(ctx context.Context) error {
+	err = h.policyWrite(r.Context(), model.ChangePolicyReplace, fmt.Sprintf("YAML 로 정책 %d개 교체", len(rs)), nil, func(ctx context.Context) error {
 		return h.Policies.ReplacePolicies(ctx, rs)
 	})
 	if err != nil {
@@ -482,7 +482,7 @@ func (h *handlers) deletePolicy(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, systemRuleMsg)
 		return
 	}
-	err := h.policyWrite(r.Context(), model.ChangePolicyEdit, "정책 "+id+" 삭제", func(ctx context.Context) error {
+	err := h.policyWrite(r.Context(), model.ChangePolicyEdit, "정책 "+id+" 삭제", []string{id}, func(ctx context.Context) error {
 		ok, err := h.Policies.DeletePolicy(ctx, id)
 		if err == nil && !ok {
 			return errPolicyMissing
@@ -501,9 +501,10 @@ func (h *handlers) deletePolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 // policyWrite: 정책 저장 → 엔진 리로드 → 변경 이력. Review 가 있으면 제안 적용과 같은 잠금 안에서 한다.
-func (h *handlers) policyWrite(ctx context.Context, kind model.ChangeKind, summary string, write func(context.Context) error) error {
+// ids: 다루는 정책 id(저장 · 삭제), nil 이면 YAML 교체 — 변경 이력의 ruleIds · 변경 전 · 후 값(review.PolicyWrite)
+func (h *handlers) policyWrite(ctx context.Context, kind model.ChangeKind, summary string, ids []string, write func(context.Context) error) error {
 	if h.Review != nil {
-		return h.Review.PolicyWrite(ctx, kind, summary, write)
+		return h.Review.PolicyWrite(ctx, kind, summary, ids, write)
 	}
 	if err := write(ctx); err != nil {
 		return err
