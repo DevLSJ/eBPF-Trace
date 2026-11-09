@@ -313,6 +313,29 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     expect(await more.evaluate((e) => getComputedStyle(e).color)).toBe(rgb('#DCE9FF'));
   });
 
+  test('어두운 배지 예외(11/09 사용자): 「설치 전 거부」는 테두리 = 바탕색 — 흰 글자색 테두리 없음(라이트 · 다크)', async ({ page, backend }) => {
+    backend.installs.unshift({
+      id: 'ins-0099',
+      manager: 'pip',
+      packages: ['reqeusts'],
+      container: '',
+      image: 'python:3.12-slim',
+      startedAt: new Date().toISOString(),
+      status: 'refused',
+      refusedBy: { list: 'packages', value: 'pip:colourama' },
+      caseId: null,
+    });
+    await page.goto('/installs?status=refused');
+    const pill = page.locator('tr[data-install="ins-0099"] [data-status="refused"]');
+    await expect(pill).toHaveText('설치 전 거부');
+    for (const theme of ['light', 'dark'] as const) {
+      if (theme === 'dark') await pickTheme(page, 'dark');
+      await expect
+        .poll(() => pill.evaluate((e) => { const c = getComputedStyle(e); return [c.backgroundColor, c.color, c.borderTopColor, c.borderTopWidth]; }), { message: theme })
+        .toEqual([rgb('#30343B'), rgb('#FFFFFF'), rgb('#30343B'), '1px']);
+    }
+  });
+
   test('대비: 글자 3단 · 안내 글자 · 버튼 글자 · 위험 글자 · 링크 · 반전 툴팁이 바탕 위에서 4.5:1 이상(라이트 · 다크)', async ({ page, backend }) => {
     void backend;
     await page.goto('/');
