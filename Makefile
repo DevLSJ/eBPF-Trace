@@ -33,11 +33,11 @@ VM_TUNNEL := 127.0.0.1:$(VM_PORT):127.0.0.1:80
 setup:
 	@command -v go >/dev/null || { echo "Go 1.26 이상이 필요합니다 — https://go.dev/dl"; exit 1; }
 	@command -v node >/dev/null || { echo "Node 22.12 이상이 필요합니다(frontend/.nvmrc) — https://nodejs.org"; exit 1; }
-	@command -v docker >/dev/null || echo "참고: Docker 가 없으면 공급망 검사 · make stack-up · sandbox-up 은 쓸 수 없습니다(make dev · make test 는 됨)"
+	@command -v docker >/dev/null || echo "참고: Docker 가 없으면 make dev(실제 가젯) · 공급망 검사 · stack-up · sandbox-up 을 쓸 수 없습니다(make dev-mock · make test 는 됨)"
 	@echo "go $$(go env GOVERSION) · node $$(node -v)"
 	cd backend && go mod download
 	cd frontend && npm ci --no-audit --no-fund && npx playwright install chromium
-	@echo "준비 끝 — make dev(http://127.0.0.1:5173, admin/admin) · make test · cd frontend && npx playwright test"
+	@echo "준비 끝 — make dev(http://localhost:5173, admin/admin · 첫 로그인 OTP 등록) · make dev-mock(Docker 없이) · make test · cd frontend && npx playwright test"
 
 ## dev: 실제 가젯 백엔드(Docker Desktop, 127.0.0.1:8000) + 개발 DB(25433 · 26380) + Vite(:5173). Ctrl-C 면 Vite 와 백엔드를 멈춘다(DB 는 남김)
 ## 로그인 admin/admin · 첫 로그인에 OTP 등록(QR). 백엔드 코드를 고쳤으면 다시 make dev(이미지를 다시 만든다)
@@ -46,6 +46,10 @@ dev:
 	@docker info >/dev/null 2>&1 || { echo "Docker Desktop 이 꺼져 있습니다 — 켜고 다시 make dev (Docker 없이 화면만: make dev-mock)"; exit 1; }
 	@touch .env.local && chmod 600 .env.local; for k in $(DEV_SECRETS); do grep -q "^$$k=" .env.local || echo "$$k=$$(openssl rand -hex 32)" >> .env.local; done
 	$(COMPOSE_DEV) up -d --build --wait
+	@T=$$(grep '^ADMIN_TOKEN=' .env.local | cut -d= -f2-); \
+	  if [ "$$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $$T" http://127.0.0.1:8000/api/license)" = 404 ]; then \
+	    K=$$(openssl rand -hex 8 | tr 'a-f' '0-5' | sed 's/\(....\)/\1-/g; s/-$$//'); \
+	    curl -sf -o /dev/null -X PUT -H "Authorization: Bearer $$T" -H 'Content-Type: application/json' -d "{\"key\":\"$$K\"}" http://127.0.0.1:8000/api/license && echo "평가판 라이선스 등록(1년, DB 에 저장)"; fi
 	@echo "백엔드 준비 — http://localhost:5173 (admin/admin, 첫 로그인에 OTP 등록) · 로그: make dev-logs"
 	@trap '$(COMPOSE_DEV) stop backend >/dev/null 2>&1' EXIT INT TERM; cd frontend && npm run dev
 
