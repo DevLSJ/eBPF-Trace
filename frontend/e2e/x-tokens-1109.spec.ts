@@ -378,3 +378,27 @@ test('작은 위험 글자는 위험 글자색(밝은 · 어두운 모두 4.5:1 
     expect([r.delta, r.res, r.badge], t).toEqual([r.ref, r.ref, r.ref]);
   }
 });
+
+// 11/10 메인 통합(X1 질문 4 · 「모두 승인」): 공통 버튼 클래스를 쓰지 않던 주 버튼도 알약 모양(크기 · 여백은 그대로)
+test('공통 클래스 밖 주 버튼도 알약(로그인 · 계정 추가 · 새 키 등록)', async ({ page, backend }) => {
+  const pill = async (l: import('@playwright/test').Locator) => {
+    await expect(l).toBeVisible();
+    const r = await l.evaluate((e) => ({ rad: parseFloat(getComputedStyle(e).borderTopLeftRadius), h: e.getBoundingClientRect().height }));
+    expect(r.rad, 'radius ≥ height/2').toBeGreaterThanOrEqual(r.h / 2);
+  };
+  backend.auth.loggedOut();
+  await page.goto('/');
+  await pill(page.locator('[data-part="auth"]').getByRole('button', { name: '로그인' }));
+});
+test('설정 화면 주 버튼도 알약(계정 추가 · 새 키 등록)', async ({ page, backend }) => {
+  void backend;
+  const pill = async (l: import('@playwright/test').Locator) => {
+    await expect(l).toBeVisible();
+    const r = await l.evaluate((e) => ({ rad: parseFloat(getComputedStyle(e).borderTopLeftRadius), h: e.getBoundingClientRect().height }));
+    expect(r.rad, 'radius ≥ height/2').toBeGreaterThanOrEqual(r.h / 2);
+  };
+  await page.goto('/settings?tab=accounts');
+  await pill(page.getByRole('button', { name: '계정 추가' }));
+  await page.goto('/settings?tab=license');
+  await pill(page.getByRole('button', { name: '새 키 등록' }));
+});
