@@ -74,8 +74,8 @@ export function ChangesPage() {
                 type="button"
                 data-action="change-expand"
                 aria-expanded={open.has(c.id)}
-                aria-label={`바뀐 값 — ${c.id}`}
-                title={`바뀐 값 — ${c.id}`}
+                aria-label={`바뀐 값(${c.id})`}
+                title={`바뀐 값(${c.id})`}
                 onClick={() => toggle(c.id)}
                 className="shrink-0 rounded-[var(--r-sm)] p-0.5 text-text-3 hover:bg-surface-2 hover:text-text"
               >

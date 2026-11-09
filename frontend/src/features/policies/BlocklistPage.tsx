@@ -73,7 +73,7 @@ export function BlocklistPage() {
               fixed: true,
               stick: 'end' as const,
               cell: (r: Row) => (
-                <button type="button" aria-label={`해제 — ${r.value}`} title={`해제 — ${r.value}`} onClick={() => setAsk(r)} className="sg-btn sg-btn-sm sg-btn-secondary">
+                <button type="button" aria-label={`해제(${r.value})`} title={`해제(${r.value})`} onClick={() => setAsk(r)} className="sg-btn sg-btn-sm sg-btn-secondary">
                   해제
                 </button>
               ),
@@ -96,7 +96,7 @@ export function BlocklistPage() {
       toast(`${r.value} 차단을 해제했습니다.`, { key: `unblock:${r.value}`, tone: 'ok' });
       data.reload();
     } catch (e) {
-      toast(`차단을 해제하지 못했습니다 — ${e instanceof ApiError ? e.message : errorText(e)}`, { key: `unblock:${r.value}`, tone: 'danger' });
+      toast(`차단을 해제하지 못했습니다(${e instanceof ApiError ? e.message : errorText(e)}).`, { key: `unblock:${r.value}`, tone: 'danger' });
     }
   };
 

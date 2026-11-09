@@ -52,7 +52,7 @@ export function SettingsPage() {
         <button
           type="button"
           data-action="layout-reset"
-          title="길게 눌러 바꾼 순서(사이드바 · 대시보드 숫자 칸 · 평가 지표)를 처음대로 — 이 브라우저에만 저장된 값"
+          title="길게 눌러 바꾼 순서(사이드바 · 대시보드 숫자 칸 · 평가 지표)를 처음대로 되돌림(이 브라우저에만 저장된 값)"
           onClick={() => {
             resetLayout();
             toast('화면 배치를 기본 순서로 되돌렸습니다. 사이드바 · 대시보드 숫자 칸 · 평가 지표 순서가 처음대로 돌아갑니다.', { tone: 'ok', key: 'layout-reset' });
@@ -134,7 +134,7 @@ function ServerTab() {
         setSending(false);
       }, 1500);
     } catch (e) {
-      toast(`테스트 알림을 보내지 못했습니다 — ${errorText(e)}`, { key: 'notify-test', tone: 'danger' });
+      toast(`테스트 알림을 보내지 못했습니다(${errorText(e)}).`, { key: 'notify-test', tone: 'danger' });
       setSending(false);
     }
   };
@@ -160,7 +160,7 @@ function ServerTab() {
           <p className="text-xs text-slate-500">이 백엔드는 알림 상태를 알려 주지 않습니다.</p>
         ) : !n.channels.length ? (
           <p className="text-xs text-slate-500">
-            알림 채널이 없습니다 — 서버 .env 에 <code>NOTIFY_WEBHOOK_URL</code> · <code>NOTIFY_SLACK_URL</code> 을 넣고 다시 시작하세요.
+            알림 채널이 없습니다. 서버 .env 에 <code>NOTIFY_WEBHOOK_URL</code> · <code>NOTIFY_SLACK_URL</code> 을 넣고 다시 시작하세요.
           </p>
         ) : (
           <>
@@ -188,7 +188,7 @@ function ServerTab() {
                       <TimeText value={c.lastAt} kind="status" />
                     </td>
                     <td data-col="error" className="tk-fill text-xs text-red-600" title={c.lastError}>
-                      {c.lastError || '—'}
+                      {c.lastError || ''}
                     </td>
                   </tr>
                 ))}
@@ -197,7 +197,7 @@ function ServerTab() {
             </div>
             <p className="text-xs text-slate-500">
               합계 보냄 {fmtNum(n.sent)} · 실패 {fmtNum(n.failed)}
-              {n.suppressed ? ` · 같은 알림 묶음 ${fmtNum(n.suppressed)}` : ''} — 채널은 <code>NOTIFY_WEBHOOK_URL</code> · <code>NOTIFY_SLACK_URL</code>
+              {n.suppressed ? ` · 같은 알림 묶음 ${fmtNum(n.suppressed)}` : ''}. 채널은 <code>NOTIFY_WEBHOOK_URL</code> · <code>NOTIFY_SLACK_URL</code> 로 정합니다.
             </p>
           </>
         )}
@@ -214,13 +214,13 @@ function ServerTab() {
       <Section title="도메인 판단" part="dns">
         <Row
           label="trace_dns"
-          value={i.dnsResolve === 'off' ? '꺼짐' : i.dnsResolve === 'ok' ? '켜짐' : '—'}
+          value={i.dnsResolve === 'off' ? '꺼짐' : i.dnsResolve === 'ok' ? '켜짐' : ''}
           env="dnsResolve"
           desc={i.dnsResolve === 'off' ? '도메인 기준 규칙(allowHosts · denyHosts · 차단 도메인)과 DNS 질의 규칙(kind: dns)이 통과 처리됩니다. IP · 포트 규칙만 동작합니다' : '연결 대상 IP 를 DNS 응답으로 도메인에 맞춰 판단하고, DNS 질의 규칙(kind: dns)을 평가합니다'}
         />
       </Section>
       <p className="px-5 py-4 text-xs text-slate-500">
-        바꾸는 방법: 서버의 .env 에서 위 값을 고친 뒤 백엔드를 다시 시작하세요. 화면에서는 바꾸지 않습니다 — 범위를 잘못 넓히면 다른 컨테이너가 격리될 수 있습니다.
+        바꾸는 방법: 서버의 .env 에서 위 값을 고친 뒤 백엔드를 다시 시작하세요. 화면에서는 바꾸지 않습니다. 범위를 잘못 넓히면 다른 컨테이너가 격리될 수 있습니다.
       </p>
     </div>
   );
@@ -406,7 +406,7 @@ function AccountsTab() {
       target: who(u),
       okLabel: '초기화',
       effects: ['새 임시 비밀번호를 만들어 한 번 보여 줍니다', '첫 로그인에서 비밀번호를 바꿔야 합니다', '5분 잠금도 풀립니다'],
-      undo: '되돌릴 수 없습니다 — 새 임시 비밀번호를 전달하세요',
+      undo: '되돌릴 수 없습니다. 새 임시 비밀번호를 전달하세요',
       run: () => authApi.resetPassword(u.id),
       temp: u.username,
     });
@@ -416,7 +416,7 @@ function AccountsTab() {
       target: who(u),
       okLabel: '초기화',
       effects: ['등록된 인증 앱과 남은 복구 코드가 지워집니다', '다음 로그인에서 OTP 를 다시 등록합니다'],
-      undo: '되돌릴 수 없습니다 — 다시 등록하게 안내하세요',
+      undo: '되돌릴 수 없습니다. 다시 등록하게 안내하세요',
       run: () => authApi.resetOtp(u.id),
     });
 
@@ -451,7 +451,7 @@ function AccountsTab() {
           </table>
           </TableScroll>
           <p className="px-5 py-3 text-xs text-slate-500" data-part="last-admin">
-            관리자는 지금 {admins}명입니다. {AUTH_MSG.lastAdmin} — 다른 계정을 먼저 관리자로 올리세요.
+            관리자는 지금 {admins}명입니다. {AUTH_MSG.lastAdmin}. 다른 계정을 먼저 관리자로 올리세요.
           </p>
         </>
       )}
@@ -533,8 +533,8 @@ function AddUser({ onClose, onCreated }: { onClose: () => void; onCreated: (user
         <label className="grid gap-1">
           <b className="font-medium">역할</b>
           <select className={cls} value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            <option value="viewer">조회자 — 보기만</option>
-            <option value="admin">관리자 — 모든 쓰기</option>
+            <option value="viewer">조회자(보기만)</option>
+            <option value="admin">관리자(모든 쓰기)</option>
           </select>
         </label>
         {msg && (
@@ -618,11 +618,11 @@ function LicenseTab() {
           tone="primary"
           okLabel="바꾸기"
           effects={[
-            `지금 라이선스를 바꿉니다${lic.data ? ` — 지금 키 ${lic.data.keyMasked} 는 더 쓰지 않습니다` : ''}`,
+            `지금 라이선스를 바꿉니다${lic.data ? `(지금 키 ${lic.data.keyMasked} 는 더 쓰지 않음)` : ''}`,
             '만료일을 오늘부터 1년으로 새로 계산합니다',
             '인증 감사에 「라이선스 갱신」이 남습니다(키는 가린 값만)',
           ]}
-          undo="되돌릴 수 없습니다 — 다른 키를 다시 등록하면 그날부터 1년입니다"
+          undo="되돌릴 수 없습니다. 다른 키를 다시 등록하면 그날부터 1년입니다"
           onConfirm={() => void save()}
           onCancel={() => setPhase('input')}
         />
@@ -638,7 +638,7 @@ function LicenseTab() {
   if (noLicense)
     return (
       <div data-view="license">
-        <Empty>등록된 라이선스가 없습니다 — {isAdmin ? '「새 키 등록」으로 넣거나 ' : '관리자가 '}다음 로그인 때 등록합니다.</Empty>
+        <Empty>등록된 라이선스가 없습니다. {isAdmin ? '「새 키 등록」으로 넣거나 ' : '관리자가 '}다음 로그인 때 등록합니다.</Empty>
         {button && <div className="flex justify-center pb-6">{button}</div>}
         {renew}
       </div>
@@ -654,7 +654,7 @@ function LicenseTab() {
       <TimeText value={l.expiresAt} kind="day" />
       {l.expired ? '' : ` (${daysLeft(l)}일 남음)`}
     </>],
-    ['등록한 계정', l.registeredBy || '—'],
+    ['등록한 계정', l.registeredBy || ''],
   ];
   return (
     <div data-view="license" className="px-5 py-4">
@@ -671,7 +671,7 @@ function LicenseTab() {
       </div>
       <p className="mt-4 text-xs text-slate-500">
         키 원문은 서버에 저장하지 않습니다(가린 값만).{' '}
-        {isAdmin ? '「새 키 등록」으로 언제든 바꿀 수 있습니다 — 만료일은 등록한 날부터 1년으로 새로 계산합니다.' : '만료되면 관리자가 새 키를 등록합니다.'}
+        {isAdmin ? '「새 키 등록」으로 언제든 바꿀 수 있습니다. 만료일은 등록한 날부터 1년으로 새로 계산합니다.' : '만료되면 관리자가 새 키를 등록합니다.'}
       </p>
       {renew}
     </div>
@@ -799,7 +799,7 @@ function AuthAuditRows({ action, failed, onClear }: { action: string; failed: bo
         <div className="flex flex-col items-center gap-1 border-t border-slate-100 py-3 text-xs">
           {moreErr != null && (
             <span className="text-red-600" role="alert">
-              더 불러오지 못했습니다 — {errorText(moreErr)}
+              더 불러오지 못했습니다({errorText(moreErr)}).
             </span>
           )}
           {hasMore && (

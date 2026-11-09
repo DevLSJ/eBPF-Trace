@@ -414,7 +414,7 @@ function Violations({
     <>
       {!!error && loaded && <LoadError error={error} what="감사 로그" compact />}
       {got && (
-        <TableToolbar name="audit" total={got.total ?? got.rows.length} kit={kit} onRefresh={retry} refreshing={busy} onExport={exp.run} exportLabel="CSV 내려받기 — 지금 조건 · 기간">
+        <TableToolbar name="audit" total={got.total ?? got.rows.length} kit={kit} onRefresh={retry} refreshing={busy} onExport={exp.run} exportLabel="CSV 내려받기(지금 조건 · 기간)">
           {exp.err && (
             <span className="max-w-80 truncate text-xs text-red-600" data-part="export-error" role="alert" title={exp.err}>
               {exp.err}
@@ -546,7 +546,7 @@ function AuditDetail({ a, c }: { a: AuditEntry; c: Case | undefined }) {
             <TimeText value={a.event.timestamp} kind="log" />
           </dd>
           <dt className="text-slate-500">사유</dt>
-          <dd data-testid="audit-reason">{a.reason ?? '—'}</dd>
+          <dd data-testid="audit-reason">{a.reason ?? ''}</dd>
           <SequenceRow v={a} />
           {a.enforceError && (
             <>
@@ -638,9 +638,9 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
         kind: '판정',
         badge: <DecisionBadge decision={c.decision} />,
         badgeText: DECISION_LABEL[c.decision],
-        text: `${SOURCE_LABEL[c.source] ?? c.source} ${caseLabel(c)} — ${DECISION_LABEL[c.decision]}${c.note ? ` · ${c.note}` : ''}`,
+        text: `${SOURCE_LABEL[c.source] ?? c.source} ${caseLabel(c)}${c.note ? ` · ${c.note}` : ''}`,
         href: scanHref(c) as string | null,
-        by: c.decidedBy ?? '—',
+        by: c.decidedBy ?? '',
         reason: '',
       })),
     ...(changes.data ?? []).map((ch) => ({
@@ -717,7 +717,7 @@ function useAuditExport(filters: Filters, kit: TableKit<AuditEntry>) {
       const day = (v: string) => v.slice(0, 10).replace(/-/g, '');
       downloadCSV(`supplyguard-audit-${day(filters.since)}-${day(filters.until)}.csv`, kit.csv(all.slice(0, CSV_MAX)));
     } catch (e) {
-      setErr(`내보내지 못했습니다 — ${errorText(e)}`);
+      setErr(`내보내지 못했습니다(${errorText(e)}).`);
     } finally {
       setBusy(false);
     }

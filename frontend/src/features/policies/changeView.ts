@@ -68,7 +68,7 @@ const ACT: Record<string, string> = { kill: '격리', alert: '경고', allow: '�
 const KIND: Record<string, string> = { exec: '실행', open: '파일', connect: '통신', dns: '조회', sequence: '연쇄' };
 
 export function fieldText(field: string, v: unknown): string {
-  if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) return field === 'containers' ? '모든 컨테이너' : '—';
+  if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) return field === 'containers' ? '모든 컨테이너' : '없음';
   if (field === 'disabled') return v ? '사용 안 함' : '사용';
   if (typeof v === 'boolean') return v ? '켬' : '끔';
   if (field === 'action' || field === 'directIp') return ACT[String(v)] ?? String(v);
@@ -97,7 +97,7 @@ export function ruleDiff(before: Rule | undefined, after: Rule | undefined): Fie
     const a = val(before, f);
     const b = val(after, f);
     if (same(a, b) || (!before && (b === false || b === undefined))) continue;
-    out.push({ field: f, label: FIELD_LABEL[f], before: before ? fieldText(f, a) : '—', after: after ? fieldText(f, b) : '—' });
+    out.push({ field: f, label: FIELD_LABEL[f], before: before ? fieldText(f, a) : '', after: after ? fieldText(f, b) : '' });
   }
   return out;
 }

@@ -77,7 +77,7 @@ export function CreatePolicyModal({
         <Templates
           onPick={(key) => {
             const t = TEMPLATES.find((x) => x.key === key);
-            setPicked({ rule: fromTemplate(key, existingIds), fresh: null, intro: t ? `템플릿 「${t.title}」에서 시작함 — 저장 전에 모두 고칠 수 있습니다.` : undefined });
+            setPicked({ rule: fromTemplate(key, existingIds), fresh: null, intro: t ? `템플릿 「${t.title}」에서 시작합니다. 저장 전에 모두 고칠 수 있습니다.` : undefined });
           }}
         />
       )}

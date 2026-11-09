@@ -157,7 +157,7 @@ function kpiDefs(s: Summary, range: string): KpiDef[] {
           icon: "◷",
           stripe: "warn",
           value: null,
-          text: "—",
+          text: "",
           delta: P
             ? { dir: "none", note: "비교할 격리 없음" }
             : kpiDelta(null, null),
@@ -254,7 +254,7 @@ export function ChartRow({ s }: { s: Summary | null }) {
       ? ([["dns", "조회", "--k-dns"]] as [string, string, string][])
       : []),
   ];
-  const none = <Empty>{s ? "" : "—"}</Empty>;
+  const none = <Empty>{null}</Empty>;
   return (
     <div data-part="charts" className="sg-dash-charts">
       <Card id="collected" title="수집량 추이" sub="종류별 커널 이벤트">
@@ -385,7 +385,7 @@ export function TopPanel({
       >
         <div data-fill="" className="sg-dash-fill">
           {!rows ? (
-            <p className="sg-top-empty">—</p>
+            <p className="sg-top-empty">{"\u00a0"}</p>
           ) : (
             <TopList
               testId={kind}

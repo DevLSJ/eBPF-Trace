@@ -188,7 +188,7 @@ function SingleForm({ v, onChange }: { v: SingleInput; onChange: (v: SingleInput
       </div>
       <label className="int-enforce">
         <input type="checkbox" name="enforce" checked={v.enforce} onChange={(x) => onChange({ ...v, enforce: x.target.checked })} />
-        격리까지 맡기기 <span className="int-muted">— 정책 위반 시 증거 수집 뒤 즉시 종료됨</span>
+        격리까지 맡기기 <span className="int-muted">(정책 위반 시 증거 수집 뒤 즉시 종료됨)</span>
       </label>
     </div>
   );
@@ -232,8 +232,8 @@ function MultiForm({ v, onChange }: { v: MultiInput; onChange: (v: MultiInput) =
               <td className="tk-short">
                 <ActionButton
                   className="int-icon-btn"
-                  aria-label={`빼기 — 서비스 ${k + 1}`}
-                  title={`빼기 — 서비스 ${k + 1}`}
+                  aria-label={`빼기(서비스 ${k + 1})`}
+                  title={`빼기(서비스 ${k + 1})`}
                   reason={v.services.length <= 1 && '서비스는 하나 이상 있어야 합니다'}
                   onClick={() => onChange({ ...v, services: v.services.filter((_, i) => i !== k) })}
                 >
@@ -271,7 +271,7 @@ function InstallForm({ v, onChange }: { v: InstallInput; onChange: (v: InstallIn
         </Field>
       </div>
       <ul className="int-points">
-        <li>설치는 감시 컨테이너(sg-install-*) 안에서 실행됨 — 호스트에 설치되지 않음</li>
+        <li>설치는 감시 컨테이너(sg-install-*) 안에서 실행됨, 호스트에 설치되지 않음</li>
         <li>악성 동작 시 설치 완료 전에 격리됨, 결과는 설치 검사 화면에 기록됨</li>
       </ul>
     </div>
@@ -315,12 +315,12 @@ function ApplyStep({ sc, st, env, containers, onNext }: { sc: 'single' | 'multi'
     <div className="int-apply" data-part="apply">
       <div className="int-apply-cols">
         <div>
-          <h4 className="int-h4">① 설정 — {sc === 'single' && st.single.mode === 'run' ? '실행 명령' : 'docker-compose.yml'}</h4>
+          <h4 className="int-h4">① 설정({sc === 'single' && st.single.mode === 'run' ? '실행 명령' : 'docker-compose.yml'})</h4>
           <Code part="gen-config" text={sc === 'single' ? singleSnippet(st.single, env) : multiSnippet(st.multi, env)} />
           {sc === 'single' && st.single.mode === 'compose' && <p className="int-muted">기존 compose 의 같은 서비스에 labels · container_name 두 항목 추가</p>}
         </div>
         <div>
-          <h4 className="int-h4">② 서버에서 실행 — 컨테이너 다시 만들기</h4>
+          <h4 className="int-h4">② 서버에서 실행(컨테이너 다시 만들기)</h4>
           <Code part="gen-apply" text={sc === 'single' ? singleApply(st.single, env) : multiApply()} />
           <h4 className="int-h4">③ 자동 감지 {found.length > 1 && <span className="int-muted" data-part="detect-count">{n} / {found.length}</span>}</h4>
           <ul className="int-detect" data-part="detect">
@@ -329,14 +329,14 @@ function ApplyStep({ sc, st, env, containers, onNext }: { sc: 'single' | 'multi'
                 <span className="int-detect-ico">{f.row ? <Check className="size-3.5" aria-hidden /> : <Loader2 className="size-3.5 animate-spin" aria-hidden />}</span>
                 <b>{f.name}</b>
                 <span className="int-muted">{f.row ? (f.row.enforce ? '감시 · 격리 대상 확인됨' : '감시 확인됨') : '감시 목록에 나타나기를 기다리는 중'}</span>
-                {f.row && f.enforce !== f.row.enforce && <span className="int-field-err">격리 설정 다름 — 라벨 확인 필요</span>}
+                {f.row && f.enforce !== f.row.enforce && <span className="int-field-err">격리 설정 다름, 라벨 확인 필요</span>}
               </li>
             ))}
           </ul>
         </div>
       </div>
       <div className="int-wiz-foot">
-        {all ? <span className="int-ok" data-part="detect-done">모두 감지됨 — 확인 단계 진행 가능</span> : <span className="int-muted">감지 전에도 다음 단계로 이동 가능</span>}
+        {all ? <span className="int-ok" data-part="detect-done">[감지 완료] 확인 단계 진행 가능</span> : <span className="int-muted">감지 전에도 다음 단계로 이동 가능</span>}
         <button type="button" className={`sg-btn ${all ? 'sg-btn-primary' : 'sg-btn-secondary'}`} data-part="wizard-next" onClick={onNext}>
           확인 단계 →
         </button>
@@ -347,9 +347,9 @@ function ApplyStep({ sc, st, env, containers, onNext }: { sc: 'single' | 'multi'
 
 // ── 3 확인 — 내 컨테이너에서 시험 동작 ──
 const OUTCOME: Record<Outcome, { tone: string; title: string; points: string[] }> = {
-  killed: { tone: 'danger', title: '격리됨 — 연동 · 격리 모두 동작 확인됨', points: ['/etc/shadow 읽기가 sensitive-files 정책에 걸려 컨테이너 종료됨', '조치: docker compose up -d 로 다시 시작(재시작 정책이 있으면 자동)'] },
-  held: { tone: 'warn', title: '격리 보류 — 감시 동작 확인됨', points: ['위반 탐지 · 기록됨, 격리 라벨이 없어 종료하지 않음', '격리가 필요하면 supplyguard.enforce=true 추가'] },
-  alert: { tone: 'ok', title: '경고 기록됨 — 감시 동작 확인됨', points: ['위반 탐지 · 기록됨(정책 대응이 경고)'] },
+  killed: { tone: 'danger', title: '[격리] 연동 · 격리 모두 동작 확인됨', points: ['/etc/shadow 읽기가 sensitive-files 정책에 걸려 컨테이너 종료됨', '조치: docker compose up -d 로 다시 시작(재시작 정책이 있으면 자동)'] },
+  held: { tone: 'warn', title: '[격리 보류] 감시 동작 확인됨', points: ['위반 탐지 · 기록됨, 격리 라벨이 없어 종료하지 않음', '격리가 필요하면 supplyguard.enforce=true 추가'] },
+  alert: { tone: 'ok', title: '[경고] 감시 동작 확인됨', points: ['위반 탐지 · 기록됨(정책 대응이 경고)'] },
 };
 
 function TestStep({ sc, st, set, containers }: { sc: 'single' | 'multi'; st: Saved; set: (p: Partial<Saved>) => void; containers: IntegrationContainer[] }) {
@@ -375,13 +375,13 @@ function TestStep({ sc, st, set, containers }: { sc: 'single' | 'multi'; st: Sav
           </select>
         </div>
       )}
-      {!watching && <p className="int-field-err">⚠ {target} 아직 감시 목록에 없음 — 2단계 적용 먼저 필요</p>}
+      {!watching && <p className="int-field-err">⚠ {target} 아직 감시 목록에 없음, 2단계 적용 먼저 필요</p>}
       {enforce && (
         <p className="int-warn" data-part="verify-kill-warn">
-          <TriangleAlert className="size-4" aria-hidden /> 격리 라벨 있음 — 시험 동작 시 이 컨테이너가 실제로 종료됨
+          <TriangleAlert className="size-4" aria-hidden /> 격리 라벨 있음, 시험 동작 시 이 컨테이너가 실제로 종료됨
         </p>
       )}
-      <h4 className="int-h4">서버에서 실행 — 무해한 시험 동작(계정 파일 읽기 시도)</h4>
+      <h4 className="int-h4">서버에서 무해한 시험 동작 실행(계정 파일 읽기 시도)</h4>
       <Code part="gen-test" text={testCmd(target)} onCopy={() => set({ armedAt: new Date().toISOString() })} />
       <div className={`int-verify ${out ? out.tone : st.armedAt ? 'wait' : 'idle'}`} data-part="verify-result" data-outcome={v ? outcomeOf(v) : st.armedAt ? 'waiting' : 'idle'} key={v ? `v${v.event.timestamp}` : st.armedAt ?? 'idle'}>
         {!st.armedAt ? (
@@ -450,7 +450,7 @@ function InstallApply({ st, set }: { st: Saved; set: (p: Partial<Saved>) => void
         ) : (
           <>
             <b className="int-verify-title">
-              <StatusBadge status={sess.status} /> {sess.status === 'running' ? '설치 진행 중' : sess.status === 'passed' ? '설치 통과 — 위반 없음 확인됨' : '설치 중 위반 — 결과 확인 필요'}
+              <StatusBadge status={sess.status} /> {sess.status === 'running' ? '설치 진행 중' : sess.status === 'passed' ? '위반 없이 설치 완료' : '설치 중 위반, 결과 확인 필요'}
             </b>
             <div className="int-form-row">
               <Link className="sg-btn sg-btn-sm sg-btn-secondary" data-part="install-open" to={installDest(sess.id).to} state={installDest(sess.id).state}>

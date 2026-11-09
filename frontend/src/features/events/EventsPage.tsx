@@ -203,7 +203,7 @@ function EventDetail({ v }: { v: StreamVerdict }) {
           </dd>
           <DnsRow e={v.event} />
           <dt className="text-slate-500">사유</dt>
-          <dd>{v.reason ?? '—'}</dd>
+          <dd>{v.reason ?? ''}</dd>
           <SequenceRow v={v} />
           {v.enforceError && (
             <>
@@ -236,7 +236,7 @@ function EventDetail({ v }: { v: StreamVerdict }) {
             </Link>
           </div>
           {rule?.description && <p className="mt-1 text-xs text-slate-500">{rule.description}</p>}
-          {rule === null && <p className="mt-1 text-xs text-slate-400">현재 정책 목록에 없음 — 삭제 또는 변경됨</p>}
+          {rule === null && <p className="mt-1 text-xs text-slate-400">현재 정책 목록에 없음(삭제 또는 변경됨)</p>}
         </Section>
       )}
       {v.matched && <PolicyStarts event={v.event} ruleId={v.ruleId} />}

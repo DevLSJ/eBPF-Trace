@@ -97,7 +97,7 @@ export function PolicySheet({
         <div data-testid="editor" className="flex h-full min-h-0 flex-col">
           {system && (
             <p className="flex shrink-0 items-center gap-2 border-b border-border bg-surface-2 px-5 py-2 text-xs text-text-2" data-testid="system-rule">
-              <Lock className="size-3.5" aria-hidden /> 시스템 규칙 — 도메인은{' '}
+              <Lock className="size-3.5" aria-hidden /> 시스템 규칙입니다. 도메인은{' '}
               <Link to="/policies/blocklist" className="text-accent-text hover:underline">
                 차단 목록
               </Link>

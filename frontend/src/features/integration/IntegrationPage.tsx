@@ -111,7 +111,7 @@ function EnvChecks({ env, info, open }: { env: IntegrationEnv; info: Info | null
   return (
     <>
       <p className={`int-verdict ${warn ? 'warn' : 'ok'}`} data-part="env-verdict">
-        {warn ? `확인 필요 ${warn}건 — 아래 조치 참고` : env.source === 'gadget' ? '실제 수집 준비됨' : '모의 이벤트로 동작 중'}
+        {warn ? `확인 필요 ${warn}건, 아래 조치 참고` : env.source === 'gadget' ? '실제 수집 준비됨' : '모의 이벤트로 동작 중'}
       </p>
       {open && <ul className="int-checks" data-part="env-checks">
         {checks.map((c, i) => (
@@ -150,7 +150,7 @@ function TestStep({ env, test, isAdmin, onStarted }: { env: IntegrationEnv; test
       await api.integrationTest();
       onStarted();
     } catch (e) {
-      toast(`연결 테스트를 시작하지 못했습니다 — ${e instanceof ApiError ? e.message : '잠시 뒤 다시 시도하세요.'}`, { key: 'int-test', tone: 'warn' });
+      toast(`연결 테스트를 시작하지 못했습니다${e instanceof ApiError ? `(${e.message}).` : '. 잠시 뒤 다시 시도하세요.'}`, { key: 'int-test', tone: 'warn' });
     } finally {
       setStarting(false);
     }
@@ -174,7 +174,7 @@ function TestStep({ env, test, isAdmin, onStarted }: { env: IntegrationEnv; test
           {running && <div className="int-progress" aria-hidden><i /></div>}
           <div className="int-test-line">
             {test.state === 'passed' ? <Check className="size-4" aria-hidden /> : test.state === 'failed' ? <X className="size-4" aria-hidden /> : <Loader2 className="size-4 animate-spin" aria-hidden />}
-            <b data-part="test-state">{test.state === 'passed' ? `연결 확인됨 — 이벤트 ${fmtNum(total)}건 수신` : test.state === 'failed' ? '연결 확인 실패' : `수신 대기 중 — ${test.container}`}</b>
+            <b data-part="test-state">{test.state === 'passed' ? `[통과] 이벤트 ${fmtNum(total)}건 수신, 연결 확인됨` : test.state === 'failed' ? '[실패] 연결 확인 안 됨' : `[대기] ${test.container} 이벤트 수신 대기 중`}</b>
           </div>
           <div className="int-counts" data-part="test-counts">
             {KINDS.map(({ k, label }) => (
@@ -232,7 +232,7 @@ function WatchList({ data }: { data?: IntegrationStatus }) {
       }
     >
       <div className="int-watch-body">
-        {data?.listError && <p className="int-points warn" role="alert">컨테이너 목록을 읽지 못했습니다 — {data.listError}</p>}
+        {data?.listError && <p className="int-points warn" role="alert">컨테이너 목록을 읽지 못했습니다({data.listError}).</p>}
         {!data ? (
           <Skeleton rows={6} />
         ) : rows.length + gone.length === 0 ? (

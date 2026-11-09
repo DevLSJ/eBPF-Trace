@@ -19,7 +19,7 @@ const COLS: Column<AuditEntry>[] = [
   { key: 'at', label: '시각', width: COL_W.log, cell: (a) => <TimeText value={a.event.timestamp} kind="log" />, csv: (a) => fmtLog(a.event.timestamp) },
   { key: 'container', label: '컨테이너', cell: (a) => <span className="font-mono text-[13px] whitespace-nowrap">{a.install ? a.install.label : a.event.containerName}</span> },
   { key: 'result', label: '결과', width: COL_W.status, cell: (a) => <VerdictBadge v={a} />, csv: (a) => LEVEL_LABEL[levelOf(a)] },
-  { key: 'detail', label: '요약', fill: true, cell: (a) => <span title={a.reason || detailOf(a.event)}>{a.reason ? `${a.reason} — ${detailOf(a.event)}` : detailOf(a.event)}</span> },
+  { key: 'detail', label: '요약', fill: true, cell: (a) => <span title={a.reason || detailOf(a.event)}>{a.reason ? `${a.reason}(${detailOf(a.event)})` : detailOf(a.event)}</span> },
 ];
 
 export function PolicyHits({ ruleId }: { ruleId: string }) {

@@ -89,7 +89,7 @@ function EvidenceCard({ ev }: { ev: Evidence }) {
       )}
       <div>
         <h4 className="mb-1 text-xs font-semibold text-slate-700">
-          로그 <span className="font-normal text-slate-400">— 마지막 200줄</span>
+          로그 <span className="font-normal text-slate-400">(마지막 200줄)</span>
         </h4>
         {/* 11/04f 코드 창(R1 11/04) — 파일명 없음 · log · 줄바꿈 */}
         <CodeWindow lang="log" wrap bodyClassName="ev-logs">
@@ -98,7 +98,7 @@ function EvidenceCard({ ev }: { ev: Evidence }) {
       </div>
       <div>
         <h4 className="mb-1 text-xs font-semibold text-slate-700">
-          파일 변경 <span className="font-normal text-slate-400">— docker diff (A 추가 · C 변경 · D 삭제)</span>
+          파일 변경 <span className="font-normal text-slate-400">(docker diff · A 추가 · C 변경 · D 삭제)</span>
         </h4>
         {/* 11/04f 파일 트리(R1 11/04) — 여러 폴더에 걸치면 트리 + A · C · D 배지(폴더 모두 펼침 · 선택 없음), 1개이거나 한 폴더면 예전 표 */}
         {changes.length > 1 && new Set(changes.map((c) => c.path.slice(0, c.path.lastIndexOf('/')))).size > 1 ? (
@@ -131,7 +131,7 @@ function EvidenceCard({ ev }: { ev: Evidence }) {
       </div>
       <div>
         <h4 className="mb-1 text-xs font-semibold text-slate-700">
-          프로세스 <span className="font-normal text-slate-400">— docker top</span>
+          프로세스 <span className="font-normal text-slate-400">(docker top)</span>
         </h4>
         {procs.length ? (
           <table className="sg-table" data-part="evidence-procs">
@@ -154,7 +154,7 @@ function EvidenceCard({ ev }: { ev: Evidence }) {
           </table>
         ) : (
           <p className="text-xs text-slate-400" data-part="evidence-procs">
-            {ev.partial ? '모으지 못함 — 위 안내 참고' : '없음'}
+            {ev.partial ? '모으지 못함, 위 안내 참고' : '없음'}
           </p>
         )}
       </div>

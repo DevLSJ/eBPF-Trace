@@ -24,7 +24,7 @@ export function ChangeDiff({ change: c, ruleId, forId }: { change: Change; ruleI
           <div key={id} className="grid gap-1" data-rule-diff={id}>
             {!ruleId && <b className="font-mono text-xs text-text-2">{id}</b>}
             {!b && <span className="text-xs text-text-3">새로 만든 정책</span>}
-            {!a && <span className="text-xs text-text-3">지운 정책 — 지우기 전 값</span>}
+            {!a && <span className="text-xs text-text-3">지운 정책(지우기 전 값)</span>}
             {rows.length ? (
               <dl className="grid grid-cols-[minmax(6rem,auto)_1fr] gap-x-3 gap-y-0.5">
                 {rows.map((r) => (

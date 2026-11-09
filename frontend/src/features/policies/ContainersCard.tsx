@@ -64,7 +64,7 @@ export function ContainersCard({
     <section className="grid gap-3 text-sm" data-part="containers-card" aria-label="적용 컨테이너">
       <div>
         <h3 className="font-semibold text-text">적용 컨테이너</h3>
-        <p className="text-xs text-text-3">이 정책으로 판정할 컨테이너 — 비우면 모든 컨테이너</p>
+        <p className="text-xs text-text-3">이 정책으로 판정할 컨테이너(비우면 모든 컨테이너)</p>
       </div>
       <div className="grid grid-cols-3 gap-1 rounded-[var(--r-md)] border border-border p-1" role="group" aria-label="적용 범위">
         {SCOPES.map(([k, label, sub]) => (
@@ -166,9 +166,9 @@ function Summary({ scope, list, kill, live }: { scope: Scope; list: IntegrationC
   const e = count(hit, (c) => c.enforce);
   return (
     <div className="grid gap-1 rounded-[var(--r-md)] border border-border px-3 py-2.5" data-part="scope-summary">
-      <b className="text-[13px] font-medium text-text">{scope === 'all' ? `지금 실행 중 ${hit.length}개 모두` : `${SANDBOX_SCOPE} — 지금 일치 ${hit.length}개`}</b>
+      <b className="text-[13px] font-medium text-text">{scope === 'all' ? `지금 실행 중 ${hit.length}개 모두` : `${SANDBOX_SCOPE}(지금 일치 ${hit.length}개)`}</b>
       <span className="text-xs text-text-3">
-        {scope === 'sandbox' ? '설치 검사 컨테이너는 늘 격리 범위입니다. 시험 설치를 시작하면 여기에 들어옵니다.' : `감시 ${w}개 · 격리 범위 ${e}개${kill && e < hit.length ? ` — 격리 범위 밖 ${hit.length - e}개는 위반이면 알림만 남습니다.` : ''}`}
+        {scope === 'sandbox' ? '설치 검사 컨테이너는 늘 격리 범위입니다. 시험 설치를 시작하면 여기에 들어옵니다.' : `감시 ${w}개 · 격리 범위 ${e}개${kill && e < hit.length ? `, 격리 범위 밖 ${hit.length - e}개는 위반이면 알림만 남습니다.` : ''}`}
       </span>
     </div>
   );
@@ -213,7 +213,7 @@ function Entry({
       {known && (
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-text-3" data-part="entry-status">
           {n === 0 ? (
-            <span>지금 실행 중인 컨테이너 중 일치 없음 — 이후 뜨는 컨테이너에 적용</span>
+            <span>지금 실행 중인 컨테이너 중 일치 없음, 이후 뜨는 컨테이너에 적용</span>
           ) : (
             <>
               <StatusPill tone={w === n ? 'ok' : 'neutral'}>{watch}</StatusPill>

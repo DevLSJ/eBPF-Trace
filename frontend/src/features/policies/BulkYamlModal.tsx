@@ -34,7 +34,7 @@ export function BulkYamlModal({ canWrite, ruleCount, onClose, onApplied }: { can
       toast(`정책 ${rs.length}개를 적용했습니다.`, { key: 'policy-yaml', tone: 'ok' });
       setMsg({ ok: true, text: `정책 ${rs.length}개를 엔진에 적용했습니다.` });
     } catch (e) {
-      setMsg({ ok: false, text: `적용하지 못했습니다 — ${errorText(e)}` });
+      setMsg({ ok: false, text: `적용하지 못했습니다(${errorText(e)}).` });
     } finally {
       setBusy(false);
     }
@@ -55,7 +55,7 @@ export function BulkYamlModal({ canWrite, ruleCount, onClose, onApplied }: { can
               {msg.text}
             </span>
           )}
-          {!canWrite && <span className="mr-auto text-xs text-text-3">읽기 전용 — 전체 교체는 관리자만 합니다</span>}
+          {!canWrite && <span className="mr-auto text-xs text-text-3">읽기 전용입니다. 전체 교체는 관리자만 합니다</span>}
           <button type="button" onClick={close} className="sg-btn sg-btn-secondary">
             닫기
           </button>
@@ -75,7 +75,7 @@ export function BulkYamlModal({ canWrite, ruleCount, onClose, onApplied }: { can
         <p className="text-xs text-text-3">지금 정책 전체를 YAML 로 고쳐 한 번에 교체합니다. 시스템 규칙 blocklist-hosts 는 들어 있지 않고 그대로 남습니다.</p>
         {loadErr ? (
           <p role="alert" className="text-sm text-danger-text">
-            YAML 을 불러오지 못했습니다 — {loadErr}
+            YAML 을 불러오지 못했습니다({loadErr}).
           </p>
         ) : (
           <div className="min-h-0 flex-1">

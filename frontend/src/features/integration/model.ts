@@ -29,19 +29,19 @@ export function envChecks(env: IntegrationEnv, info: Info | null): Check[] {
     !env.kernel
       ? { id: 'kernel', label: '커널', value: '확인 불가(리눅스 아님)', tone: 'off', hint: '리눅스 서버(커널 5.15 이상)에서 실제 수집 가능' }
       : major >= 7
-        ? { id: 'kernel', label: '커널', value: env.kernel, tone: 'warn', hint: '커널 7.0 에서 이벤트 유실 확인됨 — Ubuntu 22.04(커널 5.15 · 6.8) 권장' }
+        ? { id: 'kernel', label: '커널', value: env.kernel, tone: 'warn', hint: '커널 7.0 에서 이벤트 유실 확인됨, Ubuntu 22.04(커널 5.15 · 6.8) 권장' }
         : major > 5 || (major === 5 && minor >= 15)
           ? { id: 'kernel', label: '커널', value: env.kernel, tone: 'ok' }
           : { id: 'kernel', label: '커널', value: env.kernel, tone: 'warn', hint: '커널 5.15 이상 권장' },
   );
-  out.push({ id: 'os', label: '운영체제', value: env.os || '—', tone: env.os ? 'ok' : 'off' });
+  out.push({ id: 'os', label: '운영체제', value: env.os || '', tone: env.os ? 'ok' : 'off' });
   const g = info?.gadgets ?? [];
   const need: Kind[] = ['exec', 'open', 'connect'];
   const missing = need.filter((x) => !g.includes(x));
   out.push(
     missing.length
       ? { id: 'gadgets', label: '수집 항목', value: `${missing.join(' · ')} 없음`, tone: 'warn', hint: 'GADGETS 설정 확인 필요' }
-      : { id: 'gadgets', label: '수집 항목', value: info?.dnsResolve === 'ok' ? '실행 · 파일 · 통신 · DNS' : '실행 · 파일 · 통신', tone: info?.dnsResolve === 'off' ? 'warn' : 'ok', hint: info?.dnsResolve === 'off' ? 'trace_dns 꺼짐 — 도메인 기준 판정 통과 처리됨' : undefined },
+      : { id: 'gadgets', label: '수집 항목', value: info?.dnsResolve === 'ok' ? '실행 · 파일 · 통신 · DNS' : '실행 · 파일 · 통신', tone: info?.dnsResolve === 'off' ? 'warn' : 'ok', hint: info?.dnsResolve === 'off' ? 'trace_dns 꺼짐, 도메인 기준 판정은 통과 처리됨' : undefined },
   );
   const d = info?.discovery ?? '';
   out.push(
@@ -54,7 +54,7 @@ export function envChecks(env: IntegrationEnv, info: Info | null): Check[] {
   out.push(
     env.enforceKill
       ? { id: 'enforce', label: '격리', value: '켜짐', tone: 'ok' }
-      : { id: 'enforce', label: '격리', value: '꺼짐(dry-run)', tone: 'warn', hint: 'ENFORCE_KILL=false — 격리 정책도 알림만 전송됨' },
+      : { id: 'enforce', label: '격리', value: '꺼짐(dry-run)', tone: 'warn', hint: 'ENFORCE_KILL=false(격리 정책도 알림만 전송됨)' },
   );
   return out;
 }

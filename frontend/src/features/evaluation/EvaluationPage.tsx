@@ -25,10 +25,10 @@ import { Term, type TermKey } from './terms';
 // 쉬운 이름 대응(화면 전체 같은 말): 재현율 → 탐지율 · 오탐률 → 오판율 · 정밀도 → 적중률 · F1 → 종합 점수 · p50 → 중간값 · p95 → 95% 이내 ·
 //   혼동 행렬 → 판정 4칸 표 · 보정/시험 → 선택용/시험 · dryRun → 시험 운영 · kill 호출 → 격리 명령 · 대조(정상) → 대조군
 
-const pct = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? '—' : `${(x * 100).toFixed(1)}%`);
+const pct = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? '' : `${(x * 100).toFixed(1)}%`);
 const pct0 = (x: number) => `${Math.round(x * 100)}%`;
-const dec = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? '—' : x.toFixed(2));
-const ms = (x: number | null | undefined) => (x == null ? '—' : `${fmtNum(x)} ms`);
+const dec = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? '' : x.toFixed(2));
+const ms = (x: number | null | undefined) => (x == null ? '' : `${fmtNum(x)} ms`);
 const sum = (o: Record<string, number | undefined> | undefined) => Object.values(o ?? {}).reduce<number>((a, b) => a + (Number(b) || 0), 0);
 // 지표 보조 줄 — 조각 안에서는 줄을 바꾸지 않는다
 const hint = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).map((t) => (t as string).replace(/ /g, '\u00a0')).join(' · ');
@@ -90,19 +90,19 @@ function keyPoints(d: Evaluation): Point[] {
   return [
     {
       k: 'static-detection',
-      num: c ? pct(mt.detectionRate) : '—',
+      num: c ? pct(mt.detectionRate) : '',
       label: '정적 악성 탐지율',
       basis: c ? `실제 악성 패키지 ${fmtNum(c.tp + c.fn)}개 중 ${fmtNum(c.tp)}개 탐지됨` : '정적 검사 결과 없음',
     },
     {
       k: 'false-alarm',
-      num: c ? pct(mt.falsePositiveRate) : b ? pct(b.falsePositiveRate) : '—',
+      num: c ? pct(mt.falsePositiveRate) : b ? pct(b.falsePositiveRate) : '',
       label: !c && b ? '정상 설치 오판율' : '정상 패키지 오판율',
       basis: falses || '오판 결과 없음',
     },
     {
       k: 'runtime',
-      num: a.runs ? pct(a.detected / a.runs) : '—',
+      num: a.runs ? pct(a.detected / a.runs) : '',
       label: '런타임 공격 탐지율',
       basis: a.runs ? (
         <>
@@ -255,7 +255,7 @@ function Head({ d }: { d: Evaluation }) {
         id="commit"
         k="백엔드"
         v={commits.map((c) => c.slice(0, 7)).join(' · ')}
-        title={[commits.join(' · '), st?.scanner && `GuardDog ${st.scanner.guarddog} · OSV-Scanner ${st.scanner.osv}`].filter(Boolean).join(' — ')}
+        title={[commits.join(' · '), st?.scanner && `GuardDog ${st.scanner.guarddog} · OSV-Scanner ${st.scanner.osv}`].filter(Boolean).join('\n')}
       />,
     );
   return (
@@ -316,7 +316,7 @@ function Kpis({ d }: { d: Evaluation }) {
       icon: '⌕',
       stripe: 'accent',
       label: '정적 악성 탐지율',
-      value: st ? pct(mt.detectionRate) : '—',
+      value: st ? pct(mt.detectionRate) : '',
       sub: c ? (
         <>
           {hint(`악성 ${fmtNum(c.tp + c.fn)}개 중 ${fmtNum(c.tp)}개`)} · <Term k="recall" />
@@ -330,7 +330,7 @@ function Kpis({ d }: { d: Evaluation }) {
       icon: '✓',
       stripe: 'info',
       label: '정상 패키지 오판율',
-      value: st ? pct(mt.falsePositiveRate) : '—',
+      value: st ? pct(mt.falsePositiveRate) : '',
       sub: c ? (
         <>
           {hint(`정상 ${fmtNum(c.fp + c.tn)}개 중 ${fmtNum(c.fp)}개`)} · <Term k="fpr" />
@@ -339,13 +339,13 @@ function Kpis({ d }: { d: Evaluation }) {
         '정적 결과 없음'
       ),
     },
-    { k: 'runtime-detection', icon: '▣', stripe: 'accent', label: '런타임 공격 탐지율', value: a.runs ? pct(a.detected / a.runs) : '—', sub: a.runs ? hint(`공격 ${fmtNum(a.runs)}회 중 ${fmtNum(a.detected)}회`, `${a.list.length}종`) : '런타임 결과 없음' },
+    { k: 'runtime-detection', icon: '▣', stripe: 'accent', label: '런타임 공격 탐지율', value: a.runs ? pct(a.detected / a.runs) : '', sub: a.runs ? hint(`공격 ${fmtNum(a.runs)}회 중 ${fmtNum(a.detected)}회`, `${a.list.length}종`) : '런타임 결과 없음' },
     {
       k: 'runtime-fpr',
       icon: '✓',
       stripe: 'info',
       label: '정상 설치 오판율',
-      value: b ? pct(b.falsePositiveRate) : '—',
+      value: b ? pct(b.falsePositiveRate) : '',
       sub: b ? (
         <>
           {hint(`정상 설치 ${fmtNum(b.installs)}건 중 ${fmtNum(b.violations)}건`)} · <Term k="fpr" />
@@ -359,7 +359,7 @@ function Kpis({ d }: { d: Evaluation }) {
       icon: '◷',
       stripe: 'warn',
       label: '격리까지 걸린 시간',
-      value: lat ? fmtNum(lat.p50) : '—',
+      value: lat ? fmtNum(lat.p50) : '',
       unit: lat ? ' ms' : undefined,
       sub: lat ? (
         <>
@@ -375,7 +375,7 @@ function Kpis({ d }: { d: Evaluation }) {
       icon: '◔',
       stripe: 'ok',
       label: 'ML 모델 종합 점수',
-      value: pref ? dec(pref.test.f1) : '—',
+      value: pref ? dec(pref.test.f1) : '',
       sub: pref ? (
         <>
           <ModelName x={pref} />
@@ -430,7 +430,7 @@ function DistCard({ st }: { st: EvalStatic | null }) {
       tip: [
         [null, `${label(set.id)} · 검사 ${fmtNum(set.scanned)} / ${fmtNum(set.total)}`],
         ...VERDICTS.map(([k, ko, color]): TipLine => [color, `${ko} ${fmtNum(set.verdicts[k] ?? 0)} (${pct((set.verdicts[k] ?? 0) / n)})`]),
-        ...(skip ? [[null, `건너뜀 ${fmtNum(skip)} — ${Object.entries(set.skipped ?? {}).map(([k, v]) => `${k} ${v}`).join(' · ')}`] as TipLine] : []),
+        ...(skip ? [[null, `건너뜀 ${fmtNum(skip)}(${Object.entries(set.skipped ?? {}).map(([k, v]) => `${k} ${v}`).join(' · ')})`] as TipLine] : []),
       ],
     };
   });
@@ -464,7 +464,7 @@ function DistCard({ st }: { st: EvalStatic | null }) {
           </tbody>
         </table>
       </div>
-      {(errors > 0 || skipped > 0) && <ChartNote part="dist-excluded">{hint(errors > 0 && `오류 ${fmtNum(errors)}건`, skipped > 0 && `건너뜀 ${fmtNum(skipped)}건`)} — 지표 계산에서 제외됨</ChartNote>}
+      {(errors > 0 || skipped > 0) && <ChartNote part="dist-excluded">{hint(errors > 0 && `오류 ${fmtNum(errors)}건`, skipped > 0 && `건너뜀 ${fmtNum(skipped)}건`)}은 지표 계산에서 제외됨</ChartNote>}
     </>
   );
   return (
@@ -480,11 +480,11 @@ function DistCard({ st }: { st: EvalStatic | null }) {
       />
       {st.durationsSec && (
         <ChartNote>
-          {'검사 1건 걸린 시간 — '}
+          {'검사 1건 걸린 시간('}
           <Term k="p50">중간값</Term>
           {` ${fmtNum(st.durationsSec.p50)}초 · `}
           <Term k="p95">95% 이내</Term>
-          {` ${fmtNum(st.durationsSec.p95)}초`}
+          {` ${fmtNum(st.durationsSec.p95)}초)`}
         </ChartNote>
       )}
     </Card>
@@ -529,7 +529,7 @@ function RulesCard({ st }: { st: EvalStatic | null }) {
         <p data-part="rules-top" className="text-[13px] text-text-2">
           {'1위 '}
           <code className="font-mono text-xs break-all text-text">{first.rule}</code>
-          {` — 악성 ${fmtNum(first.maliciousHits)}개 · 정상 ${fmtNum(first.benignHits)}개에서 걸림`}
+          {`(악성 ${fmtNum(first.maliciousHits)}개 · 정상 ${fmtNum(first.benignHits)}개에서 걸림)`}
         </p>
       ) : (
         <p className="py-3 text-xs text-text-3">적중한 규칙 없음</p>
@@ -553,7 +553,7 @@ function ConfusionCard({ st }: { st: EvalStatic | null }) {
     <>
       <p className="text-xs font-semibold text-text-2">
         <Term k="confusion">판정 4칸 표</Term>
-        {' — 실제 정답 × 판정 개수'}
+        {'(실제 정답 × 판정 개수)'}
       </p>
       <div className="overflow-x-auto">
         <table className="text-sm" style={{ minWidth: 0 }}>
@@ -578,7 +578,7 @@ function ConfusionCard({ st }: { st: EvalStatic | null }) {
           </tbody>
         </table>
       </div>
-      {eco.length > 0 && <ChartNote part="by-ecosystem">{`생태계별 — ${eco.map(([k, v]) => `${k} 탐지율 ${pct(v.metrics.detectionRate)} · 오판율 ${pct(v.metrics.falsePositiveRate)}`).join(' / ')}`}</ChartNote>}
+      {eco.length > 0 && <ChartNote part="by-ecosystem">{`생태계별 ${eco.map(([k, v]) => `${k} 탐지율 ${pct(v.metrics.detectionRate)} · 오판율 ${pct(v.metrics.falsePositiveRate)}`).join(' / ')}`}</ChartNote>}
     </>
   );
   return (
@@ -629,7 +629,7 @@ function ScenarioCard({ rt }: { rt: EvalRuntime | null }) {
           [
             <>
               <Term k="control">대조군</Term>
-              {' — 0%가 정답'}
+              {'(0%가 정답)'}
             </>,
             'muted',
           ],
@@ -702,7 +702,7 @@ function Stages({ rt }: { rt: EvalRuntime }) {
         bars: [STAGES.map(([k, , color]) => ({ key: k, v: p(k), color }))],
         tip: [
           [null, label] as TipLine,
-          ...STAGES.map(([k, ko, color]): TipLine => [color, st[k] ? `${ko} 중간값 ${fmtNum(msv(st[k]!.p50))} ms · 95% 이내 ${fmtNum(msv(st[k]!.p95))} ms` : `${ko} —`]),
+          ...STAGES.map(([k, ko, color]): TipLine => [color, st[k] ? `${ko} 중간값 ${fmtNum(msv(st[k]!.p50))} ms · 95% 이내 ${fmtNum(msv(st[k]!.p95))} ms` : `${ko} 측정값 없음`]),
           ...(n ? [[null, `격리 ${fmtNum(n)}회 기준`] as TipLine] : []),
         ],
       } satisfies BarRow,
@@ -766,15 +766,15 @@ function BenignCard({ rt }: { rt: EvalRuntime | null }) {
                   <td>
                     {x.result in INSTALL_STATUS_LABEL ? <StatusBadge status={x.result as InstallStatus} /> : <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">{x.result === 'violation' ? '위반' : x.result}</span>}
                   </td>
-                  <td className="font-mono text-xs">{x.rule || '—'}</td>
-                  <td className="num num-col">{x.seconds != null ? `${fmtNum(x.seconds)}초` : '—'}</td>
+                  <td className="font-mono text-xs">{x.rule || ''}</td>
+                  <td className="num num-col">{x.seconds != null ? `${fmtNum(x.seconds)}초` : ''}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <p className="py-3 text-xs text-text-3">{`위반 없음 — 정상 설치 ${fmtNum(b.installs)}건 모두 통과`}</p>
+        <p className="py-3 text-xs text-text-3">{`[통과] 정상 설치 ${fmtNum(b.installs)}건 모두 위반 없음`}</p>
       )}
     </Card>
   );
@@ -856,7 +856,7 @@ function ModelCard({ model, modelAll }: { model: EvalModel | null; modelAll?: Ev
                   <td className={`px-3 py-1.5 ${pick ? 'font-semibold shadow-[inset_3px_0_0_var(--accent)]' : ''}`} title={x.threshold != null ? `기준값 ${x.threshold}` : undefined}>
                     {x.label}
                     {pick && (
-                      <span data-part="pick-badge" title="선택용 구간에서 고른 모델 — 시험 구간은 고를 때 쓰지 않음" className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-800">
+                      <span data-part="pick-badge" title="선택용 구간에서 고른 모델(시험 구간은 고를 때 쓰지 않음)" className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-800">
                         선택한 모델
                       </span>
                     )}
@@ -878,8 +878,8 @@ function ModelCard({ model, modelAll }: { model: EvalModel | null; modelAll?: Ev
         </table>
       </div>
       <p data-part="protocol" className="text-xs text-text-3" title={[(md.features ?? []).join(', '), md.topFeatures?.length && `상위 특징: ${md.topFeatures.map((f) => `${f.feature} ${f.weight}`).join(', ')}`].filter(Boolean).join('\n')}>
-        {'실험 조건 — '}
-        {[`seed ${p.seed ?? '—'}`, p.split, p.selection && `선택 기준: ${p.selection}`, `특징 ${fmtNum((md.features ?? []).length)}개`, test && `시험 악성 ${fmtNum(test.malicious)} · 정상 ${fmtNum(test.benign)}`].filter(Boolean).join(' · ')}
+        {'실험 조건: '}
+        {[p.seed != null && `seed ${p.seed}`, p.split, p.selection && `선택 기준: ${p.selection}`, `특징 ${fmtNum((md.features ?? []).length)}개`, test && `시험 악성 ${fmtNum(test.malicious)} · 정상 ${fmtNum(test.benign)}`].filter(Boolean).join(' · ')}
       </p>
       {md.byEcosystem && <ByEcosystem md={md} />}
       {md.npmReference?.recall && (
@@ -917,7 +917,7 @@ function ModelCard({ model, modelAll }: { model: EvalModel | null; modelAll?: Ev
       </div>
       {ruleWins(md) && (
         <p data-part="rule-wins" className="text-xs font-medium text-text-2">
-          시험에서는 규칙 판정이 우세 — 운영은 규칙
+          [규칙 우세] 시험 결과에 따라 운영은 규칙 판정 사용
         </p>
       )}
     </Card>
@@ -984,7 +984,7 @@ function Limits({ d }: { d: Evaluation }) {
     <Card part="limits" level={2} title="결과의 한계" className="border-l-4 border-l-warn" detail={detail || undefined} detailName="결과의 한계 목록">
       {items.length ? (
         <p data-part="limits-summary" className="text-[13px] text-text-2">
-          {`적힌 한계 ${fmtNum(items.length)}건 — ${counts.map(([k, n]) => `${SOURCE[k]} ${fmtNum(n)}`).join(' · ')}`}
+          {`적힌 한계 ${fmtNum(items.length)}건(${counts.map(([k, n]) => `${SOURCE[k]} ${fmtNum(n)}`).join(' · ')})`}
         </p>
       ) : (
         <p className="text-xs text-text-3">적힌 한계 없음</p>

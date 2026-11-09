@@ -38,7 +38,7 @@ export function PolicyChanges({ ruleId, current, canWrite, onReverted }: { ruleI
       onReverted();
     } catch (e) {
       // 서버 오류 문장은 바꾸지 않고 그대로
-      toast(`되돌리지 못했습니다 — ${e instanceof ApiError ? e.message : errorText(e)}`, { key: `revert-fail:${c.id}`, tone: 'danger' });
+      toast(`되돌리지 못했습니다(${e instanceof ApiError ? e.message : errorText(e)}).`, { key: `revert-fail:${c.id}`, tone: 'danger' });
     }
   };
 

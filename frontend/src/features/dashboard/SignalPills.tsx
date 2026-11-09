@@ -38,7 +38,7 @@ export function SignalPills() {
       tone: source === 'gadget' ? 'ok' : source === 'mock' ? 'warn' : 'muted',
       text: source === 'gadget' ? '가젯 · 커널 감시 중' : source === 'mock' ? '가젯 · 모의 이벤트' : '가젯 · 미확인',
       to: '/settings',
-      title: source === 'gadget' ? 'Inspektor Gadget 이 커널 이벤트를 수집합니다' : source === 'mock' ? 'MOCK 소스 — 모의 이벤트로 돌고 있습니다' : '수집 소스를 아직 모릅니다',
+      title: source === 'gadget' ? 'Inspektor Gadget 이 커널 이벤트를 수집합니다' : source === 'mock' ? 'MOCK 소스(모의 이벤트로 동작 중)' : '수집 소스를 아직 모릅니다',
     },
     {
       key: 'dns',
@@ -52,7 +52,7 @@ export function SignalPills() {
       tone: enforce === true ? 'ok' : enforce === false ? 'warn' : 'muted',
       text: enforce === true ? '자동 격리 켜짐' : enforce === false ? '자동 격리 · 알림만' : '자동 격리 · 미확인',
       to: '/settings',
-      title: enforce === false ? 'ENFORCE_KILL=false — kill 정책도 알림만 보냅니다' : '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다',
+      title: enforce === false ? 'ENFORCE_KILL=false(kill 정책도 알림만 보냄)' : '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다',
     },
     {
       key: 'notify',

@@ -73,7 +73,7 @@ function Pending() {
               className={`num text-base ${pending.length ? "text-warn-text" : "text-text-3"}`}
               data-testid="pending-count"
             >
-              {cases ? pending.length : "—"}
+              {cases ? pending.length : ""}
             </b>
           </span>
         }

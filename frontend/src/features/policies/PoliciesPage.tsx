@@ -147,7 +147,7 @@ export function PoliciesPage() {
         // 좁은 화면에서도 정책 이름이 읽히게 최소 11rem — 넘치면 표가 가로로 밀린다
         cell: (r) => (
           <span className="block min-w-[11rem]">
-            <TwoLine top={r.description || r.id} sub={SYSTEM_RULES.has(r.id) ? <>{r.id}<SystemMark /></> : r.id} title={r.description ? `${r.description} — ${r.id}` : r.id} />
+            <TwoLine top={r.description || r.id} sub={SYSTEM_RULES.has(r.id) ? <>{r.id}<SystemMark /></> : r.id} title={r.description ? `${r.description} (${r.id})` : r.id} />
           </span>
         ),
         csv: (r) => `${r.description || r.id} (${r.id})`,
@@ -189,7 +189,7 @@ export function PoliciesPage() {
         const miss = d?.missing?.find((r) => r.id === defaultId);
         if (miss) return { rule: miss, isNew: true, intro: `새 기본 규칙 · ${miss.id}` };
         const diff = d?.differs?.find((x) => x.id === defaultId);
-        if (diff && current) return { rule: mergeDefault(stripView(current), diff.default), isNew: false, intro: `바뀐 기본 규칙 · ${diff.id} — 빠진 값만 더함` };
+        if (diff && current) return { rule: mergeDefault(stripView(current), diff.default), isNew: false, intro: `바뀐 기본 규칙 · ${diff.id}(빠진 값만 더함)` };
         return null;
       })()
     : null;
@@ -198,7 +198,7 @@ export function PoliciesPage() {
     if (intent === 'block' && intentKind && KINDS.includes(intentKind) && intentValue) return { rule: ruleFromBlock(intentKind, intentValue, existingIds), fresh: null, intro: `「${intentValue}」 막기에서 시작함` };
     if (tpl) {
       const r = fromTemplate(tpl, existingIds);
-      return { rule: r, fresh: null, intro: `템플릿 「${r.description || r.id}」에서 시작함 — 저장 전에 모두 고칠 수 있습니다.` };
+      return { rule: r, fresh: null, intro: `템플릿 「${r.description || r.id}」에서 시작합니다. 저장 전에 모두 고칠 수 있습니다.` };
     }
     return null;
   })();
@@ -207,7 +207,7 @@ export function PoliciesPage() {
     if (pendingDefault && !pendingDefault.isNew) return { rule: pendingDefault.rule, fresh: null, intro: pendingDefault.intro, autoCheck: true };
     if (intent === 'allow' && intentValue) {
       const x = ruleWithAllow(stripView(current), intentValue);
-      return { ...x, intro: x.fresh ? `예외 ${x.fresh.value} 를 더한 값 — 확인 후 저장하세요` : undefined };
+      return { ...x, intro: x.fresh ? `예외 ${x.fresh.value} 를 더한 값입니다. 확인 후 저장하세요` : undefined };
     }
     return { rule: stripView(current), fresh: null };
   })();
@@ -254,7 +254,7 @@ export function PoliciesPage() {
           ) : (
             <>
               <b className="text-text">적용 대기 제안 {drafts.length}건</b>
-              <span className="text-xs text-text-2">판정에서 나온 정책 · 차단 목록 변경 — 눌러서 미리보기 후 적용하거나 버림</span>
+              <span className="text-xs text-text-2">판정에서 나온 정책 · 차단 목록 변경, 눌러서 미리보기 후 적용하거나 버림</span>
               <span className="flex flex-wrap items-center gap-1.5">
                 {drafts.slice(0, 4).map((p) => {
                   const c = cases?.find((x) => x.id === p.caseId);

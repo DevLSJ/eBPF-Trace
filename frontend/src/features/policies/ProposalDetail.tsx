@@ -85,7 +85,7 @@ export function ProposalDetail({
     try {
       if (kind === 'apply') await api.applyProposal(p.id, reason);
       else await api.discardProposal(p.id, reason);
-      toast(kind === 'apply' ? `제안 적용 — ${target} 건 종결, 변경 이력에 기록` : `제안 버림 — ${target} 건 종결(변경 없음)`, {
+      toast(kind === 'apply' ? `제안을 적용하고 ${target} 건을 종결했습니다. 변경 이력에 남았습니다.` : `제안을 버리고 ${target} 건을 종결했습니다(변경 없음).`, {
         key: `proposal:${p.id}`,
         tone: 'ok',
       });
@@ -128,7 +128,7 @@ export function ProposalDetail({
           <section className="mb-4">
             <h3 className="mb-1.5 text-xs font-semibold text-slate-700">변경 내용 {p.changes.length}</h3>
             {p.changes.length === 0 ? (
-              <p className="text-xs text-slate-500">자동으로 만들 변경이 없습니다 — 실행 규칙은 정책을 직접 수정하세요.</p>
+              <p className="text-xs text-slate-500">자동으로 만들 변경이 없습니다. 실행 규칙은 정책을 직접 수정하세요.</p>
             ) : (
               <ul className="grid gap-1" data-testid="proposal-changes">
                 {p.changes.map((x, i) => (
@@ -160,7 +160,7 @@ export function ProposalDetail({
             ) : (
               <div className="grid gap-2">
                 <p data-testid="preview-summary">
-                  감사 로그 <b className="num">{fmtNum(preview.evaluated)}</b>건 재평가 — 통과로 바뀜{' '}
+                  감사 로그 <b className="num">{fmtNum(preview.evaluated)}</b>건 재평가 결과, 통과로 바뀜{' '}
                   <b className="num text-emerald-700" data-to-normal={preview.counts.toNormal}>
                     {fmtNum(preview.counts.toNormal)}
                   </b>{' '}
@@ -195,7 +195,7 @@ export function ProposalDetail({
                 )}
                 {nextOnly.length > 0 && (
                   <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="next-only">
-                    <p className="mb-1 font-medium">다음 설치 · 기동부터 적용 — 과거 이벤트는 바뀌지 않습니다</p>
+                    <p className="mb-1 font-medium">다음 설치 · 기동부터 적용(과거 이벤트는 바뀌지 않음)</p>
                     <ul className="grid gap-0.5 font-mono">
                       {nextOnly.map((x) => (
                         <li key={`${x.list}:${x.value}`}>
@@ -244,7 +244,7 @@ export function ProposalDetail({
             </>
           ) : (
             <span className="text-xs text-slate-500" data-testid="proposal-state">
-              {p.state === 'applied' ? `적용됨 · ${p.appliedBy ?? '—'} · ${p.appliedAt ? fmtDateTime(p.appliedAt) : ''}` : '버림 — 변경 없이 건 종결'}
+              {p.state === 'applied' ? ['적용됨', p.appliedBy, p.appliedAt && fmtDateTime(p.appliedAt)].filter(Boolean).join(' · ') : '버림(변경 없이 건 종결)'}
             </span>
           )}
         </div>
@@ -267,7 +267,7 @@ export function ProposalDetail({
               ? p.decision === 'malicious'
                 ? '정책 › 차단 목록에서 「해제」하면 다음 설치 · 기동부터 풀립니다'
                 : '정책 편집에서 더한 예외 값을 지우고 저장하면 됩니다'
-              : '버린 제안은 되살리지 않습니다 — 같은 대상이 다시 걸리면 새 건으로 판정합니다'
+              : '버린 제안은 되살리지 않습니다. 같은 대상이 다시 걸리면 새 건으로 판정합니다'
           }
           onCancel={() => setAsk(null)}
           onConfirm={(reason) => {

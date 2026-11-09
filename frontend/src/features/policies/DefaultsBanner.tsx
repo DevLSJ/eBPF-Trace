@@ -19,7 +19,7 @@ export function DefaultsBanner({ data, canWrite, onPreview }: { data: PolicyDefa
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2">
         <Sparkles className="size-4 shrink-0 text-indigo-600" aria-hidden />
         <b className="text-slate-800">기본 정책에 {what}가 있습니다</b>
-        <span className="text-xs text-slate-500">— 업데이트로 생긴 규칙은 저절로 들어가지 않습니다. 사용자가 바꾼 규칙은 덮어쓰지 않습니다.</span>
+        <span className="text-xs text-slate-500">업데이트로 생긴 규칙은 저절로 들어가지 않습니다. 사용자가 바꾼 규칙은 덮어쓰지 않습니다.</span>
         <button
           type="button"
           data-action="defaults-toggle"
@@ -48,7 +48,7 @@ export function DefaultsBanner({ data, canWrite, onPreview }: { data: PolicyDefa
               <span className="grid min-w-0 flex-1">
                 <span className="truncate text-slate-800">{x.rule.description || x.id}</span>
                 <small className="truncate font-mono text-xs text-slate-500" title={x.current ? diffText(x.current, x.rule) : x.id}>
-                  {x.kind === 'missing' || !x.current ? x.id : `${x.id} — ${diffText(x.current, x.rule)}`}
+                  {x.kind === 'missing' || !x.current ? x.id : `${x.id}: ${diffText(x.current, x.rule)}`}
                 </small>
               </span>
               {canWrite && (
