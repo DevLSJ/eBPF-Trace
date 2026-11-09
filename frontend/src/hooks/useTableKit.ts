@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 
 // 표 기반(11/04e 목업 U.tableKit, R1 11/04) — 정렬 · 쪽 나누기 상태. 머리 · 바닥줄 부품은 components/DataTable.tsx
 // 11/09 표 도구(선택): grid 를 주면 칸 보이기 · 폭 · 순서를 이 브라우저(localStorage `supplyguard.grid.<id>.v1`)에 기억하고,
-//   query 를 주면 정렬 · 쪽 · 쪽 크기를 화면 상태 대신 그쪽(주소 쿼리 — hooks/useListQuery.ts)에서 읽고 쓴다.
+//   query 를 주면 정렬 · 쪽 · 쪽 크기를 이 훅 안 대신 그쪽(hooks/useListQuery.ts 의 화면 상태 — 10/21 주소에 남기지 않음)에서 읽고 쓴다.
 export interface Column<T> {
   key: string;
   label: ReactNode;
@@ -44,7 +44,7 @@ export const COL_STEP = 16;
 // 빈 값 글자(화면 · CSV 같음) — components/list/cells.tsx 의 DASH 와 같은 값
 export const EMPTY_TEXT = '—';
 
-// 정렬 · 쪽 상태를 바깥(주소 쿼리)에 둘 때 — useListQuery(...).table 이 이 모양
+// 정렬 · 쪽 상태를 바깥(목록 화면 상태)에 둘 때 — useListQuery(...).table 이 이 모양
 export interface TableQuery {
   sort: SortState;
   setSort: (s: SortState) => void;
@@ -132,7 +132,7 @@ export function useTableKit<T>({
   size?: number;
   // 칸 설정 저장 키(표마다 하나, 예: 'policies' → supplyguard.grid.policies.v1). 없으면 기억하지 않고 기본 칸만
   grid?: string;
-  // 정렬 · 쪽을 바깥 상태(주소 쿼리)로
+  // 정렬 · 쪽을 바깥 상태(useListQuery 의 화면 상태)로
   query?: TableQuery;
 }) {
   const [stOwn, setStOwn] = useState<SortState>(sort ?? { key: null, dir: 'asc' });
