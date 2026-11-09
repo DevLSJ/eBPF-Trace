@@ -35,7 +35,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 REST · WS 앞: 로그인 관문(쿠키 세션, CLI 는 Bearer ADMIN_TOKEN, sg-install 은 SANDBOX_TOKEN)
 공급망 검사: 백엔드 → 검사기 컨테이너(GuardDog · OSV-Scanner)
 시연(DEMO_ENABLED=true): 백엔드 → Docker API 로 sg-install-demo-* 컨테이너(mock 소스는 모의 재생)
-AI 도우미: 백엔드 → Ollama qwen2.5:3b(선택, 읽기 전용 조회 → 사실 문장 → 답, 판정 상태 · 링크는 서버가 붙임)
+AI 도우미: 백엔드 → Claude API claude-opus-5-5(기본, `ANTHROPIC_API_KEY` · 공식 Go SDK · effort low · 서버 쪽 대체) · Ollama qwen2.5:3b(예비, 또는 `CHAT_PROVIDER=ollama` 로 단독 — 서버 밖으로 안 보냄) [2026-11-09]. 읽기 전용 조회 → 사실 문장 → 답, 판정 상태 · 링크는 서버가 붙임. 보내는 범위는 설정 → 서버 「AI 도우미」
 ```
 
 - **백엔드**: Go 1.26 · Inspektor Gadget v0.56.1을 Go 패키지로 프로세스 안에서 실행(Cgo 없음). 가젯 데이터 오퍼레이터는 `operators.GetDataOperators()` 전체를 쓰고 LocalManager만 직접 만든 컬렉션으로 교체한다 — 일부만 넣으면 trace_dns가 CO-RE 오류로 안 뜬다
@@ -62,7 +62,7 @@ tools/     sg-install
 | 명령 | 내용 |
 |---|---|
 | `make setup` | 새 PC · 새 clone 에서 처음 한 번 — 도구 확인 · Go 모듈 · `npm ci` · Playwright chromium(11/06). `make dev` · `make test` 는 `node_modules` 가 없으면 `npm ci` 부터 |
-| `make dev` | 백엔드(mock 이벤트, :8000, 로그인 켜짐 · `admin`/`admin` 으로 바로 대시보드 — Makefile `DEV_AUTH` 가 OTP 를 끄고 `AUTH_DEV_MODE=true`(mock 소스 전용)로 비밀번호 변경 · 라이선스 단계를 건너뜀) + Vite(:5173). 공급망 검사는 Docker Desktop 이 켜져 있어야 하고 작업 폴더는 `.scan-work`(검사기에 bind, 11/06) |
+| `make dev` | 저장소 루트 `.env.local`(gitignore · 600)의 `ANTHROPIC_API_KEY` 를 읽어 AI 도우미를 Claude 로 켬(11/09). 백엔드(mock 이벤트, :8000, 로그인 켜짐 · `admin`/`admin` 으로 바로 대시보드 — Makefile `DEV_AUTH` 가 OTP 를 끄고 `AUTH_DEV_MODE=true`(mock 소스 전용)로 비밀번호 변경 · 라이선스 단계를 건너뜀) + Vite(:5173). 공급망 검사는 Docker Desktop 이 켜져 있어야 하고 작업 폴더는 `.scan-work`(검사기에 bind, 11/06) |
 | `make mock` | 옛 목업 :8766 — 11/05 부터 개발 · 검증에 쓰지 않음(기록 열람용). **8765는 참고 제품 목업 — 끄지 않는다** |
 | `make test` | 백엔드 vet · race 테스트 + 프론트 lint · build |
 | `cd frontend && npx playwright test` | React e2e(가짜 백엔드, CI 에도 있음) |
@@ -90,7 +90,7 @@ tools/     sg-install
 
 **로컬 서버(React · 백엔드) 위주로 개발하고 테스트한다.** 화면 변경은 `make dev`(:5173 · admin/admin)에서 바로 만들어 띄워 보여 주고 확정한다. 검증은 `make test` + React e2e(`frontend/e2e`), 새 회귀 테스트도 React e2e 로만 쓴다. 개인 규칙의 「목업 먼저(mockup-first)」는 이 저장소에서 쓰지 않는다.
 
-디자인 [2026-11-05 — 10/30 indigo · Pinterest/Linear 값 대체]: 공통 토큰 · 부품(값은 `frontend/src/index.css`)을 **참고 대시보드 값과 같게** — 글꼴 `Inter, Pretendard, …`(내려받지 않음) · 강조 `#1769E8` · 반경 8(버튼 6) · 넓고 옅은 카드 그림자 · 버튼 14.4/700(보조 = 파란 외곽선) · 표 머리 42 회색 12/600 · 행 48 · 상태 배지 27 · 12.5/750 · 톤 테두리 · 쪽 넘김 「총 N건 · p/P 페이지」 + 「N개씩」 + 원형 쪽 칸 · 빈 상태 가운데 보조색 · **아이콘 없음**(10/20 「아이콘 있는 빈 상태」 대체) · 격리 배지는 위험 톤 · 직접 만든 작은 외곽선 단추도 `sg-btn sg-btn-sm sg-btn-secondary`. 값만 옮기고 참고 제품의 이름 · 로고 · 사이드바 그라데이션 · 아이콘 · 문구는 넣지 않는다(공개 저장소). 종류 색(실행 · 파일 · 통신 · 조회) · 코드 창 · 차트 모양은 이 제품 고유. 빨강은 위험에만. 외부 CSS · 웹폰트 · 로고 금지. 다크 모드(`supplyguard.theme`) · 768px 미만(서랍 사이드바 · 1열, 단 종합 숫자 칸은 2열) 포함. 회귀 `frontend/e2e/reference-theme-1105.spec.ts`.
+디자인 [2026-11-09 — 11/05 참고 대시보드 값 대체]: 공통 토큰(값은 `frontend/src/index.css`)은 **참고 홈페이지 구조값** — 미색 회색 단계(바탕 `#FAF9F5` · 보조 `#F5F4ED`/`#F0EEE6` · 글자 `#141413`/`#30302E`/`#5E5D59`, 다크 `#141413`/`#1F1E1D`/`#262624`) · **주 버튼 거의 검정**(`bg-primary text-primary-fg`, 다크는 반대) · 보조 버튼 미색 채움 + 1px 링 · 반경 버튼 · 칩 8 / 입력 12 / 카드 16 / 대화상자 24 · 그림자 알파 4% · 가는 테두리 · 전환 .2s / .25s · **강조 파랑 `#1769E8` 유지**(링크 · 포커스 · 선택 · 정보 · 차트) · 세리프 · 테라코타 안 씀 · 글꼴 `Inter, Pretendard, …`(내려받지 않음). 그대로 둔 것: 표 머리 42 · 행 48 · 상태 배지 크기 · 쪽 넘김 「총 N건 · p/P 페이지」 · 빈 상태 아이콘 없음 · 격리 배지 위험 톤 · 작은 외곽선 단추 `sg-btn sg-btn-sm sg-btn-secondary`. 값만 옮기고 참고 사이트의 이름 · 로고 · 아이콘 · 문구 · 일러스트 · 브랜드 색 이름은 넣지 않는다(공개 저장소). 종류 색(실행 · 파일 · 통신 · 조회) · 코드 창 · 차트 모양은 이 제품 고유. 빨강은 위험에만. 외부 CSS · 웹폰트 · 로고 금지. 다크 모드(`supplyguard.theme`) · 768px 미만(서랍 사이드바 · 1열, 단 종합 숫자 칸은 2열) 포함. 회귀 `frontend/e2e/theme-1109.spec.ts`.
 
 - `mock/`(정적 목업 · `mock/tests/*.cjs`)은 지난 결정의 기록으로만 남긴다 — 고치지 않고 회귀도 돌리지 않는다. 지난 결정 기록 원문은 `mock/README.md` 반영 기록
 - 지난 결정(목업 시절): 10/15 1차 · 10/16 · 10/20 도우미(`guide-1020.cjs`) · 10/20 2차(로그인 · 대화상자 · 알림 센터 · 목록 · 셸 · 새 기본 규칙 · 증거, `feedback-1020b.cjs`) · 10/20 결정 반영(토큰 칸 삭제 · 설정 화면 · 라이선스 칩 · 30초 재시도 · 비밀번호 5자, `feedback-1020c.cjs`) · 10/30(DNS 규칙 · 시연 · 타임라인 · 신호등 · 보고서 · 디자인 토큰 · 다크 · 768px, `dns-1030` · `demo-1030` · `theme-1030`, 11/02 React 맞춤) · 11/05 슬라이드 패널(상세는 본문 위에 겹쳐 오른쪽에서 — 공급망 · 설치 70% · 그 밖 720 · 뒤 어둡게 · 「n / m ‹ ›」 · ↑↓ · 주제별 블록, `sheet-1105`) — 상세는 `mock/README.md` 반영 기록
