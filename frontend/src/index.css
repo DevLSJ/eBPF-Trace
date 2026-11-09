@@ -538,7 +538,7 @@ th[aria-sort="descending"] .th-sort::after { content: '↓'; opacity: 1; color: 
 .sg-pill-ok { --pill-bg: var(--pill-ok-bg); --pill-fg: var(--pill-ok-fg); --pill-line: var(--pill-ok-line); }
 .sg-pill-warn { --pill-bg: var(--pill-warn-bg); --pill-fg: var(--pill-warn-fg); --pill-line: var(--pill-warn-line); }
 .sg-pill-danger { --pill-bg: var(--pill-danger-bg); --pill-fg: var(--pill-danger-fg); --pill-line: var(--pill-danger-line); }
-.sg-pill-dark { --pill-bg: var(--pill-dark-bg); --pill-fg: var(--pill-dark-fg); --pill-line: var(--pill-dark-line); }
+.sg-pill-dark { --pill-bg: var(--pill-dark-bg); --pill-fg: var(--pill-dark-fg); --pill-line: var(--pill-dark-line); border-color: var(--pill-dark-line); } /* 예외(11/09 사용자): 흰 글자색 테두리 대신 바탕색 */
 /* 표 바닥줄(참고 대시보드 쪽 넘김): 왼쪽 「총 N건 · p/P 페이지」 14 보조색, 오른쪽 「N개씩」 선택 + 원형 쪽 칸(26 · 현재 쪽 파란 채움 · 처음/끝 단추). 패딩 16 */
 .tk-foot { flex-shrink: 0; display: flex; align-items: center; padding: 16px; border-top: 1px solid var(--border); font-size: 14px; color: var(--text-3); background: var(--surface); }
 .tk-pager { display: flex; flex: 1 1 auto; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; min-width: 0; }
