@@ -1,27 +1,45 @@
 import { useEffect, useMemo, useState } from 'react';
+import { rowKeys, rowState } from '../../components/list/hooks';
 import { Empty, Panel } from '../../components/Panel';
+import { sheetNav } from '../../components/sheet-nav';
+import { useListQuery } from '../../hooks/useListQuery';
 import { sentence } from '../../lib/api';
 import { fmtNum } from '../../lib/format';
 import type { IntegrationContainer, IntegrationStatus } from '../../lib/types';
+import { WATCH_TABS } from './model';
 import { IntFrame, Skeleton } from './parts';
 import { useIntegration } from './useIntegration';
+import { WatchSheet, WatchTags } from './WatchSheet';
 import './integration.css';
 
 // 「연동 › 감시 중 컨테이너」(11/09 밤 — 연동 페이지 오른쪽 목록을 페이지로): 실행 중인 컨테이너의 감시 · 격리 여부(3초마다)
-const WATCH_BY: Record<string, string> = { all: '전체 감시', name: '이름', label: '라벨' };
-const ENFORCE_BY: Record<string, string> = { all: '전체', name: '이름', label: '라벨', sandbox: '설치 검사', demo: '시연' };
+// 11/10: 행 클릭 · Enter → 오른쪽 상세 시트(정보 · 위반 이력 · 최근 이벤트) — 주소 ?id=<컨테이너 id>&tab=…, 열린 채 다른 행은 내용만 교체 · ↑↓
+const NO_FILTERS = {};
 
 export function IntegrationWatchPage() {
   const { data, error } = useIntegration();
+  const q = useListQuery({ filters: NO_FILTERS, tabs: WATCH_TABS });
+  const rows = data?.containers ?? [];
+  const ids = rows.map((r) => r.id);
   return (
     <IntFrame page="watch" screen="integration/watch" ready={!!data} error={error}>
-      <WatchList data={data} />
+      <WatchList data={data} openId={q.id} onOpen={(id) => q.open(id)} />
+      {q.id && (
+        <WatchSheet
+          id={q.id}
+          row={rows.find((r) => r.id === q.id)}
+          tab={q.tab}
+          onTab={q.setTab}
+          nav={sheetNav(ids, q.id, (x) => q.open(x))}
+          onClose={q.close}
+        />
+      )}
     </IntFrame>
   );
 }
 
 // 감시 목록 — 새로 들어온 행은 강조하며 미끄러져 들어오고, 사라진 행은 잠깐 흐려진 뒤 빠진다
-function WatchList({ data }: { data?: IntegrationStatus }) {
+function WatchList({ data, openId, onOpen }: { data?: IntegrationStatus; openId: string | null; onOpen: (id: string) => void }) {
   const rows = useMemo(() => data?.containers ?? [], [data]);
   const [prevRows, setPrevRows] = useState<IntegrationContainer[]>([]);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
@@ -64,7 +82,16 @@ function WatchList({ data }: { data?: IntegrationStatus }) {
         ) : (
           <ul className="int-rows" data-part="watch-rows">
             {rows.map((r) => (
-              <li key={r.id} data-container={r.name} data-watched={String(r.watched)} data-enforce={String(r.enforce)} className={`int-row ${r.watched ? '' : 'out'} ${fresh.has(r.id) ? 'in' : ''}`}>
+              <li
+                key={r.id}
+                data-container={r.name}
+                data-watched={String(r.watched)}
+                data-enforce={String(r.enforce)}
+                className={`int-row int-row-open ${r.watched ? '' : 'out'} ${fresh.has(r.id) ? 'in' : ''}`}
+                {...rowState({ open: r.id === openId })}
+                {...rowKeys(() => onOpen(r.id))}
+                onClick={() => onOpen(r.id)}
+              >
                 <span className={`int-row-dot ${r.enforce ? 'danger' : r.watched ? 'ok' : ''}`} aria-hidden />
                 <span className="int-row-name" title={r.name}>
                   {r.name}
@@ -73,17 +100,7 @@ function WatchList({ data }: { data?: IntegrationStatus }) {
                   {r.image}
                 </span>
                 <span className="int-row-tags">
-                  {r.watched ? <span className="sg-pill sg-pill-ok" data-tag="watch">{WATCH_BY[r.watchBy ?? ''] ?? '감시'}</span> : <span className="sg-pill sg-pill-neutral" data-tag="watch">감시 밖</span>}
-                  {r.watched &&
-                    (r.enforce ? (
-                      <span className="sg-pill sg-pill-danger" data-tag="enforce">
-                        격리 · {ENFORCE_BY[r.enforceBy ?? ''] ?? ''}
-                      </span>
-                    ) : (
-                      <span className="sg-pill sg-pill-warn" data-tag="enforce" title="supplyguard.enforce=true 라벨이 있어야 격리됨">
-                        격리 보류
-                      </span>
-                    ))}
+                  <WatchTags c={r} />
                 </span>
               </li>
             ))}

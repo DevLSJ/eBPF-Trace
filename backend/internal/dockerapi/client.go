@@ -173,7 +173,11 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
-		return fmt.Errorf("docker %s: %s: %s", path, res.Status, strings.TrimSpace(string(b)))
+		err := fmt.Errorf("docker %s: %s: %s", path, res.Status, strings.TrimSpace(string(b)))
+		if res.StatusCode == http.StatusNotFound {
+			return notFound{err}
+		}
+		return err
 	}
 	return json.NewDecoder(res.Body).Decode(out)
 }

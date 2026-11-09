@@ -36,6 +36,7 @@ import type {
   UserBrief,
   UserView,
   Verdict,
+  IntegrationContainerDetail,
   IntegrationStatus,
   IntegrationTest, SGInstallSetup } from './types';
 import { readSSE } from './sse';
@@ -257,6 +258,7 @@ export const api = {
   demoRun: (scenario: DemoScenario) => request<DemoRun>('/demo/run', json('POST', { scenario })),
   // 연동(11/06): 환경 점검 · 감시 중 컨테이너(조회자 포함) · 연결 테스트(관리자 세션, 202 / 409 진행 중 / 503 불가)
   integration: () => request<IntegrationStatus>('/integration'),
+  integrationContainer: (id: string) => request<IntegrationContainerDetail>(`/integration/containers/${enc(id)}`),
   // 11/09 설치 검사 「사용 방법」 — 실행 주소 · 토큰(관리자만) · 내려받기 경로
   sginstallSetup: () => request<SGInstallSetup>('/sginstall/setup'),
   integrationTest: () => request<IntegrationTest>('/integration/test', { method: 'POST' }),

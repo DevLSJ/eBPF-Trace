@@ -84,6 +84,8 @@ type Deps struct {
 	Demo *demo.Service
 	// Integration: 연동 화면(11/06) — 환경 점검 · 감시 중 컨테이너 · 연결 테스트. nil 이면 /api/integration 경로 없음
 	Integration *integration.Service
+	// Containers: 감시 중 컨테이너 상세(11/10) 의 Docker inspect(dockerapi.Client). nil 이면(mock) 목록 값만
+	Containers ContainerInspector
 	// EvalReportsDir: 평가 결과 JSON 디렉터리(EVAL_REPORTS_DIR, 11/04) — GET /api/evaluation 이 요청마다 읽는다. 비거나 파일이 없으면 404
 	EvalReportsDir string
 }
@@ -181,6 +183,7 @@ func Router(d Deps) http.Handler {
 	}
 	if d.Integration != nil {
 		mux.HandleFunc("GET /api/integration", h.integrationStatus)
+		mux.HandleFunc("GET /api/integration/containers/{id}", h.integrationContainer) // 상세 시트(11/10) — 읽기 전용, 조회자 포함
 		mux.HandleFunc("POST /api/integration/test", h.browserAdmin(msgProbeBrowserOnly, h.integrationTest))
 	}
 	return cors(d.AllowedOrigins, mux)

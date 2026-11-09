@@ -879,3 +879,48 @@
     transform: none;
   }
 }
+
+/* 11/10 감시 중 컨테이너 상세 시트 — 행은 모양 그대로, 누를 수 있는 표시(손가락 · hover · 열린 줄 강조)만 */
+.int-row-open {
+  cursor: pointer;
+}
+.int-row-open:hover {
+  background: var(--row-hover);
+}
+.int-row-open[data-open] {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.watch-dl {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  column-gap: 16px;
+  row-gap: 8px;
+  margin: 0;
+}
+.watch-dl-row {
+  display: contents;
+}
+.watch-dl dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.watch-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.watch-labels li {
+  font-size: 12.5px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  .watch-dl {
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+  }
+}

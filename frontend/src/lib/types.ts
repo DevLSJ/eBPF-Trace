@@ -825,6 +825,22 @@ export interface IntegrationContainer {
   enforce: boolean;
   enforceBy?: 'all' | 'name' | 'label' | 'sandbox' | 'demo';
 }
+// 11/10 감시 중 컨테이너 상세(GET /api/integration/containers/{id}) — 읽기 전용 Docker inspect 일부. 환경 변수는 서버가 보내지 않는다
+export interface ContainerPort {
+  port: string; // "8080/tcp"
+  hostIp?: string;
+  hostPort?: string;
+}
+export interface IntegrationContainerDetail extends IntegrationContainer {
+  imageId?: string;
+  state: string; // running · created · exited · paused · restarting · removing · dead
+  startedAt?: string;
+  restartCount: number;
+  ports: ContainerPort[];
+  labels: Record<string, string>;
+  // Docker 에서 못 읽어 목록 값만 왔을 때 서버 문장
+  detailError?: string;
+}
 export interface IntegrationTest {
   id: string;
   container: string;

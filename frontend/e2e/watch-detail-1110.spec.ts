@@ -11,6 +11,8 @@ import type { MockBackend } from './mock-backend';
 const SHOT = process.env.WATCH_SHOTS || `${SHOTS}/watch-detail-1110`;
 const SHEET = '[data-sheet="watch"]';
 const row = (page: Page, name: string) => page.locator(`[data-part="watch-rows"] li[data-container="${name}"]`);
+// 시트가 다 밀려 들어온 뒤(사진 · 위치 확인)
+const settled = (page: Page) => page.locator(SHEET).evaluate((e) => Promise.all(e.getAnimations({ subtree: true }).map((a) => a.finished)).then(() => undefined));
 const ready = (page: Page) => expect(page.locator('[data-part="integration"][data-page="watch"][data-state="ready"]')).toBeVisible();
 
 // 이름이 비슷한 다른 컨테이너(부분 일치에 걸림) — 위반 · 이벤트에 섞여 있어도 시트에는 안 나와야 한다
@@ -84,6 +86,7 @@ test.describe('11/10 감시 중 컨테이너 상세 시트', () => {
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('c-pkg');
     expect(backend.requests.some((q) => q.method === 'GET' && q.path === '/integration/containers/c-pkg')).toBe(true);
     await expect(sheet).not.toContainText(/env|환경 변수/i);
+    await settled(page);
     await page.screenshot({ path: `${SHOT}/watch-sheet-info-1440-light.png` });
 
     // 위반 이력 — 이름이 같은 것만(pkg-reqeusts-old 제외), 시각 먼저 · 최근 순
@@ -116,7 +119,7 @@ test.describe('11/10 감시 중 컨테이너 상세 시트', () => {
     await expect(page.locator('[data-sheet="audit"]')).toBeVisible();
   });
 
-  test('열린 채 다른 행 → 내용만 교체 · ↑↓ · 「n / m」 · Enter 로 열기 · Esc 닫기', async ({ page, backend }) => {
+  test('열린 채 ↑↓ → 내용만 교체 · 「n / m」 · Enter 로 열기 · Esc 닫기', async ({ page, backend }) => {
     seedLookalikes(backend);
     await page.goto('/integration/watch');
     await ready(page);
@@ -126,9 +129,11 @@ test.describe('11/10 감시 중 컨테이너 상세 시트', () => {
     await expect(sheet.locator('h2')).toHaveText('web-api');
     await expect(sheet.locator('[data-part="sheet-pos"]')).toHaveText('2 / 3');
     await expect(sheet.getByTestId('watch-info').locator('[data-field="enforce"] dd')).toContainText('격리 보류');
-    // 열린 채 다른 행 — 시트는 하나, 내용만 바뀐다(탭 유지)
+    // 열린 채 다음 행(↓, 뒤는 어둡게 덮여 있다) — 시트는 하나, 내용만 바뀐다(탭 유지)
     await sheet.locator('[role="tab"][data-tab="events"]').click();
-    await row(page, 'worker').click({ force: true });
+    await expect(page).toHaveURL(/id=c-web&tab=events$/);
+    await page.keyboard.press('ArrowDown');
+    await expect(page).toHaveURL(/id=c-worker&tab=events$/);
     await expect(page.locator(SHEET)).toHaveCount(1);
     await expect(sheet.locator('h2')).toHaveText('worker');
     await expect(sheet.locator('[role="tab"][aria-selected="true"]')).toHaveText('최근 이벤트');
@@ -140,7 +145,8 @@ test.describe('11/10 감시 중 컨테이너 상세 시트', () => {
     await expect(page).toHaveURL(/\/integration\/watch$/);
   });
 
-  test('빈 이력 · 상세를 못 읽으면 서버 문장(상태 코드 없음) · 조회자도 읽기', async ({ page, backend }) => {
+  test('빈 이력 · 상세를 못 읽으면 서버 문장(상태 코드 없음) · 조회자도 읽기', async ({ page, backend, allowConsole }) => {
+    allowConsole(/status of 404/); // 브라우저가 남기는 네트워크 줄(상세 404) — 앱 오류가 아니다
     backend.auth.asViewer();
     backend.detailMissing.add('c-worker');
     await page.goto('/integration/watch?id=c-worker&tab=violations');
@@ -161,6 +167,7 @@ test.describe('11/10 감시 중 컨테이너 상세 시트', () => {
     await ready(page);
     await row(page, 'pkg-reqeusts').click();
     await expect(page.locator(SHEET).getByTestId('watch-info').locator('[data-field="state"] dd')).toHaveText('실행 중');
+    await settled(page);
     await page.screenshot({ path: `${SHOT}/watch-sheet-info-1440-dark.png` });
     await page.locator(SHEET).locator('[role="tab"][data-tab="violations"]').click();
     await expect(page.locator(SHEET).getByTestId('watch-violations').locator('tbody tr').first()).toBeVisible();
@@ -171,8 +178,9 @@ test.describe('11/10 감시 중 컨테이너 상세 시트', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/integration/watch?id=c-pkg');
     await ready(page);
+    await settled(page);
     const box = await page.locator(SHEET).boundingBox();
-    expect(box && Math.round(box.width)).toBe(390);
+    expect(box && [Math.round(box.x), Math.round(box.width)]).toEqual([0, 390]);
     await expect(page.locator(SHEET).getByTestId('watch-info').locator('[data-field="started"] dd')).toHaveText('2026-11-10 10:02:03');
     const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(over).toBe(0);

@@ -177,3 +177,6 @@ export function testVerdict<T extends Verdict>(verdicts: T[], container: string,
   const from = Date.parse(armedAt) - 5000;
   return verdicts.find((v) => v.matched && v.event.containerName === container && Date.parse(v.event.timestamp) >= from) ?? null;
 }
+
+// 감시 중 컨테이너 상세 시트 탭(11/10) — 첫 탭(정보)은 주소에 쓰지 않는다(?tab=violations · events)
+export const WATCH_TABS = ['info', 'violations', 'events'] as const;
