@@ -204,7 +204,7 @@ test.describe('C KPI 카드', () => {
       const ico = e.querySelector('.kpi-ico') as HTMLElement;
       return { stripe: cs.borderLeftWidth, stripeColor: cs.borderLeftColor, radius: cs.borderRadius, size: v.fontSize, weight: v.fontWeight, valColor: v.color, icon: ico?.dataset.icon, icoW: ico?.getBoundingClientRect().width, deltaTone: (e.querySelector('.kpi-delta') as HTMLElement).dataset.deltaTone, deltaColor: getComputedStyle(e.querySelector('.kpi-delta b')!).color };
     });
-    expect(m).toMatchObject({ stripe: '4px', radius: '16px', size: '28px', weight: '700', icon: '⚠', icoW: 32, deltaTone: 'danger' }); // 11/09 카드 반경 16
+    expect(m).toMatchObject({ stripe: '4px', radius: '8px', size: '28px', weight: '700', icon: '⚠', icoW: 32, deltaTone: 'danger' });
     expect(m.stripeColor).toBe(await rgbOf(page, '--danger'));
     expect(m.valColor).toBe(await rgbOf(page, '--danger'));
     expect(m.deltaColor).toBe(await rgbOf(page, '--danger'));
@@ -337,7 +337,7 @@ test.describe('D 코드 창(macOS 창 모양)', () => {
     await expect(sheet.locator('[data-part="verdict"]')).toBeVisible();
     const sel = `[data-sheet="scan"] [data-part="code"] ${CW}`;
     const m = await codeWinOf(page, sel);
-    expect(m).toMatchObject({ dots: 3, name: 'setup.py', lang: 'python', radius: '12px', bodyFont: '13px', click: null }); // 11/09 안쪽 상자 반경 12
+    expect(m).toMatchObject({ dots: 3, name: 'setup.py', lang: 'python', radius: '8px', bodyFont: '13px', click: null });
     expect(m.bodyBg).toBe(await rgbOf(page, '--code-bg', 'bg'));
     await expect(page.locator(`${sel} [data-line="4"].hl-threat`)).toHaveCount(1);
     await expect(page.locator(`${sel} [data-line="4"] mark`)).toHaveText('os.system');
@@ -798,7 +798,7 @@ test.describe('H 다크 모드', () => {
     await expect(page.locator(sel)).toBeVisible();
     expect(await tok(page, '--code-bg')).toBe('#0A0C11');
     expect(await tok(page, '--win-close')).toBe('#B8746E');
-    expect(await tok(page, '--line-soft')).toBe('#30302E'); // 11/09 다크 줄 선
+    expect(await tok(page, '--line-soft')).toBe('#303442');
     expect((await codeWinOf(page, sel)).bodyBg).toBe('rgb(10, 12, 17)');
     expect(await page.locator(`${sel} .cw-dot`).first().evaluate((e) => getComputedStyle(e).backgroundColor)).toBe('rgb(184, 116, 110)');
     await page.screenshot({ path: `${SCRATCH}/r1-dark.png` });
