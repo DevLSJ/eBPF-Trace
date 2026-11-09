@@ -1,24 +1,36 @@
 @import 'tailwindcss';
 
-/* ── 디자인 토큰 — 11/05 참고 대시보드 값으로 교체(10/30 indigo 토큰 대체). 라이트가 기본, <html data-theme="dark"> 가 다크 ──
-   참고 쪽에 없는 칸(surface-3 · border-strong · 다크 soft/line)만 참고 값에서 계산했다(다크 soft = main 18% + surface, line = 40%) */
+/* ── 디자인 토큰 — 11/09 참고 홈페이지 구조값으로 교체(11/05 참고 대시보드 값 대체). 라이트가 기본, <html data-theme="dark"> 가 다크 ──
+   옮긴 것: 미색 회색 단계 · 거의 검정 주 버튼 · 반경 · 아주 옅은 그림자 · 1px 선 · 다크 색 · 전환 시간. 강조 파랑(hover · soft · text 짝)은 그대로 —
+   링크 · 포커스 링 · 선택된 메뉴 · 정보 톤 · 차트 강조에만. 상태 톤(위험 · 경고 · 정상 · 정보)도 그대로, 다크 soft/line 만 새 면 위에서 다시 계산(soft = main 18% + surface, line = 40%)
+   바탕 단계: --bg 페이지 · --surface 카드 · --surface-2/3 보조 바탕 2·3단 · --surface-raised 떠 있는 면(대화상자 · 드롭다운) · --field-bg 입력창
+   선 단계: --card-line 카드 · --border 약 · --border-strong 중 · --border-heavy 강. 반경: sm 8 버튼 · 칩 / md 12 입력창 / lg 16 카드 · 패널 / xl 24 대화상자 · 로그인 카드 */
 :root {
-  --bg: #F6F7FB; --surface: #FFFFFF; --surface-2: #EEF0F4; --surface-3: #E6E9EF; --border: #ECEEF4; --border-strong: #DCE1E8;
-  --text: #202534; --text-2: #7A8090; --text-3: #7A8090; --text-inverse: #FFFFFF;
+  --bg: #FAF9F5; --surface: #FFFFFF; --surface-2: #F5F4ED; --surface-3: #F0EEE6; --surface-raised: #FFFFFF;
+  --card-line: #F0EEE6; --border: #E8E6DC; --border-strong: #D1CFC5; --border-heavy: #B0AEA5;
+  --text: #141413; --text-2: #30302E; --text-3: #5E5D59; --text-inverse: #FFFFFF;
+  --field-bg: #FFFFFF; --field-placeholder: #5E5D59; --field-line: #D1CFC5;
   --accent: #1769E8; --accent-hover: #0D47B8; --accent-soft: #DCE9FF; --accent-text: #0D47B8;
   --danger: #E4516F; --danger-soft: #FDECEF; --danger-text: #B52D49; --danger-hover: #A0394E; /* 격리 · 위험에만 */
   --warn: #F5A623; --warn-soft: #FFF5DF; --warn-text: #946000; /* 경고 · dns 배지 */
   --ok: #25B884; --ok-soft: #EAF7F1; --ok-text: #137653;
   --info: #0288D1; --info-soft: #E8F6FD;
-  --r-sm: 6px; --r-md: 8px; --r-lg: 8px; --r-xl: 8px; --r-pill: 999px;
-  --sh-1: 0 10px 32px rgba(39, 76, 142, .07);
-  --sh-2: 0 5px 5px -3px rgba(0, 0, 0, .2), 0 8px 10px 1px rgba(0, 0, 0, .14), 0 3px 14px 2px rgba(0, 0, 0, .12);
-  --sh-hover: 0 18px 42px rgba(31, 38, 54, .12);
-  /* 버튼 · 표 · 패널 상태 값(참고 대시보드 — 비활성 · 외곽선 · 행 호버 · 선택 칸 테두리 · 패널 호버) */
-  --disabled-bg: rgba(0, 0, 0, .12); --disabled-fg: rgba(0, 0, 0, .26);
-  --outline-line: rgba(23, 105, 232, .5); --accent-tint: rgba(23, 105, 232, .04);
-  --row-hover: rgba(0, 0, 0, .04); --field-line: rgba(0, 0, 0, .23);
-  --panel-hover-line: rgba(23, 105, 232, .24); --panel-hover-sh: 0 12px 30px rgba(23, 105, 232, .075); --panel-head-line: rgba(120, 130, 150, .2);
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 24px; --r-pill: 999px;
+  /* 그림자: sm 카드 · md 카드 hover · 떠 있는 면(시트 · 툴팁 · 드롭다운 · 대화상자) */
+  --sh-1: 0 2px 8px rgba(0, 0, 0, .04);
+  --sh-md: 0 4px 20px rgba(0, 0, 0, .04);
+  --sh-2: 0 4px 16px rgba(0, 0, 0, .1);
+  --sh-hover: var(--sh-md);
+  /* 버튼: 주 = 거의 검정(다크는 반전) · 보조 = 미색 회색 + 1px 링(hover 2px) · 위험 채움은 흰 글자 4.5:1 을 맞추는 한 단계 진한 위험색 */
+  --btn-primary-bg: #141413; --btn-primary-fg: #FAF9F5; --btn-primary-hover: #30302E;
+  --btn-secondary-bg: #E8E6DC; --btn-secondary-fg: #4D4C48; --btn-secondary-ring: var(--border-strong);
+  --btn-danger-bg: #B52D49; --btn-danger-hover: #A0394E;
+  --disabled-bg: #F0EEE6; --disabled-fg: #87867F;
+  /* 표 · 패널 상태 값: 행 호버(따뜻한 검정 4%) · 패널 hover 선(중) · 패널 머리 선(카드 선) */
+  --row-hover: rgba(20, 20, 19, .04);
+  --panel-hover-line: var(--border-strong); --panel-hover-sh: var(--sh-md); --panel-head-line: var(--card-line);
+  /* 전환: 버튼 배경 · 그림자 .2s ease-in-out · 탭 · 패널 .25s 표준 곡선. 그 밖 모션 토큰은 그대로 */
+  --t-btn: 200ms; --ease-btn: ease-in-out; --t-panel: 250ms; --ease-panel: cubic-bezier(.4, 0, .2, 1);
   --t-fast: 120ms; --t-base: 200ms; --t-slow: 320ms; --ease: cubic-bezier(.2, .8, .2, 1);
   --sidebar-w: 240px; --sidebar-w-collapsed: 56px; --header-h: 56px; --content-max: 1440px; --gutter: 24px;
   --font: Inter, Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; /* 웹폰트를 내려받지 않는다 — 설치된 글꼴만 */
@@ -31,17 +43,21 @@
   --k-dns: #fb923c;
   color-scheme: light;
 }
+/* 다크 — 흐림(--text-3)만 실측 #87867F 가 3단 바탕 · 입력창(#262624) 위 4.15:1 이라 한 단계 밝힘(#9C9A92 = 5.38:1). 그림자는 라이트와 같은 값 */
 :root[data-theme="dark"] {
-  --bg: #11131A; --surface: #1B1E28; --surface-2: #282D38; --surface-3: #303442; --border: #303442; --border-strong: #3D4252;
-  --text: #F2F3F7; --text-2: #AEB3C2; --text-3: #AEB3C2; --text-inverse: #FFFFFF;
+  --bg: #141413; --surface: #1F1E1D; --surface-2: #1A1918; --surface-3: #262624; --surface-raised: #1A1918;
+  --card-line: #30302E; --border: #30302E; --border-strong: #3D3D3A; --border-heavy: #5E5D59;
+  --text: #FAF9F5; --text-2: #B0AEA5; --text-3: #9C9A92; --text-inverse: #FFFFFF;
+  --field-bg: #262624; --field-placeholder: #9C9A92; --field-line: #3D3D3A;
   --accent: #1769E8; --accent-hover: #0D47B8; --accent-soft: #1A2D4E; --accent-text: #DCE9FF;
-  --danger: #E4516F; --danger-soft: #3F2735; --danger-text: #F4C4CE; --danger-hover: #A0394E;
-  --warn: #F5A623; --warn-soft: #423627; --warn-text: #F2D79B;
-  --ok: #25B884; --ok-soft: #1D3A39; --ok-text: #BDE7D6;
-  --info: #29B6F6; --info-soft: #1E394D;
-  --sh-1: 0 8px 30px rgba(0, 0, 0, .22);
-  --disabled-bg: rgba(255, 255, 255, .12); --disabled-fg: rgba(255, 255, 255, .3);
-  --accent-tint: rgba(23, 105, 232, .08); --row-hover: rgba(255, 255, 255, .08); --field-line: rgba(255, 255, 255, .23);
+  --danger: #E4516F; --danger-soft: #42272C; --danger-text: #F4C4CE; --danger-hover: #A0394E;
+  --warn: #F5A623; --warn-soft: #46361E; --warn-text: #F2D79B;
+  --ok: #25B884; --ok-soft: #203A30; --ok-text: #BDE7D6;
+  --info: #29B6F6; --info-soft: #213944;
+  --btn-primary-bg: #FAF9F5; --btn-primary-fg: #141413; --btn-primary-hover: #E8E6DC;
+  --btn-secondary-bg: #30302E; --btn-secondary-fg: #FAF9F5;
+  --disabled-bg: #262624; --disabled-fg: #5E5D59;
+  --row-hover: rgba(250, 249, 245, .06);
   color-scheme: dark;
   --info-text: #B9E2F5;
   --k-exec: #A78BFA; --k-exec-soft: #2A2246; --k-exec-text: #DDD6FE;
@@ -53,24 +69,24 @@
 /* ── 11/04e · 11/04f 토큰(R1 11/04 — 목업 mock/shared/styles.css 와 같은 값) ──
    줄 선 한 단계 옅게 · 차트 높이(높이 800 이하 하한 120) · KPI 띠 · 선 · 잉크(반전 툴팁) · 코드 창(--code-* 두 테마 모두 어두운 바탕) · 창 점(--win-*, 창 장식 — 「빨강은 위험에만」의 예외) */
 :root {
-  --line-soft: #ECEEF4; --chart-h: clamp(120px, calc(100vh - 660px), 240px); --stripe: var(--accent); --stripe-soft: var(--accent-soft);
+  --line-soft: #F0EEE6; --chart-h: clamp(120px, calc(100vh - 660px), 240px); --stripe: var(--accent); --stripe-soft: var(--accent-soft);
   --danger-line: #F4C4CE; --warn-line: #F2D79B; --ok-line: #BDE7D6; --accent-line: #B9D2FF; --info-line: #B9E2F5;
-  /* 상태 배지(참고 대시보드 — 두 테마 모두 같은 값): 바탕 · 글자 · 테두리 */
+  /* 상태 배지(두 테마 모두 같은 값 — 11/05 크기 · 톤 그대로, 중립 · 어두운 배지만 미색 회색 단계): 바탕 · 글자 · 테두리 */
   --pill-ok-bg: #EAF7F1; --pill-ok-fg: #137653; --pill-ok-line: #BDE7D6;
   --pill-warn-bg: #FFF5DF; --pill-warn-fg: #946000; --pill-warn-line: #F2D79B;
-  --pill-neutral-bg: #F1F3F6; --pill-neutral-fg: #596273; --pill-neutral-line: #DCE1E8;
+  --pill-neutral-bg: #F0EEE6; --pill-neutral-fg: #5E5D59; --pill-neutral-line: #D1CFC5;
   --pill-danger-bg: #FDECEF; --pill-danger-fg: #B52D49; --pill-danger-line: #F4C4CE;
   --pill-info-bg: #E8F6FD; --pill-info-fg: #1875A9; --pill-info-line: #B9E2F5;
   --pill-accent-bg: #DCE9FF; --pill-accent-fg: #0D47B8; --pill-accent-line: #B9D2FF;
-  --pill-dark-bg: #30343B; --pill-dark-fg: #FFFFFF; --pill-dark-line: #30343B;
-  --ink: #111827; --ink-text: #F3F4F6; --ink-2: #1F2937; --ink-muted: #9CA3AF;
+  --pill-dark-bg: #30302E; --pill-dark-fg: #FAF9F5; --pill-dark-line: #30302E;
+  --ink: #141413; --ink-text: #FAF9F5; --ink-2: #30302E; --ink-muted: #B0AEA5;
   --code-bg: #0F172A; --code-fg: #E2E8F0; --code-muted: #94A3B8; --code-border: #1E293B; --code-scroll: #475569; --code-scroll-hover: #64748B;
   --win-close: #D9827B; --win-min: #D8B567; --win-max: #86B985;
 }
 :root[data-theme="dark"] {
-  --line-soft: #303442;
-  --danger-line: #6B3244; --warn-line: #725426; --ok-line: #1F5C4D; --accent-line: #193C75; --info-line: #215B7A;
-  --ink: #272C36; --ink-text: #E6E8EE; --ink-2: #2F3542; --ink-muted: #7E8696;
+  --line-soft: #30302E;
+  --danger-line: #6E323E; --warn-line: #75541F; --ok-line: #215C46; --accent-line: #193C75; --info-line: #235B74;
+  --ink: #30302E; --ink-text: #FAF9F5; --ink-2: #3D3D3A; --ink-muted: #B0AEA5;
   --code-bg: #0A0C11; --code-fg: #E6E8EE; --code-muted: #9AA3B2; --code-border: #262B36; --code-scroll: #4A5263; --code-scroll-hover: #626B7E;
   --win-close: #B8746E; --win-min: #B89D5E; --win-max: #729F71;
 }
@@ -92,6 +108,12 @@
   --color-warn: var(--warn); --color-warn-soft: var(--warn-soft); --color-warn-text: var(--warn-text);
   --color-ok: var(--ok); --color-ok-soft: var(--ok-soft); --color-ok-text: var(--ok-text);
   --color-info: var(--info); --color-info-soft: var(--info-soft); --color-info-text: var(--info-text);
+  /* 11/09: 떠 있는 면 · 입력창 · 카드 선 · 주 버튼(bg-raised · bg-field · border-card-line · bg-primary text-primary-fg hover:bg-primary-hover) */
+  --color-raised: var(--surface-raised); --color-field: var(--field-bg); --color-card-line: var(--card-line); --color-border-heavy: var(--border-heavy);
+  --color-primary: var(--btn-primary-bg); --color-primary-fg: var(--btn-primary-fg); --color-primary-hover: var(--btn-primary-hover);
+  /* 11/09 반경: Tailwind 이름을 토큰 단계로 다시 매핑 — rounded-md = 버튼 · 칩 8 · rounded-lg = 입력 · 안쪽 상자 12 · rounded-xl = 카드 · 패널 16 · rounded-2xl = 대화상자 24
+     (rounded · rounded-sm 4px 는 아이콘 단추 · 작은 꼬리표라 그대로) */
+  --radius-md: var(--r-sm); --radius-lg: var(--r-md); --radius-xl: var(--r-lg); --radius-2xl: var(--r-xl);
 
   --color-white: var(--surface);
   --color-slate-50: var(--surface-2); --color-slate-100: var(--surface-3); --color-slate-200: var(--border); --color-slate-300: var(--border-strong);
@@ -146,12 +168,22 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  /* 포커스 링 전역(접근성) — 2px accent, 안쪽 accent-soft */
+  /* 포커스 링 전역(접근성) — 2px 파랑, offset 2px */
   :focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
-  /* 표(참고 대시보드): 머리 12/600 보조색 · 회색 바탕, 행 hover rgba 4%(다크 8%) · 줄무늬 없음 */
+  /* 입력창(11/09): 바탕 · 안내 글자 토큰. 유틸리티(bg-* · placeholder:*)나 층 밖 규칙(코드 창 · 채팅 입력칸)이 있으면 그쪽이 이긴다 */
+  input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='color']),
+  select,
+  textarea {
+    background-color: var(--field-bg);
+  }
+  ::placeholder {
+    color: var(--field-placeholder);
+    opacity: 1;
+  }
+  /* 표: 머리 12/600 흐림 · 보조 바탕, 행 hover 따뜻한 검정 4%(다크 미색 6%) · 줄무늬 없음 */
   main thead th {
     font-size: 12px;
     font-weight: 600;
@@ -164,98 +196,91 @@
 }
 
 @layer components {
-  /* 카드(참고 대시보드): surface · 반경 8 · 1px 선 · 넓고 옅은 그림자, 누를 수 있으면 hover 에 5px 들림 + sh-hover */
+  /* 카드(11/09): surface · 반경 16 · 1px 카드 선 · 아주 옅은 그림자(sm), 누를 수 있으면 hover 에 5px 들림 + md(.25s 표준 곡선) */
   .sg-card {
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid var(--card-line);
     border-radius: var(--r-lg);
     box-shadow: var(--sh-1);
   }
   .sg-card-hover {
-    transition: transform 220ms ease, box-shadow 220ms ease, border-color var(--t-base) var(--ease);
+    transition: transform var(--t-panel) var(--ease-panel), box-shadow var(--t-panel) var(--ease-panel), border-color var(--t-panel) var(--ease-panel);
   }
   .sg-card-hover:hover {
     transform: translateY(-5px);
     box-shadow: var(--sh-hover);
   }
-  /* 버튼(참고 대시보드): 패딩 6/16 · 14.4/700 · 줄 높이 1.5(높이 약 34) · 반경 6 · 그림자 없음 · 최소 폭 64 */
+  /* 버튼(11/09): 높이 36(작은 28) · 좌우 16(작은 12) · 14/500 · 반경 8 · 그림자 없음 · 최소 폭 64 · 배경 · 그림자 .2s ease-in-out.
+     테두리 대신 box-shadow 링을 써서 종류마다 높이 · 패딩이 같다 */
   .sg-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
+    box-sizing: border-box;
     min-width: 64px;
-    padding: 6px 16px;
+    height: 36px;
+    padding: 0 16px;
     border: 0;
     border-radius: var(--r-sm);
-    font-size: 0.9rem;
-    font-weight: 700;
+    font-size: 14px;
+    font-weight: 500;
     line-height: 1.5;
     white-space: nowrap;
-    transition: background-color 250ms cubic-bezier(.4, 0, .2, 1), color 250ms cubic-bezier(.4, 0, .2, 1), border-color 250ms cubic-bezier(.4, 0, .2, 1), box-shadow 250ms cubic-bezier(.4, 0, .2, 1);
+    transition: background-color var(--t-btn) var(--ease-btn), color var(--t-btn) var(--ease-btn), box-shadow var(--t-btn) var(--ease-btn);
   }
   .sg-btn:focus-visible {
     outline: 2px solid var(--accent);
-    outline-offset: 0;
-    box-shadow: 0 0 0 4px var(--accent-soft);
+    outline-offset: 2px;
   }
   .sg-btn:disabled {
     cursor: not-allowed;
     color: var(--disabled-fg);
   }
-  /* 기본 = 파란 채움 */
+  /* 주 = 거의 검정 채움(다크는 미색 채움) */
   .sg-btn-primary {
-    background: var(--accent);
-    color: var(--text-inverse);
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-fg);
   }
   .sg-btn-primary:not(:disabled):hover {
-    background: var(--accent-hover);
+    background: var(--btn-primary-hover);
   }
-  /* 보조 = 파란 외곽선(테두리 50% · hover 바탕 4% + 테두리 100%) */
+  /* 보조 = 미색 회색 채움 + 1px 링, hover 에 링 2px */
   .sg-btn-secondary {
-    padding: 5px 15px;
-    background: transparent;
-    color: var(--accent);
-    border: 1px solid var(--outline-line);
+    background: var(--btn-secondary-bg);
+    color: var(--btn-secondary-fg);
+    box-shadow: 0 0 0 1px var(--btn-secondary-ring);
   }
   .sg-btn-secondary:not(:disabled):hover {
-    background: var(--accent-tint);
-    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--btn-secondary-ring);
   }
   .sg-btn-danger {
-    background: var(--danger);
+    background: var(--btn-danger-bg);
     color: var(--text-inverse);
   }
   .sg-btn-danger:not(:disabled):hover {
-    background: var(--danger-hover);
+    background: var(--btn-danger-hover);
   }
   .sg-btn-primary:disabled,
+  .sg-btn-secondary:disabled,
   .sg-btn-danger:disabled {
     background: var(--disabled-bg);
     color: var(--disabled-fg);
   }
-  .sg-btn-secondary:disabled {
-    border-color: var(--disabled-bg);
-    color: var(--disabled-fg);
-  }
-  /* 위험 외곽선(참고 쪽 color=error · outlined) — 위험 배너 안 단추 */
+  /* 위험 외곽선 — 위험 배너 안 단추. 위험 글자색 + 1px 링(hover 2px · 위험 옅은 바탕) */
   .sg-btn-outline-danger {
-    padding: 5px 15px;
     background: transparent;
-    color: var(--danger);
-    border: 1px solid rgba(228, 81, 111, .5);
+    color: var(--danger-text);
+    box-shadow: 0 0 0 1px rgba(228, 81, 111, .5);
   }
   .sg-btn-outline-danger:not(:disabled):hover {
-    background: rgba(228, 81, 111, .04);
-    border-color: var(--danger);
+    background: var(--danger-soft);
+    box-shadow: 0 0 0 2px rgba(228, 81, 111, .5);
   }
-  /* 작은 크기(참고 쪽 size=small): 채움 4/10 · 외곽선 3/9, 글자 크기는 같다(테마가 모든 크기에 14.4) → 높이 29.6 */
+  /* 작은 크기: 높이 28 · 좌우 12, 글자 크기는 같다 */
   .sg-btn-sm {
-    padding: 4px 10px;
-  }
-  .sg-btn-sm.sg-btn-secondary,
-  .sg-btn-sm.sg-btn-outline-danger {
-    padding: 3px 9px;
+    height: 28px;
+    padding: 0 12px;
   }
   /* 연쇄 규칙 배지(11/04) — indigo(강조), 목업 styles.css 와 같은 값 */
   .badge-kind-sequence {
@@ -401,12 +426,11 @@
 }
 
 /* ── 공통 부품(11/04e 목업 shared/kit.js · styles.css 「11/04e」, R1 11/04) — 패널 · KPI 카드 · 표 기반 · SVG 차트. 색은 전부 토큰 ── */
-/* 패널(참고 대시보드 섹션 카드): 반경 8 · 1px 선 · 그림자 없음, hover 에 선이 파랗게 + 옅은 파란 그림자.
-   머리 = 높이 56 · 좌우 20 · 아래 선 rgba(120,130,150,.2) · 제목 17.9/700 */
+/* 패널(섹션 카드, 11/09): 카드와 같은 반경 16 · 1px 카드 선 · 그림자 sm, hover 에 선이 중간 회색 + 그림자 md(.25s 표준 곡선 — 파랑은 쓰지 않음).
+   머리 = 높이 56 · 좌우 20 · 아래 카드 선 · 제목 17.9/600 */
 .sg-panel {
-  border-radius: var(--r-md);
-  box-shadow: none;
-  transition: border-color 200ms ease, box-shadow 220ms ease;
+  border-radius: var(--r-lg);
+  transition: border-color var(--t-panel) var(--ease-panel), box-shadow var(--t-panel) var(--ease-panel);
 }
 .sg-panel:hover {
   border-color: var(--panel-hover-line);
@@ -419,7 +443,7 @@
 }
 .sg-panel-title {
   font-size: 1.12rem;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.6;
   color: var(--text);
 }
@@ -432,7 +456,7 @@
 .stripe-ok { --stripe: var(--ok); --stripe-soft: var(--ok-soft); }
 .kpi-card {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; row-gap: 4px; align-content: start; min-width: 0; padding: 16px 18px;
-  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-left: 4px solid var(--stripe); border-radius: var(--r-md); box-shadow: var(--sh-1);
+  background: var(--surface); color: var(--text); border: 1px solid var(--card-line); border-left: 4px solid var(--stripe); border-radius: var(--r-lg); box-shadow: var(--sh-1);
 }
 a.kpi-card { transition: transform var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease); }
 a.kpi-card:hover { transform: translateY(-2px); box-shadow: var(--sh-hover); }
@@ -452,9 +476,9 @@ a.kpi-card:hover { transform: translateY(-2px); box-shadow: var(--sh-hover); }
 /* 값이 바뀌면 짧은 링 — 길이는 모션 토큰(--t-slow × 2 = 640ms) */
 .kpi-ring { animation: kpi-ring calc(var(--t-slow) * 2) var(--ease); }
 @keyframes kpi-ring { 0% { box-shadow: 0 0 0 0 var(--stripe-soft), var(--sh-1); } 35% { box-shadow: 0 0 0 4px var(--stripe-soft), var(--sh-1); } 100% { box-shadow: 0 0 0 8px transparent, var(--sh-1); } }
-.kpi-card[data-sort-scope]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; box-shadow: 0 0 0 4px var(--accent-soft); }
+.kpi-card[data-sort-scope]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* 표 기반(참고 대시보드 촘촘한 표): 머리 42 · 회색 바탕 · 12/600 보조색 · sticky, 행 48 · 패딩 8/16 · 12.5/1.5 · 선 1px · 마지막 줄 선 없음 · 숫자 오른쪽 · 긴 글 칸 하나만 남는 폭 + 말줄임 */
+/* 표 기반(촘촘한 표 — 11/05 밀도 그대로, 11/09 머리 바탕 · 선 색만 새 단계): 머리 42 · 보조 바탕 · 12/600 흐림 · sticky, 행 48 · 패딩 8/16 · 12.5/1.5 · 선 1px · 마지막 줄 선 없음 · 숫자 오른쪽 · 긴 글 칸 하나만 남는 폭 + 말줄임 */
 .sg-table { width: 100%; border-collapse: collapse; font-size: 12.5px; line-height: 1.5; }
 .sg-table thead { position: sticky; top: 0; z-index: 2; }
 .sg-table th { box-sizing: border-box; height: 42px; padding: 0 16px; text-align: left; font-size: 12px; font-weight: 600; color: var(--text-3); background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: middle; }
@@ -471,7 +495,7 @@ th[aria-sort="ascending"] .th-sort::after { content: '↑'; opacity: 1; color: v
 th[aria-sort="descending"] .th-sort::after { content: '↓'; opacity: 1; color: var(--accent); }
 .th-sort:hover { color: var(--text); }
 .th-sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-/* 상태 배지(참고 대시보드): 높이 27 · 최소 폭 62 · 12.5/750 · 1px 톤 테두리 · 알약 모양. 톤 색은 두 테마 같은 값 */
+/* 상태 배지(11/05 크기 그대로): 높이 27 · 최소 폭 62 · 12.5/750 · 1px 톤 테두리 · 알약 모양. 톤 색은 두 테마 같은 값 */
 .sg-pill { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: 27px; min-width: 62px; padding: 0 8.8px; border: 1px solid var(--pill-line, var(--pill-neutral-line)); border-radius: 16px; background: var(--pill-bg, var(--pill-neutral-bg)); color: var(--pill-fg, var(--pill-neutral-fg)); font-size: 12.5px; font-weight: 750; line-height: 1; white-space: nowrap; }
 .sg-pill-neutral { --pill-bg: var(--pill-neutral-bg); --pill-fg: var(--pill-neutral-fg); --pill-line: var(--pill-neutral-line); }
 .sg-pill-accent { --pill-bg: var(--pill-accent-bg); --pill-fg: var(--pill-accent-fg); --pill-line: var(--pill-accent-line); }
@@ -480,14 +504,14 @@ th[aria-sort="descending"] .th-sort::after { content: '↓'; opacity: 1; color: 
 .sg-pill-warn { --pill-bg: var(--pill-warn-bg); --pill-fg: var(--pill-warn-fg); --pill-line: var(--pill-warn-line); }
 .sg-pill-danger { --pill-bg: var(--pill-danger-bg); --pill-fg: var(--pill-danger-fg); --pill-line: var(--pill-danger-line); }
 .sg-pill-dark { --pill-bg: var(--pill-dark-bg); --pill-fg: var(--pill-dark-fg); --pill-line: var(--pill-dark-line); }
-/* 표 바닥줄(참고 대시보드 쪽 넘김): 왼쪽 「총 N건 · p/P 페이지」 14 보조색, 오른쪽 「N개씩」 선택 + 원형 쪽 칸(26 · 현재 쪽 파란 채움 · 처음/끝 단추). 패딩 16 */
+/* 표 바닥줄(쪽 넘김 — 11/05 구조 그대로): 왼쪽 「총 N건 · p/P 페이지」 14 보조색, 오른쪽 「N개씩」 선택 + 원형 쪽 칸(26 · 현재 쪽 파란 채움 · 처음/끝 단추). 패딩 16 */
 .tk-foot { flex-shrink: 0; display: flex; align-items: center; padding: 16px; border-top: 1px solid var(--border); font-size: 14px; color: var(--text-3); background: var(--surface); }
 .tk-pager { display: flex; flex: 1 1 auto; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; min-width: 0; }
 .tk-pager-right { display: flex; align-items: center; gap: 12px; }
-.tk-size { height: 40px; padding: 8.5px 32px 8.5px 14px; font-size: 14px; line-height: 1.4375; border: 1px solid var(--field-line); border-radius: var(--r-md); background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%237A8090'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 7px center / 24px; color: var(--text); appearance: none; cursor: pointer; }
+.tk-size { height: 40px; padding: 8.5px 32px 8.5px 14px; font-size: 14px; line-height: 1.4375; border: 1px solid var(--field-line); border-radius: var(--r-md); background: var(--field-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2387867F'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 7px center / 24px; color: var(--text); appearance: none; cursor: pointer; }
 .tk-size:hover { border-color: var(--text); }
 .tk-pages { display: flex; align-items: center; }
-.tk-page { min-width: 26px; height: 26px; margin: 0 1px; padding: 0 4px; border: 0; border-radius: 13px; background: transparent; color: var(--text); font-size: 0.8125rem; line-height: 1.43; cursor: pointer; font-variant-numeric: tabular-nums; transition: background-color 250ms cubic-bezier(.4, 0, .2, 1), color 250ms cubic-bezier(.4, 0, .2, 1); }
+.tk-page { min-width: 26px; height: 26px; margin: 0 1px; padding: 0 4px; border: 0; border-radius: 13px; background: transparent; color: var(--text); font-size: 0.8125rem; line-height: 1.43; cursor: pointer; font-variant-numeric: tabular-nums; transition: background-color var(--t-btn) var(--ease-btn), color var(--t-btn) var(--ease-btn); }
 .tk-page:hover:not(:disabled) { background: var(--row-hover); }
 .tk-page.on { background: var(--accent); color: var(--text-inverse); }
 .tk-page.on:hover:not(:disabled) { background: var(--accent-hover); }
@@ -546,7 +570,7 @@ th[aria-sort="descending"] .th-sort::after { content: '↓'; opacity: 1; color: 
    카드 = 1px 테두리 · 반경 12 · 옅은 그림자, 머리줄 = 점 3개(12px · 간격 8) + 파일명(고정폭 · 말줄임) + 종류 태그,
    코드 영역 = 두 테마 모두 어두운 바탕(--code-*) · 13/1.5 · 패딩 14 · 반경 6 · 스크롤바 8px 둥근 손잡이.
    hover: 읽기 전용은 그림자만 한 단계, 눌러서 여는 카드([data-click="1"])만 translateY(-5px) + --sh-hover + pointer(--t-base). reduced-motion 이면 이동 없음 */
-.code-win { display: flex; flex-direction: column; min-width: 0; max-width: 100%; margin: 0; padding: 0 8px 8px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--sh-1);
+.code-win { display: flex; flex-direction: column; min-width: 0; max-width: 100%; margin: 0; padding: 0 8px 8px; background: var(--surface); color: var(--text); border: 1px solid var(--card-line); border-radius: var(--r-md); box-shadow: var(--sh-1);
   transition: box-shadow var(--t-base) var(--ease), transform var(--t-base) var(--ease); }
 .code-win:hover { box-shadow: var(--sh-2); }
 .code-win[data-click="1"] { cursor: pointer; }
@@ -590,7 +614,7 @@ th[aria-sort="descending"] .th-sort::after { content: '↓'; opacity: 1; color: 
 /* ── 파일 트리(11/04f 목업 U.fileTree, R1 11/04 — components/FileTree.tsx) ──
    카드 = 1px · 반경 8 · 패딩 6 · 옅은 그림자. 하위 그룹 = 들여쓰기 11 + 세로 연결선 1px, 항목 앞 가로 연결선 11px. 행 28 · 패딩 4/8 · 반경 4 · 14px
    펼침/접힘 = grid-template-rows 0fr ↔ 1fr(--t-slow), 접힌 그룹은 전환이 끝난 뒤 visibility hidden. reduced-motion 이면 즉시 */
-.ftree { min-width: 0; padding: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: var(--sh-1); overflow: auto; }
+.ftree { min-width: 0; padding: 6px; border: 1px solid var(--card-line); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--sh-1); overflow: auto; }
 .ft-tree, .ft-tree [role="group"] { margin: 0; padding: 0; list-style: none; }
 .ft-item { position: relative; outline: none; }
 .ft-row { display: flex; align-items: center; gap: 6px; height: 28px; min-width: 0; padding: 4px 8px; border-radius: 4px; font-size: 14px; line-height: 20px; color: var(--text); cursor: pointer; user-select: none;
@@ -651,9 +675,9 @@ th[aria-sort="descending"] .th-sort::after { content: '↓'; opacity: 1; color: 
    집힘 = 살짝 떠오름(scale 1.03 · --sh-hover · accent 테두리 · grabbing) + 놓일 자리 점선(accent · accent-soft). 다른 항목은 --t-base 로 미끄러짐(reduced-motion 이면 없음) */
 .sg-sortable { position: relative; } /* 자리 표시 · offsetLeft/Top 기준 */
 .sg-sortable > [data-sort-scope] { -webkit-touch-callout: none; }
-.sg-sortable > .sg-sort-picked { position: relative; z-index: 6; cursor: grabbing !important; background: var(--surface); border-color: var(--accent) !important; box-shadow: var(--sh-hover), 0 0 0 1px var(--accent-line) !important; transition: box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease) !important; will-change: transform; }
+.sg-sortable > .sg-sort-picked { position: relative; z-index: 6; cursor: grabbing !important; background: var(--surface); border-color: var(--accent) !important; box-shadow: var(--sh-2), 0 0 0 1px var(--accent-line) !important; transition: box-shadow var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease) !important; will-change: transform; }
 nav .sg-sortable > a.sg-sort-picked { color: var(--text); }
-.sg-sort-marker { position: absolute; z-index: 1; box-sizing: border-box; pointer-events: none; border: 2px dashed var(--accent); border-radius: var(--r-md); background: var(--accent-soft); transition: left var(--t-base) var(--ease), top var(--t-base) var(--ease), width var(--t-base) var(--ease), height var(--t-base) var(--ease); }
+.sg-sort-marker { position: absolute; z-index: 1; box-sizing: border-box; pointer-events: none; border: 2px dashed var(--accent); border-radius: var(--r-lg); background: var(--accent-soft); transition: left var(--t-base) var(--ease), top var(--t-base) var(--ease), width var(--t-base) var(--ease), height var(--t-base) var(--ease); }
 nav .sg-sortable > .sg-sort-marker { border-radius: var(--r-sm); }
 html.sg-sorting, html.sg-sorting * { cursor: grabbing !important; -webkit-user-select: none !important; user-select: none !important; }
 .sg-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
@@ -722,21 +746,21 @@ html.sg-sorting, html.sg-sorting * { cursor: grabbing !important; -webkit-user-s
   }
   body {
     background: #fff !important;
-    color: #111827 !important;
+    color: #141413 !important;
   }
 }
 
 /* ── 11/05 슬라이드 패널(목업 sheet-1105 와 같은 값): 본문(main) 위에 겹쳐 오른쪽에서 · 뒤 어둡게 · 주제별 블록 + 2열 격자 ── */
 .sg-sheet-host { position: absolute; inset: 0; z-index: 40; pointer-events: none; }
 .sg-sheet-host:empty { display: none; }
-.sg-sheet-layer { position: absolute; inset: 0; overflow: hidden; display: flex; justify-content: flex-end; pointer-events: auto; background: rgba(15, 23, 42, 0.28); animation: sg-scrim-in var(--t-base) var(--ease) both; }
-.sg-sheet-layer > .sg-sheet { --sheet-w: min(720px, calc(100% - 48px)); width: var(--sheet-w); height: 100%; border-radius: 0; border-top: 0; border-right: 0; border-bottom: 0; box-shadow: -12px 0 32px rgba(15, 23, 42, 0.16); animation: sg-slide-in var(--t-slow) var(--ease) both; } /* 11/04f 원칙: 길이는 모션 토큰 */
+.sg-sheet-layer { position: absolute; inset: 0; overflow: hidden; display: flex; justify-content: flex-end; pointer-events: auto; background: rgba(20, 20, 19, 0.28); animation: sg-scrim-in var(--t-base) var(--ease) both; }
+.sg-sheet-layer > .sg-sheet { --sheet-w: min(720px, calc(100% - 48px)); width: var(--sheet-w); height: 100%; border-radius: 0; border-top: 0; border-right: 0; border-bottom: 0; box-shadow: -4px 0 16px rgba(0, 0, 0, 0.1); animation: sg-slide-in var(--t-panel) var(--ease-panel) both; } /* 11/09: 떠 있는 면 그림자 · 패널 전환 .25s 표준 곡선 */
 .sg-sheet-layer > .sg-sheet[data-size='wide'] { --sheet-w: min(1080px, 70%); }
 .sg-sheet-layer.still, .sg-sheet-layer.still > .sg-sheet { animation: none; }
 .sg-sheet-layer.closing { animation: sg-scrim-out var(--t-base) ease-in both; }
 .sg-sheet-layer.closing > .sg-sheet { animation: sg-slide-out var(--t-base) ease-in both; }
-@keyframes sg-scrim-in { from { background: rgba(15, 23, 42, 0); } }
-@keyframes sg-scrim-out { to { background: rgba(15, 23, 42, 0); } }
+@keyframes sg-scrim-in { from { background: rgba(20, 20, 19, 0); } }
+@keyframes sg-scrim-out { to { background: rgba(20, 20, 19, 0); } }
 @keyframes sg-slide-in { from { transform: translateX(100%); } }
 @keyframes sg-slide-out { to { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .sg-sheet-layer, .sg-sheet-layer > .sg-sheet { animation: none !important; } }
@@ -745,7 +769,7 @@ html.sg-sorting, html.sg-sorting * { cursor: grabbing !important; -webkit-user-s
 .sg-sheet-head { height: 52px; padding: 0 16px 0 24px; }
 .sg-sheet-body { padding: 4px 24px 24px; font-size: 14px; }
 .sg-sheet-body > :first-child:not(.sg-sheet-section):not(:has(.sg-sheet-section)) { margin-top: 20px; }
-.sg-sheet-section { display: grid; gap: 12px; padding: 20px 0; border-top: 1px solid var(--border); }
+.sg-sheet-section { display: grid; gap: 12px; padding: 20px 0; border-top: 1px solid var(--card-line); }
 .sg-sheet-section:first-child, .sg-sheet-body > :not(.sg-sheet-section) + .sg-sheet-section:first-of-type { border-top: 0; }
 .sg-sheet-h3 { display: flex; align-items: baseline; gap: 8px; font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
 .sg-sheet-layer dl { grid-template-columns: 8.5rem minmax(0, 1fr); column-gap: 16px; row-gap: 8px; font-size: 14px; }
