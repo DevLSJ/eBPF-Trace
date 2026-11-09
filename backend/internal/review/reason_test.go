@@ -48,7 +48,7 @@ func TestDiscardRecordsChangeWithReason(t *testing.T) {
 	}
 	ch := chs[0]
 	if ch.Kind != model.ChangeProposalDiscarded || ch.Reason != "사내 미러에서 받은 정상 패키지" ||
-		ch.CaseID == nil || *ch.CaseID != c.ID || ch.ProposalID == nil || *ch.ProposalID != p.ID || ch.Summary == "" {
+		ch.CaseID == nil || *ch.CaseID != c.ID || ch.ProposalID == nil || *ch.ProposalID != p.ID || ch.Summary != "제안 버림(변경 없이 건 종결)" {
 		t.Fatalf("discard change: %+v", ch)
 	}
 	// 사유 없이 버려도 이력은 남는다(reason "")
