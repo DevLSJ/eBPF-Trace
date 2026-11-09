@@ -58,7 +58,7 @@
 .sg-res-legend .sw { width: 10px; height: 10px; border-radius: 3px; }
 .sg-res-line { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--text-2); }
 .sg-res-line b { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-.sg-res-line b.tone-danger { color: var(--danger); }
+.sg-res-line b.tone-danger { color: var(--danger-text); } /* 작은 위험 글자 = 위험 글자색(밝은 6.1 · 어두운 10.7:1, 11/10) */
 a.sg-res-line:hover { color: var(--accent); }
 
 /* 아래 3칸: 몸통이 남은 높이를 채우고 넘치면 그 안만 스크롤 */

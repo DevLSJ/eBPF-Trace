@@ -505,7 +505,7 @@ a.kpi-card:hover { transform: translateY(-2px); border-top-color: var(--border-s
 .kpi-unit { font-size: 13px; font-weight: 500; color: var(--text-3); white-space: nowrap; }
 .kpi-delta { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 12.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; }
 .kpi-delta b { font-weight: 600; color: var(--text-2); }
-.kpi-delta.tone-danger b { color: var(--danger); } .kpi-delta.tone-warn b { color: var(--warn-text); } .kpi-delta.tone-ok b { color: var(--ok-text); }
+.kpi-delta.tone-danger b { color: var(--danger-text); } .kpi-delta.tone-warn b { color: var(--warn-text); } .kpi-delta.tone-ok b { color: var(--ok-text); }
 .kpi-note { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; }
 .kpi-card > .kpi-sub { grid-column: 1 / -1; font-size: 12.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
 .kpi-card > .kpi-sub.kpi-sub-wrap { white-space: normal; word-break: keep-all; }
@@ -662,7 +662,7 @@ th[aria-sort="descending"] .th-sort::after { content: '↓'; opacity: 1; color: 
 .ft-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ft-badge { flex-shrink: 0; margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font: 600 12px/18px var(--mono); text-align: center; }
 .ft-badge.ft-threat { background: var(--danger-soft); color: var(--danger-text); }
-.ft-badge.ev-A { color: var(--ok); } .ft-badge.ev-C { color: var(--warn); } .ft-badge.ev-D { color: var(--danger); }
+.ft-badge.ev-A { color: var(--ok); } .ft-badge.ev-C { color: var(--warn); } .ft-badge.ev-D { color: var(--danger-text); }
 .ft-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-base) var(--ease-move); }
 .ft-item[aria-expanded="false"] > .ft-kids { grid-template-rows: 0fr; }
 .ft-kids > [role="group"] { min-height: 0; overflow: hidden; margin-left: 11px; border-left: 1px solid var(--border); visibility: visible; transition: visibility 0s; }
