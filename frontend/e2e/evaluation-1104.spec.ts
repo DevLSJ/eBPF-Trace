@@ -192,7 +192,7 @@ test.describe('평가 화면(11/04)', () => {
       ['hgb', 'true', ['HistGradientBoosting선택한 모델', '0.89', '0.87', '80.9%', '93.2%', '10.8%']],
     ]);
     await expect(page.locator(`${M} [data-part="pick-badge"]`)).toHaveCount(1);
-    await expect(page.locator(`${M} [data-part="rule-wins"]`)).toHaveText('시험에서는 규칙 판정이 우세 — 운영은 규칙');
+    await expect(page.locator(`${M} [data-part="rule-wins"]`)).toHaveText('[규칙 우세] 시험 결과에 따라 운영은 규칙 판정 사용');
     await expect(page.locator(`${M} [data-part="not-deployed"]`)).toHaveText('운영 미적용');
     await expect(page.locator(`${M} [data-part="model-scope"]`)).toHaveCount(0);
     await expect(page.locator(`${M} [data-part="protocol"]`)).toContainText('seed 42 · packageGroup 그룹 분할 60/20/20 (PyPI) · 선택 기준: 보정 FPR≤5% 에서 F1 최대 · 시험은 선택에 쓰지 않음 · 특징 38개');
@@ -214,7 +214,7 @@ test.describe('평가 화면(11/04)', () => {
     await expect(tabs.first()).toHaveAttribute('aria-pressed', 'true');
     // PyPI: 규칙(악성+주의) 시험 F1 0.94 > HGB 0.87 → 한 줄
     await expect(page.locator(`${M} tr[data-model="hgb"] td`).nth(2)).toHaveText('0.87');
-    await expect(page.locator(`${M} [data-part="rule-wins"]`)).toHaveText('시험에서는 규칙 판정이 우세 — 운영은 규칙');
+    await expect(page.locator(`${M} [data-part="rule-wins"]`)).toHaveText('[규칙 우세] 시험 결과에 따라 운영은 규칙 판정 사용');
     await expect(page.locator(`${M} [data-table="models-by-ecosystem"]`)).toHaveCount(0);
     await tabs.nth(1).click();
     await expect(tabs.nth(1)).toHaveAttribute('aria-pressed', 'true');
@@ -290,7 +290,7 @@ test.describe('평가 화면(11/04)', () => {
     for (const p of ['scenarios', 'latency', 'benign']) await expect(page.locator(`[data-part="${p}"] [data-part="none"]`), p).toHaveText('런타임 결과 없음');
     await expect(page.locator('[data-part="model"] [data-part="none"]')).toHaveText('모델 결과 없음');
     const k = await kpis(page);
-    expect(k.map((x) => x[1])).toEqual(['68.0%', '1.5%', '—', '—', '—', '—']);
+    expect(k.map((x) => x[1])).toEqual(['68.0%', '1.5%', '', '', '', '']);
     await expect(page.locator('[data-part="key-points"] [data-basis]')).toHaveText(['실제 악성 패키지 594개 중 404개 탐지됨', '정상 패키지 600개 중 9개 오판', '런타임 결과 없음']);
     await expect(page.locator('[data-part="limits"] li')).toHaveCount((REAL.static.limits as string[]).length);
 

@@ -102,7 +102,7 @@ test.describe('평가 쉬운 화면(11/09)', () => {
     await page.unroute(/\/api\/evaluation$/);
     await open(page, { static: null, runtime: REAL.runtime, model: null });
     expect(await points(page)).toEqual([
-      ['static-detection', '—', '정적 악성 탐지율', '정적 검사 결과 없음'],
+      ['static-detection', '', '정적 악성 탐지율', '정적 검사 결과 없음'],
       ['false-alarm', '0.0%', '정상 설치 오판율', '정상 설치 50건 중 위반 0건'],
       ['runtime', '100.0%', '런타임 공격 탐지율', '공격 30회 모두 탐지 · 20회 격리 · 격리까지 중간값 296.9 ms'],
     ]);
@@ -216,7 +216,7 @@ test.describe('평가 쉬운 화면(11/09)', () => {
     await expect(page.locator('[data-part="kpis"] [data-kpi]')).toHaveCount(6);
     for (const c of ['verdict-dist', 'scenario-rate', 'latency', 'kill-stages']) await expect(page.locator(`[data-chart="${c}"] svg`), c).toBeVisible();
     await expect(page.locator('[data-part="model-summary"] [data-sum]')).toHaveCount(2);
-    await expect(page.locator('[data-part="rule-wins"]')).toHaveText('시험에서는 규칙 판정이 우세 — 운영은 규칙');
+    await expect(page.locator('[data-part="rule-wins"]')).toHaveText('[규칙 우세] 시험 결과에 따라 운영은 규칙 판정 사용');
     // 접힌 것: 측정 출처 · 데이터별 표 · 규칙 적중 · 판정 4칸 표 · 모델 비교 표 · 한계 목록
     const FOLDS: [string, string][] = [
       ['eval-head', '[data-part="tags"]'],

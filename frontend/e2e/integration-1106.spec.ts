@@ -111,7 +111,7 @@ test.describe('11/06 연동 페이지', () => {
     await expect(w.locator('[data-part="verify-result"]')).toHaveAttribute('data-outcome', 'waiting');
     backend.send({ type: 'verdict', data: { ...killedVerdict('shop-api', '금지 경로 /etc/shadow'), ruleId: 'sensitive-files', enforced: false, dryRun: true, enforceSkip: 'label' } });
     await expect(w.locator('[data-part="verify-result"]')).toHaveAttribute('data-outcome', 'held');
-    await expect(w.locator('[data-part="verify-result"]')).toContainText('격리 보류 — 감시 동작 확인됨');
+    await expect(w.locator('[data-part="verify-result"]')).toContainText('[격리 보류] 감시 동작 확인됨');
     await expect(w.locator('[data-part="verify-result"]')).toContainText('sensitive-files');
     await page.screenshot({ path: `${SHOTS}/1106-integration-scenario-single.png` });
     // 새로고침해도 단계 · 입력 이어짐
@@ -145,7 +145,7 @@ test.describe('11/06 연동 페이지', () => {
     await expect(rows).toHaveCount(4);
     await rows.nth(3).getByLabel('서비스 4 감시').uncheck();
     await expect(rows.nth(3).getByLabel('서비스 4 격리')).toBeDisabled();
-    await rows.nth(3).getByLabel('빼기 — 서비스 4').click();
+    await rows.nth(3).getByLabel('빼기(서비스 4)').click();
     await expect(rows).toHaveCount(3);
     // 감시 0개면 다음 불가
     for (const k of [1, 2]) await rows.nth(k - 1).getByLabel(`서비스 ${k} 감시`).uncheck();
@@ -170,7 +170,7 @@ test.describe('11/06 연동 페이지', () => {
     await w.locator('[data-part="gen-test-copy"]').click();
     backend.send({ type: 'verdict', data: { ...killedVerdict('shop-api'), ruleId: 'sensitive-files' } });
     await expect(w.locator('[data-part="verify-result"]')).toHaveAttribute('data-outcome', 'killed');
-    await expect(w.locator('[data-part="verify-result"]')).toContainText('격리됨 — 연동 · 격리 모두 동작 확인됨');
+    await expect(w.locator('[data-part="verify-result"]')).toContainText('[격리] 연동 · 격리 모두 동작 확인됨');
   });
 
   test('시나리오 ③ 패키지 설치 검사: 명령 생성 → 새 설치 세션 자동 감지 → 결과 · 설치 상세 링크', async ({ page, backend }) => {
@@ -189,7 +189,7 @@ test.describe('11/06 연동 페이지', () => {
     backend.installs.unshift({ ...backend.installs[0], id: 'ins-9001', manager: 'npm', packages: ['left-pad@1.3.0'], startedAt: now, finishedAt: now, status: 'passed', caseId: null, violations: [], isolation: null, scan: undefined, scanId: null });
     await expect(w.locator('[data-part="install-result"]')).toHaveAttribute('data-status', 'passed', { timeout: 6000 });
     await expect(w).toHaveAttribute('data-step', '3');
-    await expect(w.locator('[data-part="install-result"]')).toContainText('설치 통과');
+    await expect(w.locator('[data-part="install-result"]')).toContainText('위반 없이 설치 완료');
     await w.locator('[data-part="install-open"]').click();
     await expect(page).toHaveURL(/\/installs\?id=ins-9001/);
   });
@@ -203,7 +203,7 @@ test.describe('11/06 연동 페이지', () => {
     await expect(step.locator('[data-part="test-start"]')).toBeDisabled();
     await expect(step.locator('[data-part="test-state"]')).toContainText('sg-probe-');
     await expect(step).toHaveAttribute('data-state', 'passed', { timeout: 5000 });
-    await expect(step.locator('[data-part="test-state"]')).toHaveText('연결 확인됨 — 이벤트 6건 수신');
+    await expect(step.locator('[data-part="test-state"]')).toHaveText('[통과] 이벤트 6건 수신, 연결 확인됨');
     await expect(step.locator('[data-kind="exec"] b')).toHaveText('5');
     await expect(step.locator('[data-kind="exec"]')).toHaveClass(/got/);
     await expect(step.locator('[data-kind="connect"]')).not.toHaveClass(/got/);

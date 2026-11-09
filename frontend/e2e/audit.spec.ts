@@ -14,7 +14,7 @@ test.describe('감사 로그 — 언제 무엇이 걸렸고, 어떻게 닫혔나
     expect(await page.locator('thead th').allTextContents()).not.toContain('사유');
     await install.click();
     await expect(page).toHaveURL(/id=\d+/);
-    await expect(page.locator('[data-sheet="audit"]').getByTestId('audit-reason')).not.toHaveText('—');
+    await expect(page.locator('[data-sheet="audit"]').getByTestId('audit-reason')).not.toBeEmpty();
   });
 
   test('② 판정 · 정책 변경 이력', async ({ page, backend }) => {

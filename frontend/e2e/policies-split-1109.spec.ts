@@ -293,7 +293,7 @@ test.describe('④ 정책 상세 시트', () => {
     await d.getByRole('textbox', { name: '사유' }).fill('다시');
     await d.getByRole('checkbox').check();
     await ok.click();
-    await expect(page.locator('[data-toast]').filter({ hasText: '되돌리지 못했습니다 — 변경 기록 없음' })).toBeVisible();
+    await expect(page.locator('[data-toast]').filter({ hasText: '되돌리지 못했습니다(변경 기록 없음).' })).toBeVisible();
   });
 
   test('조회자: 정책 생성 · YAML 일괄 적용 · 되돌리기 · 해제 단추를 그리지 않음', async ({ page, backend }) => {
