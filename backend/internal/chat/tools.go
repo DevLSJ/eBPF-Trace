@@ -451,7 +451,7 @@ func (s *Service) blocklist(f *Facts) []Link {
 	f.Sentences = append(f.Sentences,
 		"차단 목록에는 "+part("패키지", bl.Packages)+", "+part("이미지", bl.Images)+", "+part("도메인", bl.Hosts)+"가 있습니다.",
 		"패키지는 다시 설치하면 컨테이너 없이 설치 전에 거부되고, 이미지는 기동 즉시 격리되며, 도메인은 시스템 규칙 blocklist-hosts 로 막습니다.")
-	return []Link{{"차단 목록(정책 화면)", "/policies"}}
+	return []Link{{"차단 목록", "/policies/blocklist"}} // 11/09 정책 화면 분리 — 차단 목록은 정책 아래 자기 화면
 }
 
 // --- policy(id) ---
