@@ -1,15 +1,12 @@
 import type { ReactNode } from 'react';
 import { LoadError } from '../../components/Panel';
-import { screenCopy } from '../../lib/screenCopy';
+import { ScreenHead } from '../../components/ScreenHead';
 
-// 연동 세 페이지의 틀(11/09 밤): 화면 설명 한 줄 → 본문. 불러오기 실패면 설명 + 실패 안내만
+// 연동 세 페이지의 틀(11/09 밤): 화면 설명 줄(ScreenHead) → 본문. 불러오기 실패면 설명 + 실패 안내만
 //   data-part="integration" · data-page(setup · env · watch) · data-state(loading · ready · error)
 export function IntFrame({ page, screen, ready, error, children }: { page: 'setup' | 'env' | 'watch'; screen: string; ready: boolean; error: unknown; children: ReactNode }) {
-  const desc = (
-    <p data-part="screen-copy" data-screen={screen} className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
-      {screenCopy(screen)}
-    </p>
-  );
+  // 설명 줄 = 다른 화면과 같은 공통 부품(설명 + 오른쪽 끝 주 버튼 칸, 11/10 메인 통합)
+  const desc = <ScreenHead screen={screen} />;
   if (error && !ready)
     return (
       <div data-part="integration" data-page={page} data-state="error" className={`int-page int-page-${page}`}>
