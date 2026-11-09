@@ -32,7 +32,8 @@ export interface Column<T> {
   stick?: 'end';
 }
 // 칸 폭 표준(11/09 SPEC-1109 §4 · 참고 제품 G15 권고, px) — 남는 폭은 설명 한 칸(fill)이 갖는다
-export const COL_W = { time: 160, user: 110, status: 120, id: 120, num: 80 } as const;
+// time = 현황 시각(MM-DD HH:mm), log = 기록류 시각(YYYY-MM-DD HH:mm:ss 고정폭 — 160 은 안 여백을 빼면 잘림, 11/09 P3 실측)
+export const COL_W = { time: 160, log: 192, user: 110, status: 120, id: 120, num: 80 } as const;
 export interface SortState {
   key: string | null;
   dir: 'asc' | 'desc';

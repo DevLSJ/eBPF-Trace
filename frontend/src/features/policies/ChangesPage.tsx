@@ -36,7 +36,7 @@ export function ChangesPage() {
       {
         key: 'at',
         label: '시각',
-        width: COL_W.time + 32, // 기록류 시각(초까지 · 고정폭) — 표준 160 은 안 여백을 빼면 잘린다
+        width: COL_W.log, // 기록류 시각(초까지 · 고정폭)
         sort: (c) => c.at,
         cell: (c) => <TimeText value={c.at} kind="log" />,
         csv: (c) => fmtLog(c.at),

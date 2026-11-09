@@ -16,7 +16,7 @@ import { detailOf, LEVEL_LABEL, levelOf, type AuditEntry } from '../../lib/types
 //   rule 은 완전 일치(백엔드 rule_id = $). 기록류라 시각 먼저(초까지) · 컨테이너 · 결과 배지 · 요약, 행 → 감사 로그 그 기록(?id=)
 const COLS: Column<AuditEntry>[] = [
   // 기록류 시각(초까지 · 고정폭) — 표준 160 은 안 여백을 빼면 잘린다
-  { key: 'at', label: '시각', width: COL_W.time + 32, cell: (a) => <TimeText value={a.event.timestamp} kind="log" />, csv: (a) => fmtLog(a.event.timestamp) },
+  { key: 'at', label: '시각', width: COL_W.log, cell: (a) => <TimeText value={a.event.timestamp} kind="log" />, csv: (a) => fmtLog(a.event.timestamp) },
   { key: 'container', label: '컨테이너', cell: (a) => <span className="font-mono text-[13px] whitespace-nowrap">{a.install ? a.install.label : a.event.containerName}</span> },
   { key: 'result', label: '결과', width: COL_W.status, cell: (a) => <VerdictBadge v={a} />, csv: (a) => LEVEL_LABEL[levelOf(a)] },
   { key: 'detail', label: '요약', fill: true, cell: (a) => <span title={a.reason || detailOf(a.event)}>{a.reason ? `${a.reason} — ${detailOf(a.event)}` : detailOf(a.event)}</span> },

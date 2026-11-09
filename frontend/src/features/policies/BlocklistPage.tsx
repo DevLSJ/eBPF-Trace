@@ -36,7 +36,7 @@ const UNBLOCK_IMPACT: Record<BlockList, (v: string) => string> = {
 };
 type Row = BlockEntry & { list: BlockList };
 // 기록류 시각(초까지 · 고정폭 13.5px) 칸 — 표준 160 은 안 여백 16 × 2 를 빼면 「YYYY-MM-DD HH:mm:ss」가 잘린다
-const LOG_W = COL_W.time + 32;
+const LOG_W = COL_W.log;
 
 export function BlocklistPage() {
   const { isAdmin: canWrite } = useAuth();
