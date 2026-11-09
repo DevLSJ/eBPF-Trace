@@ -16,6 +16,8 @@ const load = (f: string) => JSON.parse(readFileSync(new URL(`./evaluation/${f}.j
 const EVAL = { static: load('static'), runtime: load('runtime'), model: load('model'), modelAll: load('model-all') };
 
 const evaluationApi = (page: Page) => page.route(/\/api\/evaluation$/, (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify(EVAL) }));
+// 가짜 백엔드에는 공급망 검사가 없다(404) — 빈 목록
+const scansApi = (page: Page) => page.route(/\/api\/scans(\?|$)/, (r) => r.fulfill({ contentType: 'application/json', body: '[]' }));
 
 // 주 버튼이 있는 화면 — [경로, 준비 확인, 버튼 자리 안에 있어야 하는 것들]
 type Want = (a: Locator) => Locator[];
@@ -102,6 +104,7 @@ test.describe('③ 주 버튼 = 화면 설명 줄 오른쪽 끝(1440)', () => {
     test.setTimeout(120_000);
     backend.enableDemo();
     await evaluationApi(page);
+    await scansApi(page);
     for (const [url, ready, want] of WITH_ACTIONS) {
       await open(page, url, ready);
       const acts = page.locator(`${SH} [data-part="page-actions"]`);
@@ -120,10 +123,18 @@ test.describe('③ 주 버튼 = 화면 설명 줄 오른쪽 끝(1440)', () => {
       await headerHasNoActions(page, url);
       await noPageOverflow(page);
     }
+    // 인쇄(건 보고서)에서는 버튼 칸을 숨긴다 — 예전 머리 줄처럼
+    await open(page, '/report?case=case-0004', '[data-testid="report"]');
+    await page.emulateMedia({ media: 'print' });
+    await expect(page.locator(`${SH} [data-part="page-actions"]`)).toBeHidden();
+    await expect(page.getByTestId('report')).toBeVisible();
+    await page.emulateMedia({ media: 'screen' });
+    await expect(page.locator(`${SH} [data-part="page-actions"]`)).toBeVisible();
   });
 
   test('조회자: 정책 화면 버튼 칸은 비어 숨고 오류 없음 · 화면을 옮겨도 버튼이 남지 않음', async ({ page, backend }) => {
     backend.auth.asViewer();
+    await scansApi(page);
     await open(page, '/policies', 'table[data-table="policies"] tbody tr');
     await expect(page.locator(`${SH} [data-part="page-actions"]`)).toBeHidden();
     await expect(page.getByRole('button', { name: '정책 생성' })).toHaveCount(0);
