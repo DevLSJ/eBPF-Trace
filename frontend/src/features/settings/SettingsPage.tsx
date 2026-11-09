@@ -339,7 +339,7 @@ function AccountsTab() {
     <div data-view="accounts" className="flex flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
         <p className="text-xs text-slate-500">관리자는 모든 쓰기, 조회자는 보기만 합니다. 새 계정 · 비밀번호 초기화의 임시 비밀번호는 한 번만 보입니다.</p>
-        <button type="button" onClick={() => setAdding(true)} className="flex shrink-0 items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700">
+        <button type="button" onClick={() => setAdding(true)} className="flex shrink-0 items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-fg hover:bg-primary-hover">
           <Plus className="size-3.5" aria-hidden /> 계정 추가
         </button>
       </div>
@@ -456,7 +456,7 @@ function AddUser({ onClose, onCreated }: { onClose: () => void; onCreated: (user
           <button type="button" onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
             취소
           </button>
-          <button type="button" disabled={busy} onClick={() => void create()} className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+          <button type="button" disabled={busy} onClick={() => void create()} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50">
             만들기
           </button>
         </>
@@ -537,7 +537,7 @@ function LicenseTab() {
               <button type="button" onClick={() => setPhase('closed')} className="rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
                 취소
               </button>
-              <button type="button" disabled={busy} onClick={() => setPhase('confirm')} className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+              <button type="button" disabled={busy} onClick={() => setPhase('confirm')} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50">
                 등록
               </button>
             </>
@@ -571,7 +571,7 @@ function LicenseTab() {
     </>
   );
   const button = isAdmin && (
-    <button type="button" onClick={open} className="flex shrink-0 items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700">
+    <button type="button" onClick={open} className="flex shrink-0 items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-fg hover:bg-primary-hover">
       <KeyRound className="size-3.5" aria-hidden /> 새 키 등록
     </button>
   );

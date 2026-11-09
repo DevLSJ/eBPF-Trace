@@ -137,7 +137,7 @@ export function Assistant() {
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => (open ? close() : show(tab))}
-        className="fixed right-6 bottom-6 z-[60] grid size-[52px] place-items-center rounded-full bg-indigo-600 text-white shadow-[0_6px_18px_rgba(79,70,229,.35)] hover:bg-indigo-700 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-200"
+        className="fixed right-6 bottom-6 z-[60] grid size-[52px] place-items-center rounded-full bg-primary text-primary-fg shadow-[0_4px_16px_rgba(0,0,0,.10)] hover:bg-primary-hover focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-indigo-200"
       >
         <ShieldCheck className="size-6" aria-hidden />
         <span
