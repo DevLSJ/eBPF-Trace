@@ -5,6 +5,7 @@ import { Modal } from '../../components/Modal';
 import { useToast } from '../../hooks/toast-context';
 import { useLoad } from '../../hooks/useLoad';
 import { api } from '../../lib/api';
+import { josa } from '../../lib/layout';
 
 // 설치 검사 「사용 방법」(11/06 결정 B · 11/09) — ① 내려받기 ② 환경 변수 ③ 실행 · 결과.
 // 토큰(SANDBOX_TOKEN)은 관리자에게만 오고, 화면에는 가린 채 보인다(녹화 · 발표 화면에 남지 않게). 복사는 실제 값
@@ -37,8 +38,9 @@ export function UsageGuide({ onClose }: { onClose: () => void }) {
   };
   // 복사 알림에는 명령을 다시 보이지 않는다(토큰이 화면에 남지 않게)
   const copy = (text: string, what: string) => {
-    const ok = () => toast(`${what}을(를) 복사했습니다.`, { key: 'copy', tone: 'ok' });
-    const fail = () => toast(`${what}을(를) 복사하지 못했습니다. 직접 입력하세요.`, { key: 'copy', tone: 'warn' });
+    const obj = `${what}${josa(what, ['을', '를'])}`;
+    const ok = () => toast(`${obj} 복사했습니다.`, { key: 'copy', tone: 'ok' });
+    const fail = () => toast(`${obj} 복사하지 못했습니다. 직접 입력하세요.`, { key: 'copy', tone: 'warn' });
     try {
       navigator.clipboard.writeText(text).then(ok, fail);
     } catch {

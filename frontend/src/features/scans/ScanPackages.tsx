@@ -12,6 +12,8 @@ import type { Scan } from '../../lib/types';
 // 패키지 골라 차단(10/20 G) — 저장소 · 파일 검사 결과의 패키지(잠금 파일마다 한 행)를 (매니저, 이름, 버전)으로 묶어 한 줄 + 출처 파일 나열.
 // 고르면 「선택한 N개 차단 목록에 올리기」 → 확인 대화상자(사유) → POST /api/scans/{id}/block {packages, reason} → 정책 제안.
 // 차단 목록이 다루지 않는 생태계(manager 없음) · 이미 차단된 것(매니저:이름)은 체크 칸이 없다
+// 고를 것이 하나도 없으면 「모두 고르기」는 aria-disabled + 사유(11/09 G16 — 초점은 가고 누름만 막힘)
+const NONE_PICKABLE = '고를 수 있는 패키지가 없습니다';
 interface Group {
   key: string; // 매니저:이름@버전 (생태계 미지원은 생태계:이름@버전)
   blockKey: string; // 차단 목록 값 — 매니저:이름(버전 무관)
@@ -89,10 +91,11 @@ export function ScanPackages({ s }: { s: Scan }) {
                     <input
                       type="checkbox"
                       aria-label="모두 고르기"
-                      className="accent-indigo-600"
-                      disabled={!pickable.length}
+                      className="accent-indigo-600 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+                      aria-disabled={pickable.length ? undefined : 'true'}
+                      title={pickable.length ? undefined : NONE_PICKABLE}
                       checked={pickable.length > 0 && pickable.every((g) => picked.has(g.key))}
-                      onChange={(e) => setPicked(e.target.checked ? new Set(pickable.map((g) => g.key)) : new Set())}
+                      onChange={(e) => pickable.length && setPicked(e.target.checked ? new Set(pickable.map((g) => g.key)) : new Set())}
                     />
                   </th>
                 )}

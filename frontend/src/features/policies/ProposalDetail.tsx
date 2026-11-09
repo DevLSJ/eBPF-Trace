@@ -1,14 +1,17 @@
 import { Eye } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ActionButton } from '../../components/ActionButton';
 import { DecisionBadge } from '../../components/Badges';
 import { ConfirmDialog } from '../../components/Modal';
 import { Empty, LoadError, Panel } from '../../components/Panel';
 import { useCases } from '../../hooks/cases-context';
 import { useToast } from '../../hooks/toast-context';
 import { api, errorText } from '../../lib/api';
+import { FIELD } from '../../lib/fieldNames';
 import { fmtDateTime, fmtNum } from '../../lib/format';
 import { scanHref, SOURCE_LABEL } from '../../lib/guide';
+import { josa } from '../../lib/layout';
 import { installDest } from '../../lib/nav';
 import { applyEffects, changeText, LIST_LABEL } from '../../lib/proposal';
 import { caseLabel, LEVEL_LABEL, type Level, type Preview, type Proposal } from '../../lib/types';
@@ -17,6 +20,8 @@ const levelText = (v: string) => LEVEL_LABEL[v as Level] ?? (v === 'kill' ? '격
 
 // 제안 상세: 근거(판정) → 변경 내용 → 미리보기(과거 위반 중 결과가 바뀌는 건) → 적용 / 버림
 // 초안을 열면 미리보기를 바로 한 번 계산한다(결정 2026-10-15) — 다시 계산은 「미리보기」 버튼
+// 11/09 G16 · G19 · G20: 「적용」은 미리보기 전엔 aria-disabled + 사유, 확인 창 제목 「[대상] 차단 · 예외 제안을 ~할까요?」 + 영향 범위,
+//   실패 알림 「제안을 ~하지 못했습니다(사유).」 + 할 일
 export function ProposalDetail({
   proposal: p,
   loading,
@@ -91,7 +96,7 @@ export function ProposalDetail({
       });
       onDone();
     } catch (e) {
-      toast(`${kind === 'apply' ? '적용' : '버림'} 실패: ${errorText(e)}`, { key: `proposal:${p.id}`, tone: 'danger' });
+      toast(`제안을 ${kind === 'apply' ? '적용하지' : '버리지'} 못했습니다(${errorText(e)}). 잠시 뒤 다시 시도하세요.`, { key: `proposal:${p.id}`, tone: 'danger' });
     } finally {
       setBusy(false);
     }
@@ -175,7 +180,7 @@ export function ProposalDetail({
                       <tr>
                         <th className="tk-short">#</th>
                         <th>컨테이너</th>
-                        <th>규칙</th>
+                        <th>{FIELD.policy}</th>
                         <th>탐지 결과</th>
                       </tr>
                     </thead>
@@ -231,15 +236,11 @@ export function ProposalDetail({
                   버림
                 </button>
               )}
-              {canWrite && <button
-                type="button"
-                onClick={() => setAsk('apply')}
-                disabled={busy || !preview}
-                title={preview ? undefined : '먼저 미리보기로 무엇이 바뀌는지 확인하세요'}
-                className="sg-btn sg-btn-primary"
-              >
-                적용
-              </button>}
+              {canWrite && (
+                <ActionButton onClick={() => setAsk('apply')} reason={!preview ? '미리보기를 계산한 뒤 쓸 수 있습니다' : busy && '처리 중입니다'} className="sg-btn sg-btn-primary">
+                  적용
+                </ActionButton>
+              )}
               {!canWrite && <span className="ml-auto text-xs text-slate-500">적용 · 버림은 관리자만 합니다</span>}
             </>
           ) : (
@@ -252,15 +253,19 @@ export function ProposalDetail({
       {ask && (
         <ConfirmDialog
           key={ask}
-          title={ask === 'apply' ? '제안 적용' : '제안 버림'}
-          target={`${target} · 제안 ${p.id}`}
-          tone={ask === 'apply' ? 'primary' : 'danger'}
-          okLabel={ask === 'apply' ? '적용' : '버림'}
+          title={`${target} ${p.decision === 'malicious' ? '차단' : '예외'} 제안을 ${ask === 'apply' ? '적용할까요?' : '버릴까요?'}`}
+          body={
+            ask === 'apply'
+              ? `제안 ${p.id}의 변경 ${p.changes.length}개를 정책에 반영하고 이 건을 종결합니다.`
+              : `정책은 그대로 두고 제안 ${p.id}만 버린 뒤 이 건을 종결합니다.`
+          }
+          danger={ask !== 'apply'}
+          confirmLabel={ask === 'apply' ? '적용' : '버림'}
           reason
-          effects={
+          impact={
             ask === 'apply'
               ? applyEffects(p, preview)
-              : ['정책 · 차단 목록은 바뀌지 않습니다', `건 ${p.caseId} 은 판정(${p.decision === 'malicious' ? '악성' : '오탐'})만 남기고 종결`, '판정 · 변경 이력에 「제안 버림」으로 남습니다']
+              : ['정책 · 차단 목록은 바뀌지 않습니다', `건 ${p.caseId}${josa(p.caseId, ['은', '는'])} 판정(${p.decision === 'malicious' ? '악성' : '오탐'})만 남기고 종결`, '판정 · 변경 이력에 「제안 버림」으로 남습니다']
           }
           undo={
             ask === 'apply'

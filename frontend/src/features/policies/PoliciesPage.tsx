@@ -26,6 +26,7 @@ import { useListQuery } from '../../hooks/useListQuery';
 import { useLoad } from '../../hooks/useLoad';
 import { COL_W, useTableKit, type Column } from '../../hooks/useTableKit';
 import { api } from '../../lib/api';
+import { FIELD } from '../../lib/fieldNames';
 import { mergeDefault } from '../../lib/policyDefaults';
 import { fromTemplate, KIND_SHORT, ruleFromBlock, ruleWithAllow } from '../../lib/policyEasy';
 import { screenCopy } from '../../lib/screenCopy';
@@ -41,7 +42,7 @@ import { ProposalDetail } from './ProposalDetail';
 // 정책 목록(11/09 사용자 결정 — 「정책」 아래 정책 · 차단 목록 · 변경 이력 세 페이지): 머리 「정책 생성」(주) · 「YAML 일괄 적용」(보조)
 //   띠: 판정 제안(적용 대기 → 누르면 제안 시트 ?proposal=) · 새 기본 규칙
 //   거르기: 검색(정책 ID · 설명) · 종류 · 판정(사용 안 함 포함) · 적용 범위 — 화면 상태(10/21 결정 유지 · 새로고침하면 기본값)
-//   표: 상태 맨 앞 · 정책(설명 위 · ID 아래) · 종류 · 판정 · 적용 컨테이너 · 마지막 위반(감사 로그) · 마지막 수정(updatedAt), 숨김 = 조건 요약 · 출처 · 수정자
+//   표: 상태 맨 앞 · 정책(설명 위 · ID 아래) · 종류 · 판정 · 적용 컨테이너 · 마지막 위반(감사 로그) · 마지막 수정(updatedAt), 숨김 = 조건 요약 · 출처 · 처리자
 //   행 → 정책 시트(?id=<정책>&tab=) · 옛 주소 ?id=__new__(생성 창) · ?id=__yaml__(YAML 일괄 적용) · ?proposal=<제안> 은 그대로 열린다
 export const NEW = '__new__';
 export const BULK = '__yaml__';
@@ -159,7 +160,7 @@ export function PoliciesPage() {
       { key: 'updated', label: '마지막 수정', width: COL_W.time, sort: (r) => r.updatedAt ?? '', cell: (r) => (r.updatedAt ? <TimeText value={r.updatedAt} kind="status" /> : null), csv: (r) => (r.updatedAt ? fmtStatus(r.updatedAt) : null) },
       { key: 'cond', label: '조건 요약', hidden: true, maxWidth: 480, cell: (r) => <span className="block truncate" title={condSummary(r)}>{condSummary(r)}</span>, csv: condSummary },
       { key: 'origin', label: '출처', hidden: true, cell: originOf },
-      { key: 'by', label: '수정자', hidden: true, width: COL_W.user, cell: (r) => r.updatedBy || null },
+      { key: 'by', label: FIELD.by, hidden: true, width: COL_W.user, cell: (r) => r.updatedBy || null },
     ],
     [],
   );

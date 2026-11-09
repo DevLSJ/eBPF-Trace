@@ -157,8 +157,8 @@ test.describe('③ 화면 문구', () => {
     await expect(page.locator('[data-testid="events"] [data-part="no-results"]')).toContainText('조건에 맞는 데이터가 없습니다');
 
     await page.goto('/audit');
-    await page.getByPlaceholder('규칙 ID').fill('no-such-rule');
-    await page.getByPlaceholder('규칙 ID').press('Enter');
+    await page.getByPlaceholder('정책 ID').fill('no-such-rule'); // 11/09 G44: 감사 로그 「규칙」 → 「정책」
+    await page.getByPlaceholder('정책 ID').press('Enter');
     await expect(page.locator('[data-testid="audit"] [data-part="no-results"]')).toContainText('검색 조건을 바꾸거나 해제해 보세요.');
     await expect(page.getByPlaceholder('컨테이너 이름')).toBeVisible();
   });
@@ -301,9 +301,9 @@ test.describe('④ 화면 설명 한 줄(lib/screenCopy.ts 한 곳)', () => {
 
 test.describe('⑤ 표 도구 — 총 N건 · 새로고침 · 칸 고르기(저장 키 화면마다) · 내보내기 = 보이는 칸', () => {
   const TABLES: { url: string; table: string; grid: string; hide: string; hideName: string }[] = [
-    { url: '/installs', table: 'installs', grid: 'installs', hide: 'manager', hideName: '매니저' },
+    { url: '/installs', table: 'installs', grid: 'installs', hide: 'manager', hideName: '패키지 관리자' },
     { url: '/scans', table: 'scans', grid: 'scans', hide: 'risk', hideName: '위험 점수' },
-    { url: '/audit', table: 'audit', grid: 'audit', hide: 'rule', hideName: '규칙' },
+    { url: '/audit', table: 'audit', grid: 'audit', hide: 'rule', hideName: '정책' },
     { url: '/audit?view=changes', table: 'history', grid: 'audit-history', hide: 'by', hideName: '처리자' },
     { url: '/settings?tab=accounts', table: 'users', grid: 'settings-users', hide: 'otp', hideName: 'OTP' },
     { url: '/settings?tab=auth-audit', table: 'auth-audit', grid: 'settings-auth-audit', hide: 'ip', hideName: 'IP' },
@@ -401,7 +401,7 @@ test.describe('⑥ 필터 Select · 검색칸(Enter · 칸 벗어날 때 적용,
     await page.locator('[data-filter="action"]').click();
     await page.getByRole('option', { name: '격리 (kill)' }).click();
     await expect(page.locator('[data-filter="action"]')).toHaveText('격리 (kill)');
-    await expect(page.getByRole('searchbox', { name: '규칙 검색' })).toHaveAttribute('placeholder', '규칙 ID');
+    await expect(page.getByRole('searchbox', { name: '정책 검색' })).toHaveAttribute('placeholder', '정책 ID');
 
     await page.goto('/settings?tab=auth-audit');
     await expect(page.locator('[data-filter="action"]')).toHaveText('한 일 전체');

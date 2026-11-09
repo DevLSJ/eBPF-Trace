@@ -20,6 +20,7 @@ import { useInterval, useLoad } from '../../hooks/useLoad';
 import { useTableKit, type Column, type TableKit } from '../../hooks/useTableKit';
 import { api } from '../../lib/api';
 import { screenCopy } from '../../lib/screenCopy';
+import { FIELD } from '../../lib/fieldNames';
 import { fmtNum } from '../../lib/format';
 import { duration, EXAMPLE_COMMAND, sessionLabel, violationTotal } from '../../lib/pkg';
 import { DECISION_LABEL, INSTALL_STATUS_LABEL, INSTALL_STATUSES, MANAGERS, SCAN_VERDICT_LABEL, type InstallSession } from '../../lib/types';
@@ -50,7 +51,7 @@ type StatusFilter = 'pending' | 'all' | (typeof INSTALL_STATUSES)[number];
 
 // 설치 검사 — 질문 하나: 「이 패키지는 무엇을 하려 했고, 악성인가?」
 export function InstallsPage() {
-  // 필터(결과 · 매니저)는 화면 상태로만, 열린 세션(id)만 주소에(10/21)
+  // 필터(결과 · 패키지 관리자)는 화면 상태로만, 열린 세션(id)만 주소에(10/21)
   const [params, setParams] = useSearchParams();
   const [filters, setFilters] = useFilters('/installs');
   const status = (filters.status as StatusFilter) || 'pending';
@@ -81,7 +82,7 @@ export function InstallsPage() {
       { key: 'started', label: '시작', sort: (s) => Date.parse(s.startedAt), short: true, cellClass: 'text-slate-600', cell: (s) => <TimeText value={s.startedAt} kind="status" />, csv: (s) => fmtStatus(s.startedAt) },
       {
         key: 'manager',
-        label: '매니저',
+        label: FIELD.manager,
         sort: (s) => s.manager,
         short: true,
         cell: (s) => <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-600">{s.manager}</span>,
@@ -189,14 +190,15 @@ export function InstallsPage() {
         title="설치 세션"
       >
         <div className="flex h-full flex-col">
-          <div className="grid shrink-0 gap-2 border-b border-slate-100 px-4 py-2.5">
+          {/* 거르기 이름 칸: 「패키지 관리자」(11/09 G44)가 한 줄에 들어가게 두 줄 모두 같은 폭(88) — 칩 시작 위치를 맞춘다 */}
+          <div className="grid shrink-0 gap-2 border-b border-slate-100 px-4 py-2.5 [&>[role=group]>span:first-child]:w-22 [&>[role=group]>span:first-child]:whitespace-nowrap">
             <FilterChips label="결과" options={statusOptions} value={status} onChange={(v) => set('status', v === 'pending' ? null : v)} />
-            <FilterChips label="매니저" options={managerOptions} value={manager} onChange={(v) => set('manager', v || null)} />
+            <FilterChips label={FIELD.manager} options={managerOptions} value={manager} onChange={(v) => set('manager', v || null)} />
           </div>
           <AppliedFilters
             items={[
               status !== 'pending' && { key: 'status', label: `결과: ${status === 'all' ? '전체' : (INSTALL_STATUS_LABEL[status] ?? status)}`, clear: () => set('status', null) },
-              !!manager && { key: 'manager', label: `매니저: ${manager}`, clear: () => set('manager', null) },
+              !!manager && { key: 'manager', label: `${FIELD.manager}: ${manager}`, clear: () => set('manager', null) },
             ]}
             onClearAll={clearFilters}
           />

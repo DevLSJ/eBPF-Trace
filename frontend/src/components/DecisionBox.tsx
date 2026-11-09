@@ -4,6 +4,7 @@ import { useCases } from '../hooks/cases-context';
 import { useToast } from '../hooks/toast-context';
 import { useAuth } from '../hooks/auth-context';
 import { api, ApiError, errorText } from '../lib/api';
+import { FIELD } from '../lib/fieldNames';
 import { fmtDateTime } from '../lib/format';
 import { caseLabel, type Case, type Decision } from '../lib/types';
 import { DecisionBadge } from './Badges';
@@ -13,7 +14,8 @@ const STATE_LABEL: Record<Case['state'], string> = { open: '판정 대기', deci
 
 // 판정 — 설치 검사 시트와 토폴로지가 같은 부품을 쓴다.
 // 악성 확정 → 차단 제안(설치: 패키지 · 도메인 / 런타임: 이미지 · 도메인), 오탐 → 걸린 규칙에 예외 제안.
-// 10/20 B: 두 버튼은 확인 대화상자를 연다 — 「함께 일어나는 일」은 서버 판정 미리보기(POST /api/cases/{id}/preview)의 effects 그대로, 사유 = 판정 메모(note)
+// 10/20 B: 두 버튼은 확인 대화상자를 연다 — 영향 범위는 서버 판정 미리보기(POST /api/cases/{id}/preview)의 effects 그대로, 사유 = 판정 메모(note)
+// 11/09 G19 · G20: 확인 창 제목 「[대상] 건을 ~할까요?」 + 본문 + 영향 범위 줄, 실패 알림 「판정하지 못했습니다(사유).」 + 할 일
 export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
   const { cases, error, upsert, reload } = useCases();
   const { isAdmin } = useAuth();
@@ -44,8 +46,9 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
         },
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) reload();
-      toast(`판정 실패: ${errorText(e)}`, { key: `decide:${c.id}`, tone: 'danger' });
+      const conflict = e instanceof ApiError && e.status === 409;
+      if (conflict) reload();
+      toast(`판정하지 못했습니다(${errorText(e)}). ${conflict ? '건 상태를 다시 불러왔으니 판정 결과를 확인하세요.' : '잠시 뒤 다시 시도하세요.'}`, { key: `decide:${c.id}`, tone: 'danger' });
     } finally {
       setBusy(false);
     }
@@ -87,11 +90,15 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
           {ask && (
             <ConfirmDialog
               key={ask}
-              title={ask === 'malicious' ? '악성 확정' : '오탐으로 판정'}
-              target={`${what} · 건 ${c.id}`}
+              title={`${what} 건을 ${ask === 'malicious' ? '악성으로 확정' : '오탐으로 판정'}할까요?`}
+              body={
+                ask === 'malicious'
+                  ? `건 ${c.id}에 「악성」 판정을 남기고 ${c.source === 'install' ? '패키지' : '이미지'} · 도메인 차단 제안을 만듭니다.`
+                  : `건 ${c.id}에 「오탐」 판정을 남기고 걸린 규칙에 예외 제안을 만듭니다.`
+              }
               loadEffects={() => api.previewDecision(c.id, ask).then((r) => r.effects ?? [])}
-              tone={ask === 'malicious' ? 'danger' : 'primary'}
-              okLabel={ask === 'malicious' ? '악성 확정' : '오탐으로 판정'}
+              danger={ask === 'malicious'}
+              confirmLabel={ask === 'malicious' ? '악성 확정' : '오탐으로 판정'}
               reason
               undo={
                 ask === 'malicious'
@@ -109,7 +116,7 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
         </>
       ) : (
         <dl className="grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-1 text-xs">
-          <dt className="text-slate-500">처리자</dt>
+          <dt className="text-slate-500">{FIELD.by}</dt>
           <dd data-testid="decided-by">{c.decidedBy ?? ''}</dd>
           <dt className="text-slate-500">시각</dt>
           <dd className="num">{c.decidedAt ? fmtDateTime(c.decidedAt) : ''}</dd>

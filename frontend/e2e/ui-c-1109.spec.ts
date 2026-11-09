@@ -189,7 +189,7 @@ test.describe('G19 확인 창 — 제목 「~할까요?」 + 영향 범위 줄',
     const d = page.locator(DIALOG);
     await expect(d.locator('h3')).toHaveText('egress-allowlist 정책을 삭제할까요?');
     await expect(d).toHaveAttribute('aria-label', 'egress-allowlist 정책을 삭제할까요?');
-    await expect(d.locator('[data-part="confirm-body"]')).toHaveText(/합니다\.$/);
+    await expect(d.locator('[data-part="confirm-body"]')).toHaveText(/니다\.$/);
     await expect(d.locator('[data-part="confirm-impact"] li').first()).toBeVisible();
     await expect(d.locator('[data-part="confirm-impact"]')).toContainText('변경 이력에 「정책 삭제」로 남습니다.');
     await expect(d.locator('[data-part="confirm-undo"]')).toContainText('변경 이력');
@@ -228,7 +228,7 @@ test.describe('G19 확인 창 — 제목 「~할까요?」 + 영향 범위 줄',
     await detail.getByRole('button', { name: '적용', exact: true }).click();
     const d = page.locator(DIALOG);
     await expect(d.locator('h3')).toHaveText('pip ./reqeusts 차단 제안을 적용할까요?');
-    await expect(d.locator('[data-part="confirm-body"]')).toHaveText(/합니다\.$/);
+    await expect(d.locator('[data-part="confirm-body"]')).toHaveText(/니다\.$/);
     await expect(d.locator('[data-part="confirm-impact"]')).toContainText('차단 목록 +2 (패키지 1 · 도메인 1)');
     await expect(d.locator('[data-part="confirm-impact"]')).toContainText('과거 위반');
     await d.locator('[data-confirm="cancel"]').click();

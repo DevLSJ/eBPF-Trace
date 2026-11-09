@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { useState } from 'react';
-import { IconAction } from '../../components/ActionButton';
+import { ActionButton, IconAction } from '../../components/ActionButton';
 import { CONTAINERS_REQUIRED } from '../../components/PolicyEditor';
 import { StatusPill } from '../../components/DataTable';
 import { useLoad } from '../../hooks/useLoad';
@@ -13,6 +13,7 @@ import { containerMatches } from './glob';
 //   범위 분절 모든 컨테이너 · 설치 검사(sg-install-*) · 지정 → 지정이면 실행 중 컨테이너(GET /api/integration 의 감시 목록)에서 고르거나 이름 패턴(Enter)
 //   항목마다 「지금 일치 N개」 · 감시 여부 · (격리 정책이면) 격리 가능 / 격리 보류(격리 범위 밖 — 라벨 · ENFORCE_CONTAINERS 필요)
 //   「지정」인데 0개면 저장을 막는다(그대로 저장하면 모든 컨테이너가 된다) — 막는 사유는 PolicyEditor CONTAINERS_REQUIRED
+//   범위 단추가 꺼지면(11/09 G16) lockReason(시스템 규칙 · 고급 YAML)을 aria-disabled 사유로 — 초점은 가고 누름만 막힘. 사유 없는 조회자는 예전처럼 진짜 disabled
 const SCOPES: [Scope, string, string][] = [
   ['all', '모든 컨테이너', '운영 중인 컨테이너와 설치 검사 모두'],
   ['sandbox', '설치 검사', '패키지를 시험 설치하는 감시 컨테이너'],
@@ -27,6 +28,7 @@ export function ContainersCard({
   dryRun,
   readOnly,
   note,
+  lockReason,
 }: {
   scope: Scope;
   containers: string[];
@@ -35,6 +37,7 @@ export function ContainersCard({
   dryRun: boolean;
   readOnly?: boolean;
   note?: string;
+  lockReason?: string;
 }) {
   const live = useLoad(api.integration);
   const list = (live.data?.containers ?? []).filter((c) => !c.ignored);
@@ -68,18 +71,18 @@ export function ContainersCard({
       </div>
       <div className="grid grid-cols-3 gap-1 rounded-[var(--r-md)] border border-border p-1" role="group" aria-label="적용 범위">
         {SCOPES.map(([k, label, sub]) => (
-          <button
+          <ActionButton
             key={k}
-            type="button"
             data-scope-pick={k}
             aria-pressed={scope === k}
             title={sub}
-            disabled={readOnly}
+            reason={readOnly && lockReason}
+            disabled={readOnly && !lockReason}
             onClick={() => pick(k)}
-            className={`rounded-[var(--r-sm)] px-2 py-1.5 text-[13px] font-medium ${scope === k ? 'bg-accent-soft text-accent-text' : 'text-text-2 hover:bg-surface-2'} disabled:cursor-not-allowed`}
+            className={`rounded-[var(--r-sm)] px-2 py-1.5 text-[13px] font-medium ${scope === k ? 'bg-accent-soft text-accent-text' : 'text-text-2 hover:bg-surface-2'} disabled:cursor-not-allowed aria-disabled:cursor-not-allowed`}
           >
             {label}
-          </button>
+          </ActionButton>
         ))}
       </div>
       {note && <p className="rounded-[var(--r-sm)] bg-surface-2 px-3 py-2 text-xs text-text-2">{note}</p>}

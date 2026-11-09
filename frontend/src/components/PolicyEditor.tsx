@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight, Play, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import YAML from 'yaml';
-import { api, ApiError } from '../lib/api';
+import { api, errorText } from '../lib/api';
 import { fmtNum } from '../lib/format';
 import { ID_PATTERN, listOf, NUM_FIELDS, scopeOf, summarize, toDraft, toRule, withList, type Draft, type ListField, type Scope } from '../lib/policyEasy';
 import { SEQ_KILL_WARN, SEQ_NO_PREVIEW, SEQ_YAML_ONLY, seqSummary } from '../lib/sequence';
@@ -70,9 +70,15 @@ export interface ContainersSlot {
   dryRun: boolean;
   readOnly: boolean;
   note?: string;
+  // 꺼진 범위 단추의 사유(관리자 화면만 — 시스템 규칙 · 고급 YAML). 조회자는 예전처럼 사유 없이 꺼짐
+  lockReason?: string;
 }
 // 「지정」인데 0개면 저장을 막는다(그대로 저장하면 비어 있어 모든 컨테이너가 된다) — 꺼진 단추 사유(마침표 없음)
 export const CONTAINERS_REQUIRED = '적용 컨테이너를 1개 이상 고르세요';
+// 시스템 규칙(blocklist-hosts — 차단 목록에서 관리)의 꺼진 단추 사유(11/09 G16, 마침표 없음)
+const SYSTEM_EDIT = '시스템 규칙은 직접 편집할 수 없습니다';
+const SYSTEM_DELETE = '시스템 규칙은 지울 수 없습니다';
+const BUSY = '처리 중입니다';
 
 const input = 'w-full rounded-[var(--r-md)] border border-slate-300 bg-field px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500';
 type Mode = 'easy' | 'form' | 'yaml';
@@ -159,7 +165,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
       const pv = await api.previewRule(r);
       setCheck((c) => (c && c.rule === r ? { ...c, preview: pv } : c));
     } catch (e) {
-      setCheck((c) => (c && c.rule === r ? { ...c, error: e instanceof ApiError ? `${e.status} · ${e.message}` : (e as Error).message } : c));
+      setCheck((c) => (c && c.rule === r ? { ...c, error: errorText(e) } : c));
     }
   };
 
@@ -200,7 +206,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
       onSaved(out);
     } catch (e) {
       setCheck(null);
-      setError(e instanceof ApiError ? `${e.status} · ${e.message}` : (e as Error).message);
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -212,7 +218,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
       await api.deleteRule(rule.id);
       onDeleted(rule.id);
     } catch (e) {
-      setError(e instanceof ApiError ? `${e.status} · ${e.message}` : (e as Error).message);
+      setError(errorText(e));
       setBusy(false);
     }
   };
@@ -233,6 +239,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
       action: head.action,
       dryRun: head.dryRun,
       readOnly: ro || !!readOnly || !canWrite,
+      lockReason: !canWrite ? undefined : readOnly ? SYSTEM_EDIT : ro ? note : undefined,
       note,
     });
   // 큰 창 오른쪽 칸: 늘 그린다(연쇄 · YAML 은 YAML 의 containers 칸으로 정함 — 읽기만)
@@ -282,19 +289,15 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
       {saved && !error && <span className="flex-1 text-sm text-emerald-600">저장 후 엔진에 적용됨</span>}
       <div className={footHost ? 'order-2 flex gap-2' : 'ml-auto flex gap-2'}>
         {!isNew && canWrite && (
-          <button
-            type="button"
-            onClick={() => setAskDelete(true)}
-            disabled={busy || readOnly}
-            className="sg-btn text-danger-text hover:bg-danger-soft"
-          >
+          <ActionButton onClick={() => setAskDelete(true)} reason={readOnly ? SYSTEM_DELETE : busy && BUSY} className="sg-btn text-danger-text hover:bg-danger-soft">
             <Trash2 className="size-4" aria-hidden /> 삭제
-          </button>
+          </ActionButton>
         )}
         <ActionButton
           onClick={() => void openCheck()}
-          disabled={busy || readOnly}
-          reason={needPick && CONTAINERS_REQUIRED}
+          // 조회자가 보는 시스템 규칙은 예전처럼 진짜 disabled(사유 없음) — 사유는 관리자 화면만(11/09 G16)
+          disabled={!!readOnly && !canWrite}
+          reason={readOnly ? canWrite && SYSTEM_EDIT : busy ? BUSY : needPick && CONTAINERS_REQUIRED}
           className="sg-btn sg-btn-primary"
         >
           저장 전 확인 <ArrowRight className="size-3.5" aria-hidden />
@@ -436,11 +439,12 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
       {hosted}
       {askDelete && (
         <ConfirmDialog
-          title="정책 삭제"
-          target={rule.id}
-          okLabel="삭제"
-          effects={['엔진에서 바로 빠집니다(이 정책으로 걸리던 행동은 다음 이벤트부터 통과)', '지난 감사 로그는 그대로 남습니다', '변경 이력에 「정책 편집」으로 남습니다']}
-          undo="YAML 을 복사해 두었다면 「새 정책 › 고급 · YAML」로 다시 만들 수 있습니다"
+          title={`${rule.id} 정책을 삭제할까요?`}
+          body="엔진과 정책 목록에서 이 정책을 바로 지웁니다."
+          impact={['이 정책으로 걸리던 행동은 다음 이벤트부터 통과합니다.', '지난 감사 로그 · 차단 이력은 그대로 남습니다.', '변경 이력에 「정책 삭제」로 남습니다.']}
+          confirmLabel="삭제"
+          danger
+          undo="정책 › 변경 이력에서 지우기 전 값으로 되돌릴 수 있습니다"
           onCancel={() => setAskDelete(false)}
           onConfirm={() => {
             setAskDelete(false);

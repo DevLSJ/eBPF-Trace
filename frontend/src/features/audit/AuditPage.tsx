@@ -28,6 +28,7 @@ import { useCases } from '../../hooks/cases-context';
 import { useFilters } from '../../hooks/useFilters';
 import { useLoad } from '../../hooks/useLoad';
 import { api, errorText, type AuditParams } from '../../lib/api';
+import { FIELD } from '../../lib/fieldNames';
 import { shortId } from '../../lib/format';
 import { scanHref, SOURCE_LABEL } from '../../lib/guide';
 import { installDest, topologyDest } from '../../lib/nav';
@@ -109,7 +110,7 @@ const HISTORY_COLUMNS: Column<HistoryItem>[] = [
     ),
     csv: (x) => (x.reason ? `${x.text} · 사유: ${x.reason}` : x.text),
   },
-  { key: 'by', label: '처리자', sort: (x) => x.by, short: true, cellClass: 'text-xs text-slate-500', cell: (x) => x.by, csv: (x) => x.by },
+  { key: 'by', label: FIELD.by, sort: (x) => x.by, short: true, cellClass: 'text-xs text-slate-500', cell: (x) => x.by, csv: (x) => x.by },
 ];
 // CSV 내보내기(10/20 D): 백엔드 한 번에 최대 500행(store.MaxAuditLimit) — 나눠 받아 최대 10,000행
 const CSV_PAGE = 500;
@@ -162,7 +163,7 @@ export function AuditPage() {
       ? [
           !!filters.kind && { key: 'kind', label: `종류: ${filters.kind}`, clear: () => clearKeys(['kind']) },
           !!filters.action && { key: 'action', label: `대응: ${ACTION_KO[filters.action] ?? filters.action}`, clear: () => clearKeys(['action']) },
-          !!filters.rule && { key: 'rule', label: `규칙: ${filters.rule}`, clear: () => clearKeys(['rule']) },
+          !!filters.rule && { key: 'rule', label: `${FIELD.policy}: ${filters.rule}`, clear: () => clearKeys(['rule']) },
           !!filters.container && { key: 'container', label: `컨테이너: ${filters.container}`, clear: () => clearKeys(['container']) },
           periodChip,
         ]
@@ -207,7 +208,7 @@ export function AuditPage() {
             {/* 거르기 줄(11/09): 선택 상자 = 공통 Select(「○○ 전체」), 글 = 검색칸(Enter · 칸 벗어날 때 적용). 조건 지우기는 「적용된 필터」 줄 하나 */}
             {view === 'violations' && (
               <FilterBar name="audit" active={false} onClear={() => clearKeys(FILTERS)}>
-                <SearchField label="규칙 검색" placeholder="규칙 ID" width={180} value={filters.rule} onApply={(v) => setFilter('rule', v)} />
+                <SearchField label={`${FIELD.policy} 검색`} placeholder={FIELD.policyId} width={180} value={filters.rule} onApply={(v) => setFilter('rule', v)} />
                 <SearchField label="컨테이너 검색" placeholder="컨테이너 이름" width={200} value={filters.container} onApply={(v) => setFilter('container', v)} />
                 <Select name="kind" label="종류" value={filters.kind} options={KIND_OPTIONS} onChange={(v) => setFilter('kind', v)} />
                 <Select name="action" label="대응" value={filters.action} options={ACTION_OPTIONS} onChange={(v) => setFilter('action', v)} />
@@ -370,7 +371,7 @@ function Violations({
       },
       { key: 'kind', label: '종류', sort: (a) => a.event.kind, short: true, cell: (a) => <KindBadge kind={a.event.kind} />, csv: (a) => a.event.kind },
       { key: 'detail', label: '상세', sort: (a) => detailOf(a.event), fill: true, cellClass: 'font-mono text-xs text-slate-600', cell: (a) => <span title={detailOf(a.event)}>{detailOf(a.event)}</span>, csv: (a) => detailOf(a.event) },
-      { key: 'rule', label: '규칙', sort: (a) => a.ruleId, short: true, cellClass: 'font-mono text-xs', cell: (a) => a.ruleId },
+      { key: 'rule', label: FIELD.policy, sort: (a) => a.ruleId, short: true, cellClass: 'font-mono text-xs', cell: (a) => a.ruleId },
       { key: 'level', label: '탐지 결과', sort: (a) => LEVEL_RANK[levelOf(a)], short: true, cell: (a) => <VerdictBadge v={a} />, csv: (a) => LEVEL_LABEL[levelOf(a)] },
       {
         key: 'decision',
@@ -554,7 +555,7 @@ function AuditDetail({ a, c }: { a: AuditEntry; c: Case | undefined }) {
               <dd className="text-red-600">{a.enforceError}</dd>
             </>
           )}
-          <dt className="text-slate-500">규칙</dt>
+          <dt className="text-slate-500">{FIELD.policy}</dt>
           <dd className="font-mono text-xs">{a.ruleId}</dd>
           <dt className="text-slate-500">상세</dt>
           <dd className="font-mono text-xs break-all" data-part="detail">

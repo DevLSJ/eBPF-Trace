@@ -8,6 +8,8 @@ import { api, errorText } from '../../lib/api';
 
 // 「YAML 일괄 적용」(옛 정책 화면 「전체 YAML」 — 기능 그대로 큰 창으로): GET /api/policies/export 를 고쳐 PUT /api/policies 로 전체 교체.
 // 시스템 규칙(blocklist-hosts)은 내보내지 않고 그대로 둔다. 조회자는 읽기만
+// 불러오는 동안 입력 칸 · 적용 단추는 aria-disabled + 사유(11/09 G16 — 초점은 감)
+const LOAD_FIRST = 'YAML 을 불러온 뒤 쓸 수 있습니다';
 export function BulkYamlModal({ canWrite, ruleCount, onClose, onApplied }: { canWrite: boolean; ruleCount: number; onClose: () => void; onApplied: () => void }) {
   const toast = useToast();
   const [text, setText] = useState<string | null>(null);
@@ -62,7 +64,7 @@ export function BulkYamlModal({ canWrite, ruleCount, onClose, onApplied }: { can
           {canWrite && (
             <ActionButton
               onClick={() => setAsk(true)}
-              reason={text === null ? 'YAML 을 불러온 뒤 쓸 수 있습니다' : busy ? '적용 중입니다' : null}
+              reason={text === null ? LOAD_FIRST : busy ? '적용 중입니다' : null}
               className="sg-btn sg-btn-primary"
             >
               {busy ? '적용 중…' : '전체 교체 후 적용'}
@@ -85,10 +87,11 @@ export function BulkYamlModal({ canWrite, ruleCount, onClose, onApplied }: { can
                 className={CW_BODY}
                 wrap="off"
                 value={text ?? '불러오는 중…'}
-                disabled={text === null}
+                aria-disabled={text === null ? 'true' : undefined}
+                title={text === null ? LOAD_FIRST : undefined}
                 spellCheck={false}
                 onChange={(e) => setText(e.target.value)}
-                readOnly={!canWrite}
+                readOnly={!canWrite || text === null}
                 aria-label="전체 정책 YAML"
               />
             </CodeWindow>

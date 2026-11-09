@@ -46,8 +46,8 @@ test.describe('URL 1021 — 목록 필터는 화면 상태로만', () => {
     await page.getByRole('option', { name: 'connect', exact: true }).click();
     await page.locator('[data-filter="action"]').click();
     await page.getByRole('option', { name: '격리 (kill)' }).click();
-    await page.getByPlaceholder('규칙 ID').fill('egress');
-    await page.getByPlaceholder('규칙 ID').press('Enter');
+    await page.getByPlaceholder('정책 ID').fill('egress'); // 11/09 G44: 감사 로그 「규칙」 → 「정책」
+    await page.getByPlaceholder('정책 ID').press('Enter');
     await page.getByLabel('기간 시작').fill('2020-01-01T00:00');
     await expect.poll(() => backend.requests.some((r) => r.path.startsWith('/audit?') && r.path.includes('rule=egress') && r.path.includes('action=kill'))).toBe(true);
     expect(filterKeysIn(page)).toEqual([]);
@@ -75,7 +75,7 @@ test.describe('URL 1021 — 목록 필터는 화면 상태로만', () => {
     await expect(page).toHaveURL(/\/topology$/);
     // AI 도우미 답의 /audit?rule= — 링크용 키(view · id · tab)는 남긴다
     await page.goto('/audit?rule=egress-allowlist&id=200');
-    await expect(page.getByPlaceholder('규칙 ID')).toHaveValue('egress-allowlist');
+    await expect(page.getByPlaceholder('정책 ID')).toHaveValue('egress-allowlist');
     await expect(page).toHaveURL(/\/audit\?id=200$/);
     await expect.poll(() => backend.requests.some((r) => r.path.startsWith('/audit?') && r.path.includes('rule=egress-allowlist'))).toBe(true);
     // 정책 마법사 미리 채우기(예전 북마크)도 한 번 읽고 지운다

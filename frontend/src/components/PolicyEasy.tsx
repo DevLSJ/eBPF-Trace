@@ -192,7 +192,8 @@ function ChipGroup({
             <span className="font-mono">{c.value}</span>
             <button
               type="button"
-              aria-label={`${c.value} 빼기`}
+              aria-label={`빼기(${c.value})`}
+              title={`빼기(${c.value})`}
               className="rounded-full p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
               onClick={() => onChange(withList(d, c.field, listOf(d, c.field).filter((x) => x !== c.value)))}
             >

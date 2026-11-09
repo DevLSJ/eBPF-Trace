@@ -147,11 +147,11 @@ test.describe('③ 정책 목록 표', () => {
     await expect(cell(page, noHit.id, 'lastHit')).toHaveText('');
     await expect(cell(page, 'sensitive-files', 'updated')).toHaveText(/^\d{2}-\d{2} \d{2}:\d{2}$/);
     await expect(cell(page, 'sandbox-secrets', 'updated')).toHaveText('');
-    // 숨김 칸: 조건 요약 · 출처 · 수정자
+    // 숨김 칸: 조건 요약 · 출처 · 처리자(11/09 G44: 옛 「수정자」)
     await page.locator('[data-table-tools="policies"] [data-action="table-columns"]').click();
     const picker = page.locator('[data-part="column-picker"]');
-    for (const n of ['조건 요약', '출처', '수정자']) await expect(picker.getByRole('checkbox', { name: n })).not.toBeChecked();
-    await picker.getByRole('checkbox', { name: '수정자' }).check();
+    for (const n of ['조건 요약', '출처', '처리자']) await expect(picker.getByRole('checkbox', { name: n })).not.toBeChecked();
+    await picker.getByRole('checkbox', { name: '처리자' }).check();
     await page.keyboard.press('Escape');
     await expect(cell(page, 'sensitive-files', 'by')).toHaveText(ACTOR);
     await expect(page.locator('[data-table-tools="policies"] [data-part="total"]')).toHaveText(`총 ${backend.rules.length}건`);

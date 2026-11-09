@@ -120,7 +120,7 @@ export function Modal({
         <div className="tk-xl">
           <header className="tk-xl-head">
             <h3 className="min-w-0 flex-1 truncate text-base font-semibold">{title}</h3>
-            <ActionButton aria-label="닫기" reason={busy && '저장 중입니다'} onClick={tryClose} className="tk-icon-btn">
+            <ActionButton aria-label="닫기" title="닫기" reason={busy && '저장 중입니다'} onClick={tryClose} className="tk-icon-btn">
               <X className="size-4" aria-hidden />
             </ActionButton>
           </header>
@@ -259,6 +259,7 @@ const EFFECT_TONE: Record<string, string> = {
 //   title 「[대상]을 [동작]할까요?」 · body 한두 문장 · impact 영향 범위 줄마다 하나(개수 포함 — 주면 옛 「함께 일어나는 일」 칸 대신)
 //   blocked 막는 사유(있으면 확인이 aria-disabled + 그 사유, 확인 체크 없음) · requireCheck 위험하면 확인 체크 「~ㅁ을 확인했습니다」(체크 전엔 확인 꺼짐)
 //   confirmLabel 확인 단추 동작 한 단어(삭제 · 저장 · 되돌리기, okLabel 과 같음) · danger 지우기 · 되돌릴 수 없는 일은 위험 단추(tone 과 같음)
+//   새 양식에서 impact 없이 loadEffects(서버 계산 — 판정 미리보기) · effects 를 주면 그 줄이 「영향 범위」 칸에 들어간다(계산 중 · 실패도 그 칸 안, 11/09 G19)
 //   <ConfirmDialog title="정책 a 를 삭제할까요?" body="…" impact={['컨테이너 3개의 판정이 바뀝니다.']} requireCheck="삭제하면 되돌릴 수 없음을 확인했습니다" confirmLabel="삭제" danger onConfirm={…} onCancel={…} />
 export function ConfirmDialog({
   title,
@@ -301,8 +302,9 @@ export function ConfirmDialog({
   const isDanger = danger ?? (tone ? tone === 'danger' : true);
   const needCheck = !!requireCheck && !blocked;
   const offReason = blocked || (needCheck && !checked ? '확인 칸을 먼저 고르세요' : null);
-  // 옛 「함께 일어나는 일」 칸 — effects · loadEffects 를 주거나, 새 양식(body · impact)을 하나도 안 줄 때
-  const legacyEffects = !!effects || !!loadEffects || (body === undefined && impact === undefined);
+  // 옛 「함께 일어나는 일」 칸 — 새 양식(body · impact)을 하나도 안 줄 때만. 새 양식이면 effects · loadEffects 도 「영향 범위」 칸에
+  const newForm = body !== undefined || impact !== undefined;
+  const legacyEffects = !newForm;
   const [loaded, setLoaded] = useState<{ items?: EffectItem[]; error?: string } | null>(null);
   // 처음 받은 계산 함수만 쓴다(부모가 다시 그려도 한 번)
   const [load] = useState(() => loadEffects);
@@ -323,6 +325,7 @@ export function ConfirmDialog({
         : (loaded.items ?? [])
     : (effects ?? []);
   const shown = items.length ? items : ['따로 바뀌는 것 없음'];
+  const impactItems: EffectItem[] = impact ?? (newForm && (load || effects) ? (items.length ? items : ['따로 바뀌는 것이 없습니다.']) : []);
   return (
     <Modal
       title={title}
@@ -359,15 +362,18 @@ export function ConfirmDialog({
           {blocked}
         </p>
       )}
-      {!!impact?.length && (
+      {!!impactItems.length && (
         <div className="text-sm">
           <div className="font-medium">영향 범위</div>
-          <ul className="mt-1 grid max-h-[168px] list-disc gap-0.5 overflow-y-auto pl-5" data-part="confirm-impact">
-            {impact.map((x, i) => (
-              <li key={i} data-kind={typeof x === 'string' ? undefined : x.kind} className="text-text-2">
-                {typeof x === 'string' ? x : x.text}
-              </li>
-            ))}
+          <ul className="mt-1 grid max-h-[168px] list-disc gap-0.5 overflow-y-auto pl-5" data-part="confirm-impact" aria-live={load ? 'polite' : undefined}>
+            {impactItems.map((x, i) => {
+              const kind = typeof x === 'string' ? '' : x.kind;
+              return (
+                <li key={i} data-kind={kind || undefined} className={EFFECT_TONE[kind] ?? 'text-text-2'}>
+                  {typeof x === 'string' ? x : x.text}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
