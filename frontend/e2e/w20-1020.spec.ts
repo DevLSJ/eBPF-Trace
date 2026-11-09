@@ -111,7 +111,7 @@ test.describe('W20 768px 넘침 0', () => {
       void backend;
       await settle(page, '/events', 'events');
       await expect(page.getByText('이미지', { exact: true })).toBeVisible();
-      await expect(page.getByText('규칙', { exact: true })).toBeVisible();
+      await expect(page.locator('[data-part="feed-head"]').getByText('정책', { exact: true })).toBeVisible(); // 11/09 G44: 「규칙」 칸 → 「정책」(사이드바 「정책」과 겹치지 않게 머리 줄 안에서)
     });
   });
 });

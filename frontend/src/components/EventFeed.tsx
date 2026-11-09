@@ -1,6 +1,7 @@
 import { Pause, Play } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { StreamVerdict } from '../hooks/useEventStream';
+import { FIELD } from '../lib/fieldNames';
 import { fmtTime } from '../lib/format';
 import { detailOf, levelOf } from '../lib/types';
 import { KindBadge } from './KindBadge';
@@ -57,7 +58,7 @@ export function EventFeed({ verdicts, selectedKey, onSelect, empty = '이벤트 
           {showImage && <span className={`w-40 shrink-0 ${WIDE_ONLY}`}>이미지</span>}
           <span className={`w-16 shrink-0 text-center ${MID_ONLY}`}>종류</span>
           <span className={`min-w-0 flex-1 ${MID_ONLY}`}>상세 (인자 · 경로 · 목적지)</span>
-          {showImage && <span className={`w-36 shrink-0 ${WIDE_ONLY}`}>규칙</span>}
+          {showImage && <span className={`w-36 shrink-0 ${WIDE_ONLY}`}>{FIELD.policy}</span>}
           <span className="w-20 shrink-0">탐지 결과</span>
         </div>
       )}

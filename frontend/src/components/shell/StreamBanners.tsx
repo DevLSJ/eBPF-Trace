@@ -2,7 +2,7 @@ import { useEffect, useRef, type CSSProperties } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useStream } from '../../hooks/stream-context';
 import { useToast } from '../../hooks/toast-context';
-import { errorText } from '../../lib/api';
+import { errorText, sentence } from '../../lib/api';
 import { fmtNum } from '../../lib/format';
 
 // D. 실시간 연결(10/20 확정) — 목업 shared/app.js 셸 connBanner · backfill.
@@ -28,7 +28,7 @@ export function StreamBanners() {
       {loadError != null && !shownInList && (
         <div data-banner="load" role="alert" style={danger} className="sg-banner flex shrink-0 items-center gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-[13px] text-red-900 md:px-6">
           <span className="min-w-0 flex-1">
-            <b>이벤트를 불러오지 못했습니다</b>({errorText(loadError)}). 지금 보이는 목록 · 숫자는 실제와 다를 수 있습니다.
+            <b>이벤트를 불러오지 못했습니다.</b> {sentence(errorText(loadError))} 지금 보이는 목록 · 숫자는 실제와 다를 수 있습니다.
           </span>
           <button type="button" onClick={retryLoad} className="sg-btn sg-btn-sm sg-btn-outline-danger shrink-0">
             다시 시도

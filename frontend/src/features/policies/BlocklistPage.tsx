@@ -16,7 +16,7 @@ import { useToast } from '../../hooks/toast-context';
 import { useListQuery } from '../../hooks/useListQuery';
 import { useLoad } from '../../hooks/useLoad';
 import { COL_W, useTableKit, type Column } from '../../hooks/useTableKit';
-import { api, ApiError, errorText } from '../../lib/api';
+import { api, failText } from '../../lib/api';
 import { screenCopy } from '../../lib/screenCopy';
 import type { BlockEntry, BlockList } from '../../lib/types';
 
@@ -96,7 +96,7 @@ export function BlocklistPage() {
       toast(`${r.value} 차단을 해제했습니다.`, { key: `unblock:${r.value}`, tone: 'ok' });
       data.reload();
     } catch (e) {
-      toast(`차단을 해제하지 못했습니다(${e instanceof ApiError ? e.message : errorText(e)}).`, { key: `unblock:${r.value}`, tone: 'danger' });
+      toast(failText('차단을 해제하지 못했습니다.', e), { key: `unblock:${r.value}`, tone: 'danger' });
     }
   };
 

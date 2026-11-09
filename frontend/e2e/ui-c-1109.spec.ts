@@ -6,7 +6,7 @@ import { expect, SHOTS, test } from './fixtures';
 // 11/09 저녁 묶음 C(정책 · 판정 문구 · 표기) — 참고 제품 문서와 대조해 찾은 항목:
 //   G41 시각 YYYY-MM-DD HH:mm:ss(표 칸 TimeText 와 같은 모양) · G44 칸 이름 통일(통일표 lib/fieldNames.ts 한 곳)
 //   G16 꺼진 단추는 초점을 받고 사유를 읽어 줌(aria-disabled + title) · G19 확인 창 제목 「~할까요?」 + 영향 범위 줄
-//   G20 실패 알림 「~하지 못했습니다(…).」 + 할 일 · G24 아이콘 단추 title = aria-label · G37 한글 뒤 조사
+//   G20 실패 알림 「~하지 못했습니다. 이유.」 + 할 일(11/09 INTEG: 이유는 괄호 없이) · G24 아이콘 단추 title = aria-label · G37 한글 뒤 조사
 // 화면 사진은 UI_C_SHOTS(없으면 test-results/screens/ui-c-1109)
 const LOG = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/;
 const LOG_IN = '\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d';
@@ -238,7 +238,7 @@ test.describe('G19 확인 창 — 제목 「~할까요?」 + 영향 범위 줄',
   });
 });
 
-test.describe('G20 실패 알림 — 「~하지 못했습니다(…).」 + 할 일', () => {
+test.describe('G20 실패 알림 — 「~하지 못했습니다. 이유.」 + 할 일', () => {
   test('판정 실패(500)', async ({ page, backend, allowConsole }) => {
     void backend;
     allowConsole(/500/);
@@ -247,8 +247,7 @@ test.describe('G20 실패 알림 — 「~하지 못했습니다(…).」 + 할 �
     await page.getByTestId('decision').getByRole('button', { name: '악성 확정' }).click();
     await page.locator(`${DIALOG} [data-confirm="ok"]`).click();
     const t = page.locator('[data-toast="decide:case-0004"]');
-    await expect(t).toContainText('판정하지 못했습니다(');
-    await expect(t).toContainText('모의 오류).');
+    await expect(t).toContainText('판정하지 못했습니다. 모의 오류.');
     await expect(t).toContainText('잠시 뒤 다시 시도하세요.');
     await expect(t).not.toContainText('판정 실패');
   });
@@ -266,8 +265,7 @@ test.describe('G20 실패 알림 — 「~하지 못했습니다(…).」 + 할 �
     await detail.getByRole('button', { name: '적용', exact: true }).click();
     await page.locator(`${DIALOG} [data-confirm="ok"]`).click();
     const t = page.locator('[data-toast^="proposal:"]');
-    await expect(t).toContainText('제안을 적용하지 못했습니다(');
-    await expect(t).toContainText('모의 오류).');
+    await expect(t).toContainText('제안을 적용하지 못했습니다. 모의 오류.');
     await expect(t).toContainText('다시 시도하세요.');
     await expect(t).not.toContainText('적용 실패');
   });

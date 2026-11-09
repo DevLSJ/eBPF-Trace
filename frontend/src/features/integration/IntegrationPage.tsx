@@ -8,7 +8,7 @@ import { useCountUp } from '../../hooks/useCountUp';
 import { useInterval, useLoad } from '../../hooks/useLoad';
 import { useStream } from '../../hooks/stream-context';
 import { useToast } from '../../hooks/toast-context';
-import { api, ApiError } from '../../lib/api';
+import { api, ApiError, failText, sentence } from '../../lib/api';
 import { screenCopy } from '../../lib/screenCopy';
 import { fmtNum } from '../../lib/format';
 import type { Info, IntegrationContainer, IntegrationEnv, IntegrationStatus, IntegrationTest, Kind } from '../../lib/types';
@@ -150,7 +150,7 @@ function TestStep({ env, test, isAdmin, onStarted }: { env: IntegrationEnv; test
       await api.integrationTest();
       onStarted();
     } catch (e) {
-      toast(`연결 테스트를 시작하지 못했습니다${e instanceof ApiError ? `(${e.message}).` : '. 잠시 뒤 다시 시도하세요.'}`, { key: 'int-test', tone: 'warn' });
+      toast(e instanceof ApiError ? failText('연결 테스트를 시작하지 못했습니다.', e) : '연결 테스트를 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.', { key: 'int-test', tone: 'warn' });
     } finally {
       setStarting(false);
     }
@@ -232,7 +232,7 @@ function WatchList({ data }: { data?: IntegrationStatus }) {
       }
     >
       <div className="int-watch-body">
-        {data?.listError && <p className="int-points warn" role="alert">컨테이너 목록을 읽지 못했습니다({data.listError}).</p>}
+        {data?.listError && <p className="int-points warn" role="alert">컨테이너 목록을 읽지 못했습니다. {sentence(data.listError)}</p>}
         {!data ? (
           <Skeleton rows={6} />
         ) : rows.length + gone.length === 0 ? (

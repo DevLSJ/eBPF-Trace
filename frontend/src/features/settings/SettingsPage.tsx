@@ -20,7 +20,7 @@ import { useToast } from '../../hooks/toast-context';
 import { PageActions } from '../../components/PageActions';
 import { resetLayout } from '../../lib/layout';
 import { useLoad } from '../../hooks/useLoad';
-import { api, ApiError, authApi, errorText } from '../../lib/api';
+import { api, ApiError, authApi, failText } from '../../lib/api';
 import { engineName, LOCAL_ONLY, NOT_SENT_ITEMS, SENT_ITEMS } from '../../lib/chatEngine';
 import { AUTH_MSG, daysLeft, licenseText, ROLE_KO } from '../../lib/auth';
 import { fmtNum } from '../../lib/format';
@@ -121,7 +121,7 @@ function Row({ label, value, env, desc, hint }: { label: string; value: ReactNod
 function SettingNames({ names }: { names: string }) {
   return (
     <span className="mt-0.5 block">
-      <code data-part="setting-name" className="text-[11px] text-text-3">
+      <code data-part="setting-name" className="text-xs text-text-3">
         {names}
       </code>
     </span>
@@ -150,7 +150,7 @@ function ServerTab() {
         setSending(false);
       }, 1500);
     } catch (e) {
-      toast(`테스트 알림을 보내지 못했습니다(${errorText(e)}).`, { key: 'notify-test', tone: 'danger' });
+      toast(failText('테스트 알림을 보내지 못했습니다.', e), { key: 'notify-test', tone: 'danger' });
       setSending(false);
     }
   };
@@ -819,7 +819,7 @@ function AuthAuditRows({ action, failed, onClear }: { action: string; failed: bo
         <div className="flex flex-col items-center gap-1 border-t border-slate-100 py-3 text-xs">
           {moreErr != null && (
             <span className="text-red-600" role="alert">
-              더 불러오지 못했습니다({errorText(moreErr)}).
+              {failText('더 불러오지 못했습니다.', moreErr)}
             </span>
           )}
           {hasMore && (

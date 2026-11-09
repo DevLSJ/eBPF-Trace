@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight, Play, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import YAML from 'yaml';
-import { api, errorText } from '../lib/api';
+import { api, errorText, sentence } from '../lib/api';
 import { fmtNum } from '../lib/format';
 import { ID_PATTERN, listOf, NUM_FIELDS, scopeOf, summarize, toDraft, toRule, withList, type Draft, type ListField, type Scope } from '../lib/policyEasy';
 import { SEQ_KILL_WARN, SEQ_NO_PREVIEW, SEQ_YAML_ONLY, seqSummary } from '../lib/sequence';
@@ -510,7 +510,7 @@ function SaveCheck({
               )}
             </>
           ) : check.error ? (
-            <p className="text-amber-700">미리보기를 계산하지 못했습니다({check.error}). 저장은 할 수 있습니다.</p>
+            <p className="text-amber-700">미리보기를 계산하지 못했습니다. {sentence(check.error)} 저장은 할 수 있습니다.</p>
           ) : !pv ? (
             <p className="text-slate-500">최근 감사 로그로 미리 계산하는 중…</p>
           ) : (

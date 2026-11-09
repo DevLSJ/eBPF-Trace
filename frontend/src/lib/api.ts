@@ -94,6 +94,17 @@ const isNetworkError = (e: unknown) => e instanceof TypeError && /fetch|network|
 export const errorText = (e: unknown) =>
   e instanceof ApiError ? e.message || statusMessage(e.status) : isNetworkError(e) ? NET_FAIL_TEXT : e instanceof Error ? e.message : String(e);
 
+// 실패 알림 한 줄(11/09 INTEG): 「~하지 못했습니다.」 + 이유(서버 문장 · 고정 문장) — 이유를 괄호에 넣지 않는다.
+// 서버 문장은 마침표 없이 오기도 해서 끝에 마침표를 붙이고, 할 일(todo)은 이유가 이미 「~하세요.」로 끝나면 덧붙이지 않는다(할 일 두 번 방지)
+export const sentence = (t: string) => {
+  const s = t.trim();
+  return !s || /[.!?…]$/.test(s) ? s : `${s}.`;
+};
+export function failText(head: string, e: unknown, todo = '') {
+  const why = sentence(errorText(e));
+  return [head, why, todo && !/하세요\.$/.test(why) ? todo : ''].filter(Boolean).join(' ');
+}
+
 // 쿠키 세션(sg_session, HttpOnly)만 쓴다 — Authorization 헤더를 붙이지 않는다.
 // 미들웨어는 Authorization 을 쿠키보다 먼저 보므로 옛 관리자 토큰이 남아 있으면 401 이 된다(W14).
 async function send(path: string, init: RequestInit = {}, flow = false): Promise<Response> {

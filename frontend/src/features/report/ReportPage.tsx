@@ -12,6 +12,7 @@ import { LevelBadge, VerdictBadge } from '../../components/VerdictBadge';
 import { useAuth } from '../../hooks/auth-context';
 import { useToast } from '../../hooks/toast-context';
 import { useLoad } from '../../hooks/useLoad';
+import { FIELD } from '../../lib/fieldNames';
 import { screenCopy } from '../../lib/screenCopy';
 import { fmtDateTime } from '../../lib/format';
 import { SOURCE_LABEL } from '../../lib/guide';
@@ -129,7 +130,7 @@ function Report({ d, author, at }: { d: ReportData; author: string; at: Date }) 
           <table className="sg-table">
             <thead>
               <tr>
-                {['시각', '종류', '규칙', '상세', '판정'].map((h) => (
+                {['시각', '종류', FIELD.policy, '상세', '판정'].map((h) => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>

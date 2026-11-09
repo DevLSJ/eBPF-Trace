@@ -226,7 +226,7 @@ test.describe('건 보고서 1장', () => {
     await expect(rep.locator('[data-section="timeline"] [data-part="timeline-total"]')).toHaveText('격리까지 0.42초');
     const rows = rep.locator('[data-section="violations"] tbody tr');
     await expect(rows).toHaveCount(6);
-    expect(await rep.locator('[data-section="violations"] thead th').allTextContents()).toEqual(['시각', '종류', '규칙', '상세', '판정']);
+    expect(await rep.locator('[data-section="violations"] thead th').allTextContents()).toEqual(['시각', '종류', '정책', '상세', '판정']); // 11/09 G44: 「규칙」 칸 → 「정책」
     await expect(rows.first().locator('[data-kind-badge]')).toBeVisible();
     const ev = rep.locator('[data-section="evidence"]');
     await expect(ev).toContainText('로그 3줄');
@@ -288,7 +288,7 @@ test.describe('건 보고서 1장', () => {
     expect(md.startsWith('# ')).toBe(true);
     for (const h of ['## 요약', '## 격리 타임라인', '## 위반', '## 증거', '## 판정', '## 정책 변경 · 차단 목록']) expect(md).toContain(h);
     expect(md).toContain('pipe-to-shell');
-    expect(md).toContain('| 시각 | 종류 | 규칙 | 상세 | 판정 |');
+    expect(md).toContain('| 시각 | 종류 | 정책 | 상세 | 판정 |');
     // 사이드바 · 머리는 인쇄에서 숨긴다
     await page.emulateMedia({ media: 'print' });
     await expect(page.locator('aside[data-part="sidebar"]')).toBeHidden();

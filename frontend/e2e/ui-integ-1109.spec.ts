@@ -132,13 +132,14 @@ test.describe('실패 알림 — 「~하지 못했습니다.」 + 서버 문장(
     await page.route(/\/api\/policies\/export$/, abort);
     await page.getByRole('button', { name: 'YAML 일괄 적용' }).click();
     await failLine(page.getByRole('dialog').getByRole('alert'), 'YAML 을 불러오지 못했습니다.');
-    await page.getByRole('dialog').getByRole('button', { name: '닫기', exact: true }).click();
+    await page.getByRole('dialog').locator('button.sg-btn-secondary', { hasText: '닫기' }).click();
     await page.unroute(/\/api\/policies\/export$/);
     await page.route(/\/api\/policies$/, (r) => (r.request().method() === 'PUT' ? r.abort('failed') : r.fallback()));
     await page.getByRole('button', { name: 'YAML 일괄 적용' }).click();
     const modal = page.getByRole('dialog').first();
     await expect(modal.locator('textarea')).not.toHaveValue('불러오는 중…');
     await modal.getByRole('button', { name: '전체 교체 후 적용' }).click();
+    await page.locator(DIALOG).getByRole('checkbox').check();
     await page.locator(`${DIALOG} [data-confirm="ok"]`).click();
     await failLine(modal.getByRole('alert'), '적용하지 못했습니다.');
   });
@@ -213,6 +214,7 @@ test.describe('칸 이름 — 통일표(lib/fieldNames.ts) 한 곳', () => {
     backend.enableIsolation();
     await page.goto('/report?install=ins-0012');
     const rep = page.getByTestId('report');
+    await expect(rep.locator('[data-section="violations"] tbody tr').first()).toBeVisible();
     expect(await rep.locator('[data-section="violations"] thead th').allTextContents()).toEqual(['시각', '종류', '정책', '상세', '판정']);
     await page.getByRole('button', { name: 'Markdown 복사' }).click();
     await expect(page.locator('[data-toast="report-copy"]')).toContainText('복사');
@@ -242,7 +244,7 @@ test.describe('칸 이름 — 통일표(lib/fieldNames.ts) 한 곳', () => {
     expect(src('components/list/state-copy.ts')).toMatch(/clear: FIELD\.clearFilters/);
     for (const f of ['features/report/ReportPage.tsx', 'lib/report.ts', 'components/EventFeed.tsx', 'features/scans/ScansPage.tsx']) {
       const s = src(f);
-      expect(s, f).toMatch(/lib\/fieldNames'/);
+      expect(s, f).toMatch(/\/fieldNames'/);
       expect(s, f).toMatch(/FIELD\.(policy|manager)/);
     }
   });

@@ -4,7 +4,7 @@ import { CodeWindow, CW_BODY } from '../../components/CodeWindow';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { useToast } from '../../hooks/toast-context';
 import { useUnsaved } from '../../hooks/useUnsaved';
-import { api, errorText } from '../../lib/api';
+import { api, failText } from '../../lib/api';
 
 // 「YAML 일괄 적용」(옛 정책 화면 「전체 YAML」 — 기능 그대로 큰 창으로): GET /api/policies/export 를 고쳐 PUT /api/policies 로 전체 교체.
 // 시스템 규칙(blocklist-hosts)은 내보내지 않고 그대로 둔다. 조회자는 읽기만
@@ -23,7 +23,7 @@ export function BulkYamlModal({ canWrite, ruleCount, onClose, onApplied }: { can
     api
       .exportYaml()
       .then(setText)
-      .catch((e: unknown) => setLoadErr(errorText(e)));
+      .catch((e: unknown) => setLoadErr(failText('YAML 을 불러오지 못했습니다.', e)));
   }, []);
 
   const apply = async () => {
@@ -36,7 +36,7 @@ export function BulkYamlModal({ canWrite, ruleCount, onClose, onApplied }: { can
       toast(`정책 ${rs.length}개를 적용했습니다.`, { key: 'policy-yaml', tone: 'ok' });
       setMsg({ ok: true, text: `정책 ${rs.length}개를 엔진에 적용했습니다.` });
     } catch (e) {
-      setMsg({ ok: false, text: `적용하지 못했습니다(${errorText(e)}).` });
+      setMsg({ ok: false, text: failText('적용하지 못했습니다.', e) });
     } finally {
       setBusy(false);
     }
@@ -77,7 +77,7 @@ export function BulkYamlModal({ canWrite, ruleCount, onClose, onApplied }: { can
         <p className="text-xs text-text-3">지금 정책 전체를 YAML 로 고쳐 한 번에 교체합니다. 시스템 규칙 blocklist-hosts 는 들어 있지 않고 그대로 남습니다.</p>
         {loadErr ? (
           <p role="alert" className="text-sm text-danger-text">
-            YAML 을 불러오지 못했습니다({loadErr}).
+            {loadErr}
           </p>
         ) : (
           <div className="min-h-0 flex-1">

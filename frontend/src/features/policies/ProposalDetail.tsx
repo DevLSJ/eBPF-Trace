@@ -7,7 +7,7 @@ import { ConfirmDialog } from '../../components/Modal';
 import { Empty, LoadError, Panel } from '../../components/Panel';
 import { useCases } from '../../hooks/cases-context';
 import { useToast } from '../../hooks/toast-context';
-import { api, errorText } from '../../lib/api';
+import { api, failText } from '../../lib/api';
 import { FIELD } from '../../lib/fieldNames';
 import { fmtDateTime, fmtNum } from '../../lib/format';
 import { scanHref, SOURCE_LABEL } from '../../lib/guide';
@@ -21,7 +21,7 @@ const levelText = (v: string) => LEVEL_LABEL[v as Level] ?? (v === 'kill' ? '격
 // 제안 상세: 근거(판정) → 변경 내용 → 미리보기(과거 위반 중 결과가 바뀌는 건) → 적용 / 버림
 // 초안을 열면 미리보기를 바로 한 번 계산한다(결정 2026-10-15) — 다시 계산은 「미리보기」 버튼
 // 11/09 G16 · G19 · G20: 「적용」은 미리보기 전엔 aria-disabled + 사유, 확인 창 제목 「[대상] 차단 · 예외 제안을 ~할까요?」 + 영향 범위,
-//   실패 알림 「제안을 ~하지 못했습니다(사유).」 + 할 일
+//   실패 알림 「제안을 ~하지 못했습니다. 사유.」 + 할 일(11/09 INTEG: 사유는 괄호 없이 한 문장)
 export function ProposalDetail({
   proposal: p,
   loading,
@@ -96,7 +96,7 @@ export function ProposalDetail({
       });
       onDone();
     } catch (e) {
-      toast(`제안을 ${kind === 'apply' ? '적용하지' : '버리지'} 못했습니다(${errorText(e)}). 잠시 뒤 다시 시도하세요.`, { key: `proposal:${p.id}`, tone: 'danger' });
+      toast(failText(`제안을 ${kind === 'apply' ? '적용하지' : '버리지'} 못했습니다.`, e, '잠시 뒤 다시 시도하세요.'), { key: `proposal:${p.id}`, tone: 'danger' });
     } finally {
       setBusy(false);
     }

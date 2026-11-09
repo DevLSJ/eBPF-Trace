@@ -6,7 +6,7 @@ import { Section } from '../../components/Sheet';
 import { useAuth } from '../../hooks/auth-context';
 import { useToast } from '../../hooks/toast-context';
 import { useLoad } from '../../hooks/useLoad';
-import { api, errorText } from '../../lib/api';
+import { api, failText } from '../../lib/api';
 import type { Scan } from '../../lib/types';
 
 // 패키지 골라 차단(10/20 G) — 저장소 · 파일 검사 결과의 패키지(잠금 파일마다 한 행)를 (매니저, 이름, 버전)으로 묶어 한 줄 + 출처 파일 나열.
@@ -76,7 +76,7 @@ export function ScanPackages({ s }: { s: Scan }) {
       );
       nav(`/policies?proposal=${encodeURIComponent(r.proposalId)}`);
     } catch (e) {
-      toast(`차단 제안을 만들지 못했습니다(${errorText(e)}).`, { key: 'scan-block', tone: 'danger' });
+      toast(failText('차단 제안을 만들지 못했습니다.', e), { key: 'scan-block', tone: 'danger' });
     }
   };
   return (

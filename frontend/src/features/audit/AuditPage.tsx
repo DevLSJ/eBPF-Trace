@@ -27,7 +27,7 @@ import { VerdictBadge } from '../../components/VerdictBadge';
 import { useCases } from '../../hooks/cases-context';
 import { useFilters } from '../../hooks/useFilters';
 import { useLoad } from '../../hooks/useLoad';
-import { api, errorText, type AuditParams } from '../../lib/api';
+import { api, failText, type AuditParams } from '../../lib/api';
 import { FIELD } from '../../lib/fieldNames';
 import { shortId } from '../../lib/format';
 import { scanHref, SOURCE_LABEL } from '../../lib/guide';
@@ -718,7 +718,7 @@ function useAuditExport(filters: Filters, kit: TableKit<AuditEntry>) {
       const day = (v: string) => v.slice(0, 10).replace(/-/g, '');
       downloadCSV(`supplyguard-audit-${day(filters.since)}-${day(filters.until)}.csv`, kit.csv(all.slice(0, CSV_MAX)));
     } catch (e) {
-      setErr(`내보내지 못했습니다(${errorText(e)}).`);
+      setErr(failText('내보내지 못했습니다.', e));
     } finally {
       setBusy(false);
     }

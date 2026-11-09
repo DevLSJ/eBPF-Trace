@@ -24,7 +24,8 @@ import { sheetNav, type SheetNav } from '../../components/sheet-nav';
 import { useAuth } from '../../hooks/auth-context';
 import { useToast } from '../../hooks/toast-context';
 import { useInterval, useLoad } from '../../hooks/useLoad';
-import { api, errorText } from '../../lib/api';
+import { api, errorText, failText, sentence } from '../../lib/api';
+import { FIELD } from '../../lib/fieldNames';
 import { fmtNum } from '../../lib/format';
 import { SCAN_VERDICT_LABEL, type Scan, type ScanFinding } from '../../lib/types';
 import { ScanVerdictBadge } from '../../components/Badges';
@@ -251,7 +252,7 @@ function ScanForm({ canWrite, onStarted }: { canWrite: boolean; onStarted: () =>
         <div className="flex min-w-0 gap-2">
           {kind === 'package' ? (
             <>
-              <select className={`${input} w-20`} data-field="manager" aria-label="매니저" value={manager} onChange={(e) => setManager(e.target.value)}>
+              <select className={`${input} w-20`} data-field="manager" aria-label={FIELD.manager} value={manager} onChange={(e) => setManager(e.target.value)}>
                 <option>pip</option>
                 <option>npm</option>
               </select>
@@ -332,7 +333,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
       const r = await api.scanBlock(s.id, reason);
       nav(`/policies?proposal=${encodeURIComponent(r.proposalId)}`);
     } catch (e) {
-      toast(`차단 제안을 만들지 못했습니다(${errorText(e)}).`, { key: 'scan-block', tone: 'danger' });
+      toast(failText('차단 제안을 만들지 못했습니다.', e), { key: 'scan-block', tone: 'danger' });
     }
   };
   const item = (f: ScanFinding) => {
@@ -360,7 +361,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
             {s.risk && <span className="text-xs">위험 점수 <b className="num">{s.risk.score.toFixed(1)}</b> / 10 · {RISK[s.risk.label] ?? s.risk.label}</span>}
           </div>
           <p className="text-xs text-slate-700">
-            {s.status === 'failed' ? `검사하지 못했습니다(${s.error}).` : s.status === 'running' ? '검사 중입니다…'
+            {s.status === 'failed' ? `검사하지 못했습니다. ${sentence(s.error ?? '')}`.trim() : s.status === 'running' ? '검사 중입니다…'
               : s.verdict === 'malicious' ? `설치 단계에서 위험한 행동을 하는 코드가 ${s.installThreats || threats.length}곳 있습니다. 설치하지 말고 차단 목록에 올리세요.`
               : s.verdict === 'vulnerable' ? vulnText()
               : s.verdict === 'caution' ? `설치 단계의 위험한 행동은 없고, 실행 중 동작 규칙(동적 로딩 · 환경 변수 읽기 등)에 ${threats.length}곳 걸렸습니다. 정상 라이브러리에도 흔한 패턴이니 코드 보기로 확인하세요.`

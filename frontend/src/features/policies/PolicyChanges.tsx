@@ -8,7 +8,7 @@ import { EmptyState, ListError, PagerSlot, Skeleton } from '../../components/lis
 import { Modal } from '../../components/Modal';
 import { useToast } from '../../hooks/toast-context';
 import { useLoad } from '../../hooks/useLoad';
-import { api, ApiError, errorText } from '../../lib/api';
+import { api, failText } from '../../lib/api';
 import { SYSTEM_RULES, type Change, type Rule } from '../../lib/types';
 import { ActionTag, ChangeDiff } from './ChangeParts';
 import { changeHasDiff, ruleDiff } from './changeView';
@@ -37,8 +37,8 @@ export function PolicyChanges({ ruleId, current, canWrite, onReverted }: { ruleI
       res.reload();
       onReverted();
     } catch (e) {
-      // 서버 오류 문장은 바꾸지 않고 그대로
-      toast(`되돌리지 못했습니다(${e instanceof ApiError ? e.message : errorText(e)}).`, { key: `revert-fail:${c.id}`, tone: 'danger' });
+      // 서버 오류 문장은 바꾸지 않고 그대로(괄호 없이 「되돌리지 못했습니다.」 뒤 한 문장)
+      toast(failText('되돌리지 못했습니다.', e), { key: `revert-fail:${c.id}`, tone: 'danger' });
     }
   };
 
