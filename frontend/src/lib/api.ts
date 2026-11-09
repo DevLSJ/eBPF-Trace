@@ -71,22 +71,50 @@ export function setAuthHooks(h: AuthHooks | null) {
 // 새 API 가 아직 백엔드에 없을 때(라우트 없음 → 404). 그 영역만 「백엔드 미지원」으로 보이고 앱은 계속 동작한다.
 export const isUnsupported = (e: unknown) => e instanceof ApiError && e.status === 404 && !e.json;
 
+// 오류 문구(11/09 G14): 화면에는 상태 코드(「500 ·」)를 쓰지 않고 서버가 준 문장만 — 서버 문장이 없을 때만 상태별 고정 문장.
+// 요청 자체가 실패하면(네트워크 · 서버 꺼짐) 브라우저 글(「Failed to fetch」) 대신 연결 실패 고정 문장(상태 0)
+export const NET_FAIL_TEXT = '서버에 연결하지 못했습니다. 네트워크를 확인한 뒤 다시 시도하세요.';
+export function statusMessage(status: number): string {
+  if (status === 0) return NET_FAIL_TEXT;
+  if (status === 400 || status === 422) return '요청 내용을 처리하지 못했습니다. 입력한 값을 확인하세요.';
+  if (status === 401) return '로그인이 필요합니다. 다시 로그인하세요.';
+  if (status === 403) return '이 작업을 할 권한이 없습니다.';
+  if (status === 404) return '요청한 항목을 찾지 못했습니다.';
+  if (status === 408 || status === 504) return '서버 응답이 늦어 요청을 마치지 못했습니다. 잠시 뒤 다시 시도하세요.';
+  if (status === 409) return '다른 변경과 겹쳐 처리하지 못했습니다. 새로고침한 뒤 다시 시도하세요.';
+  if (status === 413) return '보낸 내용이 너무 커서 처리하지 못했습니다.';
+  if (status === 429) return '요청이 많아 처리하지 못했습니다. 잠시 뒤 다시 시도하세요.';
+  if (status === 502 || status === 503) return '서버가 응답하지 않습니다. 잠시 뒤 다시 시도하세요.';
+  if (status >= 500) return '서버에서 오류가 났습니다. 잠시 뒤 다시 시도하세요.';
+  return '요청을 처리하지 못했습니다. 잠시 뒤 다시 시도하세요.';
+}
+// 스트림을 읽는 도중 끊긴 경우처럼 send 밖에서 난 네트워크 오류도 같은 문장으로
+const isNetworkError = (e: unknown) => e instanceof TypeError && /fetch|network|load failed/i.test(e.message);
+
 export const errorText = (e: unknown) =>
-  e instanceof ApiError ? (e.status ? `${e.status} · ${e.message}` : e.message) : e instanceof Error ? e.message : String(e);
+  e instanceof ApiError ? e.message || statusMessage(e.status) : isNetworkError(e) ? NET_FAIL_TEXT : e instanceof Error ? e.message : String(e);
 
 // 쿠키 세션(sg_session, HttpOnly)만 쓴다 — Authorization 헤더를 붙이지 않는다.
 // 미들웨어는 Authorization 을 쿠키보다 먼저 보므로 옛 관리자 토큰이 남아 있으면 401 이 된다(W14).
 async function send(path: string, init: RequestInit = {}, flow = false): Promise<Response> {
-  const res = await fetch(base + path, { ...init, credentials: 'include' });
+  let res: Response;
+  try {
+    res = await fetch(base + path, { ...init, credentials: 'include' });
+  } catch (e) {
+    // 멈추기(AbortController)는 그대로 던진다 — 부르는 쪽이 signal 로 구분한다
+    if (init.signal?.aborted || (e instanceof DOMException && e.name === 'AbortError')) throw e;
+    throw new ApiError(0, NET_FAIL_TEXT);
+  }
   if (!res.ok) {
-    let msg = res.statusText;
+    // 서버 문장({error})이 없으면(텍스트 본문 · 빈 본문) 영어 상태 글(statusText) 대신 상태별 고정 문장
+    let msg = '';
     let json = false;
     let state = '';
     let body: Record<string, unknown> | null = null;
     if ((res.headers.get('Content-Type') ?? '').includes('json')) {
       try {
         const b = (await res.json()) as { error?: string; state?: string };
-        msg = b.error ?? msg;
+        msg = typeof b.error === 'string' ? b.error.trim() : '';
         state = b.state ?? '';
         json = true;
         body = b as Record<string, unknown>;
@@ -94,6 +122,7 @@ async function send(path: string, init: RequestInit = {}, flow = false): Promise
         /* 본문 없음 */
       }
     }
+    if (!msg) msg = statusMessage(res.status);
     if (!flow && json && authHooks) {
       if (res.status === 401) authHooks.unauthorized(state, msg);
       else if (res.status === 403) authHooks.forbidden(msg);

@@ -283,7 +283,7 @@ test.describe('W19 실시간 끊김 · 채우기 (D)', () => {
     const banner = page.locator('[data-banner="load"]');
     await expect(banner).toBeVisible();
     await expect(banner).toContainText('이벤트를 불러오지 못했습니다');
-    await expect(banner).toContainText('503');
+    await expect(banner).toContainText('모의 오류(서버가 응답하지 않습니다)'); // 11/09 G14: 상태 코드 없이 서버 문장만
     backend.failing.clear();
     await banner.getByRole('button', { name: '다시 시도' }).click();
     await expect(banner).toBeHidden();

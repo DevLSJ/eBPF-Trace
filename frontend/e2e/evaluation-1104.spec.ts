@@ -298,7 +298,7 @@ test.describe('평가 화면(11/04)', () => {
     const api = await evalApi(page, { status: 500, body: { error: '모의 오류' } });
     await page.goto('/evaluation');
     await expect(page.locator(`${W}[data-state="error"]`)).toBeVisible();
-    await expect(page.locator(`${W} [data-part="error"]`)).toContainText('500 · 모의 오류');
+    await expect(page.locator(`${W} [data-part="error"]`)).toContainText('모의 오류'); // 11/09 G14: 상태 코드(「500 ·」) 없이 서버 문장만
     await expect(page.locator('[data-action="download-json"]')).toHaveCount(0);
     api.reply = ok();
     await page.locator(`${W} [data-action="retry"]`).click();

@@ -146,7 +146,7 @@ test.describe('W20 이벤트 첫 로드 — 중복 호출 · 오류 1곳 · 다�
     await page.goto('/events');
     const err = page.locator('[data-part="error"]');
     await expect(err).toBeVisible();
-    await expect(err).toContainText('503');
+    await expect(err).toContainText('모의 오류(서버가 응답하지 않습니다)'); // 11/09 G14: 상태 코드 없이 서버 문장만
     await page.waitForTimeout(300);
     await expect(page.locator('[data-banner="load"]')).toHaveCount(0);
     await expect(page.locator('[role="alert"]')).toHaveCount(1);
