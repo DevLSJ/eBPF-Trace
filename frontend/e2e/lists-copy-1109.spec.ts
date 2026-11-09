@@ -1,8 +1,10 @@
 import type { Locator, Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import type { Scan } from '../src/lib/types';
 import { expect, test } from './fixtures';
 
 // 11/09 P5 — 정책 밖 목록 화면 정리(SPEC-1109 §3 · §4 · §7)
+//   2단계: 화면 설명 한 줄(lib/screenCopy.ts) · 표 아래 안내 · 표 도구(총 N건 · 새로고침 · 칸 고르기/폭/순서 · 내보내기 = 보이는 칸) · Select · SearchField · 두 줄 칸
 //   1단계: 포커스 링 하나(화면 쪽 개별 규칙 제거) · 표 칸 순서(현황 = 상태 먼저, 기록류 = 시각 먼저) · 시각 3형식 · 빈 값 「—」 ·
 //          화면 문구(빈 · 결과 없음 · 입력 검사 · 토스트 · 자리 표시 · 꺼진 단추 사유) · 행을 흐리게 하지 않음
 
@@ -237,5 +239,139 @@ test.describe('③ 화면 문구', () => {
     const next = w.locator('[data-part="wizard-next"]');
     await expect(next).toHaveAttribute('aria-disabled', 'true');
     await expect(next).toHaveAttribute('title', '입력 칸의 오류를 먼저 고치세요');
+  });
+});
+
+// ── 2단계: 화면 설명 한 줄(lib/screenCopy) · 표 도구(총 N건 · 새로고침 · 칸 고르기 · 폭/순서 · 내보내기 = 보이는 칸) · 필터 Select · 검색칸 · 두 줄 칸 · 표 아래 안내 ──
+const DESC: [string, string][] = [
+  ['/installs', 'installs'],
+  ['/scans', 'scans'],
+  ['/evaluation', 'evaluation'],
+  ['/events', 'events'],
+  ['/topology', 'topology'],
+  ['/audit', 'audit'],
+  ['/settings', 'settings'],
+  ['/integration', 'integration'],
+  ['/demo', 'demo'],
+  ['/report?case=case-0004', 'report'],
+];
+const SYMBOLS = /[.=—·()「」:;/]/;
+
+test.describe('④ 화면 설명 한 줄(lib/screenCopy.ts 한 곳)', () => {
+  test('화면마다 제목 아래 「~합니다.」 20~50자 한 문장 · 마침표 앞 기호 없음 · 저장소 문장 그대로, 대시보드는 설명 없음', async ({ page, backend }) => {
+    backend.enableDemo();
+    await scansApi(page);
+    for (const [url, key] of DESC) {
+      await page.goto(url);
+      const want = await page.evaluate(async (k) => {
+        const mod = (await import(/* @vite-ignore */ '/src/lib/screenCopy.ts')) as { SCREEN_COPY: Record<string, string> };
+        return mod.SCREEN_COPY[k] ?? '';
+      }, key);
+      const d = page.locator('[data-part="screen-desc"]');
+      await expect(d, `${key} 설명`).toHaveCount(1);
+      const text = (await d.textContent())!.trim();
+      const n = [...text].length;
+      expect(text, key).toMatch(/니다\.$/);
+      expect(n, `${key} 길이`).toBeGreaterThanOrEqual(20);
+      expect(n, `${key} 길이`).toBeLessThanOrEqual(50);
+      expect(SYMBOLS.test(text.slice(0, -1)), `${key} 기호`).toBe(false);
+      expect(await d.getAttribute('data-screen'), key).toBe(key);
+      expect(text, `${key} = lib/screenCopy.ts 문장`).toBe(want);
+      expect(await d.evaluate((e) => getComputedStyle(e).fontSize)).toBe('13.5px');
+    }
+    await page.goto('/');
+    await expect(page.locator('[data-part="screen-desc"]')).toHaveCount(0);
+  });
+
+  test('표 아래 안내 한 줄(ScreenNote) — 설치 검사 · 감사 로그 · 이벤트 · 공급망 검사', async ({ page, backend }) => {
+    void backend;
+    await scansApi(page);
+    for (const url of ['/installs', '/audit', '/events', '/scans']) {
+      await page.goto(url);
+      const note = page.locator('[data-part="screen-note"]');
+      await expect(note, url).toHaveCount(1);
+      await expect(note, url).toHaveText(/[^.…]\.$/);
+      await expect(note, url).toHaveAttribute('title', (await note.textContent())!);
+    }
+  });
+});
+
+test.describe('⑤ 표 도구 — 총 N건 · 새로고침 · 칸 고르기(저장 키 화면마다) · 내보내기 = 보이는 칸', () => {
+  const TABLES: { url: string; table: string; grid: string; hide: string; hideName: string }[] = [
+    { url: '/installs', table: 'installs', grid: 'installs', hide: 'manager', hideName: '매니저' },
+    { url: '/scans', table: 'scans', grid: 'scans', hide: 'risk', hideName: '위험 점수' },
+    { url: '/audit', table: 'audit', grid: 'audit', hide: 'rule', hideName: '규칙' },
+    { url: '/audit?view=changes', table: 'history', grid: 'audit-history', hide: 'by', hideName: '처리자' },
+    { url: '/settings?tab=accounts', table: 'users', grid: 'settings-users', hide: 'otp', hideName: 'OTP' },
+    { url: '/settings?tab=auth-audit', table: 'auth-audit', grid: 'settings-auth-audit', hide: 'ip', hideName: 'IP' },
+  ];
+  for (const t of TABLES) {
+    test(`${t.table}: 도구줄 · 칸 끄기 → 저장 supplyguard.grid.${t.grid}.v1 · 다시 열어도 유지 · CSV 머리 = 보이는 칸`, async ({ page, backend }) => {
+      void backend;
+      await scansApi(page);
+      await page.goto(t.url);
+      if (t.table === 'installs') await page.locator('[data-chip="all"]').click();
+      const T = `table[data-table="${t.table}"]`;
+      await expect(page.locator(`${T} tbody tr`).first()).toBeVisible();
+      const tools = page.locator(`[data-table-tools="${t.table}"]`);
+      await expect(tools.locator('[data-part="total"]')).toHaveText(/^총 [\d,]+건$/);
+      await expect(tools.locator('[data-action="table-refresh"]')).toHaveAttribute('aria-label', '새로고침');
+      await tools.locator('[data-action="table-columns"]').click();
+      const pick = page.locator('[data-part="column-picker"]');
+      await pick.getByRole('checkbox', { name: t.hideName, exact: true }).uncheck();
+      await page.keyboard.press('Escape');
+      await expect(page.locator(`${T} th[data-col="${t.hide}"]`)).toHaveCount(0);
+      const saved = await page.evaluate((k) => localStorage.getItem(k), `supplyguard.grid.${t.grid}.v1`);
+      expect(JSON.parse(saved!).vis[t.hide]).toBe(false);
+      const heads = await page.locator(`${T} thead th`).evaluateAll((ths) => ths.map((e) => e.textContent!.trim()).filter(Boolean));
+      const [dl] = await Promise.all([page.waitForEvent('download'), tools.locator('[data-action="table-export"]').click()]);
+      const first = readFileSync((await dl.path())!, 'utf8').replace(/^﻿/, '').split('\n')[0];
+      expect(first.split(','), 'CSV 머리 = 보이는 칸').toEqual(heads);
+      await page.reload();
+      await expect(page.locator(`${T} tbody tr`).first()).toBeVisible();
+      await expect(page.locator(`${T} th[data-col="${t.hide}"]`), '다시 열어도 숨김 유지').toHaveCount(0);
+    });
+  }
+
+  test('칸 폭 표준 — 시각 160 · 감사 컨테이너는 두 줄 칸(이름 + 컨테이너 ID) · 행 48 유지', async ({ page, backend }) => {
+    void backend;
+    await page.goto('/audit');
+    const T = 'table[data-table="audit"]';
+    await expect(page.locator(`${T} tbody tr`).first()).toBeVisible();
+    expect(Math.round(await page.locator(`${T} th[data-col="time"]`).evaluate((e) => e.getBoundingClientRect().width))).toBe(160);
+    const two = page.locator(`${T} tbody tr`).first().locator('td[data-col="container"] .tk-2line');
+    await expect(two.locator('.tk-2l-top')).not.toBeEmpty();
+    await expect(two.locator('.tk-2l-sub')).toHaveText(/^[0-9a-f]{12}$/);
+    expect(await page.locator(`${T} tbody tr`).first().evaluate((e) => Math.round(e.getBoundingClientRect().height))).toBe(48);
+    await page.goto('/settings?tab=auth-audit');
+    expect(Math.round(await page.locator('table[data-table="auth-audit"] th[data-col="at"]').evaluate((e) => e.getBoundingClientRect().width))).toBe(160);
+  });
+});
+
+test.describe('⑥ 필터 Select · 검색칸(Enter · 칸 벗어날 때 적용, 검색 단추 없음)', () => {
+  test('이벤트 · 감사 로그 · 인증 감사 — 선택 상자는 Select(「종류 전체」), 글 검색은 SearchField(자리 표시 = 찾는 칸 이름)', async ({ page, backend }) => {
+    void backend;
+    await page.goto('/events');
+    const kind = page.locator('[data-filter="kind"]');
+    await expect(kind).toHaveAttribute('role', 'combobox');
+    await expect(kind).toHaveText('종류 전체');
+    const box = page.getByRole('searchbox', { name: '컨테이너 검색' });
+    await expect(box).toHaveAttribute('placeholder', '컨테이너 이름');
+    await box.fill('no-such');
+    await expect(page.locator('[data-testid="events"] [data-part="no-results"]'), '쓰는 동안은 적용하지 않음').toHaveCount(0);
+    await box.press('Enter');
+    await expect(page.locator('[data-testid="events"] [data-part="no-results"]')).toBeVisible();
+    await page.locator('[data-filter-bar="events"] [data-action="clear-conditions"]').click();
+    await expect(box).toHaveValue('');
+
+    await page.goto('/audit');
+    await expect(page.locator('[data-filter="action"]')).toHaveText('대응 전체');
+    await page.locator('[data-filter="action"]').click();
+    await page.getByRole('option', { name: '격리 (kill)' }).click();
+    await expect(page.locator('[data-filter="action"]')).toHaveText('격리 (kill)');
+    await expect(page.getByRole('searchbox', { name: '규칙 검색' })).toHaveAttribute('placeholder', '규칙 ID');
+
+    await page.goto('/settings?tab=auth-audit');
+    await expect(page.locator('[data-filter="action"]')).toHaveText('한 일 전체');
   });
 });
