@@ -269,7 +269,8 @@ test.describe('11/09 시연 — 상세 탭 · 흐름 그림', () => {
     await expect(flow).toHaveAttribute('data-playing', 'false');
     // 결과 톤 = 위험 토큰
     const danger = await probe(page, '--danger');
-    expect(await flow.locator('[data-node="outcome"]').evaluate((e) => getComputedStyle(e).borderTopColor)).toBe(danger);
+    // 테두리 색은 0.2초 전환 중일 수 있다 — 전환이 끝날 때까지 다시 읽는다(11/09 흔들림 37회 중 1회)
+    await expect.poll(() => flow.locator('[data-node="outcome"]').evaluate((e) => getComputedStyle(e).borderTopColor)).toBe(danger);
     // 멈춤 — 시간이 지나도 그대로
     await page.waitForTimeout(1800);
     await expect(flow).toHaveAttribute('data-step', '4');
