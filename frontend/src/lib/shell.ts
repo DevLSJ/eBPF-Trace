@@ -115,12 +115,12 @@ export function buildIndex(s: SearchSources): SearchItem[] {
     out.push({ type, label, sub, ...x });
   };
   for (const i of s.installs ?? []) for (const p of i.packages) add('package', `${i.manager} ${p}`, `설치 검사 ${i.id} · ${INSTALL_STATUS_LABEL[i.status] ?? i.status}`, installDest(i.id));
-  for (const b of s.blocklist?.packages ?? []) add('package', b.value, '차단 목록', '/policies');
+  for (const b of s.blocklist?.packages ?? []) add('package', b.value, '차단 목록', '/policies/blocklist');
   for (const sc of s.scans ?? []) if (sc.target.name) add('package', `${sc.target.manager ?? ''} ${sc.target.name}`.trim(), `공급망 검사 ${sc.id}`, `/scans?id=${enc(sc.id)}`);
   for (const c of s.containers ?? []) add('container', c, '런타임 · 토폴로지', dest('/topology', { container: c }));
   for (const i of s.installs ?? []) if (i.container) add('container', i.container, `설치 검사 · ${i.manager} ${i.packages.join(' ')}`, installDest(i.id));
   for (const r of s.rules ?? []) add('rule', r.id, r.description ?? '', `/policies?id=${enc(r.id)}`);
-  for (const b of s.blocklist?.hosts ?? []) add('domain', b.value, '차단 목록', '/policies');
+  for (const b of s.blocklist?.hosts ?? []) add('domain', b.value, '차단 목록', '/policies/blocklist');
   for (const r of s.rules ?? [])
     for (const [f, ko] of [['allowHosts', '허용'], ['denyHosts', '금지']] as const) for (const d of r[f] ?? []) add('domain', d, `${r.id} · ${ko} 도메인`, `/policies?id=${enc(r.id)}`);
   for (const v of s.verdicts ?? []) if (v.event.dstHost) add('domain', v.event.dstHost, `이벤트 · ${v.event.containerName}`, dest('/events', { container: v.event.containerName }));
