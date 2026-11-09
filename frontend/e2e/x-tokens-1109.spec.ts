@@ -403,3 +403,12 @@ test('설정 화면 주 버튼도 알약(계정 추가 · 새 키 등록)', asyn
   await page.goto('/settings?tab=license');
   await pill(page.getByRole('button', { name: '새 키 등록' }));
 });
+test('사용 안내 창 닫기 주 버튼도 알약', async ({ page, backend }) => {
+  void backend;
+  await page.goto('/');
+  await page.getByRole('button', { name: '사용 안내 (?)' }).click();
+  const close = page.locator('dialog, [role="dialog"]').filter({ hasText: '사용 안내' }).locator('button.bg-primary').first();
+  await expect(close).toBeVisible();
+  const r = await close.evaluate((e) => ({ rad: parseFloat(getComputedStyle(e).borderTopLeftRadius), h: e.getBoundingClientRect().height }));
+  expect(r.rad, 'radius ≥ height/2').toBeGreaterThanOrEqual(r.h / 2);
+});
