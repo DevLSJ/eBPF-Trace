@@ -554,9 +554,9 @@ test.describe('F AI 도우미 채팅 화면', () => {
     const rows = page.locator('[data-part="chat"] [data-part="chat-msg"]');
     await expect(rows).toHaveCount(2);
     await expect(rows.last()).toContainText('판정 대기 건이');
-    // 새 줄만 등장 애니메이션(chat-in 0.2s)
+    // 새 줄만 등장 애니메이션(chat-in 0.18s — 11/09 SPEC --dur-base)
     const anims = await rows.evaluateAll((els) => els.map((e) => [e.classList.contains('is-new'), getComputedStyle(e).animationName, getComputedStyle(e).animationDuration]));
-    expect(anims).toEqual([[true, 'chat-in', '0.2s'], [true, 'chat-in', '0.2s']]);
+    expect(anims).toEqual([[true, 'chat-in', '0.18s'], [true, 'chat-in', '0.18s']]);
     await inp.fill('두 번째');
     await inp.press('Enter');
     await expect(rows).toHaveCount(4);

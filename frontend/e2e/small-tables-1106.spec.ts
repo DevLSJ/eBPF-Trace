@@ -20,7 +20,7 @@ async function expectRefTable(t: Locator, name: string) {
     };
   });
   if (r.th) expect(r.th, `${name} 머리`).toEqual(['42px', '12px', '600', '16px']);
-  expect(r.td, `${name} 칸`).toEqual(['16px', '12.5px']);
+  expect(r.td, `${name} 칸`).toEqual(['16px', '13.5px']); // 11/09 SPEC 표 본문 13.5
   expect(r.row, `${name} 행 높이`).toBeGreaterThanOrEqual(48);
 }
 

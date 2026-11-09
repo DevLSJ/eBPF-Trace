@@ -38,7 +38,9 @@ const SH_CARD = 'rgba(39, 76, 142, 0.07) 0px 10px 32px 0px';
 const SH_LIFT = 'rgba(31, 38, 54, 0.12) 0px 18px 42px 0px';
 const SH_FLOAT = 'rgba(0, 0, 0, 0.2) 0px 5px 5px -3px, rgba(0, 0, 0, 0.14) 0px 8px 10px 1px, rgba(0, 0, 0, 0.12) 0px 3px 14px 2px';
 const SH_PANEL_HOVER = 'rgba(23, 105, 232, 0.075) 0px 12px 30px 0px';
-const EASE_STD = 'cubic-bezier(0.4, 0, 0.2, 1)';
+// 11/09 SPEC 움직임 토큰: 색 전환 = 빠름 120 · ease-color, 들림 · 그림자 = 보통 180 · ease-move
+const EASE_COLOR = 'cubic-bezier(0.35, 0, 0.35, 1)';
+const EASE_MOVE = 'cubic-bezier(0.2, 0, 0, 1)';
 // Tailwind shadow-[…] 는 링 · 안쪽 그림자 자리(투명 0)를 앞에 붙인다 — 보이는 그림자만 비교
 const visible = (s: string) => s.replace(/rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, /g, '');
 
@@ -82,7 +84,7 @@ const LIGHT: Record<string, string> = {
   '--danger': '#E4516F', '--danger-text': '#B52D49',
   '--pill-neutral-bg': '#F1F3F6', '--pill-neutral-fg': '#596273', '--pill-neutral-line': '#DCE1E8', '--pill-dark-bg': '#30343B',
   '--ink': '#111827', '--ink-text': '#F3F4F6', '--ink-muted': '#9CA3AF',
-  '--r-sm': '6PX', '--r-md': '8PX', '--r-lg': '8PX', '--r-xl': '8PX', '--t-btn': '250MS', '--t-panel': '250MS',
+  '--r-sm': '6PX', '--r-md': '8PX', '--r-lg': '8PX', '--r-xl': '8PX', '--t-btn': '120MS', '--t-panel': '180MS',
 };
 const DARK: Record<string, string> = {
   '--bg': '#11131A', '--surface': '#1B1E28', '--surface-2': '#282D38', '--surface-3': '#303442', '--surface-raised': '#1B1E28', '--card-line': '#303442', // 떠 있는 면 = 카드(안의 보조 바탕과 구분)
@@ -105,23 +107,24 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     expect(await tokens(page, Object.keys(DARK))).toEqual(DARK);
   });
 
-  test('글꼴 · 바탕 · 본문 줄 높이 · 패널 제목 700 — 웹폰트를 내려받지 않는다', async ({ page, backend }) => {
+  test('글꼴 · 바탕 · 본문 줄 높이 · 패널 제목 700 — 글꼴은 저장소 안 파일만(외부 요청 없음)', async ({ page, backend }) => {
     void backend;
     const fonts: string[] = [];
     page.on('request', (r) => r.resourceType() === 'font' && fonts.push(r.url()));
     await page.goto('/');
     await expect(page.getByTestId('pending')).toBeVisible();
     const b = await css(page, 'body', ['font-family', 'background-color', 'color', 'line-height']);
-    expect(b['font-family']).toMatch(/^Inter, Pretendard, -apple-system, ("system-ui"|BlinkMacSystemFont), "Segoe UI", sans-serif$/); // Chromium 은 BlinkMacSystemFont 를 system-ui 로 적는다
+    expect(b['font-family']).toMatch(/^"Pretendard Variable", Pretendard, Inter, -apple-system, ("system-ui"|BlinkMacSystemFont), "Segoe UI", sans-serif$/); // 11/09 저장소 안 글꼴 먼저. Chromium 은 BlinkMacSystemFont 를 system-ui 로 적는다
     expect(b['background-color']).toBe(rgb('#F6F7FB'));
     expect(b.color).toBe(rgb('#202534'));
     expect(b['line-height']).toBe('26.4px'); // 16 × 1.65
     expect(await css(page, '[data-testid="page-title"]', ['font-size', 'letter-spacing', 'color'])).toEqual({ 'font-size': '26.4px', 'letter-spacing': '-0.528px', color: rgb('#202534') });
     expect(await css(page, '.sg-panel-title', ['font-size', 'font-weight'])).toEqual({ 'font-size': '17.92px', 'font-weight': '700' });
-    expect(fonts).toEqual([]);
+    const origin = new URL(page.url()).origin;
+    expect(fonts.filter((u) => new URL(u).origin !== origin), '외부 도메인 글꼴 요청').toEqual([]);
   });
 
-  test('버튼: 주 = 파란 채움 · 보조 = 파란 외곽선 · 위험 = #B52D49 · 비활성 — 반경 6 · 14.4/700 · 높이 33.6(작은 29.6) · 전환 .25s · 포커스 2px 파랑 링 offset 2', async ({ page, backend }) => {
+  test('버튼: 주 = 파란 채움 · 보조 = 파란 외곽선 · 위험 = #B52D49 · 비활성 — 반경 6 · 14.4/700 · 높이 33.6(작은 29.6) · 색 전환 120ms · 포커스 2px 파랑 링 offset 2', async ({ page, backend }) => {
     void backend;
     await page.goto('/');
     await expect(page.getByTestId('pending')).toBeVisible();
@@ -129,8 +132,8 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     const P = ['background-color', 'color', 'border-top-color', 'border-top-width', 'border-radius', 'font-size', 'font-weight', 'box-shadow', 'transition-duration', 'transition-timing-function'];
     const primary = await css(page, '#btn-probe [data-k="primary"]', P);
     expect(primary).toMatchObject({ 'background-color': rgb('#1769E8'), color: rgb('#FFFFFF'), 'border-radius': '6px', 'font-size': '14.4px', 'font-weight': '700', 'box-shadow': 'none' });
-    expect(primary['transition-duration']).toMatch(/^0\.25s(, 0\.25s)*$/);
-    expect(primary['transition-timing-function']).toBe([EASE_STD, EASE_STD, EASE_STD, EASE_STD].join(', '));
+    expect(primary['transition-duration']).toMatch(/^0\.12s(, 0\.12s)*$/);
+    expect(primary['transition-timing-function']).toBe([EASE_COLOR, EASE_COLOR, EASE_COLOR, EASE_COLOR].join(', '));
     for (const k of ['primary', 'secondary', 'danger']) expect((await page.locator(`#btn-probe [data-k="${k}"]`).boundingBox())!.height, k).toBeCloseTo(33.6, 1);
     expect(await css(page, '#btn-probe [data-k="secondary"]', P)).toMatchObject({ 'background-color': 'rgba(0, 0, 0, 0)', color: rgb('#1769E8'), 'border-top-color': 'rgba(23, 105, 232, 0.5)', 'border-top-width': '1px', 'border-radius': '6px', 'box-shadow': 'none' });
     expect(await css(page, '#btn-probe [data-k="danger"]', P)).toMatchObject({ 'background-color': rgb('#B52D49'), color: rgb('#FFFFFF') }); // #E4516F 위 흰 글자는 3.68:1 — 한 단계 진한 위험색
@@ -142,7 +145,7 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     expect(await css(page, '#btn-probe [data-k="sm-primary"]', ['padding-top', 'padding-left'])).toEqual({ 'padding-top': '4px', 'padding-left': '10px' });
     for (const k of ['sm', 'sm-danger', 'sm-primary']) expect((await page.locator(`#btn-probe [data-k="${k}"]`).boundingBox())!.height, k).toBeCloseTo(29.6, 1);
     expect(await css(page, '#btn-probe [data-k="sm-danger"]', ['color', 'border-top-color', 'border-top-width'])).toEqual({ color: rgb('#B52D49'), 'border-top-color': 'rgba(228, 81, 111, 0.5)', 'border-top-width': '1px' });
-    // 호버(전환 250ms 를 기다린다)
+    // 호버(전환 120ms 를 기다린다)
     await page.locator('#btn-probe [data-k="primary"]').hover();
     await expect.poll(() => css(page, '#btn-probe [data-k="primary"]', ['background-color']).then((v) => v['background-color'])).toBe(rgb('#0D47B8'));
     await page.locator('#btn-probe [data-k="secondary"]').hover();
@@ -167,7 +170,7 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
       height: '42px', 'background-color': rgb('#EEF0F4'), 'font-size': '12px', 'font-weight': '600', color: rgb('#5F6675'), 'padding-left': '16px', 'border-bottom-color': rgb('#ECEEF4'),
     });
     const td = await css(page, `${T} tbody td`, ['font-size', 'padding-left', 'padding-top', 'border-bottom-color', 'border-bottom-width']);
-    expect(td).toEqual({ 'font-size': '12.5px', 'padding-left': '16px', 'padding-top': '8px', 'border-bottom-color': rgb('#ECEEF4'), 'border-bottom-width': '1px' });
+    expect(td).toEqual({ 'font-size': '13.5px', 'padding-left': '16px', 'padding-top': '8px', 'border-bottom-color': rgb('#ECEEF4'), 'border-bottom-width': '1px' });
     expect(Math.round((await page.locator(`${T} tbody tr`).first().boundingBox())!.height)).toBe(48);
     // 줄무늬 없음 — 홀짝 행 바탕이 같다, 행 hover 검정 4%
     const zebra = await page.locator(`${T} tbody tr`).evaluateAll((rows) => rows.slice(0, 2).map((r) => getComputedStyle(r).backgroundColor));
@@ -203,7 +206,7 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     const panel = page.locator('.sg-panel').filter({ has: page.locator(T) }).first();
     await page.mouse.move(0, 0);
     await expect.poll(() => panel.evaluate((e) => { const c = getComputedStyle(e); return [c.borderRadius, c.boxShadow, c.borderTopColor, c.borderTopWidth, c.backgroundColor]; })).toEqual(['8px', 'none', rgb('#ECEEF4'), '1px', rgb('#FFFFFF')]);
-    expect(await panel.evaluate((e) => [getComputedStyle(e).transitionDuration, getComputedStyle(e).transitionTimingFunction])).toEqual(['0.2s, 0.22s', 'ease, ease']);
+    expect(await panel.evaluate((e) => [getComputedStyle(e).transitionDuration, getComputedStyle(e).transitionTimingFunction])).toEqual(['0.12s, 0.18s', `${EASE_COLOR}, ${EASE_MOVE}`]);
     const head = panel.locator('.sg-panel-head');
     expect(await head.evaluate((e) => [getComputedStyle(e).minHeight, getComputedStyle(e).paddingLeft, getComputedStyle(e).borderBottomColor])).toEqual(['56px', '20px', 'rgba(120, 130, 150, 0.2)']);
     expect(await panel.locator('.sg-panel-title').evaluate((e) => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight])).toEqual(['17.92px', '700']);
@@ -223,7 +226,7 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     expect(await css(page, '.sg-card:not(.sg-panel)', ['border-radius', 'border-top-width', 'border-top-color', 'box-shadow', 'background-color'])).toEqual({
       'border-radius': '8px', 'border-top-width': '1px', 'border-top-color': rgb('#ECEEF4'), 'box-shadow': SH_CARD, 'background-color': rgb('#FFFFFF'),
     });
-    // 들리는 카드(sg-card-hover) 견본: hover 에 5px 위로 + 넓은 그림자, 전환 220ms ease
+    // 들리는 카드(sg-card-hover) 견본: hover 에 5px 위로 + 넓은 그림자, 들림 180ms ease-move · 선 색 120ms ease-color
     await page.evaluate(() => {
       const d = document.createElement('div');
       d.id = 'card-probe';
@@ -232,7 +235,7 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
       document.querySelector('main')!.prepend(d);
     });
     const probe = page.locator('#card-probe');
-    expect(await probe.evaluate((e) => [getComputedStyle(e).transitionDuration, getComputedStyle(e).transitionTimingFunction])).toEqual(['0.22s, 0.22s, 0.2s', `ease, ease, cubic-bezier(0.2, 0.8, 0.2, 1)`]);
+    expect(await probe.evaluate((e) => [getComputedStyle(e).transitionDuration, getComputedStyle(e).transitionTimingFunction])).toEqual(['0.18s, 0.18s, 0.12s', `${EASE_MOVE}, ${EASE_MOVE}, ${EASE_COLOR}`]);
     await probe.hover();
     await expect.poll(() => probe.evaluate((e) => getComputedStyle(e).boxShadow)).toBe(SH_LIFT);
   });

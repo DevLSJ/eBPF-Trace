@@ -95,7 +95,7 @@ test.describe('F6 디자인 토큰 · 부품 · 모션', () => {
     const screen = page.locator('main [data-part="screen"]');
     await expect(screen).toBeVisible();
     expect(await screen.evaluate((e) => getComputedStyle(e).animationName)).toBe('sg-enter');
-    expect(await screen.evaluate((e) => getComputedStyle(e).animationDuration)).toBe('0.2s');
+    expect(await screen.evaluate((e) => getComputedStyle(e).animationDuration)).toBe('0.18s'); // 11/09 SPEC --dur-base
     await expect(page.locator('li[data-key]').first()).toBeVisible();
     backend.send({ type: 'verdict', data: killedVerdict('api-gw') });
     const fresh = page.locator('li[data-key]').first();
