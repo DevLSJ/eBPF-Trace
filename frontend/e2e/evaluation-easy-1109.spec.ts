@@ -163,7 +163,8 @@ test.describe('평가 쉬운 화면(11/09)', () => {
     await fold(page, 'model').click();
     await expect(page.locator('[data-table="models"] thead th')).toHaveText(['후보', '종합 점수(선택용)', '종합 점수(시험)', '적중률', '탐지율', '오판율']);
     await fold(page, 'model').click();
-    // 모든 줄을 펼쳐도 보이는 글에 원래 용어가 남지 않는다(용어 단추 · 안쪽 「자세히」 칸 · 툴팁은 제외)
+    // 모든 줄을 펼쳐도 보이는 글에 원래 용어가 남지 않는다(용어 단추 · 안쪽 「자세히」 칸 · 툴팁은 제외).
+    // 「결과의 한계」 문장은 bench 보고서 원문(데이터)이라 제외 — 예전에도 「자세히」를 눌러야 보였고, 지금은 그 줄을 펼쳐야 보인다
     await page.locator('[data-action="toggle-all"]').click();
     await page.waitForTimeout(300);
     const leaks = await page.evaluate((hard) => {
@@ -172,7 +173,7 @@ test.describe('평가 쉬운 화면(11/09)', () => {
       const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
       for (let n = tw.nextNode(); n; n = tw.nextNode()) {
         const el = n.parentElement!;
-        if (el.closest('[data-term]') || !el.checkVisibility({ checkVisibilityCSS: true })) continue;
+        if (el.closest('[data-term], [data-part="limits"] li') || !el.checkVisibility({ checkVisibilityCSS: true })) continue;
         for (const h of hard) if (n.textContent!.includes(h)) out.push(`${h}: ${n.textContent!.trim().slice(0, 50)}`);
       }
       return out;
