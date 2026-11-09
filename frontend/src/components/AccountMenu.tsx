@@ -194,7 +194,7 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
           <button type="button" onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
             취소
           </button>
-          <button type="button" disabled={busy} onClick={() => void save()} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50">
+          <button type="button" disabled={busy} onClick={() => void save()} className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50">
             바꾸기
           </button>
         </>

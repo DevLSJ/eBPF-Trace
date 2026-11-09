@@ -24,7 +24,7 @@ const SHORTCUTS: [string, string][] = [
 
 export function HelpDialog({ onClose }: { onClose: () => void }) {
   return (
-    <Modal title="사용 안내" kind="help" wide onClose={onClose} foot={<button type="button" onClick={onClose} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover">닫기</button>}>
+    <Modal title="사용 안내" kind="help" wide onClose={onClose} foot={<button type="button" onClick={onClose} className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover">닫기</button>}>
       <section className="grid gap-2">
         <h4 className="text-sm font-semibold">사용 흐름</h4>
         <ol data-part="flow" className="grid gap-1.5">
