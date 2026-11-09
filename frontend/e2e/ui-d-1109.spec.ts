@@ -92,6 +92,25 @@ test.describe('로그인 — 입력 · 진행 · 실패(G25 · G26 · G27)', () 
     await expect.poll(() => sent(backend, '/auth/login').map((b) => b.password)).toEqual(['wrong-0', 'wrong-1']);
   });
 
+  // 11/09 사용자 「상단 해/달 단추 하나(로그인 화면 포함)」 — 단추 부품은 묶음 A(ThemeToggle), 로그인 화면 배치는 메인 통합
+  test('G01 로그인 화면 오른쪽 위 해/달 단추 — 누르면 테마가 바뀌고 기억', async ({ page, backend }) => {
+    backend.auth.loggedOut();
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto('/');
+    const toggle = step(page).getByRole('button', { name: '어두운 화면으로' });
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toHaveAttribute('title', '어두운 화면으로');
+    const box = await toggle.boundingBox();
+    const vw = page.viewportSize()!.width;
+    expect(box!.x + box!.width).toBeGreaterThan(vw - 80); // 오른쪽 위
+    expect(box!.y).toBeLessThan(80);
+    await toggle.click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(step(page).getByRole('button', { name: '밝은 화면으로' })).toBeVisible();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  });
+
   test('G26 비밀번호 보기(눈) · Caps Lock 켜짐 안내', async ({ page, backend }) => {
     backend.auth.loggedOut();
     await page.goto('/');
