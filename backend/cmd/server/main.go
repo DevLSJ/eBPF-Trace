@@ -252,6 +252,8 @@ func run() error {
 	pipe.SetNotifier(ntf)
 
 	// 연동(11/06): 환경 점검 · 감시 중 컨테이너(파이프라인과 같은 판정) · 연결 테스트(시험 컨테이너 sg-probe-*)
+	// 감시 중 컨테이너 상세(11/10): 실제 Docker 일 때만 — 성공했을 때만 넣어 nil 인터페이스가 되지 않게
+	var inspector api.ContainerInspector
 	intOpt := integration.Options{Scoper: pipe, Recorder: rv, Source: cfg.EventSource, EnforceKill: cfg.EnforceKill,
 		EnforceNames: cfg.EnforceContainers, HostRoot: os.Getenv("HOST_ROOT")}
 	if m, ok := source.(*ingestion.Mock); ok {
@@ -259,6 +261,7 @@ func run() error {
 	} else if dc, err := dockerapi.New(cfg.DockerHost); err == nil {
 		d := integration.Docker{API: dc}
 		intOpt.Lister, intOpt.Prober = d, d
+		inspector = dc
 	}
 	intSvc := integration.New(intOpt)
 	pipe.SetObserver(intSvc.Observe)
@@ -340,6 +343,7 @@ func run() error {
 		Auth:                 authSvc,
 		Demo:                 demoSvc,
 		Integration:          intSvc,
+		Containers:           inspector,
 		Info: api.Info{Source: cfg.EventSource, Gadgets: cfg.Gadgets, EnforceKill: cfg.EnforceKill,
 			GadgetVersion: ingestion.GadgetVersion, WatchContainers: cfg.WatchContainers, IgnoreContainers: cfg.IgnoreContainers},
 	}))
