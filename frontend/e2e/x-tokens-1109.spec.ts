@@ -47,6 +47,8 @@ const tokens = (page: Page, names: string[]) =>
 async function pickTheme(page: Page, t: 'light' | 'dark') {
   if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== t) await page.locator('[data-part="theme-toggle"]').click();
   await page.waitForFunction(() => !document.documentElement.classList.contains('sg-theme-anim'));
+  // 클래스가 빠져도 색 전환(transition)이 아직 도는 순간이 있어(11/10 전체 회귀에서 1/3 확률) 움직임이 끝날 때까지
+  await settled(page);
 }
 const settled = (page: Page) => page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity));
 async function mountButtons(page: Page) {
