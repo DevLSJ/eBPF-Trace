@@ -5,11 +5,13 @@ import {
   MarkerType,
   Position,
   ReactFlow,
+  useOnViewportChange,
   useReactFlow,
   useStore,
   type Edge,
   type Node,
   type NodeMouseHandler,
+  type ReactFlowState,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Box, Cpu, FileSearch, FileText } from 'lucide-react';
@@ -253,7 +255,7 @@ export function TopologyPage() {
   // [11/09] 위반 없는 컨테이너는 접는다 — 사용자가 펼친 것(opened) · 고른 파일 · 목적지가 속한 컨테이너는 펼친다.
   // 컨테이너를 하나 고르면(select) 접지 않는다. 위반이 생기면 level 이 바뀌어 접을 수 있는 목록에서 빠진다(자동으로 펼침)
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
-  const [reveal, setReveal] = useState<{ name: string; seq: number } | null>(null);
+  const [foldAct, setFoldAct] = useState<FoldAct | null>(null);
   const fold = useMemo<Fold>(() => {
     const foldable = new Set(container ? [] : snap.nodes.filter((n) => n.type === 'container' && n.level === 'normal').map((n) => n.id));
     const keepOpen = selected && selected.type !== 'container' ? `c:${selected.container}` : null;
@@ -286,7 +288,7 @@ export function TopologyPage() {
       const name = id.slice(2);
       if (fold.folded.has(id)) {
         setOpened((cur) => new Set(cur).add(id));
-        setReveal((r) => ({ name, seq: (r?.seq ?? 0) + 1 }));
+        setFoldAct((a) => ({ name, open: true, seq: (a?.seq ?? 0) + 1 }));
         return;
       }
       setOpened((cur) => {
@@ -294,6 +296,7 @@ export function TopologyPage() {
         next.delete(id);
         return next;
       });
+      setFoldAct((a) => ({ name, open: false, seq: (a?.seq ?? 0) + 1 }));
       if (selected && selected.type !== 'container' && selected.container === name) setNode(null); // 접는 컨테이너 안의 선택은 푼다
     },
     [fold, toggle, selected, setNode],
@@ -386,7 +389,7 @@ export function TopologyPage() {
                 nodesConnectable={false}
               >
                 <Background color="var(--border-strong)" gap={24} />
-                <ReadableFit reveal={reveal} />
+                <ReadableFit act={foldAct} />
               </ReactFlow>
             )}
           </div>
@@ -452,15 +455,40 @@ function Legend() {
   );
 }
 
+// 접기 · 펼치기 조작(누른 컨테이너 이름 · 펼쳤는지 · 순번)
+interface FoldAct {
+  name: string;
+  open: boolean;
+  seq: number;
+}
+
+// 그래프 모양 = 노드 수 · 경계. 모든 노드가 재어졌을 때만 값이 있고 아니면 ''(useNodesInitialized 는 제어 모드에서 사용자 노드에 크기가 안 붙어 늘 false)
+const shapeOf = (s: ReactFlowState): string => {
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const n of s.nodeLookup.values()) {
+    const { width = 0, height = 0 } = n.measured;
+    if (!width || !height) return '';
+    const { x, y } = n.internals.positionAbsolute;
+    [x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x + width), Math.max(y1, y + height)];
+  }
+  return s.nodeLookup.size ? [s.nodeLookup.size, x0, y0, x1, y1].map(Math.round).join(':') : '';
+};
+
 // [11/09] 화면 맞춤 — 글자가 읽히는 배율(READABLE_ZOOM) 아래로 줄이지 않는다. 다 들어가면 가운데, 넘치면 위 · 왼쪽부터(위험 컨테이너가 맨 위).
-// 처음 그릴 때(컨테이너를 바꾸면 ReactFlow 를 새로 만든다)와 「화면 맞춤」 버튼이 같은 계산을 쓴다. 펼친 컨테이너는 배율을 두고 화면 안으로 옮긴다
-function ReadableFit({ reveal }: { reveal: { name: string; seq: number } | null }) {
+// [11/09 2차] 실시간 이벤트로 그래프가 자라므로 처음 한 번이 아니라, 사용자가 화면을 움직이기 전까지 모양이 바뀔 때마다 다시 맞춘다.
+// 이동 · 확대 · 축소 · 접기/펼치기를 하면 멈추고(보던 곳이 튀지 않게), 「화면 맞춤」 버튼은 맞춘 뒤 다시 따라간다. 펼친 묶음은 배율을 두고 화면 안으로 옮긴다
+function ReadableFit({ act }: { act: FoldAct | null }) {
   const rf = useReactFlow();
-  // 모든 노드가 재어졌는지 — useNodesInitialized 는 제어 모드(onNodesChange 없음)에서 사용자 노드에 크기가 안 붙어 늘 false
-  const initialized = useStore((s) => s.nodeLookup.size > 0 && [...s.nodeLookup.values()].every((n) => !!n.measured.width && !!n.measured.height));
+  const shape = useStore(shapeOf);
   const width = useStore((s) => s.width);
   const height = useStore((s) => s.height);
-  const fitted = useRef(false);
+  const follow = useRef(true);
+  const fitting = useRef(false);
+  // 시점 변경 시작 — 이 컴포넌트의 맞춤이 아니면(끌기 · 휠 · 확대 축소 버튼 · 초점 이동) 사용자 조작
+  const onStart = useCallback(() => {
+    if (!fitting.current) follow.current = false;
+  }, []);
+  useOnViewportChange({ onStart });
 
   const fit = useCallback(() => {
     const nodes = rf.getNodes();
@@ -471,22 +499,33 @@ function ReadableFit({ reveal }: { reveal: { name: string; seq: number } | null 
     const zoom = Math.min(MAX_FIT_ZOOM, Math.max(READABLE_ZOOM, Math.min(w / b.width, h / b.height)));
     const x = b.width * zoom <= w ? (width - b.width * zoom) / 2 - b.x * zoom : FIT_PAD - b.x * zoom;
     const y = b.height * zoom <= h ? (height - b.height * zoom) / 2 - b.y * zoom : FIT_PAD - b.y * zoom;
+    fitting.current = true; // 시간 0 의 setViewport 는 시작 이벤트를 이 안에서 바로 낸다
     void rf.setViewport({ x, y, zoom });
+    fitting.current = false;
   }, [rf, width, height]);
 
+  // 접기 · 펼치기 = 사용자 조작. 이 그래프(컨테이너를 바꾸면 새로 만든다)를 만들기 전의 조작은 무시
+  const lastAct = useRef(act?.seq ?? 0);
+  const reveal = useRef<string | null>(null);
   useEffect(() => {
-    if (fitted.current || !initialized || !width || !height) return;
-    fitted.current = true;
-    fit();
-  }, [initialized, width, height, fit]);
+    if (!act || act.seq === lastAct.current) return;
+    lastAct.current = act.seq;
+    follow.current = false;
+    reveal.current = act.open ? act.name : null;
+  }, [act]);
 
-  // 펼친 컨테이너의 새 노드가 재어진 뒤, 그 묶음이 화면 밖이면 옮긴다(넘치면 위 · 왼쪽을 맞춤)
-  const revealed = useRef(0);
+  // 모양이 바뀌면(모든 노드가 재어진 뒤): 따라가는 중이면 다시 맞춤, 아니면 방금 펼친 묶음만 화면 안으로
   useEffect(() => {
-    if (!reveal || reveal.seq === revealed.current || !initialized || !width || !height) return;
-    const mine = rf.getNodes().filter((n) => (n.data as { container?: string }).container === reveal.name);
-    if (mine.length < 2 || mine.some((n) => !rf.getInternalNode(n.id)?.measured.height)) return; // 새 노드가 아직 안 그려짐 — 재어지면 다시
-    revealed.current = reveal.seq;
+    if (!shape || !width || !height) return;
+    if (follow.current) {
+      fit();
+      return;
+    }
+    const name = reveal.current;
+    if (!name) return;
+    const mine = rf.getNodes().filter((n) => (n.data as { container?: string }).container === name);
+    if (mine.length < 2) return; // 펼친 노드가 아직 안 들어옴 — 다음 모양에서
+    reveal.current = null;
     const vp = rf.getViewport();
     const b = rf.getNodesBounds(mine);
     const nudge = (start: number, end: number, view: number) => {
@@ -498,11 +537,19 @@ function ReadableFit({ reveal }: { reveal: { name: string; seq: number } | null 
     if (!dx && !dy) return;
     const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     void rf.setViewport({ x: vp.x + dx, y: vp.y + dy, zoom: vp.zoom }, { duration: still ? 0 : 200 });
-  }, [reveal, initialized, rf, width, height]);
+  }, [shape, width, height, fit, rf]);
 
   return (
     <Controls showInteractive={false} showFitView={false}>
-      <ControlButton className="react-flow__controls-fitview" onClick={fit} title="화면 맞춤" aria-label="화면 맞춤">
+      <ControlButton
+        className="react-flow__controls-fitview"
+        onClick={() => {
+          follow.current = true;
+          fit();
+        }}
+        title="화면 맞춤"
+        aria-label="화면 맞춤"
+      >
         <FitGlyph />
       </ControlButton>
     </Controls>
