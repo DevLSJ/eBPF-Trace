@@ -23,7 +23,7 @@ interface Props {
   onSwitch: () => void;
 }
 
-const input = 'h-9 w-full rounded-[var(--r-md)] border border-slate-300 bg-field px-2.5 text-sm focus:border-indigo-500 focus:outline-none';
+const input = 'h-9 w-full rounded-[6px] border border-slate-300 bg-field px-2.5 text-sm focus:border-indigo-500 focus:outline-none';
 const primary = 'flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-fg transition-colors duration-[var(--t-btn)] ease-in-out hover:bg-primary-hover disabled:opacity-50';
 const ghost = 'inline-flex items-center gap-1 justify-self-start rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100';
 
@@ -68,7 +68,7 @@ export function AuthScreens(p: Props) {
       data-step={p.step}
       className="flex min-h-full items-center justify-center bg-bg px-4 py-8"
     >
-      <div className="grid w-[400px] max-w-full gap-3 rounded-[var(--r-xl)] border border-card-line bg-surface p-7 shadow-[var(--sh-md)]">
+      <div className="grid w-[400px] max-w-full gap-3 rounded-[12px] border border-card-line bg-surface p-7 shadow-[var(--sh-md)]">
         <div className="flex items-center gap-2 font-semibold text-slate-900">
           <ShieldCheck className="size-5 text-indigo-500" aria-hidden /> SupplyGuard
         </div>
