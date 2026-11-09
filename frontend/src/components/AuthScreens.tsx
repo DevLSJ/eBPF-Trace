@@ -6,6 +6,7 @@ import { ApiError, authApi } from '../lib/api';
 import { AUTH_MSG, validatePassword } from '../lib/auth';
 import type { SessionState, UserBrief } from '../lib/types';
 import { KeyBoxes } from './KeyBoxes';
+import { ThemeToggle } from './ThemeToggle';
 
 // 로그인 단계 화면(W16) — 목업 shared/auth.js 의 카드 · 문구 그대로.
 // 로그인 → (첫 로그인) 비밀번호 변경 → (라이선스 없음 · 관리자) 라이선스 → OTP 등록 → 복구 코드 / OTP 입력(복구 코드 전환)
@@ -86,7 +87,11 @@ export function AuthScreens(p: Props) {
 // 로그인 단계 · 세션 확인이 같이 쓰는 가운데 카드(11/09 G02 · G03 — 표시만)
 function AuthCard({ part, attrs, cardAttrs, children }: { part: string; attrs?: Record<string, string>; cardAttrs?: Record<string, string>; children: ReactNode }) {
   return (
-    <div data-part={part} {...attrs} className="flex min-h-full items-center justify-center bg-bg px-4 py-8">
+    <div data-part={part} {...attrs} className="relative flex min-h-full items-center justify-center bg-bg px-4 py-8">
+      {/* 11/09 G01 해/달 단추 — 셸 머리와 같은 부품, 로그인 · 세션 확인 화면 오른쪽 위(인증 흐름과 무관한 표시) */}
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <div {...cardAttrs} className="grid w-[400px] max-w-full gap-3 rounded-[12px] border border-card-line bg-surface p-7 shadow-[var(--sh-md)]">
         <div className="flex items-center gap-2 font-semibold text-slate-900">
           <ShieldCheck className="size-5 text-indigo-500" aria-hidden /> SupplyGuard
