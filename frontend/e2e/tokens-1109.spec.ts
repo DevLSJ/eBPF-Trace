@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 
-// 11/09 규격(SPEC-1109 「1. 토큰」) — LOGuard 답변의 권고대로 흩어진 값을 토큰으로 묶는다(값 · 동작만, 이름 · 문구는 옮기지 않음).
+// 11/09 규격(SPEC-1109 「1. 토큰」) — 참고 제품 답변의 권고대로 흩어진 값을 토큰으로 묶는다(값 · 동작만, 이름 · 문구는 옮기지 않음).
 // 움직임 3단 · 곡선 3종 · 포커스 링 하나 · 글자 5단 · 스켈레톤 반짝임 끝 색 · 저장소 안 글꼴(Pretendard Variable 한글 서브셋, SIL OFL 1.1) · 동작 줄이기
 
 const raw = (page: Page, names: string[]) =>

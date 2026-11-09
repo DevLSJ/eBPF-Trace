@@ -129,7 +129,7 @@ test.describe('상세 패널 — 본문 위에 오른쪽에서(11/05)', () => {
       if (how === 'esc') await page.keyboard.press('Escape');
       if (how === 'scrim') await page.mouse.click(400, 500);
       if (how === 'x') await page.locator(`${S('install')} [data-action="sheet-close"]`).click();
-      // 11/09 SPEC-1109 §2(LOGuard B1): 닫힘은 효과 없이 바로 — 미끄러져 나가는 단계(.closing)가 없다
+      // 11/09 SPEC-1109 §2(참고 제품 답변 B1): 닫힘은 효과 없이 바로 — 미끄러져 나가는 단계(.closing)가 없다
       await expect(layer).toHaveCount(0, { timeout: 150 });
       await expect(page.locator('.sg-sheet-layer.closing')).toHaveCount(0);
       expect(new URL(page.url()).searchParams.get('id')).toBeNull();

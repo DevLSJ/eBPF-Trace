@@ -39,7 +39,7 @@
   --outline-line: rgba(23, 105, 232, .5); --accent-tint: rgba(23, 105, 232, .04);
   --row-hover: rgba(0, 0, 0, .04); --field-line: rgba(0, 0, 0, .23);
   --panel-hover-line: rgba(23, 105, 232, .24); --panel-hover-sh: 0 12px 30px rgba(23, 105, 232, .075); --panel-head-line: rgba(120, 130, 150, .2);
-  /* ── 11/09 규격(SPEC-1109 「1. 토큰」 — LOGuard 답변 권고) ──
+  /* ── 11/09 규격(SPEC-1109 「1. 토큰」 — 참고 제품 답변 권고) ──
      움직임: 빠름 120(색 전환 · 팝오버) · 보통 180(시트 · 사이드바 · 자리 이동 · 들어옴) · 느림 450(테마 전환).
      곡선: 들어옴(enter) · 자리 이동 · 들림(move) · 색 전환(color). 표 행 hover · 탭 밑줄 · 선택은 전환 없이 즉시 */
   --dur-fast: 120ms; --dur-base: 180ms; --dur-slow: 450ms;
