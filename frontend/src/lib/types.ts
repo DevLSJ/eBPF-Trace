@@ -818,3 +818,12 @@ export interface ChatEngine {
   model: string;
   backup?: 'ollama';
 }
+
+// 11/09 설치 검사 「사용 방법」(GET /api/sginstall/setup). token 은 관리자에게만 — 조회자는 tokenRequired 만
+export interface SGInstallSetup {
+  download?: string; // 서버에 스크립트가 있을 때 내려받기 경로(/api/tools/sg-install)
+  api: string; // 서버 안에서 실행할 때 SUPPLYGUARD_API
+  tokenRequired: boolean;
+  token?: string;
+  reporting: boolean; // false 면 백엔드가 설치 보고를 받지 않음(SANDBOX_TOKEN 없음)
+}

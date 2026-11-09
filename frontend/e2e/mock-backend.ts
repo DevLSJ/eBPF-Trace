@@ -33,8 +33,7 @@ import type {
   Summary,
   Timeline,
   Verdict,
-  WsMessage,
-} from '../src/lib/types';
+  WsMessage, SGInstallSetup } from '../src/lib/types';
 import { ACTOR, MockAuth } from './mock-auth';
 
 // 계약(Claude Docs 「API 계약」 탭, 2026-10-15)을 따르는 상태 있는 가짜 백엔드.
@@ -204,6 +203,8 @@ export class MockBackend {
   // 10/30 시연(계약 §2 mock 소스): info.demo 가 true 일 때만 /api/demo 경로가 있다. demoDown → 503, demoRefused → 거부 세션(202 refused)
   demo: DemoState = { enabled: false, scenarios: DEMO_SCENARIOS, running: null, last: null };
   // 11/06 연동(GET /api/integration · POST /api/integration/test) — 백엔드 internal/integration 과 같은 모양. integrationDown → 503
+  // 11/09 설치 검사 「사용 방법」 — 기본은 make dev(mock): 토큰 없이 보고 받음 · 백엔드 :8000
+  sgSetup: SGInstallSetup = { download: '/api/tools/sg-install', api: 'http://127.0.0.1:8000', tokenRequired: false, reporting: true };
   integration: IntegrationStatus = {
     env: { source: 'mock', os: '', kernel: '', enforceKill: true, enforceNames: ['sg-install-*'], labelWatch: 'supplyguard.watch', labelEnforce: 'supplyguard.enforce', probeImage: 'busybox:1.36', testable: true },
     containers: [
@@ -820,6 +821,9 @@ export class MockBackend {
 
     // 11/06 연동
     if (method === 'GET' && path === '/integration') return json(this.integration);
+    if (method === 'GET' && path === '/sginstall/setup') return json(this.sgSetup);
+    if (method === 'GET' && path === '/tools/sg-install')
+      return route.fulfill({ status: 200, contentType: 'text/x-shellscript', headers: { 'Content-Disposition': 'attachment; filename="sg-install"' }, body: '#!/usr/bin/env bash\necho sg-install\n' });
     if (method === 'POST' && path === '/integration/test') {
       if (this.integrationDown || !this.integration.env.testable) return fail(503, '이 서버에서는 연결 테스트를 할 수 없습니다');
       if (this.integration.test?.state === 'running') return fail(409, '연결 테스트가 이미 진행 중입니다');

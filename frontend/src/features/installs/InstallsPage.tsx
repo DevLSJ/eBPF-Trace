@@ -18,6 +18,7 @@ import { fmtDateTime, fmtNum, fmtTime, isToday } from '../../lib/format';
 import { duration, EXAMPLE_COMMAND, sessionLabel, violationTotal } from '../../lib/pkg';
 import { INSTALL_STATUS_LABEL, INSTALL_STATUSES, MANAGERS, type Case, type InstallSession } from '../../lib/types';
 import { InstallSheet } from './InstallSheet';
+import { UsageGuide } from './UsageGuide';
 import { sheetNav } from '../../components/sheet-nav';
 import { StaticBadge } from './StaticBadge';
 import { isDangerRow } from './staticScan';
@@ -41,6 +42,7 @@ export function InstallsPage() {
   const manager = filters.manager;
   const id = params.get('id');
   const { cases } = useCases();
+  const [guide, setGuide] = useState(false); // 「사용 방법」(11/09)
   const copy = useCopyCommand();
   const now = useNow();
 
@@ -118,6 +120,9 @@ export function InstallsPage() {
   return (
     <div className="flex h-full min-h-0 gap-4">
       <PageActions>
+        <button type="button" onClick={() => setGuide(true)} className="sg-btn sg-btn-sm sg-btn-secondary">
+          사용 방법
+        </button>
         <button
           type="button"
           onClick={() => copy(EXAMPLE_COMMAND)}
@@ -155,7 +160,7 @@ export function InstallsPage() {
           ) : !list.data ? (
             <Skeleton rows={6} />
           ) : sessions.length === 0 ? (
-            <FirstUse onCopy={() => copy(EXAMPLE_COMMAND)} />
+            <FirstUse onCopy={() => copy(EXAMPLE_COMMAND)} onGuide={() => setGuide(true)} />
           ) : rows.length === 0 ? (
             status === 'pending' && !manager ? (
               <EmptyState icon={PackageSearch} title="판정 대기인 설치가 없습니다" hint="「전체」에서 지난 검사를 볼 수 있습니다" actions={<ClearFiltersButton onClick={() => set('status', 'all')}>전체 보기</ClearFiltersButton>} />
@@ -184,6 +189,7 @@ export function InstallsPage() {
       </Panel>
 
       {id && <InstallSheet id={id} onClose={() => set('id', null)} onChanged={list.reload} nav={sheetNav(view.rows.map((s) => s.id), id, (x) => set('id', x))} />}
+      {guide && <UsageGuide onClose={() => setGuide(false)} />}
     </div>
   );
 }
@@ -250,7 +256,7 @@ function Row({
 }
 
 // 설치 검사가 하나도 없을 때 — 첫 명령 안내
-function FirstUse({ onCopy }: { onCopy: () => void }) {
+function FirstUse({ onCopy, onGuide }: { onCopy: () => void; onGuide: () => void }) {
   return (
     <EmptyState
       testId="installs-empty"
@@ -258,10 +264,15 @@ function FirstUse({ onCopy }: { onCopy: () => void }) {
       title="아직 설치 검사가 없습니다"
       hint="개발자가 패키지를 설치할 때 감시 컨테이너에서 실행합니다. 위반이면 설치가 끝나기 전에 격리됩니다."
       actions={
-        <div className="sg-code flex items-center gap-2 px-3 py-2 font-mono text-xs">
-          {EXAMPLE_COMMAND}
-          <button type="button" onClick={onCopy} className="rounded p-1 text-text-3 hover:bg-surface-2 hover:text-text" aria-label="명령 복사">
-            <Copy className="size-3.5" />
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <div className="sg-code flex items-center gap-2 px-3 py-2 font-mono text-xs">
+            {EXAMPLE_COMMAND}
+            <button type="button" onClick={onCopy} className="rounded p-1 text-text-3 hover:bg-surface-2 hover:text-text" aria-label="명령 복사">
+              <Copy className="size-3.5" />
+            </button>
+          </div>
+          <button type="button" onClick={onGuide} className="sg-btn sg-btn-sm sg-btn-secondary">
+            사용 방법
           </button>
         </div>
       }
