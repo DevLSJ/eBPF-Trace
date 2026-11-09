@@ -308,3 +308,24 @@ test.describe('사진(다크 · 390)', () => {
     });
   });
 });
+
+// 11/09 메인 마무리(INTEG 질문 두 개 — 사용자 결정 「칸 · 단추 모두 통일」 · 「내부 이름 전부 쉬운 말」 그대로)
+test.describe('마무리 — 보고서 요약 이름 · 옛 백엔드 시연 404', () => {
+  test('건 보고서 요약 줄 이름은 「어떤 정책」(위반 칸 「정책」과 같음)', async ({ page }) => {
+    await page.goto('/report?case=case-0005');
+    const summary = page.locator('[data-section="summary"]');
+    await expect(summary).toContainText('어떤 정책');
+    await expect(summary).not.toContainText('어떤 규칙');
+  });
+
+  test('시연 시작이 옛 백엔드 404(텍스트)면 「시연 기능이 꺼져 있습니다.」 · 설정 이름은 보이는 글자에 없음', async ({ page, backend, allowConsole }) => {
+    allowConsole(/Failed to load resource: the server responded with a status of 404/);
+    backend.enableDemo();
+    await page.route('**/api/demo/run', (r: Route) => (r.request().method() === 'POST' ? r.fulfill({ status: 404, contentType: 'text/plain', body: 'not found' }) : r.fallback()));
+    await page.goto('/demo');
+    await page.locator('[data-part="demo-page"]').getByRole('button', { name: '시연 시작' }).click();
+    const err = page.locator('[data-part="demo-page"] [data-part="demo-error"]');
+    await expect(err).toContainText('시연 기능이 꺼져 있습니다.');
+    await expect(err).not.toContainText('DEMO_ENABLED');
+  });
+});
