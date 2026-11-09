@@ -70,10 +70,11 @@ test.describe('G37 목록 오류 제목 조사', () => {
   });
 });
 
-// 토스트 시간: 띄운 뒤 시계를 멈추고(pauseAt) 손으로만 앞당긴다 — 실제 시간이 흘러 경계가 흔들리지 않게
+// 토스트 시간: 띄운 뒤 시계를 300ms 앞에서 멈추고(pauseAt) 손으로만 앞당긴다 — 실제 시간이 흘러 경계가 흔들리지 않게.
+// 멈춘 시점에 이미 약 0.3초가 지났으므로 아래 앞당김 값은 그만큼 뺀 값
 async function pauseNow(page: Page) {
   const now = await page.evaluate(() => Date.now());
-  await page.clock.pauseAt(new Date(now + 20));
+  await page.clock.pauseAt(new Date(now + 300));
 }
 
 test.describe('G20 · G24 토스트', () => {
@@ -87,7 +88,7 @@ test.describe('G20 · G24 토스트', () => {
     await expect(plain).toBeVisible();
     await expect(plain.getByRole('button')).toHaveCount(1); // 닫기만
     await pauseNow(page);
-    await page.clock.fastForward(4_500);
+    await page.clock.fastForward(4_200); // 약 4.5초
     await expect(plain).toBeVisible();
     await page.clock.fastForward(1_000);
     await expect(plain).toHaveCount(0);
@@ -98,7 +99,7 @@ test.describe('G20 · G24 토스트', () => {
     await expect(act).toBeVisible();
     await expect(act.getByRole('button', { name: '이벤트 보기' })).toBeVisible();
     await pauseNow(page);
-    await page.clock.fastForward(8_500);
+    await page.clock.fastForward(8_200); // 약 8.5초 — 예전 8초면 이미 닫힘
     await expect(act).toBeVisible();
     await page.clock.fastForward(1_000);
     await expect(act).toHaveCount(0);

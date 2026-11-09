@@ -1,5 +1,6 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
+import { NotFound } from './components/NotFound';
 import { Page } from './components/Page';
 import { AuthProvider } from './hooks/auth-context';
 import { CasesProvider } from './hooks/cases-context';
@@ -45,7 +46,8 @@ export default function App() {
                 <Route path="report" element={<Page><ReportPage /></Page>} />
                 <Route path="integration" element={<Page><IntegrationPage /></Page>} />
                 <Route path="demo" element={<Page><DemoPage /></Page>} />
-                <Route path="*" element={<Navigate to="/" replace />} />
+                {/* 11/09 G04: 없는 주소는 대시보드로 몰래 옮기지 않고 「화면을 찾을 수 없습니다」(주소는 그대로) */}
+                <Route path="*" element={<Page><NotFound /></Page>} />
               </Route>
             </Routes>
           </CasesProvider>

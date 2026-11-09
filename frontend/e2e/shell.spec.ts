@@ -25,7 +25,7 @@ test.describe('셸', () => {
     }
   });
 
-  test('토스트: 같은 대상끼리 묶음(×N), 8초 뒤 닫힘', async ({ page, backend }) => {
+  test('토스트: 같은 대상끼리 묶음(×N), 9초 뒤 닫힘(단추 있음 — 11/09 G20)', async ({ page, backend }) => {
     await page.goto('/events');
     await expect(page.getByText('실시간 연결됨')).toBeVisible();
     for (let i = 0; i < 3; i++) backend.send({ type: 'verdict', data: killedVerdict('api-gw') });
@@ -39,7 +39,7 @@ test.describe('셸', () => {
     await page.locator('[data-part="bell"]').click();
     await expect(page.locator('[data-notice="violations"]')).toContainText(/새 위반 \d+건/);
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(8_400);
+    await page.waitForTimeout(9_400);
     await expect(page.locator('[data-toast]')).toHaveCount(0);
   });
 

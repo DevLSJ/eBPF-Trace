@@ -1,6 +1,7 @@
 import { CircleSlash, RotateCw, TriangleAlert, X, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { errorText, isUnsupported } from '../../lib/api';
+import { josa } from '../../lib/layout';
 import { emptyText, STATE_COPY } from './state-copy';
 
 // 목록 공통 상태(10/20 D, 목업 ui-kit.js skeleton · errorState · emptyState · filterChips · rowKeys) —
@@ -27,7 +28,7 @@ export function ListError({ error, what, onRetry, retrying }: { error: unknown; 
   return (
     <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 p-6 text-center text-sm" data-part="error" role="alert" data-unsupported={unsupported ? 'true' : undefined}>
       {unsupported ? <CircleSlash className="size-6 text-slate-400" aria-hidden /> : <TriangleAlert className="size-6 text-red-500" aria-hidden />}
-      <b className="text-slate-800">{unsupported ? '백엔드 미지원' : `${what}을(를) ${STATE_COPY.loadFailed}`}</b>
+      <b className="text-slate-800">{unsupported ? '백엔드 미지원' : `${what}${josa(what, ['을', '를'])} ${STATE_COPY.loadFailed}`}</b>
       <span className="text-xs text-slate-500">{unsupported ? `${what} API가 아직 백엔드에 없습니다.` : errorText(error)}</span>
       {onRetry && !unsupported && (
         <>
@@ -81,15 +82,19 @@ export function NoResults({ onClear, testId }: { onClear?: () => void; testId?: 
 }
 
 // 권한 없음(11/09 §7) — 「이 화면을 볼 권한이 없습니다.」(아이콘 없음). 조회자 화면에서 쓰기 단추를 숨기는 기존 규칙과는 별개 — 화면 자체를 못 볼 때만
-export function NoPermission({ text = STATE_COPY.denied, testId }: { text?: string; testId?: string }) {
+// 11/09 G04: hint = 왜 · 어떻게 하면 되는지 한 문장(보조 글 12.5 — 설정 이름 같은 내부 이름은 hint 의 title 툴팁에만), actions = 1차 단추
+export function NoPermission({ text = STATE_COPY.denied, hint, actions, testId }: { text?: string; hint?: ReactNode; actions?: ReactNode; testId?: string }) {
   return (
-    <div className="sg-empty flex h-full min-h-[180px] flex-col items-center justify-center p-6 text-center text-[14px] text-text-3" data-part="denied" role="status" data-testid={testId}>
-      {text}
+    <div className="sg-empty flex h-full min-h-[180px] flex-col items-center justify-center gap-1 p-6 text-center text-[14px] text-text-3" data-part="denied" role="status" data-testid={testId}>
+      <span>{text}</span>
+      {hint && <span className="max-w-md text-[12.5px]">{hint}</span>}
+      {actions && <div className="mt-1 flex flex-wrap items-center justify-center gap-2">{actions}</div>}
     </div>
   );
 }
 
-export function ClearFiltersButton({ onClick, children = '필터 모두 해제' }: { onClick: () => void; children?: ReactNode }) {
+// 필터 해제 단추 이름은 어디서나 「조건 지우기」 하나(11/09 G40, STATE_COPY.clear). children 은 다른 일(예: 「전체 보기」)을 할 때만
+export function ClearFiltersButton({ onClick, children = STATE_COPY.clear }: { onClick: () => void; children?: ReactNode }) {
   return (
     <button type="button" onClick={onClick} className="sg-btn sg-btn-sm sg-btn-secondary">
       {children}
@@ -97,7 +102,7 @@ export function ClearFiltersButton({ onClick, children = '필터 모두 해제' 
   );
 }
 
-// 적용된 필터 칩 — 칩마다 ✕, 끝에 「모두 해제」. 필터가 없으면 그리지 않는다(필터는 주소에 있다)
+// 적용된 필터 칩 — 칩마다 ✕, 끝에 「조건 지우기」(11/09 G40 — 예전 「모두 해제」). 필터가 없으면 그리지 않는다
 export interface AppliedFilter {
   key: string;
   label: string;
@@ -120,7 +125,7 @@ export function AppliedFilters({ items, onClearAll }: { items: (AppliedFilter | 
         </span>
       ))}
       <button type="button" data-action="clear-filters" onClick={onClearAll} className="rounded-md px-2 py-0.5 text-slate-600 hover:bg-slate-100">
-        모두 해제
+        {STATE_COPY.clear}
       </button>
     </div>
   );

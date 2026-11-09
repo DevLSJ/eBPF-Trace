@@ -5,6 +5,7 @@ import { ActionButton } from '../../components/ActionButton';
 import { CodeWindow } from '../../components/CodeWindow';
 import { FlowHero } from '../../components/FlowHero';
 import { KindBadge } from '../../components/KindBadge';
+import { NoPermission } from '../../components/list/ListStates';
 import { LoadError, Panel } from '../../components/Panel';
 import { VerdictBadge } from '../../components/VerdictBadge';
 import { useAuth } from '../../hooks/auth-context';
@@ -70,12 +71,20 @@ export function DemoPage() {
     [setScenario, runId],
   );
   if (!info) return null; // /api/info 를 읽기 전 — 안내가 잠깐 비치지 않게
+  // 11/09 G04 · G38: 권한 없음 양식(아이콘 없음) + 쉬운 말 — 서버 설정 이름은 툴팁에만. 조회자는 예전처럼 「관리자」 안내
   if (!allowed)
     return (
-      <div data-part="demo-denied" className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-text-3">
-        <Play className="size-8" aria-hidden />
-        <b className="text-base text-text-2">시연을 쓸 수 없습니다</b>
-        <span className="text-sm">관리자 계정이고 서버에서 시연(DEMO_ENABLED)을 켰을 때만 씁니다.</span>
+      <div data-part="demo-denied" data-reason={isAdmin ? 'off' : 'viewer'} className="h-full">
+        <NoPermission
+          text="시연을 쓸 수 없습니다."
+          hint={
+            isAdmin ? (
+              <span title="서버 설정 DEMO_ENABLED=true 일 때 켜집니다">서버에서 시연이 꺼져 있습니다. 서버 설정에서 시연을 켠 뒤 다시 여세요.</span>
+            ) : (
+              '시연은 관리자 계정으로만 씁니다.'
+            )
+          }
+        />
       </div>
     );
   const m = buildModel(demo.run, demo.session, demo.streamEvs);

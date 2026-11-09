@@ -1,6 +1,7 @@
 import { Search } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import '../table-kit.css';
+import { STATE_COPY } from './state-copy';
 
 // 목록 검색칸 · 필터 줄(11/09, 참고 제품의 목록 틀 — 값 · 동작만). 검색 단추 없음:
 //   SearchField  쓰는 동안은 적용하지 않고 Enter · 칸 벗어날 때 onApply(앞뒤 공백 뺌) · Esc 는 고치던 글을 적용된 값으로 되돌림
@@ -68,7 +69,7 @@ export function FilterBar({ children, active, onClear, name }: { children: React
       {children}
       {active && (
         <button type="button" className="tk-link" data-action="clear-conditions" onClick={onClear}>
-          조건 지우기
+          {STATE_COPY.clear}
         </button>
       )}
     </div>

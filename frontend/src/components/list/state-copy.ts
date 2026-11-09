@@ -11,6 +11,7 @@ export const STATE_COPY = {
   emptyDefault: '데이터가 없습니다.',
   noResults: '조건에 맞는 데이터가 없습니다',
   noResultsHint: '검색 조건을 바꾸거나 해제해 보세요.',
+  // 필터 해제 단추 이름은 이것 하나(11/09 G40) — 결과 없음 · 거르기 줄 · 「적용된 필터」 줄 모두
   clear: '조건 지우기',
   loadFailed: '불러오지 못했습니다',
   retry: '다시 시도',
