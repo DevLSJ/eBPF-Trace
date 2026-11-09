@@ -6,6 +6,7 @@ import './evaluation.css';
 // 점선 밑줄 단추 = 설명 있음. 마우스를 올리거나(툴팁 위로 옮겨도 유지) 키보드로 포커스하면 열리고, 벗어나거나 Esc · 스크롤이면 닫힌다.
 // 툴팁(role="tooltip")은 늘 문서에 있고(닫히면 hidden) 단추의 aria-describedby 가 가리킨다 — 화면 낭독기는 포커스 때 설명을 읽는다.
 // 단추는 data-action="term"(조회자 읽기 전용 검사에서 「쓰기 단추 아님」), 공통 부품이 없어 이 폴더에만 둔다.
+// q = 칸 머리 (?) 모양(11/09 저녁 목록) — 글자 대신 「?」 동그라미, 이름은 aria-label 「○○ 설명」.
 
 interface Entry {
   term: string; // 원래 용어
@@ -33,21 +34,31 @@ export const GLOSSARY = {
   control: { term: '대조군', easy: '비교용 정상 시나리오', desc: '공격 조건을 일부러 비껴 간 시나리오 · 탐지 0% 가 정답' },
   split: { term: '보정 · 시험 구간', easy: '선택용 · 시험용', desc: '선택용 구간으로 모델 · 기준값을 고르고 시험용 구간으로 성능만 잼 · 시험용은 고를 때 쓰지 않음' },
   killapi: { term: 'kill 호출', easy: '격리 명령', desc: 'Docker API 로 컨테이너를 멈추는 단계' },
+  // 11/09 저녁 목록 칸 머리 (?) — 줄마다 설명 문장을 두지 않고 칸 머리에서 한 번만
+  colItem: { term: '항목', easy: '항목', desc: '정적 = 설치하지 않고 패키지 코드만 검사(GuardDog · OSV) · 런타임 = 실제 커널에서 설치 · 실행 동작을 eBPF 로 관찰해 판정, 위반이면 격리' },
+  colResult: { term: '결과', easy: '결과', desc: '항목마다 핵심 수치 하나와 근거 · 막대는 비율(0~100%) · 줄을 누르면 차트와 표가 펼쳐짐' },
+  colState: {
+    term: '상태',
+    easy: '상태',
+    desc: '통과 = 기준 충족(공격 모두 탐지 · 대조군 탐지 0회, 정상 설치 위반 0건) · 주의 = 기준 미달, 펼쳐서 확인 · 규칙 우세 = 시험에서 규칙 판정의 종합 점수가 ML 모델보다 높음 · 참고 = 통과 기준이 없는 정보 · 결과 없음 = 측정 결과 파일 없음',
+  },
 } as const satisfies Record<string, Entry>;
 export type TermKey = keyof typeof GLOSSARY;
 
 const GAP = 6;
 const EDGE = 8;
+const FOCUS_SCROLL_MS = 250;
 
 // 열린 툴팁은 화면에 하나 — 새로 열리면 앞의 것을 닫는다
 let closeOpen: (() => void) | null = null;
 
-export function Term({ k, children }: { k: TermKey; children?: ReactNode }) {
+export function Term({ k, children, q }: { k: TermKey; children?: ReactNode; q?: boolean }) {
   const g: Entry = GLOSSARY[k];
   const id = useId();
   const btn = useRef<HTMLButtonElement>(null);
   const tip = useRef<HTMLDivElement>(null);
   const timer = useRef(0);
+  const openedAt = useRef(0);
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
@@ -60,6 +71,7 @@ export function Term({ k, children }: { k: TermKey; children?: ReactNode }) {
     window.clearTimeout(timer.current);
     if (closeOpen && closeOpen !== close) closeOpen();
     closeOpen = close;
+    openedAt.current = performance.now();
     setOpen(true);
   }, [close]);
   // 단추에서 툴팁으로 옮겨 가는 사이(틈 6px)에는 닫지 않는다
@@ -68,9 +80,9 @@ export function Term({ k, children }: { k: TermKey; children?: ReactNode }) {
     timer.current = window.setTimeout(close, 120);
   }, [close]);
 
-  // 열릴 때 자리: 단추 아래 가운데(넘치면 위), 좌우는 화면 안으로
-  useLayoutEffect(() => {
-    if (!open || !btn.current || !tip.current) return;
+  // 자리: 단추 아래 가운데(넘치면 위), 좌우는 화면 안으로
+  const place = useCallback(() => {
+    if (!btn.current || !tip.current) return;
     const r = btn.current.getBoundingClientRect();
     const w = tip.current.offsetWidth;
     const h = tip.current.offsetHeight;
@@ -78,13 +90,17 @@ export function Term({ k, children }: { k: TermKey; children?: ReactNode }) {
     const below = r.bottom + GAP;
     const top = below + h > window.innerHeight - EDGE ? Math.max(EDGE, r.top - h - GAP) : below;
     setPos({ left: Math.max(EDGE, left), top });
-  }, [open]);
+  }, []);
+  useLayoutEffect(() => {
+    if (open) place();
+  }, [open, place]);
 
-  // 열린 동안: Esc · 스크롤 · 창 크기 바뀜이면 닫는다
+  // 열린 동안: Esc · 스크롤 · 창 크기 바뀜이면 닫는다.
+  // 단, 열린 직후(FOCUS_SCROLL_MS)의 스크롤은 키보드 포커스가 스크롤 칸 밖의 단추를 보이게 끌어온 것 — 닫지 않고 자리만 다시 잡는다(11/09 저녁 목록)
   useEffect(() => {
     if (!open) return;
     const onKey = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && close();
-    const onMove = () => close();
+    const onMove = (e: Event) => (e.type === 'scroll' && performance.now() - openedAt.current < FOCUS_SCROLL_MS ? place() : close());
     document.addEventListener('keydown', onKey);
     window.addEventListener('scroll', onMove, true);
     window.addEventListener('resize', onMove);
@@ -93,7 +109,7 @@ export function Term({ k, children }: { k: TermKey; children?: ReactNode }) {
       window.removeEventListener('scroll', onMove, true);
       window.removeEventListener('resize', onMove);
     };
-  }, [open, close]);
+  }, [open, close, place]);
   useEffect(
     () => () => {
       window.clearTimeout(timer.current);
@@ -114,9 +130,10 @@ export function Term({ k, children }: { k: TermKey; children?: ReactNode }) {
       <button
         ref={btn}
         type="button"
-        className="eval-term"
+        className={q ? 'eval-term eval-q' : 'eval-term'}
         data-action="term"
         data-term={k}
+        aria-label={q ? `${g.term} 설명` : undefined}
         aria-describedby={id}
         onMouseEnter={show}
         onMouseLeave={closeSoon}
@@ -125,7 +142,7 @@ export function Term({ k, children }: { k: TermKey; children?: ReactNode }) {
         onClick={show}
         onKeyDown={onKeyDown}
       >
-        {children ?? g.term}
+        {q ? '?' : (children ?? g.term)}
       </button>
       {createPortal(
         <div

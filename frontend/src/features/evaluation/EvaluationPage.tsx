@@ -1,5 +1,5 @@
 import { Download } from 'lucide-react';
-import { Fragment, useId, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useState, type ReactNode, type TransitionEvent } from 'react';
 import { StatusBadge } from '../../components/Badges';
 import { KpiCard } from '../../components/KpiCard';
 import { useSortable } from '../../hooks/useSortable';
@@ -11,17 +11,19 @@ import { screenCopy } from '../../lib/screenCopy';
 import { useLoad } from '../../hooks/useLoad';
 import { api } from '../../lib/api';
 import { fmtNum } from '../../lib/format';
+import { reducedMotion } from '../../lib/motion';
 import { INSTALL_STATUS_LABEL, type EvalCandidate, type EvalModel, type EvalRuntime, type EvalScenario, type EvalStat, type EvalStatic, type Evaluation, type EvalVerdict, type InstallStatus } from '../../lib/types';
 import { ChartNote, HBars, RangeChart, type BarRow } from './charts';
 import { niceTicks, RATE_TICKS, type ColorKey, type TipLine } from './scale';
 import { Term, type TermKey } from './terms';
 
 // 평가(11/04 U1 — 목업 mock/shared/eval.js 확정본 · 11/04b · 11/04c) — 「이 탐지는 얼마나 맞고, 어디까지 믿을 수 있나?」
-// 11/09 사용자 결정 「평가 = 요점 3줄 + 쉬운 이름 + 용어 툴팁 + 자세한 표 접기」(용어 · 글씨가 많아 읽기 어렵다):
-//   요점 3줄(숫자 먼저, 응답에서 계산) · 지표 · 제목은 쉬운 이름(원래 용어는 점선 밑줄 단추 → 툴팁) · 세부 표 · 출처 · 한계 목록은 기본 접힘(「자세히」).
+// 11/09 사용자 결정 「쉬운 이름 + 용어 툴팁 + 자세한 표 접기」: 쉬운 이름(원래 용어는 점선 밑줄 단추 → 툴팁) · 세부 표는 기본 접힘(「자세히」).
+// 11/09 저녁 사용자 결정(A안 — 참고 그림의 가독성 원리): 「위 큰 숫자 3칸 + 접고 펼치는 목록 한 장(8줄)」.
+//   요점 3줄 · 지표 6칸 · 두 열 카드 바둑판을 없애고, 그 정보는 위 3칸과 줄 요약(값 · 근거 · 비율 막대 · 상태 칩)으로 옮겼다.
+//   줄 머리 ▶ 를 눌러야 세부(예전 카드 내용 그대로 — 차트 · 표 · 「자세히」)가 보인다. 여러 줄 동시에 열림 · 머리 「모두 펼치기 · 모두 접기」 하나 ·
+//   기본 모두 접힘(기억하지 않음). 줄마다 설명 문장 대신 칸 머리 (?) 툴팁.
 // 데이터: GET /api/evaluation → {static, runtime, model, modelAll}(bench/reports 실측 파일 그대로, 없는 쪽 null · 결과 없음 404). 읽기 전용, 조회자도 본다.
-// 순서: 머리(요점 3줄 · 측정 출처 접힘) → 지표 6칸 → 두 열(정적: 판정 결과 · 규칙 적중 · 판정 정확도 / 런타임: 시나리오 탐지율 · 격리 시간 + 단계 막대 · 정상 설치 위반)
-//       → 규칙 vs ML 모델(전체 폭) → 결과의 한계(전체 폭)
 // 쉬운 이름 대응(화면 전체 같은 말): 재현율 → 탐지율 · 오탐률 → 오판율 · 정밀도 → 적중률 · F1 → 종합 점수 · p50 → 중간값 · p95 → 95% 이내 ·
 //   혼동 행렬 → 판정 4칸 표 · 보정/시험 → 선택용/시험 · dryRun → 시험 운영 · kill 호출 → 격리 명령 · 대조(정상) → 대조군
 
@@ -30,8 +32,8 @@ const pct0 = (x: number) => `${Math.round(x * 100)}%`;
 const dec = (x: number | null | undefined) => (x == null || !Number.isFinite(x) ? '' : x.toFixed(2));
 const ms = (x: number | null | undefined) => (x == null ? '' : `${fmtNum(x)} ms`);
 const sum = (o: Record<string, number | undefined> | undefined) => Object.values(o ?? {}).reduce<number>((a, b) => a + (Number(b) || 0), 0);
-// 지표 보조 줄 — 조각 안에서는 줄을 바꾸지 않는다
-const hint = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).map((t) => (t as string).replace(/ /g, '\u00a0')).join(' · ');
+// 보조 줄 — 조각 안에서는 줄을 바꾸지 않는다
+const hint = (...parts: (string | false | null | undefined)[]) => parts.filter(Boolean).map((t) => (t as string).replace(/ /g, ' ')).join(' · ');
 const ymdhm = (iso: string) => {
   const d = new Date(iso);
   const p = (x: number) => String(x).padStart(2, '0');
@@ -69,64 +71,33 @@ function attacks(rt: EvalRuntime | null) {
 // 격리 시간 [11/04b]: 격리된 공격 전체(killLatencyMs — 백엔드 수신 → 격리). 키가 없는 옛 파일이면 격리까지 잰 공격 시나리오 중 가장 큰 값(basis 로 알린다)
 function latencyHead(rt: EvalRuntime | null) {
   const k = rt?.killLatencyMs;
-  if (k && k.p50 != null) return { p50: k.p50, p95: k.p95, basis: null };
+  if (k && k.p50 != null) return { p50: k.p50, p95: k.p95, n: k.n, basis: null };
   const l = attacks(rt).list.map((x) => x.latencyMs).filter((x): x is EvalStat => !!x && x.p50 != null);
-  return l.length ? { p50: Math.max(...l.map((x) => x.p50)), p95: Math.max(...l.map((x) => x.p95)), basis: '가장 느린 시나리오 기준' } : null;
-}
-// 요점 3줄(11/09) — 숫자(현상) 먼저 → 쉬운 이름 → 근거. 모두 응답 값에서 계산하고, 없는 쪽은 「… 결과 없음」
-interface Point {
-  k: 'static-detection' | 'false-alarm' | 'runtime';
-  num: string;
-  label: string;
-  basis: ReactNode;
-}
-function keyPoints(d: Evaluation): Point[] {
-  const c = d.static?.confusion;
-  const mt = d.static?.metrics ?? {};
-  const a = attacks(d.runtime);
-  const b = d.runtime?.benign;
-  const lat = latencyHead(d.runtime);
-  const falses = [c && `정상 패키지 ${fmtNum(c.fp + c.tn)}개 중 ${fmtNum(c.fp)}개 오판`, b && `정상 설치 ${fmtNum(b.installs)}건 중 위반 ${fmtNum(b.violations)}건`].filter(Boolean).join(' · ');
-  return [
-    {
-      k: 'static-detection',
-      num: c ? pct(mt.detectionRate) : '',
-      label: '정적 악성 탐지율',
-      basis: c ? `실제 악성 패키지 ${fmtNum(c.tp + c.fn)}개 중 ${fmtNum(c.tp)}개 탐지됨` : '정적 검사 결과 없음',
-    },
-    {
-      k: 'false-alarm',
-      num: c ? pct(mt.falsePositiveRate) : b ? pct(b.falsePositiveRate) : '',
-      label: !c && b ? '정상 설치 오판율' : '정상 패키지 오판율',
-      basis: falses || '오판 결과 없음',
-    },
-    {
-      k: 'runtime',
-      num: a.runs ? pct(a.detected / a.runs) : '',
-      label: '런타임 공격 탐지율',
-      basis: a.runs ? (
-        <>
-          {a.detected === a.runs ? `공격 ${fmtNum(a.runs)}회 모두 탐지` : `공격 ${fmtNum(a.runs)}회 중 ${fmtNum(a.detected)}회 탐지`}
-          {a.killed > 0 && ` · ${fmtNum(a.killed)}회 격리`}
-          {lat && (
-            <>
-              {' · 격리까지 '}
-              <Term k="p50">중간값</Term>
-              {` ${fmtNum(lat.p50)} ms`}
-            </>
-          )}
-        </>
-      ) : (
-        '런타임 결과 없음'
-      ),
-    },
-  ];
+  return l.length ? { p50: Math.max(...l.map((x) => x.p50)), p95: Math.max(...l.map((x) => x.p95)), n: undefined, basis: '가장 느린 시나리오 기준' } : null;
 }
 // 규칙 후보(id 가 rule 로 시작)가 시험 F1 에서 선택 모델보다 앞서는가 [11/04c]
 function ruleWins(md: EvalModel) {
   const cs = md.candidates ?? [];
   const pref = cs.find((x) => x.id === md.preferredId);
   return !!pref && cs.some((x) => /^rule/.test(x.id) && x.id !== pref.id && x.test.f1 > pref.test.f1);
+}
+// 규칙 후보 중 시험 종합 점수가 가장 높은 것 · 선택 모델
+function modelPicks(md: EvalModel) {
+  const cs = md.candidates ?? [];
+  return { rule: cs.filter((x) => /^rule/.test(x.id)).sort((a, b) => b.test.f1 - a.test.f1)[0], pref: cs.find((x) => x.id === md.preferredId) };
+}
+// 규칙 적중 상위 10 — 합 → 악성 적중 → 이름 순서
+function topRules(st: EvalStatic) {
+  return [...(st.rules ?? [])]
+    .sort((a, b) => b.maliciousHits + b.benignHits - (a.maliciousHits + a.benignHits) || b.maliciousHits - a.maliciousHits || a.rule.localeCompare(b.rule))
+    .slice(0, 10);
+}
+// 결과의 한계 — 세 파일 limits + 전체 범위 모델(model-all.json)만의 한계
+function limitItems(d: Evaluation) {
+  const items: (readonly [keyof typeof SOURCE, string])[] = (['static', 'runtime', 'model'] as const).flatMap((k) => (d[k]?.limits ?? []).map((t) => [k, t] as const));
+  const seen = new Set(d.model?.limits ?? []);
+  for (const t of d.modelAll?.limits ?? []) if (!seen.has(t)) items.push(['modelAll', t] as const);
+  return items;
 }
 // 정상 설치 결과 중 통과(벤치 'pass' · 설치 검사 'passed')가 아닌 것
 const PASS = new Set(['pass', 'passed']);
@@ -148,54 +119,35 @@ function FoldButton({ open, onToggle, controls, name }: { open: boolean; onToggl
     </button>
   );
 }
-// 카드 — detail 이 있으면 머리 오른쪽에 「자세히」, 본문 아래에 접힌 칸
-function Card({
-  part,
-  title,
-  actions,
-  detail,
-  detailName,
-  level = 3,
-  className = '',
-  children,
-}: {
-  part: string;
-  title: ReactNode;
-  actions?: ReactNode;
-  detail?: ReactNode;
-  detailName?: string;
-  level?: 2 | 3;
-  className?: string;
-  children: ReactNode;
-}) {
+// 줄 안쪽(예전 카드 본문) — 제목 줄은 목록 줄 이름이 대신한다. actions 는 위 오른쪽, detail 이 있으면 본문 아래 「자세히」 + 접힌 칸
+function Body({ part, actions, detail, detailName, children }: { part: string; actions?: ReactNode; detail?: ReactNode; detailName?: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const id = useId();
-  const H = level === 2 ? 'h2' : 'h3';
   return (
-    <section data-part={part} className={`sg-card min-w-0 ${className}`}>
-      <header className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-4 py-2">
-        <H className="text-[14.5px] font-semibold text-text">{title}</H>
-        {(actions || detail) && (
-          <div className="flex flex-wrap items-center gap-2">
-            {actions}
-            {detail && <FoldButton open={open} onToggle={() => setOpen((v) => !v)} controls={id} name={detailName ?? (typeof title === 'string' ? title : part)} />}
+    <div data-part={part} className="grid min-w-0 gap-2">
+      {actions && <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>}
+      {children}
+      {detail && (
+        <>
+          <div>
+            <FoldButton open={open} onToggle={() => setOpen((v) => !v)} controls={id} name={detailName ?? part} />
           </div>
-        )}
-      </header>
-      <div className="grid min-w-0 gap-2 px-4 pt-3 pb-3.5">
-        {children}
-        {detail && (
           <div id={id} hidden={!open} data-part="detail" className="grid min-w-0 gap-2 border-t border-border pt-3">
             {detail}
           </div>
-        )}
-      </div>
-    </section>
+        </>
+      )}
+    </div>
   );
 }
 const None = ({ what }: { what: string }) => (
-  <p data-part="none" className="py-3 text-xs text-text-3">
+  <p data-part="none" className="py-2 text-xs text-text-3">
     {what} 결과 없음
+  </p>
+);
+const Cap = ({ children, part }: { children: ReactNode; part?: string }) => (
+  <p data-part={part} className="text-xs font-semibold text-text-2">
+    {children}
   </p>
 );
 function Tag({ id, k, v, title }: { id: string; k: string; v: string; title?: string }) {
@@ -215,100 +167,23 @@ function Stat({ k, value, label }: { k: string; value: string; label: ReactNode 
     </div>
   );
 }
-// 지표 칸 — 11/04e KPI 카드 모양(띠 · 아이콘 칩 · 28/700, R1 11/04). 글자 값(퍼센트 · 「—」)이라 카운트업은 없다
+
+// ── 위 큰 숫자 3칸(11/04e KPI 카드 모양 — 띠 · 아이콘 칩 · 28/700). 글자 값(퍼센트)이라 카운트업은 없다 ──
 interface KpiDef {
   k: string;
   label: string;
   value: string;
-  unit?: string;
   sub: ReactNode;
   icon: string;
   stripe: Stripe;
 }
-const KPI_IDS = ['static-detection', 'static-fpr', 'runtime-detection', 'runtime-fpr', 'latency', 'model-f1'];
+const TOP_IDS = ['static-detection', 'static-fpr', 'runtime-detection'];
 
-// ── 머리: 요점 3줄 + 측정 출처(접힘) ──
-function Head({ d }: { d: Evaluation }) {
-  const [open, setOpen] = useState(false);
-  const id = useId();
+function Top({ d }: { d: Evaluation }) {
   const st = d.static;
-  const rt = d.runtime;
-  const tags: ReactNode[] = [];
-  for (const ds of st?.datasets ?? [])
-    tags.push(
-      <Tag
-        key={ds.id}
-        id={`dataset-${ds.id}`}
-        k={ds.kind === 'malicious' ? '악성 세트' : '정상 세트'}
-        v={ds.label}
-        title={[ds.source && `${ds.source}${ds.sourceCommit ? ` @ ${ds.sourceCommit}` : ''}`, ds.files != null && `파일 ${fmtNum(ds.files)}개`, ds.listSha256 && `목록 sha256 ${ds.listSha256.slice(0, 12)}`].filter(Boolean).join(' · ')}
-      />,
-    );
-  if (rt?.host) tags.push(<Tag key="host" id="host" k="런타임" v={`${rt.host.name} · 커널 ${rt.host.kernel} · ${rt.host.discovery}`} title={rt.host.igVersion ? `Inspektor Gadget ${rt.host.igVersion}` : undefined} />);
-  const gen = [st && ['정적', st.generatedAt], rt && ['런타임', rt.generatedAt], d.model?.generatedAt && ['모델', d.model.generatedAt], d.modelAll?.generatedAt && ['모델(전체)', d.modelAll.generatedAt]].filter(Boolean) as [string, string][];
-  if (gen.length) tags.push(<Tag key="generated" id="generated" k="생성" v={ymdhm(gen.map((g) => g[1]).sort().pop()!)} title={gen.map(([k, v]) => `${k} ${v}`).join(' · ')} />);
-  const commits = [...new Set([st?.scanner?.backendCommit, rt?.host?.backendCommit].filter((x): x is string => !!x))];
-  if (commits.length)
-    tags.push(
-      <Tag
-        key="commit"
-        id="commit"
-        k="백엔드"
-        v={commits.map((c) => c.slice(0, 7)).join(' · ')}
-        title={[commits.join(' · '), st?.scanner && `GuardDog ${st.scanner.guarddog} · OSV-Scanner ${st.scanner.osv}`].filter(Boolean).join('\n')}
-      />,
-    );
-  return (
-    <section data-part="eval-head" className="sg-card grid gap-2 px-4 py-3 md:px-5 md:py-3.5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-[14.5px] font-semibold text-text">요점</h2>
-        {tags.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-text-3" aria-hidden>
-              측정 출처
-            </span>
-            <FoldButton open={open} onToggle={() => setOpen((v) => !v)} controls={id} name="측정 출처" />
-          </div>
-        )}
-      </div>
-      {/* 768 이상은 세 칸(숫자 · 이름 · 근거)을 줄끼리 맞춘다(subgrid), 그 아래는 숫자 · 이름 한 줄 + 근거 다음 줄 */}
-      <ol data-part="key-points" className="grid gap-y-1.5 md:grid-cols-[max-content_max-content_minmax(0,1fr)] md:gap-x-4">
-        {keyPoints(d).map((p) => (
-          <li key={p.k} data-point={p.k} className="grid grid-cols-[minmax(64px,max-content)_minmax(0,1fr)] items-baseline gap-x-3 md:col-span-full md:grid-cols-subgrid">
-            <b data-num="" className="num text-lg leading-snug font-bold text-text">
-              {p.num}
-            </b>
-            <span data-label="" className="text-sm font-semibold text-text">
-              {p.label}
-            </span>
-            <span data-basis="" className="col-span-2 min-w-0 text-[13px] text-text-2 md:col-span-1">
-              {p.basis}
-            </span>
-          </li>
-        ))}
-      </ol>
-      {tags.length > 0 && (
-        <div id={id} hidden={!open} data-part="detail" className="grid gap-1.5 border-t border-border pt-2.5">
-          <p className="text-xs font-semibold text-text-3">측정 출처</p>
-          <div data-part="tags" className="flex flex-wrap gap-1.5">
-            {tags}
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function Kpis({ d }: { d: Evaluation }) {
-  const st = d.static;
-  const rt = d.runtime;
-  const md = d.model;
   const mt = st?.metrics ?? {};
   const c = st?.confusion;
-  const a = attacks(rt);
-  const b = rt?.benign;
-  const lat = latencyHead(rt);
-  const pref = md?.candidates?.find((x) => x.id === md.preferredId);
+  const a = attacks(d.runtime);
   // 보조 줄 = 근거 숫자 · 원래 용어(점선 밑줄 → 툴팁)
   const defs: KpiDef[] = [
     {
@@ -339,84 +214,336 @@ function Kpis({ d }: { d: Evaluation }) {
         '정적 결과 없음'
       ),
     },
-    { k: 'runtime-detection', icon: '▣', stripe: 'accent', label: '런타임 공격 탐지율', value: a.runs ? pct(a.detected / a.runs) : '', sub: a.runs ? hint(`공격 ${fmtNum(a.runs)}회 중 ${fmtNum(a.detected)}회`, `${a.list.length}종`) : '런타임 결과 없음' },
     {
-      k: 'runtime-fpr',
-      icon: '✓',
-      stripe: 'info',
-      label: '정상 설치 오판율',
-      value: b ? pct(b.falsePositiveRate) : '',
-      sub: b ? (
-        <>
-          {hint(`정상 설치 ${fmtNum(b.installs)}건 중 ${fmtNum(b.violations)}건`)} · <Term k="fpr" />
-        </>
-      ) : (
-        '런타임 결과 없음'
-      ),
-    },
-    {
-      k: 'latency',
-      icon: '◷',
-      stripe: 'warn',
-      label: '격리까지 걸린 시간',
-      value: lat ? fmtNum(lat.p50) : '',
-      unit: lat ? ' ms' : undefined,
-      sub: lat ? (
-        <>
-          <Term k="p50">중간값</Term> · <Term k="p95">95% 이내</Term>
-          {` ${hint(`${fmtNum(lat.p95)} ms`, lat.basis)}`}
-        </>
-      ) : (
-        '격리한 시나리오 없음'
-      ),
-    },
-    {
-      k: 'model-f1',
-      icon: '◔',
-      stripe: 'ok',
-      label: 'ML 모델 종합 점수',
-      value: pref ? dec(pref.test.f1) : '',
-      sub: pref ? (
-        <>
-          <ModelName x={pref} />
-          {md?.deploymentApproved ? '' : ` · ${hint('운영 미적용')}`} · <Term k="f1" />
-        </>
-      ) : (
-        '모델 결과 없음'
-      ),
+      k: 'runtime-detection',
+      icon: '▣',
+      stripe: 'accent',
+      label: '런타임 공격 탐지율',
+      value: a.runs ? pct(a.detected / a.runs) : '',
+      sub: a.runs ? hint(`공격 ${fmtNum(a.runs)}회 중 ${fmtNum(a.detected)}회`, `격리 ${fmtNum(a.killed)}회`) : '런타임 결과 없음',
     },
   ];
-  return <KpiGrid defs={defs} />;
+  return <TopGrid defs={defs} />;
 }
 
-// 지표 6칸 — 길게 눌러(또는 Alt+←/→) 순서 바꾸기(11/04d, R1 11/04 — localStorage supplyguard.layout.evaluationKpi). 칸(div)은 tabindex 0.
-// 칸 안 용어 단추는 끌기를 시작하지 않는다(useSortable 이 칸 안 button 의 누르기는 그대로 둔다)
-function KpiGrid({ defs }: { defs: KpiDef[] }) {
+// 길게 눌러(또는 Alt+←/→) 순서 바꾸기(11/04d, R1 11/04 — localStorage supplyguard.layout.evaluationKpi, 예전 6칸 순서 중 3칸만 이어 씀).
+// 칸 안 용어 단추는 끌기를 시작하지 않는다(useSortable 이 칸 안 button 의 누르기는 그대로 둔다). 768 미만은 2열(셋째 칸은 두 칸 폭)
+function TopGrid({ defs }: { defs: KpiDef[] }) {
   const by = new Map(defs.map((x) => [x.k, x]));
-  const { ref, order, containerClass, itemProps, pickedClass } = useSortable<HTMLDivElement>({ scope: 'evaluationKpi', ids: KPI_IDS, layout: 'grid', focusable: false, labelOf: (id) => by.get(id)?.label ?? id });
+  const { ref, order, containerClass, itemProps, pickedClass } = useSortable<HTMLDivElement>({ scope: 'evaluationKpi', ids: TOP_IDS, layout: 'grid', focusable: false, labelOf: (id) => by.get(id)?.label ?? id });
   return (
-    <div ref={ref} data-part="kpis" className={`grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6 ${containerClass}`}>
+    <div ref={ref} data-part="eval-top" className={`eval-top grid grid-cols-2 gap-3 md:grid-cols-3 ${containerClass}`}>
       {order.map((id) => {
         const x = by.get(id)!;
-        return <KpiCard key={id} k={x.k} label={x.label} icon={x.icon} stripe={x.stripe} text={x.value} unit={x.unit} sub={x.sub} wrapSub className={`eval-kpi ${pickedClass(id)}`} attrs={itemProps(id)} />;
+        return <KpiCard key={id} k={x.k} label={x.label} icon={x.icon} stripe={x.stripe} text={x.value} sub={x.sub} wrapSub className={`eval-kpi ${pickedClass(id)}`} attrs={itemProps(id)} />;
       })}
     </div>
   );
 }
 
-// 두 열 머리 — 정적 · 런타임을 쉬운 말과 함께
-function ColTitle({ k, term, easy }: { k: TermKey; term: string; easy: string }) {
+// ── 목록 8줄 ──
+type ItemId = 'dist' | 'rules' | 'confusion' | 'scenarios' | 'latency' | 'benign' | 'model' | 'limits';
+const ITEMS: { id: ItemId; group?: '정적' | '런타임'; name: string }[] = [
+  { id: 'dist', group: '정적', name: '데이터별 판정' },
+  { id: 'rules', group: '정적', name: '규칙 적중' },
+  { id: 'confusion', group: '정적', name: '판정 4칸' },
+  { id: 'scenarios', group: '런타임', name: '공격 시나리오' },
+  { id: 'latency', group: '런타임', name: '격리까지 걸린 시간' },
+  { id: 'benign', group: '런타임', name: '정상 설치 위반' },
+  { id: 'model', name: '규칙 · 모델 비교' },
+  { id: 'limits', name: '결과의 한계' },
+];
+// 상태 칩(글자 + 톤, 빨강 없음): 통과 · 주의는 기준이 있는 줄만(공격 시나리오 · 정상 설치), 규칙 우세는 모델 비교, 그 밖은 참고
+type ChipKey = 'pass' | 'warn' | 'rule' | 'ref' | 'none';
+const CHIP: Record<ChipKey, [string, string]> = {
+  pass: ['통과', 'sg-pill-ok'],
+  warn: ['주의', 'sg-pill-warn'],
+  rule: ['규칙 우세', 'sg-pill-accent'],
+  ref: ['참고', 'sg-pill-neutral'],
+  none: ['결과 없음', 'sg-pill-neutral'],
+};
+interface Summary {
+  value?: ReactNode; // 핵심 값(숫자 굵게)
+  sub?: string; // 근거
+  meter?: { v: number; tone: 'accent' | 'warn' }; // 비율이면 얇은 막대(0~1)
+  chip: ChipKey;
+}
+const NONE: Summary = { chip: 'none' };
+
+// 줄 요약 — 모두 응답 값에서 계산, 없는 쪽은 「결과 없음」(값 · 근거 빈 칸)
+function summaries(d: Evaluation): Record<ItemId, Summary> {
+  const st = d.static;
+  const rt = d.runtime;
+  const md = d.model ?? d.modelAll ?? null;
+  const out = {} as Record<ItemId, Summary>;
+
+  // ① 데이터별 판정: 검사한 수 / 세트 전체(비율 막대) · 세트 수 · 지표 계산에서 뺀 오류 · 건너뜀
+  if (st) {
+    const sets = st.sets ?? [];
+    const scanned = sets.reduce((n, s) => n + (s.scanned ?? 0), 0);
+    const total = sets.reduce((n, s) => n + (s.total ?? 0), 0);
+    const errors = sets.reduce((n, s) => n + (s.verdicts.error ?? 0), 0);
+    const skipped = sets.reduce((n, s) => n + sum(s.skipped), 0);
+    out.dist = {
+      value: sets.length ? (
+        <>
+          <b>{fmtNum(scanned)}</b>
+          {` / ${fmtNum(total)}개 검사`}
+        </>
+      ) : undefined,
+      sub: hint(`세트 ${fmtNum(sets.length)}개`, errors > 0 && `오류 ${fmtNum(errors)}건`, skipped > 0 && `건너뜀 ${fmtNum(skipped)}건`),
+      meter: total ? { v: scanned / total, tone: 'accent' } : undefined,
+      chip: 'ref',
+    };
+    // ② 규칙 적중: 1위 규칙 · 악성/정상 적중 수 · 적중한 규칙 수
+    const top = topRules(st);
+    const first = top[0];
+    const hit = (st.rules ?? []).filter((r) => r.maliciousHits + r.benignHits > 0).length;
+    out.rules = {
+      value: first ? (
+        <>
+          {'1위 '}
+          <code className="eval-code">{first.rule}</code>
+        </>
+      ) : undefined,
+      sub: first ? hint(`악성 ${fmtNum(first.maliciousHits)}개`, `정상 ${fmtNum(first.benignHits)}개에서 걸림`, `적중 규칙 ${fmtNum(hit)}개`) : '적중한 규칙 없음',
+      chip: 'ref',
+    };
+  } else {
+    out.dist = NONE;
+    out.rules = NONE;
+  }
+  // ③ 판정 4칸: 종합 점수(막대) · 적중률 · 탐지율
+  if (st?.confusion) {
+    const mt = st.metrics ?? {};
+    out.confusion = {
+      value:
+        mt.f1 != null ? (
+          <>
+            <b>{dec(mt.f1)}</b>
+            {' 종합 점수'}
+          </>
+        ) : undefined,
+      sub: hint(mt.precision != null && `적중률 ${pct(mt.precision)}`, mt.recall != null && `탐지율 ${pct(mt.recall)}`),
+      meter: mt.f1 != null ? { v: mt.f1, tone: 'accent' } : undefined,
+      chip: 'ref',
+    };
+  } else out.confusion = NONE;
+
+  if (rt) {
+    // ④ 공격 시나리오: 탐지 / 공격 회수(막대) · 공격 종류 · 대조군 탐지(0회가 정답). 통과 = 공격 모두 탐지 + 대조군 탐지 0회
+    const a = attacks(rt);
+    const ctl = (rt.scenarios ?? []).filter((x) => x.kind === 'control');
+    const cRuns = ctl.reduce((n, x) => n + x.runs, 0);
+    const cDet = ctl.reduce((n, x) => n + x.detected, 0);
+    out.scenarios = {
+      value: a.runs ? (
+        <>
+          <b>{fmtNum(a.detected)}</b>
+          {` / ${fmtNum(a.runs)}회 탐지`}
+        </>
+      ) : undefined,
+      sub: a.runs ? hint(`공격 ${fmtNum(a.list.length)}종`, ctl.length > 0 && `대조군 ${fmtNum(cRuns)}회 중 탐지 ${fmtNum(cDet)}회`) : '공격 시나리오 없음',
+      meter: a.runs ? { v: a.detected / a.runs, tone: 'accent' } : undefined,
+      chip: !a.runs ? 'ref' : a.detected === a.runs && cDet === 0 ? 'pass' : 'warn',
+    };
+    // ⑤ 격리까지 걸린 시간: 중간값 · 95% 이내 · 격리 회수(옛 파일은 가장 느린 시나리오 기준)
+    const lat = latencyHead(rt);
+    out.latency = {
+      value: lat ? (
+        <>
+          <b>{`${fmtNum(lat.p50)} ms`}</b>
+          {' 중간값'}
+        </>
+      ) : undefined,
+      sub: lat ? hint(`95% 이내 ${fmtNum(lat.p95)} ms`, lat.n != null && `격리 ${fmtNum(lat.n)}회 기준`, lat.basis) : '격리한 시나리오 없음',
+      chip: 'ref',
+    };
+  } else {
+    out.scenarios = NONE;
+    out.latency = NONE;
+  }
+  // ⑥ 정상 설치 위반: 위반 / 정상 설치(막대) · 오판율 · 생태계별 설치 수. 통과 = 위반 0건
+  const b = rt?.benign;
+  out.benign = b
+    ? {
+        value: (
+          <>
+            <b>{fmtNum(b.violations)}</b>
+            {` / ${fmtNum(b.installs)}건 위반`}
+          </>
+        ),
+        sub: hint(`오판율 ${pct(b.falsePositiveRate)}`, ...Object.entries(b.byEcosystem ?? {}).map(([k, v]) => `${k} ${fmtNum(v)}`)),
+        meter: b.installs ? { v: b.violations / b.installs, tone: 'warn' } : undefined,
+        chip: b.violations === 0 ? 'pass' : 'warn',
+      }
+    : NONE;
+  // ⑦ 규칙 · 모델 비교(PyPI 모델 — 없으면 전체 범위): 규칙 최고 · 선택 모델의 시험 종합 점수, 운영 미적용. 규칙이 앞서면 「규칙 우세」
+  if (md) {
+    const { rule, pref } = modelPicks(md);
+    const ml = pref && pref.id !== rule?.id ? pref : undefined;
+    out.model = {
+      value:
+        rule || ml ? (
+          <>
+            {rule && (
+              <>
+                <b>{dec(rule.test.f1)}</b>
+                {' 규칙'}
+              </>
+            )}
+            {rule && ml && ' · '}
+            {ml && (
+              <>
+                <b>{dec(ml.test.f1)}</b>
+                {' ML 모델'}
+              </>
+            )}
+          </>
+        ) : undefined,
+      sub: hint('종합 점수(시험)', ml?.label, !md.deploymentApproved && '운영 미적용'),
+      chip: ruleWins(md) ? 'rule' : 'ref',
+    };
+  } else out.model = NONE;
+  // ⑧ 결과의 한계: 적힌 한계 수 · 출처별 수
+  const items = limitItems(d);
+  const counts = (Object.keys(SOURCE) as (keyof typeof SOURCE)[]).map((k) => [k, items.filter((x) => x[0] === k).length] as const).filter(([, n]) => n > 0);
+  out.limits = {
+    value: (
+      <>
+        <b>{fmtNum(items.length)}</b>건
+      </>
+    ),
+    sub: items.length ? hint(...counts.map(([k, n]) => `${SOURCE[k]} ${fmtNum(n)}`)) : '적힌 한계 없음',
+    chip: 'ref',
+  };
+  return out;
+}
+
+// 목록 줄 하나: 머리(단추 = ▶ · 이름 · 값 · 근거 · 막대 · 칩) + 안쪽(높이 0fr ↔ 1fr, --dur-base · --ease-move — 열 때 · 닫을 때 같은 값).
+// 안쪽은 늘 그려 둔다(차트 폭을 미리 잼). 접히면 visibility hidden(전환이 끝난 뒤) — 포커스 · 화면 낭독기에서 빠진다.
+// 열림 전환이 끝나면(settled) 안쪽 넘침을 보이게 해 차트 툴팁이 잘리지 않게 한다. 닫히면 바로 다시 자른다
+function Row({ it, s, open, onToggle, children }: { it: (typeof ITEMS)[number]; s: Summary; open: boolean; onToggle: () => void; children: ReactNode }) {
+  const id = useId();
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [settled, setSettled] = useState(false);
+  if (prevOpen !== open) {
+    setPrevOpen(open);
+    setSettled(open && reducedMotion());
+  }
+  // transitionend 가 오지 않는 경우(탭 숨김 등)의 안전장치
+  useEffect(() => {
+    if (!open || settled) return;
+    const t = window.setTimeout(() => setSettled(true), 260);
+    return () => window.clearTimeout(t);
+  }, [open, settled]);
+  const onEnd = (e: TransitionEvent) => {
+    if (e.target === e.currentTarget && e.propertyName === 'grid-template-rows' && open) setSettled(true);
+  };
+  const [chipText, chipTone] = CHIP[s.chip];
   return (
-    <h2 data-col-title="" className="px-1 text-[13px] font-semibold text-text-2">
-      <Term k={k}>{term}</Term> · {easy}
-    </h2>
+    <li data-item={it.id} data-open={open} data-settled={open && settled ? '' : undefined} className="eval-item">
+      <h2 className="m-0">
+        <button
+          type="button"
+          id={`${id}b`}
+          data-action="toggle-row"
+          aria-expanded={open}
+          aria-controls={`${id}p`}
+          aria-labelledby={`${id}n`}
+          aria-describedby={`${id}s ${id}c`}
+          onClick={onToggle}
+          className="eval-row"
+        >
+          <span data-part="caret" className="eval-caret" aria-hidden />
+          <span id={`${id}n`} data-name="" className="eval-name">
+            {it.group && (
+              <>
+                <span className="eval-group">{it.group}</span>
+                <span className="eval-group"> · </span>
+              </>
+            )}
+            <span>{it.name}</span>
+          </span>
+          <span id={`${id}s`} className="eval-res">
+            <span className="eval-res-text">
+              <span data-value="" className="eval-val">
+                {s.value}
+              </span>
+              <span data-sub="" className="eval-sub">
+                {s.sub}
+              </span>
+            </span>
+            <span className="eval-meter-cell" aria-hidden>
+              {s.meter && (
+                <span data-meter="" data-v={String(s.meter.v)} className={`eval-meter tone-${s.meter.tone}`}>
+                  <i style={{ width: `${Math.min(1, Math.max(0, s.meter.v)) * 100}%` }} />
+                </span>
+              )}
+            </span>
+          </span>
+          <span id={`${id}c`} data-chip={s.chip} className={`eval-chip sg-pill ${chipTone}`}>
+            {chipText}
+          </span>
+        </button>
+      </h2>
+      <div id={`${id}p`} role="region" aria-labelledby={`${id}n`} className="eval-panel" onTransitionEnd={onEnd}>
+        <div className="eval-panel-in">
+          <div className="eval-panel-body">{children}</div>
+        </div>
+      </div>
+    </li>
   );
 }
 
-// ── 정적 열 ──
-function DistCard({ st }: { st: EvalStatic | null }) {
-  const title = '데이터별 판정 결과';
-  if (!st) return <Card part="dist" title={title}><None what="정적" /></Card>;
+function EvalList({ d, open, onToggle, listId }: { d: Evaluation; open: ReadonlySet<ItemId>; onToggle: (id: ItemId) => void; listId: string }) {
+  const s = summaries(d);
+  const body: Record<ItemId, ReactNode> = {
+    dist: <DistBody st={d.static} />,
+    rules: <RulesBody st={d.static} />,
+    confusion: <ConfusionBody st={d.static} />,
+    scenarios: <ScenarioBody rt={d.runtime} />,
+    latency: <LatencyBody rt={d.runtime} />,
+    benign: <BenignBody rt={d.runtime} />,
+    model: <ModelBody model={d.model} modelAll={d.modelAll} />,
+    limits: <LimitsBody d={d} />,
+  };
+  return (
+    <section id={listId} data-part="eval-list" aria-label="평가 항목" className="sg-card eval-list">
+      <div data-part="eval-list-head" className="eval-list-head">
+        <span className="eval-head-caret" aria-hidden />
+        <span data-head="name">
+          항목
+          <Term k="colItem" q />
+        </span>
+        <span data-head="result">
+          결과
+          <Term k="colResult" q />
+        </span>
+        <span data-head="state" className="eval-head-state">
+          상태
+          <Term k="colState" q />
+        </span>
+      </div>
+      <ul className="eval-items">
+        {ITEMS.map((it) => (
+          <Row key={it.id} it={it} s={s[it.id]} open={open.has(it.id)} onToggle={() => onToggle(it.id)}>
+            {body[it.id]}
+          </Row>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// ── 줄 안쪽: 정적 ──
+function DistBody({ st }: { st: EvalStatic | null }) {
+  if (!st)
+    return (
+      <Body part="dist">
+        <None what="정적" />
+      </Body>
+    );
   const label = (id: string) => st.datasets?.find((x) => x.id === id)?.label ?? id;
   const sets = st.sets ?? [];
   const rows: BarRow[] = sets.map((set) => {
@@ -468,7 +595,7 @@ function DistCard({ st }: { st: EvalStatic | null }) {
     </>
   );
   return (
-    <Card part="dist" title={title} detail={detail || undefined} detailName="데이터별 판정 표">
+    <Body part="dist" detail={detail || undefined} detailName="데이터별 판정 표">
       <HBars
         name="verdict-dist"
         label="데이터별 판정 결과 쌓은 막대"
@@ -487,22 +614,18 @@ function DistCard({ st }: { st: EvalStatic | null }) {
           {` ${fmtNum(st.durationsSec.p95)}초)`}
         </ChartNote>
       )}
-    </Card>
+    </Body>
   );
 }
-function RulesCard({ st }: { st: EvalStatic | null }) {
-  const title = (
-    <>
-      {'많이 걸린 '}
-      <Term k="guarddog">GuardDog</Term>
-      {' 규칙 상위 10'}
-    </>
-  );
-  if (!st) return <Card part="rules" title={title} detailName="규칙 적중"><None what="정적" /></Card>;
-  // 합 → 악성 적중 → 이름 순서로 상위 10
-  const top = [...(st.rules ?? [])]
-    .sort((a, b) => b.maliciousHits + b.benignHits - (a.maliciousHits + a.benignHits) || b.maliciousHits - a.maliciousHits || a.rule.localeCompare(b.rule))
-    .slice(0, 10);
+// 규칙 적중 — 예전 카드 본문(1위 한 줄)은 줄 요약으로 올라가, 예전 「자세히」였던 상위 10 차트를 바로 보인다
+function RulesBody({ st }: { st: EvalStatic | null }) {
+  if (!st)
+    return (
+      <Body part="rules">
+        <None what="정적" />
+      </Body>
+    );
+  const top = topRules(st);
   const rows: BarRow[] = top.map((r) => ({
     id: r.rule,
     label: r.rule,
@@ -511,35 +634,39 @@ function RulesCard({ st }: { st: EvalStatic | null }) {
     bars: [[{ key: 'malicious', v: r.maliciousHits, color: 'mal' }], [{ key: 'benign', v: r.benignHits, color: 'muted' }]],
     tip: [[null, r.rule], ['mal', `악성 패키지 ${fmtNum(r.maliciousHits)}개`], ['muted', `정상 패키지 ${fmtNum(r.benignHits)}개`], ...(r.installTime ? [[null, '설치 시점 규칙'] as TipLine] : [])],
   }));
-  const first = top[0];
-  const detail = top.length > 0 && (
-    <HBars
-      name="rule-hits"
-      label="GuardDog 규칙별 악성 · 정상 패키지에서 걸린 수"
-      rows={rows}
-      ticks={niceTicks(Math.max(1, ...top.map((r) => Math.max(r.maliciousHits, r.benignHits))))}
-      tickFmt={(t) => fmtNum(t)}
-      legend={[['악성 패키지에서 걸림', 'mal'], ['정상 패키지에서 걸림', 'muted']]}
-      labelW={170}
-    />
-  );
   return (
-    <Card part="rules" title={title} detail={detail || undefined} detailName="규칙 적중 차트">
-      {first ? (
-        <p data-part="rules-top" className="text-[13px] text-text-2">
-          {'1위 '}
-          <code className="font-mono text-xs break-all text-text">{first.rule}</code>
-          {`(악성 ${fmtNum(first.maliciousHits)}개 · 정상 ${fmtNum(first.benignHits)}개에서 걸림)`}
-        </p>
+    <Body part="rules">
+      <Cap>
+        {'많이 걸린 '}
+        <Term k="guarddog">GuardDog</Term>
+        {' 규칙 상위 10'}
+      </Cap>
+      {top.length ? (
+        <HBars
+          name="rule-hits"
+          label="GuardDog 규칙별 악성 · 정상 패키지에서 걸린 수"
+          rows={rows}
+          ticks={niceTicks(Math.max(1, ...top.map((r) => Math.max(r.maliciousHits, r.benignHits))))}
+          tickFmt={(t) => fmtNum(t)}
+          legend={[
+            ['악성 패키지에서 걸림', 'mal'],
+            ['정상 패키지에서 걸림', 'muted'],
+          ]}
+          labelW={170}
+        />
       ) : (
-        <p className="py-3 text-xs text-text-3">적중한 규칙 없음</p>
+        <p className="py-2 text-xs text-text-3">적중한 규칙 없음</p>
       )}
-    </Card>
+    </Body>
   );
 }
-function ConfusionCard({ st }: { st: EvalStatic | null }) {
-  const title = '판정 정확도';
-  if (!st?.confusion) return <Card part="confusion" title={title}><None what="정적" /></Card>;
+function ConfusionBody({ st }: { st: EvalStatic | null }) {
+  if (!st?.confusion)
+    return (
+      <Body part="confusion">
+        <None what="정적" />
+      </Body>
+    );
   const c = st.confusion;
   const mt = st.metrics ?? {};
   const cell = (k: string, n: number, what: string) => (
@@ -582,8 +709,8 @@ function ConfusionCard({ st }: { st: EvalStatic | null }) {
     </>
   );
   return (
-    <Card part="confusion" title={title} detail={detail} detailName="판정 4칸 표">
-      <div data-part="confusion-stats" className="grid grid-cols-3 gap-2">
+    <Body part="confusion" detail={detail} detailName="판정 4칸 표">
+      <div data-part="confusion-stats" className="grid max-w-[560px] grid-cols-3 gap-2">
         <Stat k="precision" value={pct(mt.precision)} label={<Term k="precision">적중률</Term>} />
         <Stat k="recall" value={pct(mt.recall)} label={<Term k="recall">탐지율</Term>} />
         <Stat k="f1" value={dec(mt.f1)} label={<Term k="f1">종합 점수</Term>} />
@@ -594,14 +721,18 @@ function ConfusionCard({ st }: { st: EvalStatic | null }) {
           {` 판정까지 악성으로 보면 ${hint(`탐지율 ${pct(mt.detectionRateWithSuspicious)}`, mt.falsePositiveRateWithSuspicious != null && `오판율 ${pct(mt.falsePositiveRateWithSuspicious)}`)}`}
         </ChartNote>
       )}
-    </Card>
+    </Body>
   );
 }
 
-// ── 런타임 열 ──
-function ScenarioCard({ rt }: { rt: EvalRuntime | null }) {
-  const title = '공격 시나리오별 탐지율';
-  if (!rt) return <Card part="scenarios" title={title}><None what="런타임" /></Card>;
+// ── 줄 안쪽: 런타임 ──
+function ScenarioBody({ rt }: { rt: EvalRuntime | null }) {
+  if (!rt)
+    return (
+      <Body part="scenarios">
+        <None what="런타임" />
+      </Body>
+    );
   const rows: BarRow[] = (rt.scenarios ?? []).map((x) => {
     const color: ColorKey = x.kind === 'attack' ? 'attack' : 'muted';
     return {
@@ -617,7 +748,7 @@ function ScenarioCard({ rt }: { rt: EvalRuntime | null }) {
     };
   });
   return (
-    <Card part="scenarios" title={title}>
+    <Body part="scenarios">
       <HBars
         name="scenario-rate"
         label="공격 시나리오별 탐지율 막대"
@@ -636,17 +767,22 @@ function ScenarioCard({ rt }: { rt: EvalRuntime | null }) {
         ]}
         labelW={150}
       />
-    </Card>
+    </Body>
   );
 }
-function LatencyCard({ rt }: { rt: EvalRuntime | null }) {
-  const title = '격리까지 걸린 시간 (ms)';
-  if (!rt) return <Card part="latency" title={title}><None what="런타임" /></Card>;
+function LatencyBody({ rt }: { rt: EvalRuntime | null }) {
+  if (!rt)
+    return (
+      <Body part="latency">
+        <None what="런타임" />
+      </Body>
+    );
   const sc = rt.scenarios ?? [];
   const list = sc.filter((x): x is EvalScenario & { latencyMs: EvalStat } => !!x.latencyMs && x.latencyMs.p50 != null);
   const skipped = sc.filter((x) => x.kind === 'attack' && !(x.latencyMs && x.latencyMs.p50 != null));
   return (
-    <Card part="latency" title={title}>
+    <Body part="latency">
+      <Cap>시나리오별 범위 (ms)</Cap>
       {list.length ? (
         <RangeChart
           name="latency"
@@ -659,7 +795,7 @@ function LatencyCard({ rt }: { rt: EvalRuntime | null }) {
           }))}
         />
       ) : (
-        <p className="py-3 text-xs text-text-3">격리까지 잰 시나리오가 없습니다</p>
+        <p className="py-2 text-xs text-text-3">격리까지 잰 시나리오가 없습니다</p>
       )}
       {skipped.length > 0 && (
         <ChartNote part="latency-skipped">
@@ -680,7 +816,7 @@ function LatencyCard({ rt }: { rt: EvalRuntime | null }) {
         </ChartNote>
       )}
       <Stages rt={rt} />
-    </Card>
+    </Body>
   );
 }
 // [11/04b] 단계별 막대 — 중간값(p50) 가로 누적(규칙 판정 → 증거 수집 → 격리 명령, 합계). 첫 행은 격리된 공격 전체(killStagesMs), 그 아래 격리한 시나리오별. 툴팁에 95% 이내(p95).
@@ -738,14 +874,18 @@ function Stages({ rt }: { rt: EvalRuntime }) {
     </>
   );
 }
-function BenignCard({ rt }: { rt: EvalRuntime | null }) {
-  if (!rt?.benign) return <Card part="benign" title="정상 설치 위반"><None what="런타임" /></Card>;
+// 정상 설치 위반 — 예전 제목의 건수 · 머리 오른쪽 「정상 설치 N건 중 · 생태계별」은 줄 요약으로 올라갔다. 위반 표(있으면)는 바로 보인다
+function BenignBody({ rt }: { rt: EvalRuntime | null }) {
+  if (!rt?.benign)
+    return (
+      <Body part="benign">
+        <None what="런타임" />
+      </Body>
+    );
   const b = rt.benign;
   const rows = (b.items ?? []).filter((x) => !PASS.has(x.result) || !!x.rule);
-  const by = b.byEcosystem ? Object.entries(b.byEcosystem).map(([k, v]) => `${k} ${fmtNum(v)}`) : [];
-  // 위반은 세부가 아니라 바로 볼 현상 — 있으면 표를 접지 않는다
   return (
-    <Card part="benign" title={`정상 설치 위반 ${fmtNum(rows.length)}건`} actions={<span className="text-xs text-text-3">{hint(`정상 설치 ${fmtNum(b.installs)}건 중`, ...by)}</span>}>
+    <Body part="benign">
       {rows.length ? (
         <div className="overflow-x-auto">
           <table className="sg-table" data-table="benign-violations">
@@ -774,17 +914,16 @@ function BenignCard({ rt }: { rt: EvalRuntime | null }) {
           </table>
         </div>
       ) : (
-        <p className="py-3 text-xs text-text-3">{`[통과] 정상 설치 ${fmtNum(b.installs)}건 모두 위반 없음`}</p>
+        <p data-part="benign-pass" className="py-1 text-[13px] text-text-2">{`[통과] 정상 설치 ${fmtNum(b.installs)}건 모두 위반 없음`}</p>
       )}
-    </Card>
+    </Body>
   );
 }
 
-// ── 규칙 vs ML 모델(전체 폭) — modelAll 이 있으면 「PyPI / 전체」 탭. 요약(규칙 최고 · 선택 모델) + 「운영은 규칙」은 보이고, 비교 표 · 실험 조건은 접힘 ──
-function ModelCard({ model, modelAll }: { model: EvalModel | null; modelAll?: EvalModel | null }) {
+// ── 규칙 vs ML 모델 — modelAll 이 있으면 「PyPI / 전체」 탭. 요약(규칙 최고 · 선택 모델) + 「운영은 규칙」은 보이고, 비교 표 · 실험 조건은 「자세히」 ──
+function ModelBody({ model, modelAll }: { model: EvalModel | null; modelAll?: EvalModel | null }) {
   const [scope, setScope] = useState<'pypi' | 'all'>('pypi');
-  const md = scope === 'all' && modelAll ? modelAll : model ?? modelAll ?? null;
-  const title = '규칙 vs ML 모델';
+  const md = scope === 'all' && modelAll ? modelAll : (model ?? modelAll ?? null);
   const tabs = model && modelAll && (
     <div data-part="model-scope" role="group" aria-label="모델 범위" className="flex rounded-md border border-border p-0.5 text-xs">
       {(
@@ -805,23 +944,27 @@ function ModelCard({ model, modelAll }: { model: EvalModel | null; modelAll?: Ev
       ))}
     </div>
   );
+  if (!md)
+    return (
+      <Body part="model">
+        <None what="모델" />
+      </Body>
+    );
   const actions = (
-    <div className="flex items-center gap-2">
+    <>
       {tabs}
-      {md && !md.deploymentApproved && (
+      {!md.deploymentApproved && (
         <span data-part="not-deployed" title="선택 모델은 비교용이고 판정은 지금도 규칙으로 합니다" className="rounded bg-surface-2 px-2 py-0.5 text-xs font-medium text-text-2 ring-1 ring-border ring-inset">
           운영 미적용
         </span>
       )}
-    </div>
+    </>
   );
-  if (!md) return <Card part="model" level={2} title={title}><None what="모델" /></Card>;
   const p = md.protocol ?? {};
   const cs = md.candidates ?? [];
   const label = (id: string) => cs.find((x) => x.id === id)?.label ?? id;
   const test = p.partitions?.test;
-  const pref = cs.find((x) => x.id === md.preferredId);
-  const rule = cs.filter((x) => /^rule/.test(x.id)).sort((a, b) => b.test.f1 - a.test.f1)[0];
+  const { rule, pref } = modelPicks(md);
   const sums = [rule && (['rule', rule, '규칙'] as const), pref && pref.id !== rule?.id && (['model', pref, 'ML 모델(선택)'] as const)].filter((x) => !!x);
   const detail = (
     <>
@@ -890,7 +1033,7 @@ function ModelCard({ model, modelAll }: { model: EvalModel | null; modelAll?: Ev
     </>
   );
   return (
-    <Card part="model" level={2} title={title} actions={actions} detail={detail} detailName="규칙 · 모델 비교 표">
+    <Body part="model" actions={actions} detail={detail} detailName="규칙 · 모델 비교 표">
       <div data-part="model-summary" className="grid gap-2 sm:grid-cols-2">
         {sums.map(([k, x, kind]) => (
           <div key={k} data-sum={k} className="grid min-w-0 content-start gap-1 rounded-lg bg-surface-2 px-3 py-2.5">
@@ -920,7 +1063,7 @@ function ModelCard({ model, modelAll }: { model: EvalModel | null; modelAll?: Ev
           [규칙 우세] 시험 결과에 따라 운영은 규칙 판정 사용
         </p>
       )}
-    </Card>
+    </Body>
   );
 }
 
@@ -963,33 +1106,65 @@ function ByEcosystem({ md }: { md: EvalModel }) {
   );
 }
 
-// 결과의 한계 — 출처별 개수는 보이고, 문장 목록은 「자세히」
-function Limits({ d }: { d: Evaluation }) {
-  const items: (readonly [keyof typeof SOURCE, string])[] = (['static', 'runtime', 'model'] as const).flatMap((k) => (d[k]?.limits ?? []).map((t) => [k, t] as const));
-  // 전체 범위 모델(model-all.json)의 한계 중 PyPI 모델과 다른 것만
-  const seen = new Set(d.model?.limits ?? []);
-  for (const t of d.modelAll?.limits ?? []) if (!seen.has(t)) items.push(['modelAll', t] as const);
-  const counts = (Object.keys(SOURCE) as (keyof typeof SOURCE)[]).map((k) => [k, items.filter((x) => x[0] === k).length] as const).filter(([, n]) => n > 0);
-  const detail = items.length > 0 && (
-    <ul className="grid gap-1.5">
-      {items.map(([k, t], i) => (
-        <li key={i} data-src={k} className="flex items-baseline gap-2 text-[13px] text-text-2">
-          <span className="inline-flex h-5 shrink-0 items-center rounded-md border border-border bg-surface-2 px-1.5 text-xs text-text-2">{SOURCE[k]}</span>
-          <span className="min-w-0">{t}</span>
-        </li>
-      ))}
-    </ul>
-  );
+// 측정 출처(예전 머리 「측정 출처」 접힘) — 세트 · 런타임 호스트 · 생성 시각(가장 늦은) · 백엔드 커밋 앞 7자리
+function sourceTags(d: Evaluation) {
+  const st = d.static;
+  const rt = d.runtime;
+  const tags: ReactNode[] = [];
+  for (const ds of st?.datasets ?? [])
+    tags.push(
+      <Tag
+        key={ds.id}
+        id={`dataset-${ds.id}`}
+        k={ds.kind === 'malicious' ? '악성 세트' : '정상 세트'}
+        v={ds.label}
+        title={[ds.source && `${ds.source}${ds.sourceCommit ? ` @ ${ds.sourceCommit}` : ''}`, ds.files != null && `파일 ${fmtNum(ds.files)}개`, ds.listSha256 && `목록 sha256 ${ds.listSha256.slice(0, 12)}`].filter(Boolean).join(' · ')}
+      />,
+    );
+  if (rt?.host) tags.push(<Tag key="host" id="host" k="런타임" v={`${rt.host.name} · 커널 ${rt.host.kernel} · ${rt.host.discovery}`} title={rt.host.igVersion ? `Inspektor Gadget ${rt.host.igVersion}` : undefined} />);
+  const gen = [st && ['정적', st.generatedAt], rt && ['런타임', rt.generatedAt], d.model?.generatedAt && ['모델', d.model.generatedAt], d.modelAll?.generatedAt && ['모델(전체)', d.modelAll.generatedAt]].filter(Boolean) as [string, string][];
+  if (gen.length) tags.push(<Tag key="generated" id="generated" k="생성" v={ymdhm(gen.map((g) => g[1]).sort().pop()!)} title={gen.map(([k, v]) => `${k} ${v}`).join(' · ')} />);
+  const commits = [...new Set([st?.scanner?.backendCommit, rt?.host?.backendCommit].filter((x): x is string => !!x))];
+  if (commits.length)
+    tags.push(
+      <Tag
+        key="commit"
+        id="commit"
+        k="백엔드"
+        v={commits.map((c) => c.slice(0, 7)).join(' · ')}
+        title={[commits.join(' · '), st?.scanner && `GuardDog ${st.scanner.guarddog} · OSV-Scanner ${st.scanner.osv}`].filter(Boolean).join('\n')}
+      />,
+    );
+  return tags;
+}
+
+// 결과의 한계 — 예전 본문(적힌 한계 N건 · 출처별)은 줄 요약으로 올라가, 예전 「자세히」였던 문장 목록을 바로 보인다. 아래에 측정 출처
+function LimitsBody({ d }: { d: Evaluation }) {
+  const items = limitItems(d);
+  const tags = sourceTags(d);
   return (
-    <Card part="limits" level={2} title="결과의 한계" className="border-l-4 border-l-warn" detail={detail || undefined} detailName="결과의 한계 목록">
+    <Body part="limits">
       {items.length ? (
-        <p data-part="limits-summary" className="text-[13px] text-text-2">
-          {`적힌 한계 ${fmtNum(items.length)}건(${counts.map(([k, n]) => `${SOURCE[k]} ${fmtNum(n)}`).join(' · ')})`}
-        </p>
+        <ul className="grid gap-1.5">
+          {items.map(([k, t], i) => (
+            <li key={i} data-src={k} className="flex items-baseline gap-2 text-[13px] text-text-2">
+              <span className="inline-flex h-5 shrink-0 items-center rounded-md border border-border bg-surface-2 px-1.5 text-xs text-text-2">{SOURCE[k]}</span>
+              <span className="min-w-0">{t}</span>
+            </li>
+          ))}
+        </ul>
       ) : (
         <p className="text-xs text-text-3">적힌 한계 없음</p>
       )}
-    </Card>
+      {tags.length > 0 && (
+        <div data-part="sources" className="mt-1 grid gap-1.5 border-t border-border pt-2.5">
+          <Cap>측정 출처</Cap>
+          <div data-part="tags" className="flex flex-wrap gap-1.5">
+            {tags}
+          </div>
+        </div>
+      )}
+    </Body>
   );
 }
 
@@ -1013,23 +1188,45 @@ export function EvaluationPage() {
   const d = r.data;
   const empty = d === null || (d !== undefined && !d.static && !d.runtime && !d.model && !d.modelAll);
   const state = failing ? 'error' : d === undefined ? 'loading' : empty ? 'empty' : 'ready';
+  // 열린 줄(기본 모두 접힘 · 기억하지 않음). 「모두 펼치기」 = 하나라도 접혀 있으면 전부 열고, 전부 열려 있으면(「모두 접기」) 전부 닫는다
+  const [open, setOpen] = useState<ReadonlySet<ItemId>>(() => new Set());
+  const allOpen = open.size === ITEMS.length;
+  const listId = useId();
+  const toggle = (id: ItemId) =>
+    setOpen((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   return (
-    // R4 11/04(목업 11/04e .eval-body): 768 이상은 머리(요점) · 지표 6칸이 제자리, 아래 몸통(두 열 · 모델 비교 · 한계)만 채움 칸으로 스크롤.
-    // 768 미만은 예전처럼 화면 전체가 한 칸으로 스크롤(몸통은 그대로 펼침)
+    // R4 11/04(목업 11/04e .eval-body): 768 이상은 위 3칸이 제자리, 아래 목록만 채움 칸으로 스크롤.
+    // 768 미만은 예전처럼 화면 전체가 한 칸으로 스크롤(목록은 그대로 펼침)
     <div className="flex h-full min-h-0 flex-col gap-4 max-md:block max-md:overflow-y-auto" data-part="evaluation" data-state={state}>
-      <p data-part="screen-copy" data-screen="evaluation" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
+      <p data-part="screen-copy" data-screen="evaluation" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3 max-md:mb-3">
         {screenCopy('evaluation')}
       </p>
       {state === 'ready' && d && (
         <PageActions>
           <button
             type="button"
+            data-action="toggle-all"
+            aria-expanded={allOpen}
+            aria-controls={listId}
+            onClick={() => setOpen(allOpen ? new Set() : new Set(ITEMS.map((x) => x.id)))}
+            className="sg-btn sg-btn-sm sg-btn-secondary shrink-0 whitespace-nowrap"
+          >
+            {allOpen ? '모두 접기' : '모두 펼치기'}
+          </button>
+          <button
+            type="button"
             data-action="download-json"
             title="이 화면의 결과(static · runtime · model)를 JSON 한 파일로"
             onClick={() => download(d)}
-            className="sg-btn sg-btn-sm sg-btn-secondary flex shrink-0 items-center gap-1.5 whitespace-nowrap"
+            className="sg-btn sg-btn-sm sg-btn-secondary flex shrink-0 items-center gap-1.5 whitespace-nowrap max-md:min-w-0 max-md:px-2"
           >
-            <Download className="size-3.5" aria-hidden /> 결과 JSON
+            {/* 768 미만은 아이콘만(머리 칸이 좁아 「모두 펼치기」와 함께 들어가게) — 이름은 그대로 */}
+            <Download className="size-3.5" aria-hidden /> <span className="max-md:sr-only">결과 JSON</span>
           </button>
         </PageActions>
       )}
@@ -1047,29 +1244,12 @@ export function EvaluationPage() {
         </div>
       ) : (
         <>
-          <div className="mx-auto grid w-full max-w-[var(--content-max)] shrink-0 gap-4 max-md:mb-4">
-            <Head d={d} />
-            <Kpis d={d} />
+          <div className="mx-auto w-full max-w-[var(--content-max)] shrink-0 max-md:mb-4">
+            <Top d={d} />
           </div>
           <div data-fill="" data-part="eval-body" className="min-h-0 flex-1 overflow-y-auto max-md:overflow-visible">
-            <div className="mx-auto grid max-w-[var(--content-max)] content-start gap-4">
-              {/* 두 열 = 정적(왼쪽) · 런타임(오른쪽) — 열마다 위로 붙는다(Pinterest 식). 768 미만은 정적 → 런타임 한 열 */}
-              <div data-part="eval-grid" className="grid items-start gap-4 md:grid-cols-2">
-                <div data-col="static" className="flex min-w-0 flex-col gap-4">
-                  <ColTitle k="static" term="정적" easy="패키지 코드 검사" />
-                  <DistCard st={d.static} />
-                  <RulesCard st={d.static} />
-                  <ConfusionCard st={d.static} />
-                </div>
-                <div data-col="runtime" className="flex min-w-0 flex-col gap-4">
-                  <ColTitle k="runtime" term="런타임" easy="설치 · 실행 감시" />
-                  <ScenarioCard rt={d.runtime} />
-                  <LatencyCard rt={d.runtime} />
-                  <BenignCard rt={d.runtime} />
-                </div>
-              </div>
-              <ModelCard model={d.model} modelAll={d.modelAll} />
-              <Limits d={d} />
+            <div className="mx-auto max-w-[var(--content-max)]">
+              <EvalList d={d} open={open} onToggle={toggle} listId={listId} />
             </div>
           </div>
         </>
