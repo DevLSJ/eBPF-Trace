@@ -180,7 +180,7 @@ export class MockAuth {
         if (u.failed >= 5) {
           u.failed = 0;
           u.lockedUntil = now + 5 * 60_000;
-          this.log(u.username, 'login_lock', u.username, false, '5회 연속 실패 — 5분 잠금');
+          this.log(u.username, 'login_lock', u.username, false, '5회 연속 실패로 5분 잠금');
         }
         this.log(u.username, 'login', '', false, '비밀번호 틀림');
         return this.err(401, MSG.badCreds);

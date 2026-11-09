@@ -30,7 +30,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     await expect(sheet.locator('[data-part="detail"]')).toHaveText('data.exfil.example (TXT)');
     await expect(sheet.locator('[data-kind-badge="dns"]')).toBeVisible();
     await expect(sheet.locator('[data-dns]')).toHaveCount(0); // connect 의 「도메인 조회」 줄은 dns 행에 없다
-    await expect(sheet).toContainText('금지 질의 유형: TXT — data.exfil.example');
+    await expect(sheet).toContainText('금지 질의 유형: data.exfil.example (TXT)');
     // 종류 필터: exec · open · connect · dns(도메인 조회)
     // 11/09 공통 Select — 첫 항목 「종류 전체」, 고르면 바로 적용(열린 슬라이드 패널은 뒤 화면을 가리므로 먼저 닫는다)
     await closeSheet(page);
