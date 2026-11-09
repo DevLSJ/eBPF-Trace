@@ -177,12 +177,14 @@ function LoginStep({ run, busy, onState }: StepProps) {
       (miss.username ? idRef : pwRef).current?.focus();
       return;
     }
+    const tried = password;
     void run(
       () => authApi.login(username, password),
       (r) => onState(r.state, r.user),
-      // G27: 실패하면 비밀번호 칸을 비우고(예전과 같음) 그 칸에 초점
+      // G27: 실패하면 비밀번호 칸을 비우고(예전과 같음) 그 칸에 초점. 응답을 기다리는 사이 새로 입력한 값은 지우지 않는다
+      // (늦은 실패 응답이 새 값을 지우면 다음 「로그인」이 빈 값 검사에 걸려 서버로 가지 않는다 — 11/09 실측)
       () => {
-        setPassword('');
+        setPassword((now) => (now === tried ? '' : now));
         pwRef.current?.focus();
       },
     );
