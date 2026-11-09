@@ -232,6 +232,10 @@ export class MockBackend {
   };
   integrationDown = false;
   integrationTestMs = 1200;
+  // 11/10 감시 중 컨테이너 상세(GET /api/integration/containers/{id}) — 목록 값에 덧붙일 inspect 값(상태 · 시작 시각 · 포트 · 라벨).
+  //   목록에 없는 id · detailMissing(목록엔 있지만 방금 종료) → 404 + 서버 문장. 환경 변수는 백엔드처럼 담지 않는다
+  containerDetails: Record<string, { state?: string; startedAt?: string; restartCount?: number; imageId?: string; ports?: { port: string; hostIp?: string; hostPort?: string }[]; labels?: Record<string, string>; detailError?: string }> = {};
+  detailMissing = new Set<string>();
   demoDown = false;
   demoRefused = false;
   demoStepMs = 250; // 모의 재생 간격
@@ -837,6 +841,12 @@ export class MockBackend {
 
     // 11/06 연동
     if (method === 'GET' && path === '/integration') return json(this.integration);
+    if (method === 'GET' && (m = path.match(/^\/integration\/containers\/([^/]+)$/))) {
+      const id = decodeURIComponent(m[1]);
+      const c = this.integration.containers.find((x) => x.id === id);
+      if (!c || this.detailMissing.has(id)) return fail(404, '컨테이너를 찾을 수 없습니다. 이미 종료되었거나 감시 목록에 없는 컨테이너입니다');
+      return json({ ...c, state: 'running', restartCount: 0, ports: [], labels: {}, ...this.containerDetails[id] });
+    }
     if (method === 'GET' && path === '/sginstall/setup') return json(this.sgSetup);
     if (method === 'GET' && path === '/tools/sg-install')
       return route.fulfill({ status: 200, contentType: 'text/x-shellscript', headers: { 'Content-Disposition': 'attachment; filename="sg-install"' }, body: '#!/usr/bin/env bash\necho sg-install\n' });
