@@ -394,8 +394,33 @@ func parseTime(s string) (time.Time, error) {
 }
 
 func (h *handlers) listPolicies(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, h.Engine.Rules())
+	writeJSON(w, http.StatusOK, h.policyViews(h.Engine.Rules()))
 }
+
+// policyView: 정책 API 가 내보내는 정책 — Rule 그대로 + 최근 수정(11/09 정책 목록 「최근 수정」 칸).
+// 최근 수정 = 그 정책을 다룬 마지막 변경 기록(ruleIds)의 시각 · 처리자. 기록이 없으면(시드 정책 · Review 없음) 두 키 없음
+type policyView struct {
+	rules.Rule
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	UpdatedBy string     `json:"updatedBy,omitempty"`
+}
+
+func (h *handlers) policyViews(rs []rules.Rule) []policyView {
+	var meta map[string]review.PolicyMeta
+	if h.Review != nil {
+		meta = h.Review.PolicyMeta()
+	}
+	out := make([]policyView, len(rs))
+	for i, r := range rs {
+		out[i] = policyView{Rule: r}
+		if m, ok := meta[r.ID]; ok {
+			out[i].UpdatedAt, out[i].UpdatedBy = &m.At, m.By
+		}
+	}
+	return out
+}
+
+func (h *handlers) policyOut(r rules.Rule) policyView { return h.policyViews([]rules.Rule{r})[0] }
 
 // exportPolicies: 시스템 규칙(blocklist-hosts)은 빼고 내보낸다 — 내보낸 YAML 을 그대로 다시 적용(PUT)할 수 있게
 func (h *handlers) exportPolicies(w http.ResponseWriter, _ *http.Request) {
@@ -439,7 +464,7 @@ func (h *handlers) savePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("policy saved", "id", rule.ID, "kind", rule.Kind, "action", rule.Action, "dryRun", rule.DryRun)
-	writeJSON(w, http.StatusOK, rule)
+	writeJSON(w, http.StatusOK, h.policyOut(rule))
 }
 
 // replacePolicies: YAML 원클릭 적용 — 본문 전체(rules: [...])로 정책을 교체한다.
@@ -468,7 +493,7 @@ func (h *handlers) replacePolicies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("policies replaced", "count", len(rs))
-	writeJSON(w, http.StatusOK, h.Engine.Rules())
+	writeJSON(w, http.StatusOK, h.policyViews(h.Engine.Rules()))
 }
 
 var errPolicyMissing = errors.New("정책 없음")
