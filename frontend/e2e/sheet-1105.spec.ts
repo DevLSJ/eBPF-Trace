@@ -57,7 +57,7 @@ test.describe('상세 패널 — 본문 위에 오른쪽에서(11/05)', () => {
     expect(near(after.w, before.w), `표 폭 ${before.w} → ${after.w}`).toBe(true);
     expect(near(layer.x, main.x) && near(layer.right, main.right) && near(layer.y, main.y), `층 ${JSON.stringify(layer)} main ${JSON.stringify(main)}`).toBe(true);
     expect(near(s.right, main.right) && near(s.w, Math.min(1080, main.w * 0.7)), `패널 폭 ${s.w} (본문 ${main.w})`).toBe(true);
-    expect(await page.locator('.sg-sheet-layer').evaluate((e) => getComputedStyle(e).backgroundColor)).toMatch(/rgba\(15, 23, 42, 0\.2\d*\)/);
+    expect(await page.locator('.sg-sheet-layer').evaluate((e) => getComputedStyle(e).backgroundColor)).toMatch(/rgba\(20, 20, 19, 0\.2\d*\)/); // 11/09 따뜻한 검정 뒤 가림
     await expect(sheet).toHaveAttribute('role', 'dialog');
     await page.screenshot({ path: `${SHOTS}/1105-scan-sheet.png` });
   });

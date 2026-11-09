@@ -600,7 +600,7 @@ test.describe('G 타이포 · 패널', () => {
         const h2 = panel.querySelector('h2')!;
         return [getComputedStyle(h2).fontSize, getComputedStyle(h2).fontWeight, getComputedStyle(panel).borderTopLeftRadius];
       });
-      expect(p, T).toEqual(['17.92px', '700', '8px']);
+      expect(p, T).toEqual(['17.92px', '600', '16px']); // 11/09 제목 600 · 패널 반경 16
     }
   });
 });
@@ -617,16 +617,16 @@ test.describe('H 다크', () => {
       .locator('table[data-table="installs"] th')
       .first()
       .evaluate((e) => getComputedStyle(e).backgroundColor);
-    expect(th).toBe('rgb(40, 45, 56)'); // --surface-2 다크(11/05 표 머리 회색 바탕)
+    expect(th).toBe('rgb(26, 25, 24)'); // --surface-2 다크(11/09 #1A1918)
     const line = await page
       .locator('table[data-table="installs"] tbody td')
       .first()
       .evaluate((e) => getComputedStyle(e).borderBottomColor);
-    expect(line).toBe('rgb(48, 52, 66)'); // --line-soft 다크
+    expect(line).toBe('rgb(48, 48, 46)'); // --line-soft 다크(11/09 #30302E)
     const bars = await barOf(page, 'table[data-table="installs"] tbody tr[data-install="ins-0012"]');
     expect(bars[0]).toBe('rgb(228, 81, 111)'); // --danger 다크
     const foot = await page.locator('[data-table-foot="installs"]').evaluate((e) => getComputedStyle(e).backgroundColor);
-    expect(foot).toBe('rgb(27, 30, 40)');
+    expect(foot).toBe('rgb(31, 30, 29)'); // --surface 다크(11/09 #1F1E1D)
     await page.screenshot({ path: `${SCRATCH}/r4-installs-dark.png` });
     await page.goto('/audit');
     await expect(page.locator('table[data-table="audit"] tbody tr').first()).toBeVisible();

@@ -56,26 +56,26 @@ test.describe('F6 디자인 토큰 · 부품 · 모션', () => {
     await page.goto('/policies?id=egress-allowlist');
     await expect(page.getByTestId('editor')).toBeVisible();
     for (const [k, v] of [
-      // 11/05: 참고 대시보드 값으로 교체(10/30 계약 §7 값 대체)
-      ['--bg', '#F6F7FB'], ['--surface', '#FFFFFF'], ['--surface-2', '#EEF0F4'], ['--border', '#ECEEF4'], ['--text', '#202534'], ['--text-2', '#7A8090'], ['--text-3', '#7A8090'],
+      // 11/09: 참고 홈페이지 구조값으로 교체(11/05 참고 대시보드 값 대체)
+      ['--bg', '#FAF9F5'], ['--surface', '#FFFFFF'], ['--surface-2', '#F5F4ED'], ['--border', '#E8E6DC'], ['--text', '#141413'], ['--text-2', '#30302E'], ['--text-3', '#5E5D59'],
       ['--accent', '#1769E8'], ['--accent-soft', '#DCE9FF'], ['--danger', '#E4516F'], ['--warn', '#F5A623'], ['--warn-soft', '#FFF5DF'], ['--ok', '#25B884'], ['--info', '#0288D1'],
-      ['--r-lg', '8px'], ['--t-base', '200ms'], ['--sidebar-w', '240px'], ['--header-h', '56px'],
+      ['--r-lg', '16px'], ['--t-base', '200ms'], ['--sidebar-w', '240px'], ['--header-h', '56px'],
     ]) expect(await token(page, k), k).toBe(v);
-    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#F6F7FB'));
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#FAF9F5'));
     expect(await page.getByTestId('rules').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#FFFFFF'));
-    // 표 머리(11/05 참고 대시보드): 12/600 · 보조색 · 회색 바탕
+    // 표 머리(11/09): 12/600 · 흐림 · 보조 바탕
     await page.goto('/audit');
     const th = page.locator('[data-testid="audit"] thead th').first();
     await expect(th).toBeVisible();
     const thStyle = await th.evaluate((e) => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight, getComputedStyle(e).color]);
-    expect(thStyle).toEqual(['12px', '600', rgb('#7A8090')]);
-    expect(await th.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#EEF0F4'));
-    // 버튼(11/05): 패딩 6/16 · 14.4/1.5 → 높이 33.6 · 반경 6 · 700, 시트
+    expect(thStyle).toEqual(['12px', '600', rgb('#5E5D59')]);
+    expect(await th.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#F5F4ED'));
+    // 버튼(11/09): 높이 36 · 반경 8 · 500, 시트
     await page.goto('/policies?id=egress-allowlist');
     const btn = page.locator('[data-view="rule-editor"]').getByRole('button', { name: '저장 전 확인' });
-    expect((await btn.boundingBox())!.height).toBeCloseTo(33.6, 0);
-    expect(await btn.evaluate((e) => getComputedStyle(e).fontWeight)).toBe('700');
-    expect(await btn.evaluate((e) => getComputedStyle(e).borderRadius)).toBe('6px');
+    expect((await btn.boundingBox())!.height).toBeCloseTo(36, 0);
+    expect(await btn.evaluate((e) => getComputedStyle(e).fontWeight)).toBe('500');
+    expect(await btn.evaluate((e) => getComputedStyle(e).borderRadius)).toBe('8px');
     await page.goto('/installs?id=ins-0012');
     await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
     expect((await page.locator('[data-sheet="install"]').boundingBox())!.width).toBeCloseTo(840, 0); // 11/05: 설치 검사 패널 = 본문 70%(1440 → 840), 옛 계약 480 은 바뀜
@@ -142,11 +142,11 @@ test.describe('F7 다크 모드', () => {
     await picks.nth(2).click();
     expect(await themeOf(page)).toBe('dark');
     expect(await page.evaluate((k) => localStorage.getItem(k), THEME_KEY)).toBe('dark');
-    for (const [k, v] of [['--bg', '#11131A'], ['--surface', '#1B1E28'], ['--text', '#F2F3F7'], ['--accent', '#1769E8'], ['--danger', '#E4516F'], ['--warn', '#F5A623'], ['--warn-soft', '#423627']])
+    for (const [k, v] of [['--bg', '#141413'], ['--surface', '#1F1E1D'], ['--text', '#FAF9F5'], ['--accent', '#1769E8'], ['--danger', '#E4516F'], ['--warn', '#F5A623'], ['--warn-soft', '#46361E']])
       expect(await token(page, k), k).toBe(v);
-    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#11131A'));
-    expect(await page.getByTestId('pending').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#1B1E28'));
-    expect(await page.getByTestId('page-title').evaluate((e) => getComputedStyle(e).color)).toBe(rgb('#F2F3F7'));
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#141413'));
+    expect(await page.getByTestId('pending').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#1F1E1D'));
+    expect(await page.getByTestId('page-title').evaluate((e) => getComputedStyle(e).color)).toBe(rgb('#FAF9F5'));
     await page.reload();
     expect(await themeOf(page)).toBe('dark');
     await expect(page.getByTestId('pending')).toBeVisible();
