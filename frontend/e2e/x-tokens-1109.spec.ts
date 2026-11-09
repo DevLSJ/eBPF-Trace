@@ -358,3 +358,23 @@ test.describe('11/09 밤 깔끔한 화면 — 토큰 · 부품 모양(X1)', () =
     }
   });
 });
+
+// 11/10 메인 통합(X1 질문 3 · 「모두 승인」): 작은 위험 글자(KPI 증감 · 대시보드 결과 줄 · 파일 트리 「D」)는 위험 채움색이 아니라 위험 글자색(--danger-text)
+//   밝은 #B52D49 6.11:1 · 어두운 #F4C4CE 10.71:1 — 위험 채움색 #E4516F 는 작은 글자로 밝은 3.68 · 어두운 4.48(4.5 미달). 큰 KPI 숫자(28px)는 큰 글자 3:1 기준이라 그대로
+test('작은 위험 글자는 위험 글자색(밝은 · 어두운 모두 4.5:1 이상)', async ({ page, backend }) => {
+  void backend;
+  await page.goto('/');
+  for (const t of ['light', 'dark'] as const) {
+    await pickTheme(page, t);
+    const r = await page.evaluate(() => {
+      const box = document.createElement('div');
+      box.innerHTML = '<span class="kpi-delta tone-danger"><b id="zz1">+3</b></span><span class="sg-res-line"><b id="zz2" class="tone-danger">격리 1</b></span><span id="zz3" class="ft-badge ev-D">D</span><i id="zzref" style="color: var(--danger-text)">x</i>';
+      document.body.append(box);
+      const c = (id: string) => getComputedStyle(document.getElementById(id)!).color;
+      const out = { delta: c('zz1'), res: c('zz2'), badge: c('zz3'), ref: c('zzref') };
+      box.remove();
+      return out;
+    });
+    expect([r.delta, r.res, r.badge], t).toEqual([r.ref, r.ref, r.ref]);
+  }
+});
