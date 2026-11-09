@@ -349,9 +349,7 @@
   font-size: 12.5px;
   transition: opacity var(--t-base) var(--ease);
 }
-.int-row.out {
-  opacity: 0.6;
-}
+/* 감시 밖 행도 흐리게 하지 않는다(11/09 SPEC §3 — 「감시 밖」 배지 글자로 구분) */
 .int-row.in {
   animation: int-row-in calc(var(--t-slow) * 2) var(--ease);
 }
@@ -629,6 +627,9 @@
 .int-stepper-item.done button {
   color: var(--text);
 }
+.int-stepper-item button[aria-disabled='true'] {
+  cursor: not-allowed;
+}
 .int-stepper-n {
   display: grid;
   place-items: center;
@@ -700,15 +701,14 @@
   background: var(--field-bg);
   color: var(--text);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   min-width: 0;
   width: 100%;
-  transition: border-color var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease);
+  transition: border-color var(--t-base) var(--ease);
 }
+/* 포커스는 전역 링(index.css --focus-ring, 2px 주 색 · 바깥 2px) 하나 — 테두리만 주 색으로(11/09 SPEC §1) */
 .int-input:focus {
-  outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft, rgba(23, 105, 232, 0.15));
 }
 .int-input.bad,
 .int-field.bad .int-input {
@@ -737,12 +737,15 @@
   border-radius: var(--r-sm);
   color: var(--text-3);
 }
-.int-icon-btn:hover:not(:disabled) {
+.int-icon-btn:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--row-hover, var(--surface-2));
   color: var(--danger);
 }
-.int-icon-btn:disabled {
+/* 꺼진 단추 = aria-disabled + 사유(11/09 SPEC §3) */
+.int-icon-btn:disabled,
+.int-icon-btn[aria-disabled='true'] {
   opacity: 0.35;
+  cursor: not-allowed;
 }
 .int-muted {
   font-size: 12px;

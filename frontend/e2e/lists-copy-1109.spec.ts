@@ -1,4 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
+import type { Scan } from '../src/lib/types';
 import { expect, test } from './fixtures';
 
 // 11/09 P5 — 정책 밖 목록 화면 정리(SPEC-1109 §3 · §4 · §7)
@@ -22,6 +23,22 @@ const ring = async (page: Page, loc: Locator, name: string) => {
 };
 const heads = (page: Page, table: string) => page.locator(`table[data-table="${table}"] thead th`).evaluateAll((ths) => ths.map((t) => (t as HTMLElement).dataset.col));
 const mono = (loc: Locator) => loc.evaluate((e) => /monospace|Menlo|SFMono|Consolas/.test(getComputedStyle(e).fontFamily));
+// 가짜 백엔드에 /api/scans 가 없어 이 파일에서 가로챈다(scans.spec 과 같은 방식) — 목록 1건 · 시작은 scan-0003
+const SCAN: Scan = {
+  id: 'scan-0001',
+  target: { kind: 'package', manager: 'pip', name: 'reqeusts', label: 'pip reqeusts' },
+  status: 'done', startedAt: '2026-11-09T03:04:05Z', finishedAt: '2026-11-09T03:04:35Z', verdict: 'malicious', risk: { score: 8.2, label: 'high_risk' },
+  engines: [], findings: [], vulns: [], packages: [], files: {}, caseId: null, threats: 3, capabilities: 0, vulnCount: 0, vulnMax: null,
+};
+const scansApi = (page: Page) =>
+  page.route(/\/api\/scans(\/|$|\?)/, (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname.replace(/^\/api/, '');
+    const json = (data: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
+    if (req.method() === 'POST' && path === '/scans') return json({ id: 'scan-0003' }, 202);
+    if (path === '/scans') return json([SCAN]);
+    return path === '/scans/scan-0001' ? json(SCAN) : json({ error: '검사 없음' }, 404);
+  });
 
 test.describe('① 포커스 링 하나(화면 쪽 개별 규칙 없음)', () => {
   test('연동 입력 · 대시보드 판정 대기 줄 · 시연 시나리오 · 묶음 머리 · 탭 · 평가 용어 = 2px 주 색 · 바깥 2px, 연동 입력 글자 13.5', async ({ page, backend }) => {
@@ -70,6 +87,7 @@ test.describe('② 표 칸 순서 · 시각 형식 · 빈 값', () => {
     // 판정이 없는 행의 판정 칸은 「—」
     await expect(page.locator('tr[data-install] td[data-col="decision"]').filter({ hasText: '—' }).first()).toBeVisible();
 
+    await scansApi(page);
     await page.goto('/scans');
     await expect(page.locator('tr[data-scan]').first()).toBeVisible();
     expect((await heads(page, 'scans'))[0]).toBe('verdict');
@@ -161,6 +179,7 @@ test.describe('③ 화면 문구', () => {
 
   test('입력 검사(칸 밑 role=alert) · 시작 토스트 「~했습니다.」 — 공급망 검사', async ({ page, backend }) => {
     void backend;
+    await scansApi(page);
     await page.goto('/scans');
     const form = page.locator('[data-part="scan-form"]');
     await form.locator('[data-input="file"]').click();

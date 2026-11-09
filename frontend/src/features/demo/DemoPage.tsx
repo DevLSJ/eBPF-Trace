@@ -1,6 +1,7 @@
 import { Check, FileText, Minus, Play, RotateCw, ScrollText, TriangleAlert } from 'lucide-react';
 import { useCallback, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { ActionButton } from '../../components/ActionButton';
 import { CodeWindow } from '../../components/CodeWindow';
 import { FlowHero } from '../../components/FlowHero';
 import { KindBadge } from '../../components/KindBadge';
@@ -190,7 +191,7 @@ function ScenarioCol({ scenario, setScenario, run, starting, now, start, error }
                       const on = scenario === k;
                       return (
                         <li key={k}>
-                          <button type="button" className={`scn-item ${on ? 'on' : ''}`} data-scenario={k} aria-pressed={on} disabled={locked} onClick={() => setScenario(k)}>
+                          <ActionButton className={`scn-item ${on ? 'on' : ''}`} data-scenario={k} aria-pressed={on} reason={locked && '실행 중에는 시나리오를 바꿀 수 없습니다'} onClick={() => setScenario(k)}>
                             <span className="scn-top">
                               <b title={s.name}>{s.name}</b>
                               <span className={`scn-expect exp-${s.expect}`} data-part="expect" data-expect={s.expect}>
@@ -200,7 +201,7 @@ function ScenarioCol({ scenario, setScenario, run, starting, now, start, error }
                             <span className="scn-desc font-mono" title={s.line}>
                               {s.line}
                             </span>
-                          </button>
+                          </ActionButton>
                         </li>
                       );
                     })}
@@ -210,7 +211,7 @@ function ScenarioCol({ scenario, setScenario, run, starting, now, start, error }
             })}
           </div>
           <div className="run-box">
-            <button type="button" className="sg-btn sg-btn-primary run-btn" data-action="demo-run" disabled={locked} onClick={() => void start()}>
+            <ActionButton className="sg-btn sg-btn-primary run-btn" data-action="demo-run" reason={locked && '시연이 끝나면 다시 시작할 수 있습니다'} onClick={() => void start()}>
               {locked ? (
                 <>
                   <RotateCw className="size-4 sg-spin" aria-hidden /> 실행 중…
@@ -220,7 +221,7 @@ function ScenarioCol({ scenario, setScenario, run, starting, now, start, error }
                   <Play className="size-4" aria-hidden /> 시연 시작
                 </>
               )}
-            </button>
+            </ActionButton>
             <p className="run-note" data-part="run-note">
               {note}
             </p>

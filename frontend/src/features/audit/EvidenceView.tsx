@@ -5,7 +5,8 @@ import { EmptyState, ListError, Skeleton } from '../../components/list/ListState
 import { Section } from '../../components/Sheet';
 import { useLoad } from '../../hooks/useLoad';
 import { api } from '../../lib/api';
-import { fmtDateTime, shortId } from '../../lib/format';
+import { shortId } from '../../lib/format';
+import { TimeText } from '../../components/list/cells';
 import { CodeWindow } from '../../components/CodeWindow';
 import { FileTree } from '../../components/FileTree';
 import type { AuditEntry, Evidence } from '../../lib/types';
@@ -28,7 +29,7 @@ export function EvidenceView({ a }: { a: AuditEntry }) {
   if (!r.data.length)
     return (
       <div data-part="evidence-empty">
-        <EmptyState icon={FileSearch} title="이 컨테이너의 증거가 없습니다" hint="증거(로그 · 파일 변경 · 프로세스)는 격리(kill) 직전에만 모읍니다. 경고만 있었거나 격리 전에 컨테이너가 끝났으면 없습니다." />
+        <EmptyState icon={FileSearch} title="이 컨테이너의 증거가 없습니다." hint="증거(로그 · 파일 변경 · 프로세스)는 격리(kill) 직전에만 모읍니다. 경고만 있었거나 격리 전에 컨테이너가 끝났으면 없습니다." />
       </div>
     );
   const groups = new Map<string, Evidence[]>();
@@ -69,7 +70,9 @@ function EvidenceCard({ ev }: { ev: Evidence }) {
   return (
     <article className="grid gap-2 rounded-md border border-slate-200 p-3" data-evidence={ev.id}>
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="num text-slate-600">{fmtDateTime(ev.collectedAt)}</span>
+        <span className="text-slate-600">
+          <TimeText value={ev.collectedAt} kind="log" />
+        </span>
         <span className="text-slate-400">· {ev.durationMs}ms</span>
         {ev.partial ? (
           <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800" data-part="evidence-partial" title={ev.error}>

@@ -260,7 +260,7 @@ test.describe('평가 화면(11/04)', () => {
     await evalApi(page, { status: 404 });
     await page.goto('/evaluation');
     await expect(page.locator(`${W}[data-state="empty"]`)).toBeVisible();
-    await expect(page.locator(`${W} [data-part="empty"]`)).toContainText('평가 결과 없음');
+    await expect(page.locator(`${W} [data-part="empty"]`)).toContainText('평가 결과가 없습니다.');
     await expect(page.locator('[data-action="download-json"]')).toHaveCount(0);
     await shot(page, 'empty');
   });

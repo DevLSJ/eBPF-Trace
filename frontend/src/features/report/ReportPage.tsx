@@ -2,7 +2,9 @@ import { Copy, Printer } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DecisionBadge, StatusBadge } from '../../components/Badges';
+import { ActionButton } from '../../components/ActionButton';
 import { KindBadge } from '../../components/KindBadge';
+import { TimeText } from '../../components/list/cells';
 import { PageActions } from '../../components/PageActions';
 import { Empty, LoadError } from '../../components/Panel';
 import { TimelineBar } from '../../components/TimelineBar';
@@ -34,8 +36,8 @@ export function ReportPage() {
   const copy = () => {
     if (!d) return;
     const md = reportMarkdown(d, author, at);
-    const ok = () => toast('보고서를 Markdown 으로 복사했습니다', { key: 'report-copy', tone: 'ok' });
-    const fail = () => toast('복사하지 못했습니다 — 브라우저가 클립보드를 막았습니다', { key: 'report-copy', tone: 'warn' });
+    const ok = () => toast('보고서를 Markdown으로 복사했습니다.', { key: 'report-copy', tone: 'ok' });
+    const fail = () => toast('보고서를 복사하지 못했습니다 — 브라우저의 클립보드 권한을 허용하거나 인쇄로 저장하세요.', { key: 'report-copy', tone: 'warn' });
     try {
       navigator.clipboard.writeText(md).then(ok, fail);
     } catch {
@@ -46,12 +48,12 @@ export function ReportPage() {
   return (
     <div data-fill="" className="h-full min-h-0 overflow-y-auto" data-part="report-scroll">
       <PageActions>
-        <button type="button" onClick={() => window.print()} disabled={!d} className="sg-btn sg-btn-sm sg-btn-secondary flex items-center gap-1.5">
+        <ActionButton onClick={() => window.print()} reason={!d && '보고서를 불러온 뒤 쓸 수 있습니다'} className="sg-btn sg-btn-sm sg-btn-secondary flex items-center gap-1.5">
           <Printer className="size-3.5" aria-hidden /> 인쇄
-        </button>
-        <button type="button" onClick={copy} disabled={!d} className="sg-btn sg-btn-sm sg-btn-secondary flex items-center gap-1.5">
+        </ActionButton>
+        <ActionButton onClick={copy} reason={!d && '보고서를 불러온 뒤 쓸 수 있습니다'} className="sg-btn sg-btn-sm sg-btn-secondary flex items-center gap-1.5">
           <Copy className="size-3.5" aria-hidden /> Markdown 복사
-        </button>
+        </ActionButton>
         <span className="hidden truncate text-xs text-slate-400 lg:inline">A4 1~2장 · 읽기 전용</span>
       </PageActions>
       {r.error && !d ? (
@@ -131,7 +133,9 @@ function Report({ d, author, at }: { d: ReportData; author: string; at: Date }) 
             <tbody>
               {d.violations.map((v, i) => (
                 <tr key={i}>
-                  <td className="num tk-short font-mono text-slate-600">{fmtDateTime(v.event.timestamp)}</td>
+                  <td className="tk-short text-slate-600">
+                    <TimeText value={v.event.timestamp} kind="log" />
+                  </td>
                   <td className="tk-short">
                     <KindBadge kind={v.event.kind} />
                   </td>

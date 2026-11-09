@@ -54,7 +54,7 @@ test.describe('11/04 종합 판정 — 설치 한 건에 런타임 + 정적 결�
     await allRows(page);
     const heads = await visibleHeads(page);
     expect(heads.indexOf('정적 검사'), `열 ${JSON.stringify(heads)}`).toBe(heads.indexOf('설치 결과') + 1);
-    expect(heads.indexOf('설치 결과')).toBeGreaterThan(0);
+    expect(heads.indexOf('설치 결과'), '11/09 SPEC §4 현황 표 — 상태가 맨 앞').toBe(0);
     const badge = (id: string) => row(page, id).locator('[data-static]');
     await expect(badge('ins-0014')).toHaveText('악성 의심');
     await expect(badge('ins-0014')).toHaveAttribute('data-static', 'malicious');

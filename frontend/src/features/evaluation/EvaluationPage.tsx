@@ -1,4 +1,4 @@
-import { ChartColumn, Download } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { Fragment, useId, useState, type ReactNode } from 'react';
 import { StatusBadge } from '../../components/Badges';
 import { KpiCard } from '../../components/KpiCard';
@@ -1039,7 +1039,7 @@ export function EvaluationPage() {
         </div>
       ) : state === 'empty' || !d ? (
         <div className="sg-card">
-          <EmptyState icon={ChartColumn} title="평가 결과 없음" hint="아직 평가를 돌린 결과가 없습니다 — 정적 · 런타임 · 모델 평가 결과가 서버에 올라오면 여기에 보입니다." />
+          <EmptyState what="평가 결과" hint="정적 · 런타임 · 모델 평가를 돌려 결과가 서버에 올라오면 여기에 보입니다." />
         </div>
       ) : (
         <>

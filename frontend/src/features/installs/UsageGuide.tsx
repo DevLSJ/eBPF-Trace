@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ActionButton } from '../../components/ActionButton';
 import { CodeWindow } from '../../components/CodeWindow';
 import { Modal } from '../../components/Modal';
 import { useToast } from '../../hooks/toast-context';
@@ -36,8 +37,8 @@ export function UsageGuide({ onClose }: { onClose: () => void }) {
   };
   // 복사 알림에는 명령을 다시 보이지 않는다(토큰이 화면에 남지 않게)
   const copy = (text: string, what: string) => {
-    const ok = () => toast(`${what}을(를) 복사했습니다`, { key: 'copy', tone: 'ok' });
-    const fail = () => toast(`${what}을(를) 복사하지 못했습니다 — 직접 입력하세요`, { key: 'copy', tone: 'warn' });
+    const ok = () => toast(`${what}을(를) 복사했습니다.`, { key: 'copy', tone: 'ok' });
+    const fail = () => toast(`${what}을(를) 복사하지 못했습니다 — 직접 입력하세요.`, { key: 'copy', tone: 'warn' });
     try {
       navigator.clipboard.writeText(text).then(ok, fail);
     } catch {
@@ -85,9 +86,9 @@ export function UsageGuide({ onClose }: { onClose: () => void }) {
                 {show ? '토큰 가리기' : '토큰 보기'}
               </button>
             )}
-            <button type="button" className="sg-btn sg-btn-sm sg-btn-secondary" disabled={!s} onClick={() => copy(envLines(true), '환경 변수')}>
+            <ActionButton className="sg-btn sg-btn-sm sg-btn-secondary" reason={!s && '설정을 불러온 뒤 쓸 수 있습니다'} onClick={() => copy(envLines(true), '환경 변수')}>
               환경 변수 복사
-            </button>
+            </ActionButton>
           </div>
           <CodeWindow lang="sh" name="환경">
             {envLines(show) || '불러오는 중…'}

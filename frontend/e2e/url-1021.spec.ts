@@ -35,14 +35,14 @@ test.describe('URL 1021 — 목록 필터는 화면 상태로만', () => {
     await page.goto('/events');
     await page.getByLabel('종류').selectOption('connect');
     await page.getByLabel('정상 포함').click();
-    await page.getByPlaceholder('이름 검색').fill('pkg');
+    await page.getByPlaceholder('컨테이너 이름').fill('pkg');
     await expect(page.locator('[data-part="filter-chips"] [data-chip]')).toHaveCount(3);
     expect(filterKeysIn(page)).toEqual([]);
 
     await page.goto('/audit');
     await page.getByLabel('종류').selectOption('connect');
     await page.getByRole('combobox', { name: /^대응/ }).selectOption('kill');
-    await page.getByPlaceholder('규칙 id').fill('egress');
+    await page.getByPlaceholder('규칙 ID').fill('egress');
     await page.getByLabel('기간 시작').fill('2020-01-01T00:00');
     await expect.poll(() => backend.requests.some((r) => r.path.startsWith('/audit?') && r.path.includes('rule=egress') && r.path.includes('action=kill'))).toBe(true);
     expect(filterKeysIn(page)).toEqual([]);
@@ -70,7 +70,7 @@ test.describe('URL 1021 — 목록 필터는 화면 상태로만', () => {
     await expect(page).toHaveURL(/\/topology$/);
     // AI 도우미 답의 /audit?rule= — 링크용 키(view · id · tab)는 남긴다
     await page.goto('/audit?rule=egress-allowlist&id=200');
-    await expect(page.getByPlaceholder('규칙 id')).toHaveValue('egress-allowlist');
+    await expect(page.getByPlaceholder('규칙 ID')).toHaveValue('egress-allowlist');
     await expect(page).toHaveURL(/\/audit\?id=200$/);
     await expect.poll(() => backend.requests.some((r) => r.path.startsWith('/audit?') && r.path.includes('rule=egress-allowlist'))).toBe(true);
     // 정책 마법사 미리 채우기(예전 북마크)도 한 번 읽고 지운다

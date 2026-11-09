@@ -1,4 +1,4 @@
-import { Copy, PackageSearch, SearchX } from 'lucide-react';
+import { Copy } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DecisionBadge, StatusBadge } from '../../components/Badges';
@@ -6,15 +6,16 @@ import { BusyBar, SortHead, TablePager } from '../../components/DataTable';
 import { FilterChips } from '../../components/FilterChips';
 import { PageActions } from '../../components/PageActions';
 import { Panel } from '../../components/Panel';
-import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, PagerSlot, Skeleton } from '../../components/list/ListStates';
+import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, NoResults, PagerSlot, Skeleton } from '../../components/list/ListStates';
+import { TimeText } from '../../components/list/cells';
 import { barStyle, rowKeys, useAutoRetry, useBusy } from '../../components/list/hooks';
 import { useCases } from '../../hooks/cases-context';
 import { useFilters } from '../../hooks/useFilters';
 import { useCopyCommand } from '../../hooks/useCopyCommand';
-import { useInterval, useLoad, useNow } from '../../hooks/useLoad';
+import { useInterval, useLoad } from '../../hooks/useLoad';
 import { useTableKit, type Column } from '../../hooks/useTableKit';
 import { api } from '../../lib/api';
-import { fmtDateTime, fmtNum, fmtTime, isToday } from '../../lib/format';
+import { fmtNum } from '../../lib/format';
 import { duration, EXAMPLE_COMMAND, sessionLabel, violationTotal } from '../../lib/pkg';
 import { INSTALL_STATUS_LABEL, INSTALL_STATUSES, MANAGERS, type Case, type InstallSession } from '../../lib/types';
 import { InstallSheet } from './InstallSheet';
@@ -23,7 +24,8 @@ import { sheetNav } from '../../components/sheet-nav';
 import { StaticBadge } from './StaticBadge';
 import { isDangerRow } from './staticScan';
 
-// 표 칸(R4 11/04 — 목업 11/04e U.tableKit): 머리 클릭 정렬 · 기본은 시작 내림(목록 순서 그대로). 설치 결과는 위험한 것부터
+// 표 칸(R4 11/04 — 목업 11/04e U.tableKit): 머리 클릭 정렬 · 기본은 시작 내림(목록 순서 그대로). 설치 결과는 위험한 것부터.
+// 11/09 SPEC §4: 현황 표 — 상태(설치 결과 · 바로 뒤 정적 검사, 11/04 종합 판정)가 맨 앞, 시작은 MM-DD HH:mm + 전체 시각 툴팁
 const STATUS_RANK: Record<string, number> = { isolated: 0, warned: 1, refused: 2, running: 3, failed: 4, unknown: 5, passed: 6 };
 const durSec = (s: InstallSession) => {
   const end = s.finishedAt ?? s.containerExitedAt;
@@ -44,7 +46,6 @@ export function InstallsPage() {
   const { cases } = useCases();
   const [guide, setGuide] = useState(false); // 「사용 방법」(11/09)
   const copy = useCopyCommand();
-  const now = useNow();
 
   const load = useCallback(() => api.installs({ limit: 500 }), []);
   const list = useLoad(load);
@@ -60,11 +61,11 @@ export function InstallsPage() {
   const caseOf = useMemo(() => new Map((cases ?? []).map((c) => [c.id, c])), [cases]);
   const columns = useMemo<Column<InstallSession>[]>(
     () => [
+      { key: 'status', label: '설치 결과', sort: (s) => STATUS_RANK[s.status], short: true },
+      { key: 'static', label: '정적 검사', sort: (s) => (s.scan ? (s.scan.verdict ?? s.scan.status) : null), short: true },
       { key: 'started', label: '시작', sort: (s) => Date.parse(s.startedAt), short: true },
       { key: 'manager', label: '매니저', sort: (s) => s.manager, short: true },
       { key: 'package', label: '패키지', sort: (s) => sessionLabel(s) },
-      { key: 'status', label: '설치 결과', sort: (s) => STATUS_RANK[s.status], short: true },
-      { key: 'static', label: '정적 검사', sort: (s) => (s.scan ? (s.scan.verdict ?? s.scan.status) : null), short: true },
       { key: 'decision', label: '판정', sort: (s) => (s.caseId ? (caseOf.get(s.caseId)?.decision ?? null) : null), short: true },
       { key: 'violations', label: '위반', num: true, sort: (s) => violationTotal(s) ?? null, short: true },
       { key: 'duration', label: '걸린 시간', num: true, sort: durSec, short: true },
@@ -163,9 +164,9 @@ export function InstallsPage() {
             <FirstUse onCopy={() => copy(EXAMPLE_COMMAND)} onGuide={() => setGuide(true)} />
           ) : rows.length === 0 ? (
             status === 'pending' && !manager ? (
-              <EmptyState icon={PackageSearch} title="판정 대기인 설치가 없습니다" hint="「전체」에서 지난 검사를 볼 수 있습니다" actions={<ClearFiltersButton onClick={() => set('status', 'all')}>전체 보기</ClearFiltersButton>} />
+              <EmptyState what="판정 대기인 설치 검사" hint="지난 검사는 「전체」에서 볼 수 있습니다." actions={<ClearFiltersButton onClick={() => set('status', 'all')}>전체 보기</ClearFiltersButton>} />
             ) : (
-              <EmptyState icon={SearchX} title="조건에 맞는 세션 없음" actions={<ClearFiltersButton onClick={clearFilters} />} />
+              <NoResults onClear={clearFilters} />
             )
           ) : (
             <>
@@ -175,7 +176,7 @@ export function InstallsPage() {
                   <SortHead columns={shown} sort={kit.sort} onSort={kit.sortBy} />
                   <tbody>
                     {view.rows.map((s) => (
-                      <Row key={s.id} s={s} now={now} c={s.caseId ? caseOf.get(s.caseId) : undefined} pending={isPending(s)} selected={s.id === id} showDuration={!id} onOpen={() => set('id', s.id)} />
+                      <Row key={s.id} s={s} c={s.caseId ? caseOf.get(s.caseId) : undefined} pending={isPending(s)} selected={s.id === id} showDuration={!id} onOpen={() => set('id', s.id)} />
                     ))}
                   </tbody>
                 </table>
@@ -197,7 +198,6 @@ export function InstallsPage() {
 function Row({
   s,
   c,
-  now,
   pending,
   selected,
   showDuration,
@@ -205,7 +205,6 @@ function Row({
 }: {
   s: InstallSession;
   c: Case | undefined;
-  now: number;
   pending: boolean;
   selected: boolean;
   showDuration: boolean;
@@ -223,22 +222,22 @@ function Row({
       data-bar={bar ?? undefined}
       aria-selected={selected}
       onClick={onOpen}
-      className={`cursor-pointer hover:bg-[var(--row-hover)] focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${selected ? 'bg-indigo-50' : ''}`}
+      className={`cursor-pointer hover:bg-[var(--row-hover)] ${selected ? 'bg-indigo-50' : ''}`}
     >
-      <td data-col="started" className="num tk-short font-mono text-xs text-slate-600" title={fmtDateTime(s.startedAt)} style={barStyle(bar)}>
-        {isToday(s.startedAt, now) ? fmtTime(s.startedAt) : fmtDateTime(s.startedAt)}
+      <td data-col="status" className="tk-short" style={barStyle(bar)}>
+        <StatusBadge status={s.status} />
+      </td>
+      <td data-col="static" className="tk-short">
+        <StaticBadge s={s} />
+      </td>
+      <td data-col="started" className="tk-short text-slate-600">
+        <TimeText value={s.startedAt} kind="status" />
       </td>
       <td data-col="manager" className="tk-short">
         <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-600">{s.manager}</span>
       </td>
       <td data-col="package" className="tk-fill font-mono text-slate-800" title={sessionLabel(s)}>
         {sessionLabel(s)}
-      </td>
-      <td data-col="status" className="tk-short">
-        <StatusBadge status={s.status} />
-      </td>
-      <td data-col="static" className="tk-short">
-        <StaticBadge s={s} />
       </td>
       <td data-col="decision" className="tk-short">
         {c ? <DecisionBadge decision={c.decision} /> : <span className="text-xs text-slate-300">—</span>}
@@ -260,15 +259,14 @@ function FirstUse({ onCopy, onGuide }: { onCopy: () => void; onGuide: () => void
   return (
     <EmptyState
       testId="installs-empty"
-      icon={PackageSearch}
-      title="아직 설치 검사가 없습니다"
-      hint="개발자가 패키지를 설치할 때 감시 컨테이너에서 실행합니다. 위반이면 설치가 끝나기 전에 격리됩니다."
+      what="설치 검사"
+      hint="sg-install 명령으로 패키지를 설치하면 감시 컨테이너에서 검사가 시작됩니다."
       actions={
         <div className="flex flex-wrap items-center justify-center gap-2">
           <div className="sg-code flex items-center gap-2 px-3 py-2 font-mono text-xs">
             {EXAMPLE_COMMAND}
-            <button type="button" onClick={onCopy} className="rounded p-1 text-text-3 hover:bg-surface-2 hover:text-text" aria-label="명령 복사">
-              <Copy className="size-3.5" />
+            <button type="button" onClick={onCopy} className="rounded p-1 text-text-3 hover:bg-surface-2 hover:text-text" aria-label="명령 복사" title="명령 복사">
+              <Copy className="size-3.5" aria-hidden />
             </button>
           </div>
           <button type="button" onClick={onGuide} className="sg-btn sg-btn-sm sg-btn-secondary">

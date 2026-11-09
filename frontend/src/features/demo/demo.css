@@ -24,7 +24,6 @@
   transition: background var(--t-fast) var(--ease); }
 .scn-group-head:hover:not([aria-disabled='true']) { background: var(--surface-2); }
 .scn-group-head[aria-disabled='true'] { cursor: default; }
-.scn-group-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .scn-group-name { flex-shrink: 0; font-size: 12.5px; font-weight: 700; color: var(--text-2); }
 .scn-group-count { flex-shrink: 0; min-width: 20px; padding: 0 6px; border-radius: var(--r-pill); background: var(--surface-3); color: var(--text-3); font-size: 12px; font-weight: 600; text-align: center; }
 .scn-group-peek { flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -36,11 +35,11 @@
 .scn-list[hidden] { display: none; }
 .scn-item { width: 100%; text-align: left; display: grid; gap: 2px; padding: 7px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; cursor: pointer;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
-.scn-item:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-2); }
+.scn-item:hover:not(:disabled):not([aria-disabled='true']) { border-color: var(--border-strong); background: var(--surface-2); }
 .scn-item.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
-.scn-item:disabled { cursor: default; opacity: .65; }
-.scn-item.on:disabled { opacity: 1; }
-.scn-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 실행 중 = aria-disabled + 사유(11/09 SPEC §3) */
+.scn-item:disabled, .scn-item[aria-disabled='true'] { cursor: default; opacity: .65; }
+.scn-item.on:disabled, .scn-item.on[aria-disabled='true'] { opacity: 1; }
 .scn-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 .scn-top b { min-width: 0; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scn-expect { flex-shrink: 0; padding: 1px 8px; border-radius: var(--r-pill); font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -143,7 +142,6 @@
   transition: background var(--t-panel) var(--ease-panel), color var(--t-panel) var(--ease-panel), box-shadow var(--t-panel) var(--ease-panel); }
 .demo-tab:hover:not(.on) { color: var(--text); }
 .demo-tab.on { background: var(--surface); color: var(--accent-text); box-shadow: var(--sh-1), 0 0 0 1px var(--border); }
-.demo-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* 「흐름 그림」 탭(11/09) — 위 = 모드 칩(대기 · 실행 중 · 결과) + 한 줄, 가운데 = FlowHero 세로, 끝나면 「판정 근거 보기」 */
 .flow-mode { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; font-size: 13px; color: var(--text-2); }

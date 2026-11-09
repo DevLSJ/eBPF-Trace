@@ -1,10 +1,11 @@
-import { Network, Radar, SearchX } from 'lucide-react';
+import { Network } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DnsRow } from '../../components/DnsRow';
 import { SequenceRow } from '../../components/SequenceRow';
 import { EventFeed, PauseToggle } from '../../components/EventFeed';
-import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, Skeleton } from '../../components/list/ListStates';
+import { AppliedFilters, EmptyState, ListError, NoResults, Skeleton } from '../../components/list/ListStates';
+import { TimeText } from '../../components/list/cells';
 import { useAutoRetry } from '../../components/list/hooks';
 import { PageActions } from '../../components/PageActions';
 import { Panel } from '../../components/Panel';
@@ -19,7 +20,7 @@ import { useFilters } from '../../hooks/useFilters';
 import { dest, topologyDest } from '../../lib/nav';
 import type { StreamVerdict } from '../../hooks/useEventStream';
 import { api } from '../../lib/api';
-import { fmtDateTime, fmtNum } from '../../lib/format';
+import { fmtNum } from '../../lib/format';
 import { isInstallContainer } from '../../lib/topology';
 import { detailOf, KIND_LONG, KINDS, levelOf, type Rule } from '../../lib/types';
 
@@ -31,7 +32,8 @@ const levelOptions: { value: LevelFilter; label: string }[] = [
   { value: 'kill', label: '격리 (대상 포함)' },
 ];
 
-const ctl = 'h-8 rounded-[var(--r-md)] border border-slate-300 bg-field px-2 text-sm focus:border-indigo-500 focus:outline-none';
+// 입력 글자 13.5 · 포커스 링은 전역 규칙 하나(11/09 SPEC §1)
+const ctl = 'h-8 rounded-[var(--r-md)] border border-slate-300 bg-field px-2';
 
 const LEVEL_TEXT: Record<string, string> = { alert: '경고', kill: '격리 (대상 포함)' };
 
@@ -115,7 +117,7 @@ export function EventsPage() {
             </label>
             <label className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-slate-500">
               컨테이너
-              <input className={`${ctl} w-44 min-w-0`} placeholder="이름 검색" value={container} onChange={(e) => set('container', e.target.value)} />
+              <input className={`${ctl} w-44 min-w-0`} placeholder="컨테이너 이름" value={container} onChange={(e) => set('container', e.target.value)} />
             </label>
             <label className="ml-auto flex cursor-pointer items-center gap-2 text-slate-600 select-none">
               <input type="checkbox" className="accent-indigo-600" checked={withNormal} onChange={(e) => set('normal', e.target.checked ? '1' : '')} />
@@ -139,12 +141,11 @@ export function EventsPage() {
               <Skeleton rows={8} />
             ) : rows.length === 0 ? (
               verdicts.length && filtered ? (
-                <EmptyState icon={SearchX} title={withNormal ? '조건에 맞는 이벤트 없음' : '조건에 맞는 위반 없음'} actions={<ClearFiltersButton onClick={clearFilters} />} />
+                <NoResults onClear={clearFilters} />
               ) : (
                 <EmptyState
-                  icon={Radar}
-                  title={withNormal ? '아직 받은 이벤트가 없습니다' : '지금 걸리는 위반 없음'}
-                  hint={withNormal ? '감시 중인 컨테이너에서 이벤트가 들어오면 여기에 바로 보입니다' : '「정상 포함」을 켜면 모든 이벤트가 보입니다'}
+                  what={withNormal ? '받은 이벤트' : '지금 걸리는 위반'}
+                  hint={withNormal ? '감시 중인 컨테이너에서 이벤트가 들어오면 여기에 바로 보입니다.' : '「정상 포함」을 켜면 모든 이벤트가 보입니다.'}
                 />
               )
             ) : (
@@ -197,7 +198,9 @@ function EventDetail({ v }: { v: StreamVerdict }) {
             <VerdictBadge v={v} />
           </dd>
           <dt className="text-slate-500">시각</dt>
-          <dd className="num">{fmtDateTime(v.event.timestamp)}</dd>
+          <dd>
+            <TimeText value={v.event.timestamp} kind="log" />
+          </dd>
           <dt className="text-slate-500">컨테이너</dt>
           <dd className="break-all">{name}</dd>
           <dt className="text-slate-500">이미지</dt>
@@ -245,7 +248,7 @@ function EventDetail({ v }: { v: StreamVerdict }) {
             </Link>
           </div>
           {rule?.description && <p className="mt-1 text-xs text-slate-500">{rule.description}</p>}
-          {rule === null && <p className="mt-1 text-xs text-slate-400">현재 정책 목록에 없음 (삭제·변경됨)</p>}
+          {rule === null && <p className="mt-1 text-xs text-slate-400">현재 정책 목록에 없음 — 삭제 또는 변경됨</p>}
         </Section>
       )}
       {v.matched && <PolicyStarts event={v.event} ruleId={v.ruleId} />}

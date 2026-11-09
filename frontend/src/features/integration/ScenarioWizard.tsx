@@ -1,6 +1,7 @@
 import { Check, Copy, Loader2, Plus, RotateCcw, TriangleAlert, X } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { ActionButton } from '../../components/ActionButton';
 import { StatusBadge } from '../../components/Badges';
 import { useCopyCommand } from '../../hooks/useCopyCommand';
 import { useInterval, useLoad } from '../../hooks/useLoad';
@@ -116,10 +117,10 @@ export function ScenarioWizard({ env, containers }: { env: IntegrationEnv; conta
               const state = n < st.step ? 'done' : n === st.step ? 'on' : 'off';
               return (
                 <li key={label} data-state={state} className={`int-stepper-item ${state}`}>
-                  <button type="button" disabled={n > st.step && !(n === 2 && valid)} onClick={() => set({ step: n })}>
+                  <ActionButton reason={n > st.step && !(n === 2 && valid) && '앞 단계를 먼저 마치세요'} onClick={() => set({ step: n })}>
                     <span className="int-stepper-n">{state === 'done' ? <Check className="size-3.5" aria-hidden /> : n}</span>
                     {label}
-                  </button>
+                  </ActionButton>
                 </li>
               );
             })}
@@ -135,9 +136,9 @@ export function ScenarioWizard({ env, containers }: { env: IntegrationEnv; conta
             {st.step === 1 && sc === 'install' && <InstallForm v={st.install} onChange={(install) => set({ install })} />}
             {st.step === 1 && (
               <div className="int-wiz-foot">
-                <button type="button" className="sg-btn sg-btn-primary" data-part="wizard-next" disabled={!valid} onClick={() => set({ step: 2 })}>
+                <ActionButton className="sg-btn sg-btn-primary" data-part="wizard-next" reason={!valid && '입력 칸의 오류를 먼저 고치세요'} onClick={() => set({ step: 2 })}>
                   설정 만들기 →
-                </button>
+                </ActionButton>
               </div>
             )}
             {st.step === 2 && sc !== 'install' && <ApplyStep sc={sc} st={st} env={env} containers={containers} onNext={() => set({ step: 3 })} />}
@@ -157,7 +158,11 @@ function Field({ label, error, children, wide }: { label: string; error?: string
     <label className={`int-field ${wide ? 'wide' : ''} ${error ? 'bad' : ''}`}>
       <span className="int-field-label">{label}</span>
       {children}
-      {error && <span className="int-field-err">{error}</span>}
+      {error && (
+        <span className="int-field-err" role="alert">
+          {error}
+        </span>
+      )}
     </label>
   );
 }
@@ -225,19 +230,25 @@ function MultiForm({ v, onChange }: { v: MultiInput; onChange: (v: MultiInput) =
                 <input type="checkbox" aria-label={`서비스 ${k + 1} 격리`} checked={s.enforce} disabled={!s.watch} onChange={(x) => upd(k, { enforce: x.target.checked })} />
               </td>
               <td className="tk-short">
-                <button type="button" className="int-icon-btn" aria-label={`서비스 ${k + 1} 빼기`} disabled={v.services.length <= 1} onClick={() => onChange({ ...v, services: v.services.filter((_, i) => i !== k) })}>
+                <ActionButton
+                  className="int-icon-btn"
+                  aria-label={`빼기 — 서비스 ${k + 1}`}
+                  title={`빼기 — 서비스 ${k + 1}`}
+                  reason={v.services.length <= 1 && '서비스는 하나 이상 있어야 합니다'}
+                  onClick={() => onChange({ ...v, services: v.services.filter((_, i) => i !== k) })}
+                >
                   <X className="size-3.5" aria-hidden />
-                </button>
+                </ActionButton>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
       <div className="int-form-row">
-        <button type="button" className="sg-btn sg-btn-sm sg-btn-secondary" data-part="svc-add" disabled={v.services.length >= 12} onClick={() => onChange({ ...v, services: [...v.services, { name: `svc${v.services.length + 1}`, image: 'busybox:1.36', watch: true, enforce: false }] })}>
+        <ActionButton className="sg-btn sg-btn-sm sg-btn-secondary" data-part="svc-add" reason={v.services.length >= 12 && '서비스는 12개까지입니다'} onClick={() => onChange({ ...v, services: [...v.services, { name: `svc${v.services.length + 1}`, image: 'busybox:1.36', watch: true, enforce: false }] })}>
           <Plus className="size-3.5" aria-hidden /> 서비스 추가
-        </button>
-        {(e.none || e.services.find((x) => x.name || x.image)) && <span className="int-field-err" data-part="multi-error">{e.none || '이름 · 이미지 형식 확인 필요'}</span>}
+        </ActionButton>
+        {(e.none || e.services.find((x) => x.name || x.image)) && <span className="int-field-err" data-part="multi-error" role="alert">{e.none || '서비스의 이름 · 이미지를 확인하세요.'}</span>}
       </div>
     </div>
   );

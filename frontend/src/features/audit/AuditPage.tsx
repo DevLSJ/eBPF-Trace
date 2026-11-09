@@ -1,4 +1,4 @@
-import { Download, History as HistoryIcon, ScrollText, SearchX } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { DecisionBadge } from '../../components/Badges';
@@ -6,7 +6,9 @@ import { DnsRow } from '../../components/DnsRow';
 import { SequenceRow } from '../../components/SequenceRow';
 import { downloadCSV } from '../../components/list/csv';
 import { barStyle, rowKeys, useAutoRetry, useBusy } from '../../components/list/hooks';
-import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, PagerSlot, Skeleton } from '../../components/list/ListStates';
+import { AppliedFilters, EmptyState, ListError, NoResults, PagerSlot, Skeleton } from '../../components/list/ListStates';
+import { TimeText } from '../../components/list/cells';
+import { ActionButton } from '../../components/ActionButton';
 import { BusyBar, SortHead, TablePager } from '../../components/DataTable';
 import { useTableKit, type Column } from '../../hooks/useTableKit';
 import { KindBadge } from '../../components/KindBadge';
@@ -20,14 +22,15 @@ import { useCases } from '../../hooks/cases-context';
 import { useFilters } from '../../hooks/useFilters';
 import { useLoad } from '../../hooks/useLoad';
 import { api, errorText, type AuditParams } from '../../lib/api';
-import { fmtDateTime, shortId } from '../../lib/format';
+import { shortId } from '../../lib/format';
 import { scanHref, SOURCE_LABEL } from '../../lib/guide';
 import { installDest, topologyDest } from '../../lib/nav';
 import { isInstallContainer } from '../../lib/topology';
 import { caseLabel, CHANGE_KIND_LABEL, DECISION_LABEL, detailOf, KIND_LONG, KINDS, LEVEL_LABEL, levelOf, type AuditEntry, type Case } from '../../lib/types';
 import { EvidenceView } from './EvidenceView';
 
-const ctl = 'h-8 rounded-[var(--r-md)] border border-slate-300 bg-field px-2 text-sm focus:border-indigo-500 focus:outline-none';
+// 입력 글자 13.5 · 포커스 링은 전역 규칙 하나(11/09 SPEC §1)
+const ctl = 'h-8 rounded-[var(--r-md)] border border-slate-300 bg-field px-2';
 const FILTERS = ['kind', 'action', 'rule', 'container', 'since', 'until'] as const;
 type FilterKey = (typeof FILTERS)[number];
 type Filters = Record<FilterKey, string>;
@@ -166,11 +169,11 @@ export function AuditPage() {
                 </label>
                 <label className="flex items-center gap-1.5 text-slate-500">
                   규칙
-                  <input className={`${ctl} w-32`} placeholder="규칙 id" value={filters.rule} onChange={(e) => setFilter('rule', e.target.value)} />
+                  <input className={`${ctl} w-32`} placeholder="규칙 ID" value={filters.rule} onChange={(e) => setFilter('rule', e.target.value)} />
                 </label>
                 <label className="flex items-center gap-1.5 text-slate-500">
                   컨테이너
-                  <input className={`${ctl} w-32`} placeholder="이름" value={filters.container} onChange={(e) => setFilter('container', e.target.value)} />
+                  <input className={`${ctl} w-36`} placeholder="컨테이너 이름" value={filters.container} onChange={(e) => setFilter('container', e.target.value)} />
                 </label>
               </>
             )}
@@ -295,8 +298,9 @@ function Violations({
 
   const columns = useMemo<Column<AuditEntry>[]>(
     () => [
-      { key: 'id', label: '#', num: true, sort: (a) => a.id, short: true },
+      // 11/09 SPEC §4: 기록류 — 시각이 맨 앞(YYYY-MM-DD HH:mm:ss 고정폭)
       { key: 'time', label: '시각', sort: (a) => Date.parse(a.event.timestamp), short: true },
+      { key: 'id', label: '#', num: true, sort: (a) => a.id, short: true },
       { key: 'container', label: '컨테이너 · 패키지', sort: (a) => (a.install ? a.install.label : a.event.containerName), short: true },
       { key: 'kind', label: '종류', sort: (a) => a.event.kind, short: true },
       { key: 'detail', label: '상세', sort: (a) => detailOf(a.event) },
@@ -335,9 +339,9 @@ function Violations({
           <Skeleton rows={8} />
         ) : got.rows.length === 0 ? (
           filtered ? (
-            <EmptyState icon={SearchX} title="조건에 맞는 기록 없음" actions={<ClearFiltersButton onClick={onClear} />} />
+            <NoResults onClear={onClear} />
           ) : (
-            <EmptyState icon={ScrollText} title="아직 위반 기록이 없습니다" hint="정책에 걸린 행동이 있으면 여기에 쌓입니다. 정상 이벤트는 저장하지 않습니다." />
+            <EmptyState what="위반 기록" hint="정책에 걸린 행동이 있으면 여기에 쌓입니다." />
           )
         ) : (
           <table className="sg-table" data-table="audit">
@@ -355,14 +359,14 @@ function Violations({
                     data-level={level}
                     aria-selected={String(a.id) === selectedId}
                     onClick={() => onOpen(a.id)}
-                    className={`cursor-pointer hover:bg-[var(--row-hover)] focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${String(a.id) === selectedId ? 'bg-indigo-50' : ''}`}
+                    className={`cursor-pointer hover:bg-[var(--row-hover)] ${String(a.id) === selectedId ? 'bg-indigo-50' : ''}`}
                   >
-                    {/* 11/04e 막대: 격리된 행만(위험색) */}
-                    <td data-col="id" className="num num-col tk-short text-xs text-slate-400" style={barStyle(level === 'killed' && 'danger')}>
-                      {a.id}
+                    {/* 11/04e 막대: 격리된 행만(위험색) — 첫 칸 */}
+                    <td data-col="time" className="tk-short text-slate-600" style={barStyle(level === 'killed' && 'danger')}>
+                      <TimeText value={a.event.timestamp} kind="log" />
                     </td>
-                    <td data-col="time" className="num tk-short font-mono text-xs text-slate-600">
-                      {fmtDateTime(a.event.timestamp)}
+                    <td data-col="id" className="num num-col tk-short text-xs text-slate-400">
+                      {a.id}
                     </td>
                     <td data-col="container" className="tk-short max-w-52 truncate" title={a.event.containerName}>
                       {install ? (
@@ -487,7 +491,9 @@ function AuditDetail({ a, c }: { a: AuditEntry; c: Case | undefined }) {
             <VerdictBadge v={a} />
           </dd>
           <dt className="text-slate-500">시각</dt>
-          <dd className="num">{fmtDateTime(a.event.timestamp)}</dd>
+          <dd>
+            <TimeText value={a.event.timestamp} kind="log" />
+          </dd>
           <dt className="text-slate-500">사유</dt>
           <dd data-testid="audit-reason">{a.reason ?? '—'}</dd>
           <SequenceRow v={a} />
@@ -530,7 +536,7 @@ function AuditDetail({ a, c }: { a: AuditEntry; c: Case | undefined }) {
               <DecisionBadge decision={c.decision} />
               {c.decidedBy && (
                 <span className="text-slate-500">
-                  {c.decidedBy} · {c.decidedAt ? fmtDateTime(c.decidedAt) : ''}
+                  {c.decidedBy} · <TimeText value={c.decidedAt} kind="log" />
                 </span>
               )}
             </div>
@@ -608,9 +614,9 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
           <Skeleton rows={6} />
         ) : items.length === 0 ? (
           filtered ? (
-            <EmptyState icon={SearchX} title="이 기간의 판정 · 변경 기록 없음" actions={<ClearFiltersButton onClick={onClear} />} />
+            <NoResults onClear={onClear} />
           ) : (
-            <EmptyState icon={HistoryIcon} title="판정 · 변경 기록 없음" hint="판정 · 제안 적용 · 정책 편집 · 차단 해제가 여기에 남습니다." />
+            <EmptyState what="판정 · 변경 기록" hint="판정 · 제안 적용 · 정책 편집 · 차단 해제가 여기에 남습니다." />
           )
         ) : (
           <table className="sg-table" data-table="history">
@@ -618,8 +624,8 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
             <tbody>
               {kit.sorted(items).map((x) => (
                 <tr key={x.key} data-history={x.key}>
-                  <td data-col="at" className="num tk-short font-mono text-xs text-slate-600">
-                    {fmtDateTime(x.at)}
+                  <td data-col="at" className="tk-short text-slate-600">
+                    <TimeText value={x.at} kind="log" />
                   </td>
                   <td data-col="kind" className="tk-short text-xs">
                     <span className="flex items-center gap-1.5">
@@ -662,7 +668,7 @@ function ExportCsv({ filters, caseOf }: { filters: Filters; caseOf: Map<string, 
   const [busy, setBusy] = useState(false);
   const run = async () => {
     if (!filters.since || !filters.until) {
-      setErr('기간(시작 · 끝)을 먼저 고르세요 — 내보내기는 기간 안의 기록만 담습니다');
+      setErr('기간을 먼저 고르세요.');
       return;
     }
     setErr('');
@@ -686,7 +692,7 @@ function ExportCsv({ filters, caseOf }: { filters: Filters; caseOf: Map<string, 
         }),
       ]);
     } catch (e) {
-      setErr(`내보내기 실패 — ${errorText(e)}`);
+      setErr(`내보내지 못했습니다 — ${errorText(e)}`);
     } finally {
       setBusy(false);
     }
@@ -698,16 +704,15 @@ function ExportCsv({ filters, caseOf }: { filters: Filters; caseOf: Map<string, 
           {err}
         </span>
       )}
-      <button
-        type="button"
+      <ActionButton
         data-action="export-csv"
-        disabled={busy}
+        reason={busy && '내보내는 중입니다'}
         onClick={() => void run()}
-        title="지금 필터 · 기간의 위반 기록을 CSV 로"
-        className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+        title="지금 조건 · 기간의 위반 기록을 CSV로 내려받기(기간 안 최대 10,000건)"
+        className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 aria-disabled:opacity-50"
       >
         <Download className="size-3.5" aria-hidden /> CSV 내보내기
-      </button>
+      </ActionButton>
     </span>
   );
 }

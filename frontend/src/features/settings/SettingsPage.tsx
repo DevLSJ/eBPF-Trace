@@ -2,7 +2,10 @@ import { KeyRound, Plus, Send } from 'lucide-react';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { KeyBoxes } from '../../components/KeyBoxes';
-import { AppliedFilters } from '../../components/list/ListStates';
+import { AppliedFilters, EmptyState, NoResults } from '../../components/list/ListStates';
+import { TimeText } from '../../components/list/cells';
+import { fmtDay } from '../../components/list/cell-format';
+import { ActionButton } from '../../components/ActionButton';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { Empty, LoadError } from '../../components/Panel';
 import { SortHead } from '../../components/DataTable';
@@ -15,7 +18,7 @@ import { useLoad } from '../../hooks/useLoad';
 import { api, ApiError, authApi, errorText } from '../../lib/api';
 import { engineName, LOCAL_ONLY, NOT_SENT_ITEMS, SENT_ITEMS } from '../../lib/chatEngine';
 import { AUTH_MSG, daysLeft, licenseText, ROLE_KO } from '../../lib/auth';
-import { fmtDateTime, fmtNum } from '../../lib/format';
+import { fmtNum } from '../../lib/format';
 import type { AuthAuditEntry, Info, Role, UserView } from '../../lib/types';
 
 // 설정(W16, 10/20 확정) — 서버 설정(보기 · 알림 테스트) · 계정 · 라이선스 · 인증 감사. 조회자는 계정 · 인증 감사 탭이 없다
@@ -43,7 +46,7 @@ export function SettingsPage() {
           title="길게 눌러 바꾼 순서(사이드바 · 대시보드 숫자 칸 · 평가 지표)를 처음대로 — 이 브라우저에만 저장된 값"
           onClick={() => {
             resetLayout();
-            toast('화면 배치를 기본 순서로 되돌렸습니다 — 사이드바 · 대시보드 숫자 칸 · 평가 지표', { tone: 'ok', key: 'layout-reset' });
+            toast('화면 배치를 기본 순서로 되돌렸습니다. 사이드바 · 대시보드 숫자 칸 · 평가 지표 순서가 처음대로 돌아갑니다.', { tone: 'ok', key: 'layout-reset' });
           }}
           className="ml-auto shrink-0 rounded-md px-2.5 py-1 text-xs whitespace-nowrap text-text-2 hover:bg-surface-2 hover:text-text"
         >
@@ -115,13 +118,13 @@ function ServerTab() {
     setSending(true);
     try {
       await authApi.notifyTest();
-      toast('테스트 알림을 보냈습니다 — 잠시 뒤 결과를 다시 읽습니다', { key: 'notify-test', tone: 'ok' });
+      toast('테스트 알림을 보냈습니다. 잠시 뒤 결과를 다시 읽습니다.', { key: 'notify-test', tone: 'ok' });
       window.setTimeout(() => {
         info.reload();
         setSending(false);
       }, 1500);
     } catch (e) {
-      toast(`테스트 발송 실패: ${errorText(e)}`, { key: 'notify-test', tone: 'danger' });
+      toast(`테스트 알림을 보내지 못했습니다 — ${errorText(e)}`, { key: 'notify-test', tone: 'danger' });
       setSending(false);
     }
   };
@@ -137,9 +140,9 @@ function ServerTab() {
         part="notify"
         actions={
           isAdmin && n?.channels.length ? (
-            <button type="button" disabled={sending} onClick={() => void test()} className="sg-btn sg-btn-sm sg-btn-secondary flex items-center gap-1.5">
+            <ActionButton reason={sending && '테스트 알림을 보내는 중입니다'} onClick={() => void test()} className="sg-btn sg-btn-sm sg-btn-secondary flex items-center gap-1.5">
               <Send className="size-3.5" aria-hidden /> 테스트 발송
-            </button>
+            </ActionButton>
           ) : null
         }
       >
@@ -165,14 +168,16 @@ function ServerTab() {
               <tbody>
                 {n.channels.map((c) => (
                   <tr key={c.name} data-channel={c.name}>
-                    <td className="tk-short">{c.name}</td>
-                    <td className="tk-short font-mono text-xs">{c.host}</td>
-                    <td className="num num-col tk-short" data-sent="">
+                    <td data-col="name" className="tk-short">{c.name}</td>
+                    <td data-col="host" className="tk-short font-mono text-xs">{c.host}</td>
+                    <td data-col="sent" className="num num-col tk-short" data-sent="">
                       {fmtNum(c.sent)}
                     </td>
-                    <td className={`num num-col tk-short ${c.failed ? 'text-red-600' : ''}`}>{fmtNum(c.failed)}</td>
-                    <td className="num tk-short text-xs text-slate-500">{c.lastAt ? fmtDateTime(c.lastAt) : '—'}</td>
-                    <td className="tk-fill text-xs text-red-600" title={c.lastError}>
+                    <td data-col="failed" className={`num num-col tk-short ${c.failed ? 'text-red-600' : ''}`}>{fmtNum(c.failed)}</td>
+                    <td data-col="last" className="tk-short text-slate-500">
+                      <TimeText value={c.lastAt} kind="status" />
+                    </td>
+                    <td data-col="error" className="tk-fill text-xs text-red-600" title={c.lastError}>
                       {c.lastError || '—'}
                     </td>
                   </tr>
@@ -266,13 +271,14 @@ function AccountsTab() {
   const status = (u: UserView): [string, string] =>
     u.disabled ? ['비활성', 'text-slate-400'] : u.locked ? ['잠김(5분)', 'text-amber-700'] : u.mustChangePassword ? ['첫 로그인 대기', 'text-indigo-700'] : ['활성', 'text-emerald-700'];
   const who = (u: UserView) => `${u.username} (${u.displayName})`;
-  // 계정 표 칸(R4 11/04) — 머리 클릭 정렬, 기본은 받은 순서(정렬 없음). 버튼 칸은 정렬하지 않는다
+  // 계정 표 칸(R4 11/04) — 머리 클릭 정렬, 기본은 받은 순서(정렬 없음). 버튼 칸은 정렬하지 않는다.
+  // 11/09 SPEC §4: 현황 표 — 상태가 맨 앞, 마지막 로그인은 MM-DD HH:mm + 전체 시각 툴팁
   const userCols = useMemo<Column<UserView>[]>(
     () => [
+      { key: 'status', label: '상태', sort: (u) => (u.disabled ? 3 : u.locked ? 0 : u.mustChangePassword ? 1 : 2), short: true },
       { key: 'username', label: '아이디', sort: (u) => u.username, short: true },
       { key: 'name', label: '이름', sort: (u) => u.displayName },
       { key: 'role', label: '역할', sort: (u) => ROLE_KO[u.role], short: true },
-      { key: 'status', label: '상태', sort: (u) => (u.disabled ? 3 : u.locked ? 0 : u.mustChangePassword ? 1 : 2), short: true },
       { key: 'otp', label: 'OTP', sort: (u) => (u.otpEnabled ? 1 : 0), short: true },
       { key: 'last', label: '마지막 로그인', sort: (u) => (u.lastLoginAt ? Date.parse(u.lastLoginAt) : null), short: true },
       { key: 'actions', label: '', short: true },
@@ -298,7 +304,7 @@ function AccountsTab() {
   };
   const roleChange = (u: UserView, role: Role) =>
     setConfirm({
-      title: role === 'admin' ? '관리자로 올리기' : '조회자로 내리기',
+      title: role === 'admin' ? `${u.username}을(를) 관리자로 올릴까요?` : `${u.username}을(를) 조회자로 내릴까요?`,
       target: who(u),
       tone: 'primary',
       okLabel: '바꾸기',
@@ -308,7 +314,7 @@ function AccountsTab() {
     });
   const toggleDisabled = (u: UserView) =>
     setConfirm({
-      title: u.disabled ? '계정 활성화' : '계정 비활성',
+      title: u.disabled ? `계정 ${u.username}을(를) 활성화할까요?` : `계정 ${u.username}을(를) 비활성으로 바꿀까요?`,
       target: who(u),
       okLabel: u.disabled ? '활성화' : '비활성',
       effects: u.disabled ? ['다시 로그인할 수 있습니다'] : ['지금 세션이 끊기고 로그인할 수 없습니다', '판정 · 변경 이력의 처리자 기록은 남습니다'],
@@ -317,7 +323,7 @@ function AccountsTab() {
     });
   const resetPw = (u: UserView) =>
     setConfirm({
-      title: '비밀번호 초기화',
+      title: `${u.username}의 비밀번호를 초기화할까요?`,
       target: who(u),
       okLabel: '초기화',
       effects: ['새 임시 비밀번호를 만들어 한 번 보여 줍니다', '첫 로그인에서 비밀번호를 바꿔야 합니다', '5분 잠금도 풀립니다'],
@@ -327,7 +333,7 @@ function AccountsTab() {
     });
   const resetOtp = (u: UserView) =>
     setConfirm({
-      title: 'OTP 초기화',
+      title: `${u.username}의 OTP를 초기화할까요?`,
       target: who(u),
       okLabel: '초기화',
       effects: ['등록된 인증 앱과 남은 복구 코드가 지워집니다', '다음 로그인에서 OTP 를 다시 등록합니다'],
@@ -362,6 +368,7 @@ function AccountsTab() {
                 const [st, tone] = status(u);
                 return (
                   <tr key={u.id} data-user={u.username}>
+                    <td data-col="status" className={`tk-short text-xs ${tone}`}>{st}</td>
                     <td data-col="username" className="tk-short font-mono">
                       {u.username}
                       {self && <span className="text-xs text-slate-400"> (나)</span>}
@@ -376,9 +383,10 @@ function AccountsTab() {
                         </span>
                       )}
                     </td>
-                    <td data-col="status" className={`tk-short text-xs ${tone}`}>{st}</td>
                     <td data-col="otp" className="tk-short text-xs">{u.otpEnabled ? '등록됨' : '미등록'}</td>
-                    <td data-col="last" className="num tk-short text-xs text-slate-500">{u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : '—'}</td>
+                    <td data-col="last" className="tk-short text-slate-500">
+                      <TimeText value={u.lastLoginAt} kind="status" />
+                    </td>
                     <td data-col="actions" className="tk-short">
                       {/* 마지막 관리자 · 자기 자신은 강등 · 비활성 버튼을 그리지 않는다(누를 수 없는 버튼 금지) */}
                       {!last && (u.role === 'admin' ? act('조회자로', () => roleChange(u, 'viewer')) : act('관리자로', () => roleChange(u, 'admin')))}
@@ -444,7 +452,8 @@ function AddUser({ onClose, onCreated }: { onClose: () => void; onCreated: (user
       setBusy(false);
     }
   };
-  const cls = 'h-9 rounded-md border border-slate-300 px-2.5 text-sm focus:border-indigo-500 focus:outline-none';
+  // 입력 글자 13.5 · 포커스 링은 전역 규칙 하나(11/09 SPEC §1)
+  const cls = 'h-9 rounded-md border border-slate-300 px-2.5';
   return (
     <Modal
       title="계정 추가"
@@ -456,9 +465,9 @@ function AddUser({ onClose, onCreated }: { onClose: () => void; onCreated: (user
           <button type="button" onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
             취소
           </button>
-          <button type="button" disabled={busy} onClick={() => void create()} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50">
-            만들기
-          </button>
+          <ActionButton reason={busy && '계정을 만드는 중입니다'} onClick={() => void create()} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover aria-disabled:opacity-50">
+            {busy ? '만드는 중…' : '만들기'}
+          </ActionButton>
         </>
       }
     >
@@ -514,7 +523,7 @@ function LicenseTab() {
       setPhase('closed');
       lic.reload();
       void refresh(); // 상단 칩은 /api/auth/me 의 license 로 그린다
-      toast(`라이선스를 바꿨습니다 — ${fmtDateTime(l.expiresAt)}까지`, { key: 'license-renew', tone: 'ok' });
+      toast(`라이선스를 바꿨습니다. ${fmtDay(l.expiresAt)}까지 쓸 수 있습니다.`, { key: 'license-renew', tone: 'ok' });
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -537,9 +546,9 @@ function LicenseTab() {
               <button type="button" onClick={() => setPhase('closed')} className="rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
                 취소
               </button>
-              <button type="button" disabled={busy} onClick={() => setPhase('confirm')} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50">
+              <ActionButton reason={busy && '라이선스를 등록하는 중입니다'} onClick={() => setPhase('confirm')} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover aria-disabled:opacity-50">
                 등록
-              </button>
+              </ActionButton>
             </>
           }
         >
@@ -554,7 +563,7 @@ function LicenseTab() {
       )}
       {phase === 'confirm' && (
         <ConfirmDialog
-          title="라이선스 바꾸기"
+          title="라이선스를 바꿀까요?"
           target={`새 키 ****-****-****-${last4}`}
           tone="primary"
           okLabel="바꾸기"
@@ -590,8 +599,11 @@ function LicenseTab() {
     ['상태', `${licenseText(l)}`],
     ['종류', l.kind === 'trial' ? '평가판 (1년)' : l.kind],
     ['키', <span className="font-mono">{l.keyMasked}</span>],
-    ['시작', fmtDateTime(l.issuedAt)],
-    ['만료', `${fmtDateTime(l.expiresAt)}${l.expired ? '' : ` (${daysLeft(l)}일 남음)`}`],
+    ['시작', <TimeText value={l.issuedAt} kind="day" />],
+    ['만료', <>
+      <TimeText value={l.expiresAt} kind="day" />
+      {l.expired ? '' : ` (${daysLeft(l)}일 남음)`}
+    </>],
     ['등록한 계정', l.registeredBy || '—'],
   ];
   return (
@@ -640,7 +652,7 @@ const ACTION_KO: Record<string, string> = {
 const AUDIT_ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_register', 'license_renew', 'otp_enroll', 'otp_verify', 'otp_recovery',
   'user_create', 'user_update', 'user_reset_password', 'user_reset_otp'];
 const AUDIT_PAGE = 200;
-const ctl = 'h-8 rounded-md border border-slate-300 bg-white px-2 text-sm focus:border-indigo-500 focus:outline-none';
+const ctl = 'h-8 rounded-md border border-slate-300 bg-white px-2';
 
 // 필터(한 일 · 실패만)는 서버가 거른다 — GET /api/auth/audit?action=&failed=1, 「더 보기」는 마지막 행 id 를 before 로
 function AuthAuditTab() {
@@ -677,12 +689,21 @@ function AuthAuditTab() {
         }}
       />
       {/* 필터가 바뀌면 처음부터 — 더 불러온 행 · 끝 표시를 버린다 */}
-      <AuthAuditRows key={`${action}|${failed}`} action={action} failed={failed} />
+      <AuthAuditRows
+        key={`${action}|${failed}`}
+        action={action}
+        failed={failed}
+        onClear={() => {
+          setAction('');
+          setFailed(false);
+        }}
+      />
     </div>
   );
 }
 
-// 인증 감사 표 칸(R4 11/04) — 머리 클릭 정렬(불러온 행 안), 기본은 시각 내림(받은 순서 그대로). 「더 보기」(커서)는 그대로
+// 인증 감사 표 칸(R4 11/04) — 머리 클릭 정렬(불러온 행 안), 기본은 시각 내림(받은 순서 그대로). 「더 보기」(커서)는 그대로.
+// 11/09 SPEC §4: 기록류 — 시각이 맨 앞(YYYY-MM-DD HH:mm:ss 고정폭)
 const AUTH_AUDIT_COLS: Column<AuthAuditEntry>[] = [
   { key: 'at', label: '시각', sort: (a) => Date.parse(a.at), short: true },
   { key: 'actor', label: '계정', sort: (a) => a.actor, short: true },
@@ -693,7 +714,7 @@ const AUTH_AUDIT_COLS: Column<AuthAuditEntry>[] = [
   { key: 'detail', label: '내용', sort: (a) => a.detail },
 ];
 
-function AuthAuditRows({ action, failed }: { action: string; failed: boolean }) {
+function AuthAuditRows({ action, failed, onClear }: { action: string; failed: boolean; onClear: () => void }) {
   const kit = useTableKit({ columns: AUTH_AUDIT_COLS, sort: { key: 'at', dir: 'desc' } });
   const load = useCallback(() => authApi.audit({ limit: AUDIT_PAGE, action, failed }), [action, failed]);
   const rows = useLoad(load);
@@ -717,7 +738,7 @@ function AuthAuditRows({ action, failed }: { action: string; failed: boolean }) 
       setMoreBusy(false);
     }
   };
-  if (all.length === 0) return <Empty>{action || failed ? '조건에 맞는 기록 없음' : '기록 없음'}</Empty>;
+  if (all.length === 0) return action || failed ? <NoResults onClear={onClear} /> : <EmptyState what="인증 감사 기록" hint="로그인 · 비밀번호 · OTP · 계정 · 라이선스 변경이 여기에 남습니다." />;
   return (
     <>
       <div className="max-md:overflow-x-auto">
@@ -726,7 +747,9 @@ function AuthAuditRows({ action, failed }: { action: string; failed: boolean }) 
         <tbody>
           {kit.sorted(all).map((a) => (
             <tr key={a.id} data-audit={a.id}>
-              <td data-col="at" className="num tk-short text-xs">{fmtDateTime(a.at)}</td>
+              <td data-col="at" className="tk-short">
+                <TimeText value={a.at} kind="log" />
+              </td>
               <td data-col="actor" className="tk-short font-mono text-xs">{a.actor || '—'}</td>
               <td data-col="action" className="tk-short">{ACTION_KO[a.action] ?? a.action}</td>
               <td data-col="target" className="tk-short font-mono text-xs">{a.target || '—'}</td>
@@ -746,9 +769,9 @@ function AuthAuditRows({ action, failed }: { action: string; failed: boolean }) 
             </span>
           )}
           {hasMore && (
-            <button type="button" data-action="more" disabled={moreBusy} onClick={() => void more()} className="sg-btn sg-btn-sm sg-btn-secondary">
+            <ActionButton data-action="more" reason={moreBusy && '불러오는 중입니다'} onClick={() => void more()} className="sg-btn sg-btn-sm sg-btn-secondary">
               {moreBusy ? '불러오는 중…' : '더 보기'}
-            </button>
+            </ActionButton>
           )}
         </div>
       )}

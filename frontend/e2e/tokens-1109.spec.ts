@@ -112,7 +112,7 @@ test.describe('11/09 규격 토큰', () => {
     expect(await cs(page.locator(`${T} tbody td`).first(), ['font-size'])).toEqual({ 'font-size': '13.5px' });
     expect(await cs(page.locator(`${T} thead th`).first(), ['font-size'])).toEqual({ 'font-size': '12px' });
     await page.goto('/events');
-    const search = page.getByPlaceholder('이름 검색');
+    const search = page.getByPlaceholder('컨테이너 이름');
     await expect(search).toBeVisible();
     expect(await cs(search, ['font-size'])).toEqual({ 'font-size': '13.5px' }); // 화면 쪽 text-sm(14) 이 있어도
   });

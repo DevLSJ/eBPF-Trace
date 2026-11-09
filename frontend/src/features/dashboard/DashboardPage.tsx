@@ -1,4 +1,4 @@
-import { CircleCheck, FileText } from "lucide-react";
+import { FileText } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Empty, LoadError, Panel } from "../../components/Panel";
 import { ChartRow, KpiRow, RangeChips, TopPanel } from "./Overview";
@@ -7,7 +7,8 @@ import { SignalPills } from "./SignalPills";
 import { LevelBadge } from "../../components/VerdictBadge";
 import { useCases } from "../../hooks/cases-context";
 import { useStream } from "../../hooks/stream-context";
-import { fmtNum, fmtTime } from "../../lib/format";
+import { fmtNum } from "../../lib/format";
+import { TimeText } from "../../components/list/cells";
 import { scanHref, SOURCE_LABEL } from "../../lib/guide";
 import { installDest, topologyDest } from "../../lib/nav";
 import { caseLabel, type Case } from "../../lib/types";
@@ -102,8 +103,8 @@ function Pending() {
               className="flex h-full min-h-24 flex-col items-center justify-center gap-1.5 p-4 text-center text-text-3"
               data-testid="nothing-to-do"
             >
-              <CircleCheck className="size-7 text-ok" aria-hidden />
-              <b className="text-sm text-text-2">처리할 일 없음</b>
+              {/* 빈 상태 아이콘 없음(11/05) · 「[무엇]이 없습니다.」 + 다음 일(11/09 SPEC §7) */}
+              <b className="text-sm text-text-2">처리할 판정 대기 건이 없습니다.</b>
               <span className="text-xs">
                 새 격리 · 경고가 생기면 여기에 판정 대기로 올라옵니다.
               </span>
@@ -166,7 +167,7 @@ function PendingRow({ c }: { c: Case }) {
           <LevelBadge level={c.level} />
         </span>
         <span className="sg-pend-meta" data-part="pend-meta">
-          위반 {fmtNum(c.violations)} · {fmtTime(c.openedAt)}
+          위반 {fmtNum(c.violations)} · <TimeText value={c.openedAt} kind="status" />
         </span>
         <span className="sg-pend-chev" aria-hidden>
           ›

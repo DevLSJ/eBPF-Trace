@@ -298,7 +298,7 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     await expect(pill).toBeVisible();
     expect(await pill.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color, getComputedStyle(e).borderTopColor, getComputedStyle(e).fontWeight])).toEqual([rgb('#EAF7F1'), rgb('#137653'), rgb('#137653'), '700']);
     await page.goto('/events');
-    const search = page.getByPlaceholder('이름 검색');
+    const search = page.getByPlaceholder('컨테이너 이름');
     await expect(search).toBeVisible();
     expect(await search.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).borderRadius, getComputedStyle(e, '::placeholder').color])).toEqual([rgb('#1B1E28'), '8px', rgb('#AEB3C2')]);
     await page.getByRole('button', { name: '사용 안내 (?)' }).click();

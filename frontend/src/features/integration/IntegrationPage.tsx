@@ -1,5 +1,6 @@
 import { Check, ChevronDown, Loader2, Minus, Play, TriangleAlert, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ActionButton } from '../../components/ActionButton';
 import { FlowHero } from '../../components/FlowHero';
 import { Empty, LoadError, Panel } from '../../components/Panel';
 import { useAuth } from '../../hooks/auth-context';
@@ -136,21 +137,21 @@ function TestStep({ env, test, isAdmin, onStarted }: { env: IntegrationEnv; test
       await api.integrationTest();
       onStarted();
     } catch (e) {
-      toast(e instanceof ApiError ? e.message : '연결 테스트를 시작하지 못했습니다', { key: 'int-test', tone: 'warn' });
+      toast(`연결 테스트를 시작하지 못했습니다 — ${e instanceof ApiError ? e.message : '잠시 뒤 다시 시도하세요.'}`, { key: 'int-test', tone: 'warn' });
     } finally {
       setStarting(false);
     }
   };
   const running = test?.state === 'running';
   const total = test ? Object.values(test.events).reduce((a, b) => a + (b ?? 0), 0) : 0;
-  const disabled = !isAdmin || !env.testable || running || starting;
-  const why = !isAdmin ? '관리자만 실행 가능' : !env.testable ? '이 서버에서는 실행 불가(Docker 없음)' : running ? '진행 중' : '';
+  // 꺼진 사유(11/09 SPEC §7 — 마침표 없음): 권한 · 환경 · 진행 중
+  const why = !isAdmin ? '연결 테스트를 실행할 권한이 없습니다' : !env.testable ? '이 서버에는 Docker가 없어 실행할 수 없습니다' : running || starting ? '연결 테스트가 진행 중입니다' : '';
   return (
     <div className="int-test" data-part="test-step" data-state={test?.state ?? 'idle'}>
       <div className="int-test-bar">
-        <button type="button" className="sg-btn sg-btn-primary" data-part="test-start" disabled={disabled} onClick={start} title={why || undefined}>
+        <ActionButton className="sg-btn sg-btn-primary" data-part="test-start" reason={why} onClick={start}>
           {running || starting ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Play className="size-4" aria-hidden />} 연결 테스트
-        </button>
+        </ActionButton>
         <span className="int-test-what">
           {why && !running ? why : `시험 컨테이너(${env.probeImage}, 감시 라벨만 · 네트워크 없음) 약 3초 실행 뒤 삭제됨`}
         </span>
@@ -218,12 +219,12 @@ function WatchList({ data }: { data?: IntegrationStatus }) {
       }
     >
       <div className="int-watch-body">
-        {data?.listError && <p className="int-points warn">목록을 읽지 못함 — {data.listError}</p>}
+        {data?.listError && <p className="int-points warn" role="alert">컨테이너 목록을 읽지 못했습니다 — {data.listError}</p>}
         {!data ? (
           <Skeleton rows={6} />
         ) : rows.length + gone.length === 0 ? (
           <div data-part="watch-empty">
-            <Empty>실행 중인 컨테이너 없음</Empty>
+            <Empty>실행 중인 컨테이너가 없습니다.</Empty>
           </div>
         ) : (
           <ul className="int-rows" data-part="watch-rows">

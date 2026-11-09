@@ -331,7 +331,7 @@ export function TopologyPage() {
         <label className="flex items-center gap-1.5 text-sm text-slate-500">
           컨테이너
           <select
-            className="h-8 rounded-[var(--r-md)] border border-slate-300 bg-field px-2 text-sm"
+            className="h-8 rounded-[var(--r-md)] border border-slate-300 bg-field px-2"
             value={container}
             onChange={(e) => {
               setFilters({ container: e.target.value });
@@ -375,7 +375,7 @@ export function TopologyPage() {
           <Legend />
           <div className="relative min-h-0 flex-1" onKeyDown={onGraphKey}>
             {graph.nodes.length === 0 ? (
-              <Empty>표시할 활동 없음 — 런타임 컨테이너 이벤트가 들어오면 그래프가 그려집니다</Empty>
+              <Empty>표시할 활동이 없습니다. 런타임 컨테이너 이벤트가 들어오면 그래프가 그려집니다.</Empty>
             ) : (
               <ReactFlow
                 key={container}
@@ -638,7 +638,7 @@ function ChainPanel({
       </header>
       <div data-fill="" className="min-h-0 flex-1 overflow-y-auto p-3">
         {chains.length === 0 ? (
-          <Empty>이 창에 위반 없음</Empty>
+          <Empty>최근 {windowMin}분 동안 위반이 없습니다.</Empty>
         ) : (
           chains.map(({ container: c, steps }) => {
             const k = caseFor(c.label);

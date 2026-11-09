@@ -145,7 +145,7 @@ test.describe('11/06 연동 페이지', () => {
     await expect(rows).toHaveCount(4);
     await rows.nth(3).getByLabel('서비스 4 감시').uncheck();
     await expect(rows.nth(3).getByLabel('서비스 4 격리')).toBeDisabled();
-    await rows.nth(3).getByLabel('서비스 4 빼기').click();
+    await rows.nth(3).getByLabel('빼기 — 서비스 4').click();
     await expect(rows).toHaveCount(3);
     // 감시 0개면 다음 불가
     for (const k of [1, 2]) await rows.nth(k - 1).getByLabel(`서비스 ${k} 감시`).uncheck();
@@ -216,7 +216,7 @@ test.describe('11/06 연동 페이지', () => {
     await page.goto('/integration');
     await ready(page);
     await expect(page.locator('[data-part="test-start"]')).toBeDisabled();
-    await expect(page.locator('[data-part="test-step"]')).toContainText('관리자만 실행 가능');
+    await expect(page.locator('[data-part="test-step"]')).toContainText('연결 테스트를 실행할 권한이 없습니다');
   });
 
   test('감시 목록: 감시 · 격리 이유 배지, 새 컨테이너는 강조하며 들어오고 사라진 것은 흐려진 뒤 빠짐', async ({ page, backend }) => {

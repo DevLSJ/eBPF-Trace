@@ -1,4 +1,4 @@
-import { OctagonX, Play, ScanSearch, SearchX } from 'lucide-react';
+import { OctagonX, Play } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useFilters } from '../../hooks/useFilters';
@@ -7,7 +7,9 @@ import { FilterChips } from '../../components/FilterChips';
 import { barStyle, rowKeys, useAutoRetry, useBusy } from '../../components/list/hooks';
 import { BusyBar, SortHead, TablePager } from '../../components/DataTable';
 import { useTableKit, type Column } from '../../hooks/useTableKit';
-import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, PagerSlot, Skeleton } from '../../components/list/ListStates';
+import { AppliedFilters, EmptyState, ListError, NoResults, PagerSlot, Skeleton } from '../../components/list/ListStates';
+import { TimeText } from '../../components/list/cells';
+import { ActionButton } from '../../components/ActionButton';
 import { CodeWindow, CW_BODY } from '../../components/CodeWindow';
 import { FileTree, type TreeItem } from '../../components/FileTree';
 import { ConfirmDialog } from '../../components/Modal';
@@ -18,7 +20,7 @@ import { useAuth } from '../../hooks/auth-context';
 import { useToast } from '../../hooks/toast-context';
 import { useInterval, useLoad } from '../../hooks/useLoad';
 import { api, errorText } from '../../lib/api';
-import { fmtDateTime, fmtNum } from '../../lib/format';
+import { fmtNum } from '../../lib/format';
 import { SCAN_VERDICT_LABEL, type Scan, type ScanFinding } from '../../lib/types';
 import { ScanVerdictBadge } from '../../components/Badges';
 import { ScanPackages } from './ScanPackages';
@@ -48,28 +50,30 @@ const RULE_KO: Record<string, string> = {
   'capability-filesystem-delete': '파일 · 폴더 삭제',
   'capability-filesystem-write-executable': '실행 파일 쓰기',
 };
-const input = 'h-8 min-w-0 rounded-[var(--r-md)] border border-slate-300 bg-field px-2 text-sm focus:border-indigo-500 focus:outline-none';
+// 입력 글자 13.5 · 포커스 링은 전역 규칙(index.css) 하나 — 화면 쪽 focus · 글자 크기 유틸리티를 두지 않는다(11/09 SPEC §1)
+const input = 'h-8 min-w-0 rounded-[var(--r-md)] border border-slate-300 bg-field px-2';
 
 // GitHub 주소(W4) — 백엔드 scan.ParseGitHubURL 과 같은 형식(공개 저장소만): 저장소 · …/tree/<ref>[/<폴더>] · …/commit/<sha> · …/releases/tag/<태그>.
 // ?쿼리 · #조각은 무시. ref 에 / 가 든 브랜치(feature/x)는 지원하지 않는다(첫 조각이 브랜치로 읽힌다)
-const GH_HINT = 'https://github.com/<소유자>/<저장소> 형식으로 써 주세요 — 브랜치 · 폴더는 …/tree/<브랜치>/<폴더>, 커밋은 …/commit/<sha>, 릴리스는 …/releases/tag/<태그>';
+const GH_HINT = '저장소 주소는 https://github.com/<소유자>/<저장소> 모양으로 입력하세요 — 브랜치 · 폴더는 …/tree/<브랜치>/<폴더>, 커밋은 …/commit/<sha>, 릴리스는 …/releases/tag/<태그>.';
 const GH_RE = /^https:\/\/(?:www\.)?github\.com\/[\w.-]+\/[\w.-]+?(?:\.git)?(?:\/(?:tree\/[\w.+-]+(?:\/[\w.@+~-]+)*|commit\/[\w.+-]+|releases\/tag\/[\w.+-]+))?\/?$/;
 function repoUrlError(raw: string): string {
   const url = raw.trim().replace(/[?#].*$/, '');
-  if (/^https:\/\/(?:www\.)?github\.com\/[\w.-]+\/[\w.-]+\/(?:blob|raw)\//.test(url)) return '파일 하나는 「파일 올리기」로 검사하세요 — 저장소 주소는 …/tree/<브랜치>/<폴더> 까지입니다';
+  if (/^https:\/\/(?:www\.)?github\.com\/[\w.-]+\/[\w.-]+\/(?:blob|raw)\//.test(url)) return '파일 하나는 「파일 올리기」로 검사하세요 — 저장소 주소는 …/tree/<브랜치>/<폴더>까지입니다.';
   if (!GH_RE.test(url)) return GH_HINT;
-  if (/\/\.{1,2}(?:\/|$)/.test(url.slice('https://'.length))) return '하위 경로에 . 또는 .. 조각은 쓸 수 없습니다';
+  if (/\/\.{1,2}(?:\/|$)/.test(url.slice('https://'.length))) return '하위 경로에 . 또는 .. 조각은 쓸 수 없습니다.';
   return '';
 }
 
 type VerdictFilter = '' | 'malicious' | 'vulnerable' | 'caution' | 'clean';
 
-// 표 칸(R4 11/04 — 목업 11/04e U.tableKit): 머리 클릭 정렬 · 기본은 시작 내림(목록 순서 그대로). 결과는 위험한 것부터(검사 중이 맨 앞)
+// 표 칸(R4 11/04 — 목업 11/04e U.tableKit): 머리 클릭 정렬 · 기본은 시작 내림(목록 순서 그대로). 결과는 위험한 것부터(검사 중이 맨 앞).
+// 11/09 SPEC §4: 현황 표 — 상태(결과)가 맨 앞, 시작은 MM-DD HH:mm + 전체 시각 툴팁
 const VERDICT_RANK: Record<string, number> = { malicious: 0, vulnerable: 1, caution: 2, clean: 3 };
 const COLUMNS: Column<Scan>[] = [
+  { key: 'verdict', label: '결과', sort: (x) => (x.status === 'running' ? -1 : x.verdict ? VERDICT_RANK[x.verdict] : null), short: true },
   { key: 'started', label: '시작', sort: (x) => Date.parse(x.startedAt), short: true },
   { key: 'target', label: '대상', sort: (x) => x.target.label },
-  { key: 'verdict', label: '결과', sort: (x) => (x.status === 'running' ? -1 : x.verdict ? VERDICT_RANK[x.verdict] : null), short: true },
   { key: 'risk', label: '위험 점수', num: true, sort: (x) => x.risk?.score ?? null, short: true },
   { key: 'threats', label: '위협', num: true, sort: (x) => (x.status === 'done' ? x.threats : null), short: true },
   { key: 'vulns', label: '취약점', num: true, sort: (x) => (x.status === 'done' ? x.vulnCount : null), short: true },
@@ -132,12 +136,11 @@ export function ScansPage() {
             <Skeleton rows={5} />
           ) : !list.data.length ? (
             <EmptyState
-              icon={ScanSearch}
-              title="아직 검사가 없습니다"
-              hint={canWrite ? '위에서 패키지 이름 · 저장소 주소 · 파일로 시작하세요. 예: pip reqeusts (requests 의 오타 — 타이포스쿼팅 데모)' : '관리자가 검사를 시작하면 여기에 쌓입니다.'}
+              what="공급망 검사"
+              hint={canWrite ? '위 칸에 패키지 이름 · 저장소 주소 · 파일을 넣어 첫 검사를 시작하세요. 예: pip reqeusts(requests 의 오타 — 타이포스쿼팅 시연)' : '관리자가 검사를 시작하면 여기에 쌓입니다.'}
             />
           ) : !rows.length ? (
-            <EmptyState icon={SearchX} title="조건에 맞는 검사 없음" actions={<ClearFiltersButton onClick={() => setQ('verdict', '')} />} />
+            <NoResults onClear={() => setQ('verdict', '')} />
           ) : (
             <>
               <BusyBar on={busy} />
@@ -147,11 +150,11 @@ export function ScansPage() {
                   <tbody>
                     {view.rows.map((s) => (
                       <tr key={s.id} {...rowKeys(() => select(s.id))} data-scan={s.id} data-status={s.status} onClick={() => select(s.id)} aria-selected={s.id === selId}
-                        className={`cursor-pointer hover:bg-[var(--row-hover)] focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${s.id === selId ? 'bg-indigo-50' : ''}`}>
-                        {/* 11/04e 막대: 악성 의심 행만(위험색) */}
-                        <td data-col="started" className="num tk-short font-mono text-xs" style={barStyle(s.verdict === 'malicious' && 'danger')}>{fmtDateTime(s.startedAt)}</td>
+                        className={`cursor-pointer hover:bg-[var(--row-hover)] ${s.id === selId ? 'bg-indigo-50' : ''}`}>
+                        {/* 11/04e 막대: 악성 의심 행만(위험색) — 첫 칸 */}
+                        <td data-col="verdict" className="tk-short" style={barStyle(s.verdict === 'malicious' && 'danger')}><StatusBadge s={s} /></td>
+                        <td data-col="started" className="tk-short"><TimeText value={s.startedAt} kind="status" /></td>
                         <td data-col="target" className="tk-fill font-mono" title={s.target.label}>{s.target.label}</td>
-                        <td data-col="verdict" className="tk-short"><StatusBadge s={s} /></td>
                         <td data-col="risk" className="num num-col tk-short">{s.risk ? s.risk.score.toFixed(1) : '—'}</td>
                         <td data-col="threats" className={`num num-col tk-short ${s.threats ? 'text-red-600' : 'text-slate-400'}`}>{s.status === 'done' ? s.threats : '—'}</td>
                         <td data-col="vulns" className={`num num-col tk-short ${s.vulnCount ? 'text-amber-700' : 'text-slate-400'}`}>{s.status === 'done' ? (s.vulnCount ? `${fmtNum(s.vulnCount)} (최고 ${s.vulnMax})` : 0) : '—'}</td>
@@ -193,12 +196,13 @@ function ScanForm({ canWrite, onStarted }: { canWrite: boolean; onStarted: () =>
       const e = repoUrlError(url);
       if (e) return setErr(e);
     }
-    if (kind === 'file' && !file) return setErr('파일을 고르세요');
-    if (kind === 'file' && file && file.size > MAX_UPLOAD) return setErr(`「${file.name}」 — 파일은 50MB 까지 올릴 수 있습니다`);
+    if (kind === 'package' && !name.trim()) return setErr('패키지 이름을 입력하세요.');
+    if (kind === 'file' && !file) return setErr('파일을 먼저 고르세요.');
+    if (kind === 'file' && file && file.size > MAX_UPLOAD) return setErr(`파일은 50MB까지입니다 — 「${file.name}」`);
     setBusy(true);
     try {
       const r = await api.startScan(kind === 'file' ? file! : kind === 'repo' ? { kind, url: url.trim() } : { kind, manager, name: name.trim(), version: version.trim() });
-      toast(`검사를 시작했습니다 — ${r.id}`, { key: 'scan', tone: 'info' });
+      toast(`검사 ${r.id}을(를) 시작했습니다.`, { key: 'scan', tone: 'info' });
       onStarted();
     } catch (e) {
       setErr(errorText(e));
@@ -228,27 +232,29 @@ function ScanForm({ canWrite, onStarted }: { canWrite: boolean; onStarted: () =>
                 <option>npm</option>
               </select>
               <input className={`${input} flex-1 font-mono`} data-field="name" aria-label="패키지 이름" placeholder="예: requests" value={name} onChange={(e) => setName(e.target.value)} />
-              <input className={`${input} w-32 font-mono`} data-field="version" aria-label="버전" placeholder="버전(선택)" value={version} onChange={(e) => setVersion(e.target.value)} />
+              <input className={`${input} w-32 font-mono`} data-field="version" aria-label="버전" placeholder="비우면 최신 버전" value={version} onChange={(e) => setVersion(e.target.value)} />
             </>
           ) : kind === 'repo' ? (
-            <span className="flex min-w-0 flex-1 flex-col gap-1">
-              <input className={`${input} w-full font-mono`} data-field="url" aria-label="저장소 주소" placeholder="https://github.com/소유자/저장소 — …/tree/브랜치/폴더 도 됩니다" value={url} onChange={(e) => setUrl(e.target.value)} />
+            <span key="repo" className="flex min-w-0 flex-1 flex-col gap-1">
+              <input className={`${input} w-full font-mono`} data-field="url" aria-label="저장소 주소" placeholder="예: https://github.com/소유자/저장소" value={url} onChange={(e) => setUrl(e.target.value)} />
               <span className="truncate text-xs text-slate-400" data-part="repo-hint">공개 저장소만 · 기본 브랜치 전체, 또는 …/tree/&lt;브랜치&gt;/&lt;폴더&gt; · …/commit/&lt;sha&gt; · …/releases/tag/&lt;태그&gt; (브랜치 이름의 / 는 지원하지 않음)</span>
             </span>
           ) : (
-            <span className="flex min-w-0 items-center gap-2">
+            // 파일 칸은 비제어 입력 — 다른 칸과 자리를 나눠 쓰지 않게 key 로 분리(파일 → 저장소 전환 때 React 경고)
+            <span key="file" className="flex min-w-0 items-center gap-2">
               <input type="file" aria-label="파일" accept=".tar.gz,.tgz,.whl,.zip,.py,.js,.txt,.json,.lock,.yaml" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-sm" />
               <span className="truncate text-xs text-slate-400">패키지 압축 · 소스 · 의존성 파일(requirements.txt · package-lock.json), 50MB 까지</span>
             </span>
           )}
         </div>
         {canWrite ? (
-          <button type="button" aria-label="검사 시작" disabled={busy} onClick={() => void start()}
-            className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-40">검사 시작</button>
+          <ActionButton aria-label="검사 시작" reason={busy && '검사를 시작하는 중입니다'} onClick={() => void start()} className="sg-btn sg-btn-primary">
+            {busy ? '시작 중…' : '검사 시작'}
+          </ActionButton>
         ) : (
-          <span className="self-center text-xs text-slate-500">검사 시작은 관리자만</span>
+          <span className="self-center text-xs text-slate-500">검사 시작은 관리자만 할 수 있습니다.</span>
         )}
-        {err && <p className="col-span-2 text-xs text-red-600" data-form-error="">{err}</p>}
+        {err && <p className="col-span-2 text-xs text-red-600" data-form-error="" role="alert">{err}</p>}
       </div>
     </section>
   );
@@ -292,7 +298,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
       const r = await api.scanBlock(s.id, reason);
       nav(`/policies?proposal=${encodeURIComponent(r.proposalId)}`);
     } catch (e) {
-      toast(`차단 제안 실패: ${errorText(e)}`, { key: 'scan-block', tone: 'danger' });
+      toast(`차단 제안을 만들지 못했습니다 — ${errorText(e)}`, { key: 'scan-block', tone: 'danger' });
     }
   };
   const item = (f: ScanFinding) => {
@@ -335,7 +341,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
           )}
           {s.status === 'done' && t.kind === 'package' && (
             <div className="flex flex-wrap gap-2">
-              <button type="button" aria-label="설치 검사로 실제 설치해 보기" onClick={() => { void navigator.clipboard?.writeText(cmd).catch(() => {}); toast(`명령을 복사했습니다 — ${cmd} (감시 컨테이너에서 실제 설치 · eBPF 관찰)`, { key: 'copy', tone: 'ok', action: { label: '설치 검사', ...dest('/installs', { status: 'all' }) } }); }}
+              <button type="button" aria-label="설치 검사로 실제 설치해 보기" onClick={() => { void navigator.clipboard?.writeText(cmd).catch(() => {}); toast(`명령을 복사했습니다 — ${cmd}`, { key: 'copy', tone: 'ok', action: { label: '설치 검사', ...dest('/installs', { status: 'all' }) } }); }}
                 className="flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-white"><Play className="size-3.5" aria-hidden /> 설치 검사로 실제 설치해 보기</button>
               {canWrite && <button type="button" aria-label="차단 목록에 올리기" onClick={() => setAskBlock(true)}
                 className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs disabled:opacity-40 ${s.verdict === 'malicious' ? 'bg-red-600 text-white hover:bg-red-700' : 'border border-slate-300 hover:bg-white'}`}><OctagonX className="size-3.5" aria-hidden /> 차단 목록에 올리기</button>}
@@ -346,7 +352,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
       {s.status === 'done' && t.kind !== 'package' && <ScanPackages s={s} />}
       {askBlock && (
         <ConfirmDialog
-          title="차단 목록에 올리기"
+          title={`${t.manager}:${t.name}을(를) 차단 목록에 올릴까요?`}
           target={`${t.label} · ${s.id}`}
           okLabel="올리기"
           reason

@@ -39,7 +39,7 @@ test.describe('이벤트 — 지금 무엇이 걸리고 있나?', () => {
     void backend;
     // 바깥 링크 · 예전 북마크의 ?container= 는 한 번 적용하고 주소에서 지운다(10/21)
     await page.goto('/events?container=pkg-reqeusts');
-    await expect(page.getByPlaceholder('이름 검색')).toHaveValue('pkg-reqeusts');
+    await expect(page.getByPlaceholder('컨테이너 이름')).toHaveValue('pkg-reqeusts');
     await expect(page).toHaveURL(/\/events$/);
     const row = page.locator('li[data-key]').first();
     await row.focus();

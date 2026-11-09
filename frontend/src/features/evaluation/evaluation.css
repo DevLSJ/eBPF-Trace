@@ -7,7 +7,6 @@
   text-decoration: underline dotted; text-decoration-color: var(--text-3); text-decoration-thickness: 1px; text-underline-offset: 3px;
 }
 .eval-term:hover { text-decoration-color: currentColor; }
-.eval-term:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* 툴팁: 반전(잉크) 면 — 차트 툴팁(.chart-tip.tip-inverse)과 같은 색. 화면 고정 위치(넘침 칸에 잘리지 않음) */
 .eval-term-tip {

@@ -97,9 +97,10 @@ export const DEFAULT_INSTALL: InstallInput = { manager: 'pip', pkg: 'requests' }
 const NAME_RE = /^[a-z0-9][a-z0-9_.-]{0,62}$/;
 const IMAGE_RE = /^[a-z0-9][a-z0-9._/:@-]{0,254}$/i;
 const PKG_RE = /^[A-Za-z0-9@][A-Za-z0-9._@/=<>~^!-]{0,213}$/;
-export const nameError = (s: string) => (!s ? '이름 필요' : NAME_RE.test(s) ? '' : '소문자 · 숫자 · - _ . 만 가능');
-export const imageError = (s: string) => (!s ? '이미지 필요' : IMAGE_RE.test(s) ? '' : '이미지 형식 확인 필요(예: my-app:1.0)');
-export const pkgError = (s: string) => (!s ? '패키지 필요' : PKG_RE.test(s) ? '' : '패키지 이름 형식 확인 필요');
+// 입력 검사 문구(11/09 SPEC §7): 빈 값 「[칸]을(를) 입력하세요.」 · 모양 「[칸]은 [예] 모양으로 입력하세요.」
+export const nameError = (s: string) => (!s ? '이름을 입력하세요.' : NAME_RE.test(s) ? '' : '이름은 소문자 · 숫자 · - _ . 만 쓸 수 있습니다.');
+export const imageError = (s: string) => (!s ? '이미지를 입력하세요.' : IMAGE_RE.test(s) ? '' : '이미지는 my-app:1.0 모양으로 입력하세요.');
+export const pkgError = (s: string) => (!s ? '패키지 이름을 입력하세요.' : PKG_RE.test(s) ? '' : '패키지 이름은 requests 모양으로 입력하세요.');
 export function singleErrors(i: SingleInput) {
   return { name: nameError(i.name), image: imageError(i.image) };
 }
@@ -107,8 +108,8 @@ export function multiErrors(i: MultiInput) {
   const names = i.services.map((s) => s.name);
   return {
     project: nameError(i.project),
-    services: i.services.map((s, k) => ({ name: nameError(s.name) || (names.indexOf(s.name) !== k ? '이름 중복' : ''), image: imageError(s.image) })),
-    none: i.services.some((s) => s.watch) ? '' : '감시할 서비스 1개 이상 필요',
+    services: i.services.map((s, k) => ({ name: nameError(s.name) || (names.indexOf(s.name) !== k ? '이름이 겹칩니다.' : ''), image: imageError(s.image) })),
+    none: i.services.some((s) => s.watch) ? '' : '감시할 서비스 1개 이상을 고르세요.',
   };
 }
 const ok = (o: Record<string, string>) => Object.values(o).every((v) => !v);

@@ -74,7 +74,7 @@ export function ScanPackages({ s }: { s: Scan }) {
       );
       nav(`/policies?proposal=${encodeURIComponent(r.proposalId)}`);
     } catch (e) {
-      toast(`차단 제안 실패: ${errorText(e)}`, { key: 'scan-block', tone: 'danger' });
+      toast(`차단 제안을 만들지 못했습니다 — ${errorText(e)}`, { key: 'scan-block', tone: 'danger' });
     }
   };
   return (
@@ -147,7 +147,7 @@ export function ScanPackages({ s }: { s: Scan }) {
       </div>
       {ask && (
         <ConfirmDialog
-          title="고른 패키지 차단 목록에 올리기"
+          title={`패키지 ${sel.length}개를 차단 목록에 올릴까요?`}
           target={`${s.target.label} · ${s.id}`}
           okLabel={`${sel.length}개 올리기`}
           reason
