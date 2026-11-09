@@ -345,21 +345,38 @@ test.describe('⑤ 표 도구 — 총 N건 · 새로고침 · 칸 고르기(저�
     });
   }
 
-  test('칸 폭 — 기록류 시각 칸은 160 이상 · 초까지 잘리지 않음 · 감사 컨테이너는 두 줄 칸(이름 + 컨테이너 ID) · 행 48 유지', async ({ page, backend }) => {
+  test('칸 폭 — 기록류 시각 칸은 COL_W.log 192 · 초까지 잘리지 않음 · 감사 컨테이너는 두 줄 칸(이름 + 컨테이너 ID) · 행 48 유지', async ({ page, backend }) => {
     void backend;
     await page.goto('/audit');
     const T = 'table[data-table="audit"]';
     await expect(page.locator(`${T} tbody tr`).first()).toBeVisible();
-    // 표준 160 은 「YYYY-MM-DD HH:mm:ss」 고정폭 + 좌우 여백 32 가 들어가지 않아(잘림) 내용 폭으로 둔다 — 160 아래로 줄지 않고 잘리지 않음
-    expect(await page.locator(`${T} th[data-col="time"]`).evaluate((e) => e.getBoundingClientRect().width)).toBeGreaterThanOrEqual(160);
+    // 기록류 시각(YYYY-MM-DD HH:mm:ss 고정폭)은 COL_W.log 192(메인 11/09 — 160 은 잘림), 현황 시각은 COL_W.time 160
+    expect(Math.round(await page.locator(`${T} th[data-col="time"]`).evaluate((e) => e.getBoundingClientRect().width))).toBe(192);
     expect(await page.locator(`${T} tbody td[data-col="time"]`).first().evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
     const two = page.locator(`${T} tbody tr`).first().locator('td[data-col="container"] .tk-2line');
     await expect(two.locator('.tk-2l-top')).not.toBeEmpty();
     await expect(two.locator('.tk-2l-sub')).toHaveText(/^\S{1,12}$/); // 컨테이너 ID 앞 12자
     expect(await page.locator(`${T} tbody tr`).first().evaluate((e) => Math.round(e.getBoundingClientRect().height))).toBe(48);
     await page.goto('/settings?tab=auth-audit');
-    expect(await page.locator('table[data-table="auth-audit"] th[data-col="at"]').evaluate((e) => e.getBoundingClientRect().width)).toBeGreaterThanOrEqual(160);
+    expect(Math.round(await page.locator('table[data-table="auth-audit"] th[data-col="at"]').evaluate((e) => e.getBoundingClientRect().width))).toBe(192);
+    expect(await page.locator('table[data-table="auth-audit"] tbody td[data-col="at"]').first().evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+    await page.goto('/audit?view=changes');
+    expect(Math.round(await page.locator('table[data-table="history"] th[data-col="at"]').evaluate((e) => e.getBoundingClientRect().width))).toBe(192);
     expect(Math.round(await page.locator('table[data-table="auth-audit"] th[data-col="actor"]').evaluate((e) => e.getBoundingClientRect().width)), '사용자 칸 110').toBe(110);
+  });
+});
+
+test.describe('⑤-2 변경 동작 이름 — 정책 화면과 한 곳(features/policies/changeView changeName)', () => {
+  test('감사 로그 판정 · 변경 이력: 정책 저장은 「정책 수정」 · 새로 만든 정책은 「정책 생성」(「정책 편집」 없음) · 태그 색은 끝말로', async ({ page, backend }) => {
+    backend.seedPolicyHistory();
+    await page.goto('/audit?view=changes');
+    const kind = (id: string) => page.locator(`tr[data-history="chg:${id}"] td[data-col="kind"] [data-action-tone]`);
+    await expect(kind('chg-0012')).toHaveText('정책 수정');
+    await expect(kind('chg-0012')).toHaveAttribute('data-action-tone', 'warn');
+    await expect(kind('chg-0011')).toHaveText('정책 생성');
+    await expect(kind('chg-0011')).toHaveAttribute('data-action-tone', 'ok');
+    await expect(kind('chg-0013')).toHaveText('제안 적용');
+    await expect(page.locator('table[data-table="history"]')).not.toContainText('정책 편집');
   });
 });
 
