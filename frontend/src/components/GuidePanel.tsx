@@ -310,7 +310,7 @@ function SetupView({ onChange }: { onChange: () => void }) {
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                 {s.id === 'install' && (
                   <>
-                    <button type="button" className="rounded-md bg-primary px-2 py-0.5 text-xs font-medium text-primary-fg hover:bg-primary-hover" aria-label="sg-install 명령 복사" onClick={() => copy(INSTALL_CMD)}>
+                    <button type="button" className="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-fg hover:bg-primary-hover" aria-label="sg-install 명령 복사" onClick={() => copy(INSTALL_CMD)}>
                       명령 복사
                     </button>
                     <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">{INSTALL_CMD}</code>

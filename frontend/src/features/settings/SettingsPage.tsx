@@ -442,7 +442,7 @@ function AccountsTab() {
     <div data-view="accounts" className="flex flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
         <p className="text-xs text-slate-500">관리자는 모든 쓰기, 조회자는 보기만 합니다. 새 계정 · 비밀번호 초기화의 임시 비밀번호는 한 번만 보입니다.</p>
-        <button type="button" onClick={() => setAdding(true)} className="flex shrink-0 items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-fg hover:bg-primary-hover">
+        <button type="button" onClick={() => setAdding(true)} className="flex shrink-0 items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-medium text-primary-fg hover:bg-primary-hover">
           <Plus className="size-3.5" aria-hidden /> 계정 추가
         </button>
       </div>
@@ -533,7 +533,7 @@ function AddUser({ onClose, onCreated }: { onClose: () => void; onCreated: (user
           <button type="button" onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
             취소
           </button>
-          <ActionButton reason={busy && '계정을 만드는 중입니다'} onClick={() => void create()} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover aria-disabled:opacity-50">
+          <ActionButton reason={busy && '계정을 만드는 중입니다'} onClick={() => void create()} className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover aria-disabled:opacity-50">
             {busy ? '만드는 중…' : '만들기'}
           </ActionButton>
         </>
@@ -614,7 +614,7 @@ function LicenseTab() {
               <button type="button" onClick={() => setPhase('closed')} className="rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
                 취소
               </button>
-              <ActionButton reason={busy && '라이선스를 등록하는 중입니다'} onClick={() => setPhase('confirm')} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover aria-disabled:opacity-50">
+              <ActionButton reason={busy && '라이선스를 등록하는 중입니다'} onClick={() => setPhase('confirm')} className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover aria-disabled:opacity-50">
                 등록
               </ActionButton>
             </>
@@ -648,7 +648,7 @@ function LicenseTab() {
     </>
   );
   const button = isAdmin && (
-    <button type="button" onClick={open} className="flex shrink-0 items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-fg hover:bg-primary-hover">
+    <button type="button" onClick={open} className="flex shrink-0 items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-medium text-primary-fg hover:bg-primary-hover">
       <KeyRound className="size-3.5" aria-hidden /> 새 키 등록
     </button>
   );

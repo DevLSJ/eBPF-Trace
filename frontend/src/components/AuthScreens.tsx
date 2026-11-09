@@ -26,7 +26,7 @@ interface Props {
 }
 
 const input = 'h-9 w-full rounded-[6px] border border-slate-300 bg-field px-2.5 text-sm focus:border-indigo-500 focus:outline-none';
-const primary = 'flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-fg transition-colors duration-[var(--t-btn)] ease-in-out hover:bg-primary-hover disabled:opacity-50';
+const primary = 'flex h-9 items-center justify-center rounded-full bg-primary px-4 text-sm font-medium text-primary-fg transition-colors duration-[var(--t-btn)] ease-in-out hover:bg-primary-hover disabled:opacity-50';
 const ghostBase = 'inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-600 hover:bg-slate-100';
 const ghost = `${ghostBase} justify-self-start`;
 // 빈 칸 표시(11/09 G25) — 고치면 바로 지운다
