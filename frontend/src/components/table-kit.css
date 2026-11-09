@@ -1,0 +1,124 @@
+/* 11/09 공통 부품 — 표 도구줄 · 칸 고르기/폭/순서 · 정렬 꺾쇠 · 필터 Select · 검색칸 · 시트 탭 · 큰 2단 창 · 미저장 확인 창.
+   참고 제품의 값 · 배치만(이름 · 아이콘 · 문구 없음). 색은 index.css 토큰(var(--…))만 쓴다 — 테마(라이트 · 다크)를 그대로 따른다.
+   index.css 보다 먼저 실릴 수 있어(main.tsx 가 App 을 먼저 부름) 겹치는 규칙은 선택자를 한 단계 더 좁혀 둔다. */
+
+/* ── 표 도구줄: 위아래 10 · 좌우 16 · 아래 선, 왼쪽 「총 N건」 13px 보조색 · 오른쪽 아이콘 단추(안 여백 5 · 반경 8) ── */
+.tk-tools { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--surface); font-size: 13px; color: var(--text-3); }
+.tk-tools-side { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.tk-total { white-space: nowrap; }
+.tk-tools-side .tk-total + .tk-icon-btn { margin-left: 6px; }
+.tk-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 5px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); cursor: pointer; transition: background-color var(--t-btn) var(--ease-btn), color var(--t-btn) var(--ease-btn); }
+.tk-icon-btn svg { width: 18px; height: 18px; }
+.tk-icon-btn:hover:not(:disabled), .tk-icon-btn[aria-expanded='true'] { background: var(--surface-2); color: var(--text); }
+.tk-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tk-icon-btn:disabled { opacity: .5; cursor: default; }
+
+/* ── 펼침 상자(칸 고르기 · 선택 목록): 반경 10 · 드롭다운 그림자 · 0.12s 내려오기 ── */
+.tk-pop { z-index: 70; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--surface-raised, var(--surface)); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 4px 8px rgba(9, 30, 66, .1), 0 12px 28px rgba(9, 30, 66, .16); font-size: 13.5px; animation: tk-pop-in 120ms var(--ease) both; }
+@keyframes tk-pop-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tk-pop { animation: none; } }
+.tk-pop-title { padding: 4px 6px 6px; font-size: 12px; font-weight: 600; color: var(--text-3); }
+.tk-pop-foot { margin-top: 4px; padding: 6px 2px 0; border-top: 1px solid var(--line-soft, var(--border)); }
+.tk-pop-empty { padding: 10px 12px; color: var(--text-3); font-size: 13px; }
+
+/* 칸 고르기: 최소 폭 180 · 안 여백 8 · 줄마다 체크 + 이름 13px · 간격 8 */
+.tk-colpick { min-width: 180px; padding: 8px; overflow-y: auto; }
+.tk-check { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 2px 6px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+.tk-check:hover { background: var(--surface-2); }
+.tk-check input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: inherit; }
+.tk-check:has(input:disabled) { cursor: default; color: var(--text-3); }
+
+/* 글 단추(「칸 기본으로」 · 「조건 지우기」): 12.5px 주 색 */
+.tk-link { appearance: none; border: 0; background: transparent; padding: 4px 6px; border-radius: 6px; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--accent-text); cursor: pointer; white-space: nowrap; }
+.tk-link:hover:not(:disabled) { text-decoration: underline; }
+.tk-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tk-link:disabled { color: var(--text-3); opacity: .6; cursor: default; }
+
+/* ── 정렬 꺾쇠(11/09): 늘 보임(불투명 .55) · 정렬 중인 칸만 한 방향 꺾쇠 + 주 색. 옛 글자 화살표(::after)는 끈다 ── */
+.th-sort.th-sort[data-ico]::after { content: none; }
+.th-sort .th-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.th-sort-ico { display: inline-flex; flex-shrink: 0; opacity: .55; }
+.th-sort-ico svg { width: 13px; height: 13px; stroke-width: 2.4; }
+th[aria-sort='ascending'] .th-sort-ico, th[aria-sort='descending'] .th-sort-ico { opacity: 1; color: var(--accent); }
+
+/* ── 칸 폭 · 순서 ── */
+.sg-table th.tk-movable { position: relative; }
+.sg-table th.tk-sized, .sg-table td.tk-sized { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.th-label { border-radius: 4px; }
+.th-label:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 머리 오른쪽 7px 손잡이 · 늘 보이는 가는 선(.7) · 올리면 주 색 */
+.tk-resize { position: absolute; top: 0; right: 0; z-index: 1; width: 7px; height: 100%; cursor: col-resize; touch-action: none; }
+.tk-resize::after { content: ''; position: absolute; top: 28%; bottom: 28%; right: 3px; width: 1px; background: var(--border-strong, var(--border)); opacity: .7; transition: background-color var(--t-fast, 120ms) var(--ease); }
+.tk-resize:hover::after, .tk-resize:focus-visible::after, body.tk-resizing .tk-resize:active::after { top: 0; bottom: 0; width: 2px; right: 2px; background: var(--accent); opacity: 1; }
+.tk-resize:focus-visible { outline: none; }
+.sg-table th.tk-movable:last-of-type .tk-resize { right: 0; }
+/* 끌어 놓을 자리: 그 칸의 왼쪽 · 오른쪽 2px 주 색 선 */
+.sg-table th[data-drop='before'] { box-shadow: inset 2px 0 0 var(--accent); }
+.sg-table th[data-drop='after'] { box-shadow: inset -2px 0 0 var(--accent); }
+body.tk-dragging, body.tk-dragging * { cursor: grabbing !important; user-select: none !important; }
+body.tk-resizing, body.tk-resizing * { cursor: col-resize !important; user-select: none !important; }
+
+/* ── 필터 줄 · 검색칸 · 선택 상자: 높이 36 · 반경 8 · 검색 300 · 선택 160~240 ── */
+.tk-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.tk-search { position: relative; display: inline-flex; align-items: center; width: 300px; max-width: 100%; }
+.tk-search input { box-sizing: border-box; width: 100%; height: 36px; padding: 0 12px 0 32px; border: 1px solid var(--field-line); border-radius: 8px; background: var(--field-bg); color: var(--text); font: inherit; font-size: 13.5px; }
+.tk-search input::placeholder { color: var(--field-placeholder, var(--text-3)); }
+.tk-search input:hover { border-color: var(--text-3); }
+.tk-search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.tk-search-ico { position: absolute; left: 10px; width: 15px; height: 15px; color: var(--text-3); pointer-events: none; }
+
+.tk-select { position: relative; box-sizing: border-box; display: inline-flex; align-items: center; min-width: 160px; max-width: 240px; height: 36px; padding: 0 32px 0 12px; border: 1px solid var(--field-line); border-radius: 8px; background: var(--field-bg); color: var(--text-2); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
+.tk-select::after { content: ''; position: absolute; right: 13px; top: 50%; width: 6px; height: 6px; margin-top: -5px; border-right: 1.6px solid var(--text-3); border-bottom: 1.6px solid var(--text-3); transform: rotate(45deg); transition: transform var(--t-fast, 120ms) var(--ease); }
+.tk-select[aria-expanded='true']::after { transform: translateY(3px) rotate(-135deg); }
+.tk-select:hover:not(:disabled) { border-color: var(--text-3); }
+.tk-select[aria-expanded='true'] { border-color: var(--accent); }
+.tk-select:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.tk-select[data-on] { color: var(--text); font-weight: 500; }
+.tk-select:disabled { background: var(--disabled-bg, var(--surface-2)); color: var(--disabled-fg, var(--text-3)); cursor: default; }
+.tk-select-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.tk-listpop { padding: 4px; max-width: min(360px, calc(100vw - 16px)); }
+.tk-pop-search { box-sizing: border-box; flex-shrink: 0; width: 100%; height: 32px; margin-bottom: 4px; padding: 0 10px; border: 1px solid var(--field-line); border-radius: 6px; background: var(--field-bg); color: var(--text); font: inherit; font-size: 13px; }
+.tk-pop-search:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.tk-listbox { min-height: 0; overflow-y: auto; margin: 0; padding: 0; list-style: none; outline: none; }
+.tk-option { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 6px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.tk-option-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tk-option[data-active] { background: var(--surface-2); }
+.tk-option[aria-selected='true'] { color: var(--accent-text); font-weight: 600; }
+.tk-option[aria-selected='true'][data-active] { background: var(--accent-soft); }
+.tk-option-check { flex-shrink: 0; width: 14px; height: 14px; stroke-width: 2.4; }
+
+/* ── 시트(11/09 선택 props): 머리 부제 · 배지 · 탭 줄 ── */
+.sg-sheet:focus { outline: none; }
+.sg-sheet .sg-sheet-head[data-rich] { height: auto; min-height: 52px; padding-top: 12px; padding-bottom: 10px; }
+.tk-sheet-sub { margin: 2px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--text-3); }
+.tk-sheet-tabs { flex-shrink: 0; display: flex; gap: 16px; padding: 0 24px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.tk-sheet-tab { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0; border: 0; background: transparent; font: inherit; font-size: 14px; font-weight: 600; color: var(--text-3); white-space: nowrap; cursor: pointer; }
+.tk-sheet-tab:hover { color: var(--text); }
+.tk-sheet-tab[aria-selected='true'] { color: var(--text); }
+.tk-sheet-tab[aria-selected='true']::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent); }
+.tk-sheet-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
+.tk-tab-count { min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-size: 11.5px; font-weight: 600; line-height: 18px; text-align: center; }
+.tk-sheet-tab[aria-selected='true'] .tk-tab-count { background: var(--accent); color: var(--text-inverse); }
+@media (max-width: 767px) { .tk-sheet-tabs { padding: 0 16px; } }
+
+/* ── 큰 2단 창(xl): 폭 min(1180, 100vw−40) · 최대 높이 100vh−40 · 오른쪽 clamp(340, 36%, 460) · 두 칸 따로 스크롤 · 바닥 줄 위 선 ── */
+.tk-modal-xl { width: min(1180px, calc(100vw - 40px)); max-width: none; max-height: calc(100vh - 40px); overflow: hidden; }
+.tk-xl { display: flex; flex-direction: column; max-height: calc(100vh - 42px); min-height: 0; }
+.tk-xl-head { flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 16px 24px 12px; }
+.tk-xl-body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+.tk-xl-body[data-two] { grid-template-columns: minmax(0, 1fr) clamp(340px, 36%, 460px); }
+.tk-xl-main { min-width: 0; min-height: 0; overflow-y: auto; padding: 4px 16px 16px 24px; }
+.tk-xl-body:not([data-two]) .tk-xl-main { padding-right: 24px; }
+.tk-xl-side { min-width: 0; min-height: 0; overflow-y: auto; padding: 4px 24px 16px 16px; border-left: 1px solid var(--border); }
+.tk-xl-foot { flex-shrink: 0; display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 12px 24px 16px; border-top: 1px solid var(--border); }
+.tk-xl > [role='alert'] { margin: 0 24px 12px; }
+@media (max-width: 767px) {
+  .tk-xl-body, .tk-xl-body[data-two] { display: block; overflow-y: auto; }
+  .tk-xl-main, .tk-xl-side { overflow: visible; }
+  .tk-xl-main { padding: 4px 16px 16px; }
+  .tk-xl-side { padding: 16px; border-left: 0; border-top: 1px solid var(--border); }
+  .tk-xl-head { padding: 14px 16px 10px; }
+  .tk-xl-foot { padding: 12px 16px 14px; }
+}
+.tk-ask { width: min(400px, calc(100vw - 32px)); max-width: none; }

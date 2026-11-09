@@ -1,9 +1,17 @@
 import { X } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { errorText, isUnsupported } from '../lib/api';
+
+import './table-kit.css';
 
 // 모달 · 확인 대화상자 — 목업 shared/ui-kit.js 의 modal · confirmDialog 를 옮긴 것(W16).
 // <dialog> + 포커스 트랩 · Esc · 연 곳으로 포커스 복귀 · 미저장 보호(guard 가 true 면 닫기 전에 묻는다)
+// 11/09 size(선택 — 안 주면 wide 로 md 640 · 아니면 sm 448 그대로):
+//   'xl' 큰 2단 창 — 폭 min(1180px, 100vw−40px) · 최대 높이 100vh−40px · 왼쪽 children(남는 폭) + 오른쪽 side(clamp(340px, 36%, 460px))
+//        두 칸이 따로 스크롤 · 머리(제목 · ✕) · 바닥 버튼 줄(위 선) · 바깥 클릭으로 닫히지 않음(모든 크기 공통) · 768 미만은 1단으로 쌓음
+//   미저장 경고: confirmClose(xl 은 기본 켬)면 노란 띠 대신 확인 창 「계속 편집 / 버리고 닫기」. 값 비교는 hooks/useUnsaved.ts
+//   foot 에 함수를 주면 (close) => 단추 — 「취소」가 ✕ · Esc 와 같은 길(미저장 경고)로 닫힌다
+//   busy 동안은 ✕ · Esc · 취소로 닫히지 않는다(저장 중)
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -15,21 +23,32 @@ export function Modal({
   guard,
   onClose,
   wide,
+  size,
+  side,
+  confirmClose,
+  busy,
 }: {
   title: string;
   kind?: string;
   children: ReactNode;
-  foot?: ReactNode;
+  foot?: ReactNode | ((close: () => void) => ReactNode);
   guard?: () => boolean;
   onClose: () => void;
   wide?: boolean;
+  size?: 'sm' | 'md' | 'xl';
+  side?: ReactNode;
+  confirmClose?: boolean;
+  busy?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [warn, setWarn] = useState(false);
+  const [ask, setAsk] = useState(false);
   const closeRef = useRef(onClose);
   useEffect(() => {
     closeRef.current = onClose;
   });
+  const sz = size ?? (wide ? 'md' : 'sm');
+  const asking = confirmClose ?? sz === 'xl';
 
   useEffect(() => {
     const d = ref.current!;
@@ -48,12 +67,82 @@ export function Modal({
   }, []);
 
   const tryClose = () => {
-    if (guard?.() && !warn) {
-      setWarn(true);
-      return;
+    if (busy) return;
+    if (guard?.()) {
+      if (asking) return setAsk(true);
+      if (!warn) return setWarn(true);
     }
-    closeRef.current();
+    onClose();
   };
+  const footNode = typeof foot === 'function' ? foot(tryClose) : foot;
+  const onKeyDown = (e: KeyboardEvent<HTMLDialogElement>) => {
+    if (e.key !== 'Tab') return;
+    const d = ref.current!;
+    // 이 창 위에 겹친 창(확인 창)의 Tab 은 그 창이 맡는다
+    if ((e.target as Element).closest('dialog') !== d) return;
+    const els = [...d.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => x.offsetParent !== null && x.closest('dialog') === d);
+    if (!els.length) return;
+    const first = els[0];
+    const last = els[els.length - 1];
+    if (e.shiftKey && (document.activeElement === first || !d.contains(document.activeElement))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (document.activeElement === last || !d.contains(document.activeElement))) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  const askBox = ask && (
+    <UnsavedAsk
+      onKeep={() => setAsk(false)}
+      onDiscard={() => {
+        setAsk(false);
+        closeRef.current();
+      }}
+    />
+  );
+
+  if (sz === 'xl')
+    return (
+      <dialog
+        ref={ref}
+        data-part={kind ?? 'modal'}
+        data-size="xl"
+        aria-label={title}
+        onCancel={(e) => {
+          e.preventDefault();
+          tryClose();
+        }}
+        onKeyDown={onKeyDown}
+        className="tk-modal-xl m-auto rounded-[var(--r-xl)] border border-border bg-raised p-0 text-text shadow-[var(--sh-2)] backdrop:bg-black/50"
+      >
+        <div className="tk-xl">
+          <header className="tk-xl-head">
+            <h3 className="min-w-0 flex-1 truncate text-base font-semibold">{title}</h3>
+            <button type="button" aria-label="닫기" onClick={tryClose} disabled={busy} className="rounded p-1 text-text-3 hover:bg-surface-2 hover:text-text">
+              <X className="size-4" aria-hidden />
+            </button>
+          </header>
+          <div className="tk-xl-body" data-part="modal-body" data-two={side != null ? '' : undefined}>
+            <div className="tk-xl-main" data-part="modal-main">
+              {children}
+            </div>
+            {side != null && (
+              <div className="tk-xl-side" data-part="modal-side">
+                {side}
+              </div>
+            )}
+          </div>
+          {warn && !asking && <WarnStrip onKeep={() => setWarn(false)} onDiscard={() => closeRef.current()} />}
+          {footNode && (
+            <footer className="tk-xl-foot" data-part="modal-foot">
+              {footNode}
+            </footer>
+          )}
+        </div>
+        {askBox}
+      </dialog>
+    );
 
   return (
     <dialog
@@ -64,22 +153,8 @@ export function Modal({
         e.preventDefault();
         tryClose();
       }}
-      onKeyDown={(e) => {
-        if (e.key !== 'Tab') return;
-        const d = ref.current!;
-        const els = [...d.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => x.offsetParent !== null);
-        if (!els.length) return;
-        const first = els[0];
-        const last = els[els.length - 1];
-        if (e.shiftKey && (document.activeElement === first || !d.contains(document.activeElement))) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && (document.activeElement === last || !d.contains(document.activeElement))) {
-          e.preventDefault();
-          first.focus();
-        }
-      }}
-      className={`m-auto rounded-[var(--r-xl)] border border-border bg-raised p-0 text-text shadow-[var(--sh-2)] backdrop:bg-black/50 ${wide ? 'w-[40rem]' : 'w-[28rem]'} max-w-[calc(100vw-2rem)]`}
+      onKeyDown={onKeyDown}
+      className={`m-auto rounded-[var(--r-xl)] border border-border bg-raised p-0 text-text shadow-[var(--sh-2)] backdrop:bg-black/50 ${sz === 'md' ? 'w-[40rem]' : 'w-[28rem]'} max-w-[calc(100vw-2rem)]`}
     >
       <div className="grid gap-4 p-5">
         <div className="flex items-center justify-between gap-3">
@@ -89,18 +164,72 @@ export function Modal({
           </button>
         </div>
         {children}
-        {warn && (
-          <div role="alert" className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            <span className="flex-1">저장하지 않은 내용이 있습니다. 닫으면 사라집니다.</span>
-            <button type="button" onClick={() => setWarn(false)} className="rounded px-2 py-1 hover:bg-amber-100">
-              계속 쓰기
-            </button>
-            <button type="button" data-action="discard-close" onClick={() => closeRef.current()} className="rounded px-2 py-1 text-red-700 hover:bg-red-50">
-              버리고 닫기
-            </button>
-          </div>
-        )}
-        {foot && <div className="flex justify-end gap-2">{foot}</div>}
+        {warn && !asking && <WarnStrip onKeep={() => setWarn(false)} onDiscard={() => closeRef.current()} />}
+        {footNode && <div className="flex justify-end gap-2">{footNode}</div>}
+      </div>
+      {askBox}
+    </dialog>
+  );
+}
+
+function WarnStrip({ onKeep, onDiscard }: { onKeep: () => void; onDiscard: () => void }) {
+  return (
+    <div role="alert" className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      <span className="flex-1">저장하지 않은 내용이 있습니다. 닫으면 사라집니다.</span>
+      <button type="button" onClick={onKeep} className="rounded px-2 py-1 hover:bg-amber-100">
+        계속 쓰기
+      </button>
+      <button type="button" data-action="discard-close" onClick={onDiscard} className="rounded px-2 py-1 text-red-700 hover:bg-red-50">
+        버리고 닫기
+      </button>
+    </div>
+  );
+}
+
+// 미저장 확인 창(11/09) — 창 위에 겹친 작은 창. Esc · 「계속 편집」 = 이 창만 닫고 입력은 그대로, 「버리고 닫기」 = 아래 창까지 닫음
+function UnsavedAsk({ onKeep, onDiscard }: { onKeep: () => void; onDiscard: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = ref.current!;
+    const opener = document.activeElement as HTMLElement | null;
+    if (!d.open) d.showModal();
+    d.querySelector<HTMLElement>('[data-action="keep-editing"]')?.focus();
+    return () => {
+      try {
+        d.close();
+      } catch {
+        /* 이미 닫힘 */
+      }
+      if (opener?.isConnected) opener.focus();
+    };
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      data-part="unsaved"
+      aria-label="저장하지 않은 변경"
+      aria-describedby="sg-unsaved-text"
+      onCancel={(e) => {
+        e.preventDefault();
+        e.stopPropagation(); // 아래 창의 onCancel(React 는 겹친 dialog 로도 올려 보낸다)까지 가지 않게
+        onKeep();
+      }}
+      onKeyDown={(e) => e.stopPropagation()}
+      className="tk-ask m-auto rounded-[var(--r-xl)] border border-border bg-raised p-0 text-text shadow-[var(--sh-2)] backdrop:bg-black/40"
+    >
+      <div className="grid gap-3 p-5">
+        <h3 className="text-base font-semibold">저장하지 않은 변경 있음</h3>
+        <p id="sg-unsaved-text" className="text-sm text-text-2">
+          입력한 값이 아직 저장되지 않았습니다. 닫으면 바꾼 내용이 사라집니다.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button type="button" data-action="keep-editing" className="sg-btn sg-btn-secondary" onClick={onKeep}>
+            계속 편집
+          </button>
+          <button type="button" data-action="discard-close" className="sg-btn sg-btn-danger" onClick={onDiscard}>
+            버리고 닫기
+          </button>
+        </div>
       </div>
     </dialog>
   );
