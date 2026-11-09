@@ -274,3 +274,175 @@ test.describe('로그인 화면 사진', () => {
     });
   }
 });
+
+// ── 대시보드(G31 · G32 · G33 · G34 · G36 · G38) ──
+const DASH = '[data-part="dashboard"]';
+async function ready(page: Page) {
+  await expect(page.getByTestId('pending')).toBeVisible();
+  await expect(page.locator(`${DASH} [data-kpi]`)).toHaveCount(6);
+}
+const summaryCalls = (backend: { requests: { path: string }[] }) => backend.requests.filter((r) => r.path.startsWith('/summary')).length;
+// 탭 가림 흉내 — visibilityState · hidden 을 바꾸고 visibilitychange 를 보낸다
+const setVisibility = (page: Page, v: 'hidden' | 'visible') =>
+  page.evaluate((v) => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v });
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => v === 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, v);
+// 큰 수 · 긴 보조 줄(발표 서버 하루치 규모) — 카드 글자 잘림을 재는 데이터
+async function bigSummary(page: Page, backend: { summary: (r: string) => import('../src/lib/types').Summary }) {
+  await page.route(/\/api\/summary(\?|$)/, (route) => {
+    const range = new URL(route.request().url()).searchParams.get('range') || '24h';
+    const s = backend.summary(range);
+    const big = {
+      ...s,
+      collected: { total: 12_345_678, byKind: { exec: 2_345_678, open: 7_654_321, connect: 2_345_679 - 1_234, dns: 1_234 } },
+      violations: { total: 12_480, killed: 1_234, alert: 11_000, held: 246 },
+      isolatedContainers: 1_234,
+      installs: { ...s.installs, total: 12_345, passed: 11_000, isolated: 1_000, refused: 345 },
+      decisions: { malicious: 1_234, falsePositive: 5_678, pending: 90 },
+      isolation: { count: 1_480, medianMs: 1_234, p95Ms: 12_345, maxMs: 123_456 },
+      previous: { collected: 9_876_543, violations: 10_000, isolatedContainers: 1_000, installs: 10_000, decided: 6_000, isolationMedianMs: 999 },
+    };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(big) });
+  });
+}
+// KPI 카드 안에서 잘린 글자(scrollWidth > clientWidth) — 카드 · 이름 · 값 · 증감 · 보조 줄
+const clipped = (page: Page) =>
+  page.locator(`${DASH} [data-kpi]`).evaluateAll((cards) =>
+    cards.flatMap((c) =>
+      [c, ...c.querySelectorAll('.kpi-name, .kpi-num, .kpi-delta, .kpi-sub')]
+        .filter((e) => e.scrollWidth > e.clientWidth + 0.5)
+        .map((e) => `${(c as HTMLElement).dataset.kpi}:${e === c ? 'card' : e.className.split(' ')[0]} ${e.scrollWidth}>${e.clientWidth} 「${(e as HTMLElement).innerText.replace(/\s+/g, ' ')}」`),
+    ),
+  );
+
+test.describe('대시보드 — 최종 갱신 · 새로고침 · 가려진 탭(G31 · G32)', () => {
+  test('G31 머리 줄 「최종 갱신 HH:mm:ss」(툴팁 30초마다 자동 갱신) + 새로고침 단추 → 다시 불러 시각 갱신', async ({ page, backend }) => {
+    await page.clock.install({ time: new Date('2026-11-09T14:03:20+09:00') });
+    await page.goto('/');
+    await ready(page);
+    const upd = page.locator(`${DASH} [data-part="dash-updated"]`);
+    await expect(upd).toHaveText(/^최종 갱신 14:03:2\d$/);
+    await expect(upd).toHaveAttribute('title', '30초마다 자동 갱신');
+    const btn = page.locator(`${DASH} [data-part="dash-top"]`).getByRole('button', { name: '새로고침(대시보드)' });
+    await expect(btn).toHaveAttribute('title', '새로고침(대시보드)');
+    await page.waitForTimeout(300);
+    const n0 = summaryCalls(backend);
+    await page.clock.fastForward(12_000);
+    await btn.click();
+    await expect.poll(() => summaryCalls(backend)).toBe(n0 + 1);
+    await expect(upd).toHaveText(/^최종 갱신 14:03:3\d$/);
+  });
+
+  test('G32 탭이 가려져 있으면 30초 갱신을 건너뛰고, 다시 보이면 바로 한 번', async ({ page, backend }) => {
+    await page.clock.install();
+    await page.goto('/');
+    await ready(page);
+    await page.waitForTimeout(300);
+    const n0 = summaryCalls(backend);
+    await page.clock.fastForward(30_500); // 보이는 탭: 30초마다 한 번
+    await expect.poll(() => summaryCalls(backend)).toBe(n0 + 1);
+    await setVisibility(page, 'hidden');
+    await page.clock.fastForward(30_500);
+    await page.clock.fastForward(30_500);
+    await page.waitForTimeout(400);
+    expect(summaryCalls(backend)).toBe(n0 + 1); // 가려진 동안 0번
+    await setVisibility(page, 'visible');
+    await expect.poll(() => summaryCalls(backend)).toBe(n0 + 2); // 돌아오면 바로 한 번
+    // 건너뛴 갱신이 없으면(잠깐 가렸다 보임) 더 부르지 않는다
+    await setVisibility(page, 'hidden');
+    await setVisibility(page, 'visible');
+    await page.waitForTimeout(400);
+    expect(summaryCalls(backend)).toBe(n0 + 2);
+  });
+});
+
+test.describe('대시보드 — KPI 정의 · 큰 수 · 낮은 창(G33 · G34 · G36)', () => {
+  test('G33 KPI 카드마다 「무엇을 세는지」 한 줄 툴팁', async ({ page, backend }) => {
+    void backend;
+    await page.goto('/');
+    await ready(page);
+    const title = (k: string) => page.locator(`${DASH} [data-kpi="${k}"]`).getAttribute('title');
+    expect(await title('collected')).toBe('이 기간에 커널에서 수집한 실행 · 파일 · 통신 · 조회 이벤트 수');
+    expect(await title('violations')).toBe('이 기간에 정책에 걸린 이벤트 수(격리 · 경고)');
+    expect(await title('isolated')).toBe('이 기간에 격리한 컨테이너 수(설치 검사 컨테이너 포함)');
+    expect(await title('installs')).toBe('이 기간에 시작한 설치 검사 수');
+    expect(await title('decided')).toBe('이 기간에 악성 · 오탐 판정을 마친 건 수');
+    expect(await title('isolation')).toBe('탐지부터 격리까지 걸린 시간의 중앙값');
+  });
+
+  test('G36 1천만 이상은 「1,235만」 + 툴팁(정확한 값), 그 밑은 그대로', async ({ page, backend }) => {
+    await bigSummary(page, backend);
+    await page.goto('/');
+    await ready(page);
+    const val = (k: string) => page.locator(`${DASH} [data-kpi="${k}"] .kpi-val`);
+    await expect(val('collected')).toHaveText('1,235만');
+    await expect(val('collected')).toHaveAttribute('title', '12,345,678');
+    await expect(val('violations')).toHaveText('12,480');
+    expect(await val('violations').getAttribute('title')).toBeNull();
+  });
+
+  for (const [w, h] of [
+    [1920, 1080],
+    [1366, 768],
+    [1280, 720],
+  ] as const) {
+    test(`G34 ${w}×${h}: KPI 카드 글자 잘림 0(보통 · 큰 수) · 머리 줄 한 줄 · 대시보드 스크롤 0`, async ({ page, backend }) => {
+      await page.setViewportSize({ width: w, height: h });
+      await page.goto('/');
+      await ready(page);
+      await page.waitForTimeout(900); // 카운트업이 끝난 뒤
+      expect(await clipped(page), '보통 데이터').toEqual([]);
+      await bigSummary(page, backend);
+      await page.reload();
+      await ready(page);
+      await expect(page.locator(`${DASH} [data-kpi="collected"] .kpi-val`)).toHaveText('1,235만');
+      await page.waitForTimeout(900);
+      expect(await clipped(page), '큰 수').toEqual([]);
+      const top = page.locator(`${DASH} [data-part="dash-top"]`);
+      expect((await top.boundingBox())!.height, '머리 줄 한 줄').toBeLessThan(48);
+      expect(await page.locator(DASH).evaluate((d) => d.scrollHeight - d.clientHeight), '대시보드 스크롤').toBe(0);
+      await page.screenshot({ path: `${SHOT}/ui-d-dash-${w}.png` });
+    });
+  }
+});
+
+test.describe('대시보드 — 쉬운 말 · 사진(G38)', () => {
+  test('G38 「evt」 · 대문자 설정 이름은 보이는 글자에 없음 — 「초당 N건」, 설정 이름은 툴팁 괄호 안에만', async ({ page, backend }) => {
+    backend.info.enforceKill = false;
+    backend.stats.enforceKill = false;
+    backend.info.notify = { enabled: false, channels: [], sent: 0, failed: 0, dropped: 0, suppressed: 0 };
+    await page.goto('/');
+    await ready(page);
+    await expect(page.locator(`${DASH} [data-part="dash-live"]`)).toHaveText('eBPF 감시 중 · 초당 9.6건');
+    const text = await page.locator(DASH).innerText();
+    expect(text).not.toMatch(/\bevt\b/);
+    expect(text.match(/\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/g)).toBeNull();
+    expect(text).not.toContain('MOCK');
+    // 툴팁은 쉬운 문장이 먼저, 설정 이름은 괄호 안 보조로
+    const pill = (k: string) => page.locator(`[data-testid="signal-pills"] [data-pill="${k}"]`);
+    await expect(pill('notify')).toHaveAttribute('title', '알림 채널이 없습니다. 서버 설정에 웹훅 · Slack 주소를 넣습니다(NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL)');
+    await expect(pill('kill')).toHaveAttribute('title', '「즉시 격리」 정책도 알림만 보냅니다(ENFORCE_KILL=false)');
+    await expect(pill('gadget')).toHaveAttribute('title', '모의 이벤트로 동작하고 있습니다(mock 소스)');
+  });
+
+  for (const [name, theme, w, h] of [
+    ['1440', 'light', 1440, 900],
+    ['1440-dark', 'dark', 1440, 900],
+    ['390', 'light', 390, 844],
+  ] as const) {
+    test(`사진 ${name}: 「—」 없음 · 가로 넘침 0`, async ({ page, backend }) => {
+      void backend;
+      await page.setViewportSize({ width: w, height: h });
+      await page.addInitScript((t) => localStorage.setItem('supplyguard.theme', t), theme);
+      await page.goto('/');
+      await ready(page);
+      await expect(page.locator(`${DASH} [data-part="dash-updated"]`)).toHaveText(/^최종 갱신 \d{2}:\d{2}:\d{2}$/);
+      expect(await page.locator(DASH).innerText()).not.toContain('—');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+      await page.waitForTimeout(900);
+      await page.screenshot({ path: `${SHOT}/ui-d-dash-${name}.png` });
+    });
+  }
+});
