@@ -96,13 +96,14 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
     await openSeq(page);
     const ta = page.locator(YAML_TA);
     const orig = await ta.inputValue();
+    // 11/09 G14: 화면에는 상태 코드(「422 ·」) 없이 서버 문장만
     const cases: [string, (y: string) => string, string][] = [
-      ['단계 1개', (y) => y.split('  - kind: connect')[0].trimEnd(), '422 · steps: 단계 2~5개 (지금 1개)'],
-      ['창 0', (y) => y.replace('windowSeconds: 10', 'windowSeconds: 0'), '422 · windowSeconds 0: 1~60'],
-      ['단계에 action', (y) => y.replace('  - kind: exec', '  - kind: exec\n    action: kill'), '422 · steps[0]: 단계에는 kind 와 조건만'],
-      ['최상위 조건', (y) => y.replace('windowSeconds: 10', 'windowSeconds: 10\ndenyComms:\n  - nc'), '422 · sequence 규칙 최상위에는 조건을 쓸 수 없음(조건은 steps 에)'],
-      ['중첩 sequence', (y) => y.replace('  - kind: open', '  - kind: sequence'), '422 · steps[2]: kind "sequence": exec | open | connect | dns'],
-      ['빈 단계', (y) => y.replace(/ {2}- kind: connect\n {4}allowCidrs:\n( {6}- .*\n)+/, '  - kind: connect\n'), '422 · steps[1]: connect 규칙에 조건이 없음'],
+      ['단계 1개', (y) => y.split('  - kind: connect')[0].trimEnd(), 'steps: 단계 2~5개 (지금 1개)'],
+      ['창 0', (y) => y.replace('windowSeconds: 10', 'windowSeconds: 0'), 'windowSeconds 0: 1~60'],
+      ['단계에 action', (y) => y.replace('  - kind: exec', '  - kind: exec\n    action: kill'), 'steps[0]: 단계에는 kind 와 조건만'],
+      ['최상위 조건', (y) => y.replace('windowSeconds: 10', 'windowSeconds: 10\ndenyComms:\n  - nc'), 'sequence 규칙 최상위에는 조건을 쓸 수 없음(조건은 steps 에)'],
+      ['중첩 sequence', (y) => y.replace('  - kind: open', '  - kind: sequence'), 'steps[2]: kind "sequence": exec | open | connect | dns'],
+      ['빈 단계', (y) => y.replace(/ {2}- kind: connect\n {4}allowCidrs:\n( {6}- .*\n)+/, '  - kind: connect\n'), 'steps[1]: connect 규칙에 조건이 없음'],
     ];
     for (const [name, fn, want] of cases) {
       const y = fn(orig);

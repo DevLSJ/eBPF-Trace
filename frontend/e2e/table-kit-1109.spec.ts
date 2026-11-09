@@ -330,6 +330,7 @@ test.describe('⑦ 필터 Select', () => {
     await page.keyboard.press('Enter');
     await expect(owner).toHaveText('owner-k');
     await owner.click();
+    await expect(search).toBeFocused(); // 검색칸이 초점을 받은 뒤 입력(그 전에 치면 글자가 버튼으로 가 거르기가 안 됨)
     await page.keyboard.type('zzz');
     await expect(olb.getByRole('option')).toHaveCount(0);
     await expect(olb.locator('..')).toContainText('일치 항목 없음');
