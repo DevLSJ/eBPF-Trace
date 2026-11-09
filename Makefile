@@ -12,7 +12,7 @@ DEV_AUTH := AUTH_OTP_REQUIRED=false AUTH_DEV_MODE=true ADMIN_INITIAL_PASSWORD=$(
 # sandbox-up(실제 가젯)은 개발 모드를 켜지 않는다 — 아이디와 다른 비밀번호 · 첫 로그인 비밀번호 변경 → 라이선스 → OTP 그대로
 SANDBOX_ADMIN_PW := sg-dev-admin-pw
 # 평가 결과(GET /api/evaluation): 로컬 개발은 저장소의 bench/reports 를 읽는다(이미지는 /bench/reports)
-DEV_EVAL := EVAL_REPORTS_DIR=$(CURDIR)/bench/reports
+DEV_EVAL := EVAL_REPORTS_DIR=$(CURDIR)/bench/reports SG_INSTALL_FILE=$(CURDIR)/tools/sg-install
 # 공급망 검사(11/06): 백엔드가 맥에서 직접 돌면 /scan 을 만들 수 없고 검사기 컨테이너와 이름 있는 볼륨을 나눌 수도 없다 —
 # 저장소 안 .scan-work 를 작업 폴더로 쓰고 검사기에는 같은 폴더를 bind(SCAN_VOLUME 이 절대 경로면 bind). Docker Desktop 이 켜져 있어야 한다
 DEV_SCAN := SCAN_DIR=$(CURDIR)/.scan-work SCAN_VOLUME=$(CURDIR)/.scan-work

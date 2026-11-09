@@ -52,6 +52,8 @@ type Config struct {
 	PolicyFile  string
 	// EvalReportsDir: 평가 결과 JSON(bench/reports) 디렉터리 — GET /api/evaluation 이 읽는다(11/04). 기본은 배포 이미지 안 경로
 	EvalReportsDir string
+	// SGInstallFile: 설치 검사 「사용 방법」이 내려주는 sg-install 스크립트(11/09). 기본은 배포 이미지 안 경로, make dev 는 저장소 tools/sg-install
+	SGInstallFile string
 
 	AdminToken string
 	// SandboxToken: sg-install CLI 의 세션 보고 · 차단 확인 전용 (ADMIN_TOKEN 과 달라야 한다)
@@ -106,6 +108,7 @@ func Load() (Config, error) {
 		RedisURL:           env("REDIS_URL", ""),
 		PolicyFile:         env("POLICY_FILE", "policies/default.yaml"),
 		EvalReportsDir:     env("EVAL_REPORTS_DIR", "/bench/reports"),
+		SGInstallFile:      env("SG_INSTALL_FILE", "/tools/sg-install"),
 		AdminToken:         env("ADMIN_TOKEN", ""),
 		SandboxToken:       env("SANDBOX_TOKEN", ""),
 		ActorName:          env("ACTOR_NAME", "보안 담당자"),

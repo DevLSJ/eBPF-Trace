@@ -48,6 +48,8 @@ type Deps struct {
 	AdminToken string
 	// SandboxToken: sg-install CLI 의 세션 보고 · 차단 확인 전용 토큰 (ADMIN 엔드포인트에는 쓸 수 없다)
 	SandboxToken string
+	// SGInstallFile: 「사용 방법」 내려받기용 sg-install 스크립트 경로(SG_INSTALL_FILE, 이미지는 /tools/sg-install). 비거나 없으면 내려받기 없음
+	SGInstallFile string
 	// AllowAnonymousWrites: EVENT_SOURCE=mock — 비어 있는 토큰의 쓰기를 토큰 없이 허용 (로컬 개발 전용)
 	AllowAnonymousWrites bool
 	// Review: 설치 세션 · 건 · 제안 · 차단 목록 · 변경 이력. nil 이면 해당 엔드포인트를 열지 않는다.
@@ -142,7 +144,9 @@ func Router(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/audit", h.audit)
 	mux.HandleFunc("GET /api/policies", h.listPolicies)
 	mux.HandleFunc("GET /api/policies/export", h.exportPolicies)
-	mux.HandleFunc("GET /api/evaluation", h.evaluation) // 평가 결과(11/04) — 읽기 전용, 로그인 뒤 모든 역할
+	mux.HandleFunc("GET /api/evaluation", h.evaluation)            // 평가 결과(11/04) — 읽기 전용, 로그인 뒤 모든 역할
+	mux.HandleFunc("GET /api/sginstall/setup", h.sginstallSetup)   // 설치 검사 「사용 방법」(11/09) — 토큰은 관리자에게만
+	mux.HandleFunc("GET /api/tools/sg-install", h.sginstallScript) // sg-install 내려받기(서버와 같은 판)
 	if d.PolicyFile != "" {
 		mux.HandleFunc("GET /api/policies/defaults", h.policyDefaults)
 	}

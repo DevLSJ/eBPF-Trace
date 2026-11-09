@@ -23,6 +23,7 @@ services:
       # 평가 결과 JSON(GET /api/evaluation)을 이미지에 넣는다 — 컨텍스트(backend/) 밖이라 이름 붙은 컨텍스트로
       additional_contexts:
         eval-reports: ./bench/reports
+        sg-tools: ./tools # 설치 검사 「사용 방법」 내려받기(11/09)
     env_file:
       - path: .env
         required: false   # 없으면 compose 변수 기본값만으로 뜬다 (CI config 검증)
