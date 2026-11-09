@@ -23,12 +23,15 @@ export function ProposalDetail({
   error,
   canWrite,
   onDone,
+  bare,
 }: {
   proposal: Proposal | undefined;
   loading: boolean;
   error: unknown;
   canWrite: boolean;
   onDone: () => void;
+  // 11/09: 시트 안(제목은 시트 머리) — 테두리 있는 칸 없이
+  bare?: boolean;
 }) {
   const { cases } = useCases();
   const toast = useToast();
@@ -61,9 +64,14 @@ export function ProposalDetail({
   }, [id, draft, runPreview]);
 
   if (!p) {
-    return (
+    const body = error ? <LoadError error={error} what="제안" /> : <Empty>{loading ? '불러오는 중…' : '제안을 찾을 수 없습니다'}</Empty>;
+    return bare ? (
+      <div data-testid="proposal" className="h-full">
+        {body}
+      </div>
+    ) : (
       <Panel title="제안" testId="proposal">
-        {error ? <LoadError error={error} what="제안" /> : <Empty>{loading ? '불러오는 중…' : '제안을 찾을 수 없습니다'}</Empty>}
+        {body}
       </Panel>
     );
   }
@@ -89,17 +97,8 @@ export function ProposalDetail({
     }
   };
 
-  return (
-    <Panel
-      className="min-h-0"
-      testId="proposal"
-      title={
-        <span className="flex items-center gap-2">
-          제안 · <DecisionBadge decision={p.decision} /> <span className="font-mono">{target}</span>
-        </span>
-      }
-      actions={<span className="text-xs text-slate-400">{p.state === 'draft' ? '초안' : p.state === 'applied' ? '적용됨' : '버림'}</span>}
-    >
+  const inner = (
+    <>
       <div className="flex h-full flex-col">
         <div data-fill="" className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-sm">
           <section className="mb-4">
@@ -278,6 +277,32 @@ export function ProposalDetail({
           }}
         />
       )}
+    </>
+  );
+  if (bare)
+    return (
+      <div data-testid="proposal" className="flex h-full min-h-0 flex-col">
+        <header className="flex shrink-0 items-center gap-2 border-b border-border px-5 py-2.5 text-sm">
+          <DecisionBadge decision={p.decision} /> <span className="min-w-0 truncate font-mono text-text">{target}</span>
+          <span className="ml-auto shrink-0 text-xs text-text-3" data-part="proposal-badge">
+            {p.state === 'draft' ? '적용 대기' : p.state === 'applied' ? '적용됨' : '버림'}
+          </span>
+        </header>
+        {inner}
+      </div>
+    );
+  return (
+    <Panel
+      className="min-h-0"
+      testId="proposal"
+      title={
+        <span className="flex items-center gap-2">
+          제안 · <DecisionBadge decision={p.decision} /> <span className="font-mono">{target}</span>
+        </span>
+      }
+      actions={<span className="text-xs text-slate-400">{p.state === 'draft' ? '초안' : p.state === 'applied' ? '적용됨' : '버림'}</span>}
+    >
+      {inner}
     </Panel>
   );
 }

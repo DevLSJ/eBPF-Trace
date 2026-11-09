@@ -1,5 +1,5 @@
 import { ChartColumn, ChevronsLeft, ChevronsRight, CircleHelp, FileClock, LayoutDashboard, ListTree, Menu, MonitorPlay, Network, Plug, PackageSearch, ScanSearch, Settings, ShieldCheck, SlidersHorizontal, X, type LucideIcon } from 'lucide-react';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/auth-context';
 import { useCases } from '../hooks/cases-context';
@@ -22,6 +22,8 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   end?: boolean;
+  // 하위 메뉴(11/09 정책 화면 분리) — 있으면 이 칸은 묶음 제목 + 하위 링크(묶음째 길게 눌러 옮김)
+  children?: { to: string; label: string }[];
 }
 
 // 사이드바는 시나리오별 묶음 (10/15 확정): 대시보드 / 설치 검사 / 런타임 감시 / 설정 · 기록
@@ -49,7 +51,17 @@ const groups: { id?: 'install' | 'runtime' | 'records'; label?: string; items: N
     id: 'records',
     label: '설정 · 기록',
     items: [
-      { to: '/policies', label: '정책', icon: SlidersHorizontal },
+      // 11/09 사용자 결정 「사이드바 하위 메뉴」 — 정책 아래 정책 · 차단 목록 · 변경 이력(페이지별)
+      {
+        to: '/policies',
+        label: '정책',
+        icon: SlidersHorizontal,
+        children: [
+          { to: '/policies', label: '정책' },
+          { to: '/policies/blocklist', label: '차단 목록' },
+          { to: '/policies/changes', label: '변경 이력' },
+        ],
+      },
       { to: '/audit', label: '감사 로그', icon: FileClock },
       { to: '/settings', label: '설정', icon: Settings },
     ],
@@ -71,6 +83,8 @@ const TITLES: Record<string, string> = {
   '/events': '이벤트',
   '/topology': '토폴로지',
   '/policies': '정책',
+  '/policies/blocklist': '차단 목록',
+  '/policies/changes': '변경 이력',
   '/audit': '감사 로그',
   '/settings': '설정',
   '/report': '건 보고서', // 10/30 — 사이드바에는 없고 시트 · 판정 카드 · 판정 대기 행에서 연다
@@ -237,7 +251,13 @@ export function AppShell() {
 // 사이드바 묶음 — 길게 눌러(또는 Alt+↑/↓) 묶음 안에서만 순서를 바꾼다(11/04d, R1 11/04). 대시보드 줄(묶음 제목 없음)은 고정 · 묶음 순서 그대로
 function NavGroup({ g, collapsed, pending }: { g: (typeof groups)[number]; collapsed: boolean; pending: number }) {
   const byId = new Map(g.items.map((it) => [it.to.slice(1), it]));
-  const { ref, order, containerClass, itemProps, pickedClass } = useSortable<HTMLDivElement>({ scope: `sidebar.${g.id ?? 'home'}`, ids: g.items.map((it) => it.to.slice(1)), labelOf: (id) => byId.get(id)?.label ?? id });
+  // 하위 메뉴 칸(묶음 제목 div)은 링크가 아니라 초점을 따로 받는다(Alt+↑/↓ 로 묶음째 옮기기) — focusable: false 면 칸마다 tabIndex 0
+  const { ref, order, containerClass, itemProps, pickedClass } = useSortable<HTMLDivElement>({
+    scope: `sidebar.${g.id ?? 'home'}`,
+    ids: g.items.map((it) => it.to.slice(1)),
+    labelOf: (id) => byId.get(id)?.label ?? id,
+    focusable: !g.items.some((it) => it.children),
+  });
   const list = g.id ? order.map((id) => byId.get(id)!).filter(Boolean) : g.items;
   return (
     <div ref={g.id ? ref : undefined} className={`flex flex-col gap-0.5 ${g.id ? containerClass : ''}`} data-nav-group={g.label ?? 'home'}>
@@ -247,7 +267,10 @@ function NavGroup({ g, collapsed, pending }: { g: (typeof groups)[number]; colla
         ) : (
           <div className="px-3 pb-1 text-[11px] font-medium tracking-wide text-text-3">{g.label}</div>
         ))}
-      {list.map(({ to, label, icon: Icon, end }) => (
+      {list.map(({ to, label, icon: Icon, end, children }) =>
+        children ? (
+          <SubNav key={to} id={to.slice(1)} label={label} icon={Icon} items={children} collapsed={collapsed} sortProps={g.id ? itemProps(to.slice(1)) : {}} pickedClass={g.id ? pickedClass(to.slice(1)) : ''} />
+        ) : (
         <NavLink
           key={to}
           to={to}
@@ -272,7 +295,113 @@ function NavGroup({ g, collapsed, pending }: { g: (typeof groups)[number]; colla
             </span>
           )}
         </NavLink>
-      ))}
+        ),
+      )}
+    </div>
+  );
+}
+
+// 하위 메뉴(11/09 정책 화면 분리, SPEC-1109 §5): 펼친 사이드바 · 서랍 = 묶음 제목 + 들여 쓴 링크.
+// 접힌 사이드바(56px) = 아이콘만, 올리면 120ms 뒤 · 초점이 들어오면 바로 오른쪽에 하위 메뉴만 겹쳐 뜬다(나가면 150ms 뒤 닫힘 — 틈을 건너는 동안)
+const subLink = (collapsed: boolean) => ({ isActive }: { isActive: boolean }) =>
+  `flex items-center rounded-[var(--r-sm)] py-1.5 text-sm transition-colors duration-[var(--t-fast)] ${collapsed ? 'px-3' : 'pr-3 pl-2'} ${
+    isActive ? 'bg-accent-soft font-medium text-accent-text' : 'text-text-2 hover:bg-surface-2 hover:text-text'
+  }`;
+function SubNav({
+  id,
+  label,
+  icon: Icon,
+  items,
+  collapsed,
+  sortProps,
+  pickedClass,
+}: {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  items: { to: string; label: string }[];
+  collapsed: boolean;
+  sortProps: Record<string, unknown>;
+  pickedClass: string;
+}) {
+  const { pathname } = useLocation();
+  const here = items.some((x) => pathname === x.to);
+  const box = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState(false);
+  const [focusIn, setFocusIn] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const timer = useRef(0);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const place = () => {
+    const r = box.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.top, left: r.right + 6 });
+  };
+  const later = (fn: () => void, ms: number) => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(fn, ms);
+  };
+  const shown = collapsed && (hover || focusIn) && pos;
+  const links = items.map((x) => (
+    <NavLink
+      key={x.to}
+      to={x.to}
+      end
+      state={FRESH}
+      className={subLink(collapsed)}
+      onClick={() => {
+        window.clearTimeout(timer.current);
+        setHover(false);
+        setFocusIn(false);
+      }}
+    >
+      {x.label}
+    </NavLink>
+  ));
+  return (
+    <div
+      ref={box}
+      {...sortProps}
+      data-nav-sub={id}
+      role="group"
+      aria-label={label}
+      className={`relative flex flex-col gap-0.5 rounded-[var(--r-sm)] ${pickedClass}`}
+      onMouseEnter={() => collapsed && later(() => (place(), setHover(true)), 120)}
+      onMouseLeave={() => collapsed && later(() => setHover(false), 150)}
+      onFocus={() => {
+        if (!collapsed) return;
+        place();
+        setFocusIn(true);
+      }}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusIn(false);
+      }}
+    >
+      <div
+        className={`flex items-center gap-3 py-2 text-sm ${collapsed ? 'justify-center px-0' : 'px-3'} ${here ? (collapsed ? 'rounded-[var(--r-sm)] bg-accent-soft text-accent-text' : 'font-medium text-text') : ''}`}
+        title={collapsed ? label : undefined}
+      >
+        <Icon className="size-4 shrink-0" aria-hidden />
+        <span className={collapsed ? 'sr-only' : 'flex-1'}>{label}</span>
+      </div>
+      {!collapsed ? (
+        <div className="ml-[1.4rem] flex flex-col gap-0.5 border-l border-border pl-2" data-part="subnav">
+          {links}
+        </div>
+      ) : (
+        shown && (
+          <div
+            data-part="subnav-pop"
+            role="group"
+            aria-label={`${label} 메뉴`}
+            className="tk-pop-in fixed z-[60] flex min-w-40 flex-col gap-0.5 rounded-[10px] border border-border bg-raised p-1.5 shadow-[var(--sh-2)]"
+            style={{ top: pos.top, left: pos.left }}
+            onMouseEnter={() => window.clearTimeout(timer.current)}
+          >
+            <span className="px-3 pt-0.5 pb-1 text-[11px] font-medium tracking-wide text-text-3">{label}</span>
+            {links}
+          </div>
+        )
+      )}
     </div>
   );
 }

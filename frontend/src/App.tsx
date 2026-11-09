@@ -12,6 +12,8 @@ import { InstallsPage } from './features/installs/InstallsPage';
 import { EventsPage } from './features/events/EventsPage';
 import { TopologyPage } from './features/topology/TopologyPage';
 import { PoliciesPage } from './features/policies/PoliciesPage';
+import { BlocklistPage } from './features/policies/BlocklistPage';
+import { ChangesPage } from './features/policies/ChangesPage';
 import { AuditPage } from './features/audit/AuditPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { ReportPage } from './features/report/ReportPage';
@@ -35,6 +37,9 @@ export default function App() {
                 <Route path="events" element={<Page><EventsPage /></Page>} />
                 <Route path="topology" element={<Page><TopologyPage /></Page>} />
                 <Route path="policies" element={<Page><PoliciesPage /></Page>} />
+                {/* 11/09 정책 화면 분리 — 사이드바 「정책」 아래 정책 · 차단 목록 · 변경 이력 */}
+                <Route path="policies/blocklist" element={<Page><BlocklistPage /></Page>} />
+                <Route path="policies/changes" element={<Page><ChangesPage /></Page>} />
                 <Route path="audit" element={<Page><AuditPage /></Page>} />
                 <Route path="settings" element={<Page><SettingsPage /></Page>} />
                 <Route path="report" element={<Page><ReportPage /></Page>} />

@@ -5,8 +5,17 @@
 // 키는 화면 경로에서 앞 「/」를 뺀 것(예: 'policies' · 'policies/blocklist'). 화면별 문장은 각 화면 작업이 채운다.
 // e2e(table-kit-1109 ㉔)가 등록된 설명을 모두 checkScreenCopy 로 검사한다.
 //   <p className="…">{screenCopy('policies')}</p>   ·   <ScreenNote screen="policies" />
-export const SCREEN_COPY: Record<string, string> = {};
-export const SCREEN_NOTE: Record<string, string> = {};
+export const SCREEN_COPY: Record<string, string> = {
+  // 정책 · 차단 목록 · 변경 이력(11/09 정책 화면 분리)
+  policies: '컨테이너 행동을 판정하는 정책을 만들고 적용 범위를 관리합니다.',
+  'policies/blocklist': '악성 판정으로 차단한 대상을 종류별로 확인하고 해제합니다.',
+  'policies/changes': '정책과 차단 목록의 변경 기록을 시각순으로 확인합니다.',
+};
+export const SCREEN_NOTE: Record<string, string> = {
+  policies: '행을 누르면 편집 · 차단 이력 · 변경 이력을 봅니다. 저장하면 엔진에 바로 적용됩니다.',
+  'policies/blocklist': '패키지 · 이미지 해제는 다음 설치 · 기동부터, 도메인 해제는 바로 적용됩니다.',
+  'policies/changes': '되돌리기는 정책 상세의 변경 이력에서 합니다.',
+};
 
 export const screenCopy = (key: string): string => SCREEN_COPY[key] ?? '';
 export const screenNote = (key: string): string => SCREEN_NOTE[key] ?? '';

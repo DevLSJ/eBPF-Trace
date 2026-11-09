@@ -1,14 +1,16 @@
 import { ArrowLeft, ArrowRight, Play, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import YAML from 'yaml';
 import { api, ApiError } from '../lib/api';
 import { fmtNum } from '../lib/format';
-import { ID_PATTERN, NUM_FIELDS, summarize, toDraft, toRule, type Draft, type ListField } from '../lib/policyEasy';
+import { ID_PATTERN, listOf, NUM_FIELDS, scopeOf, summarize, toDraft, toRule, withList, type Draft, type ListField, type Scope } from '../lib/policyEasy';
 import { SEQ_KILL_WARN, SEQ_NO_PREVIEW, SEQ_YAML_ONLY, seqSummary } from '../lib/sequence';
+import { ActionButton } from './ActionButton';
 import { ConfirmDialog } from './Modal';
 import { PolicyEasy } from './PolicyEasy';
 import { CodeWindow, CW_BODY } from './CodeWindow';
-import { isSingleRule, KINDS, type DirectIp, type Kind, type Level, type Preview, type Rule } from '../lib/types';
+import { isSingleRule, KINDS, stripView, type Action, type DirectIp, type Kind, type Level, type Preview, type Rule } from '../lib/types';
 
 // 고급 폼의 조건 필드 이름 · 설명(쉬운 설정은 components/PolicyEasy.tsx)
 const fieldsByKind: Record<Kind, { field: ListField; label: string; hint: string }[]> = {
@@ -50,7 +52,27 @@ interface Props {
   autoCheck?: boolean;
   onSaved: (r: Rule) => void;
   onDeleted: (id: string) => void;
+  // 11/09 적용 컨테이너 칸(화면이 카드를 그린다). host 를 주면(큰 2단 창 오른쪽 칸) 늘 거기에, 없으면 쉬운 설정 ④ · 고급 폼 「적용 컨테이너」 자리에
+  containers?: { render: (p: ContainersSlot) => ReactNode; host?: HTMLElement | null };
+  // 큰 창 바닥 줄(display: contents 칸) — 주면 아래 단추 줄을 그쪽에 그린다. 취소는 창이 그린다(order 1 · 이 단추들은 order 2)
+  footHost?: HTMLElement | null;
+  // 지금 값(정책 모양) — 미저장 판단(hooks/useUnsaved)
+  onValue?: (v: unknown) => void;
+  // 편집 칸 맨 위 한 줄(시작한 템플릿 · 기본 규칙 안내)
+  intro?: ReactNode;
 }
+// 적용 컨테이너 칸에 넘기는 값 — 범위(모든 · 설치 검사 · 지정) · 지정 목록 · 판정(격리 보류 안내용)
+export interface ContainersSlot {
+  scope: Scope;
+  containers: string[];
+  onChange: (scope: Scope, containers: string[]) => void;
+  action: Action;
+  dryRun: boolean;
+  readOnly: boolean;
+  note?: string;
+}
+// 「지정」인데 0개면 저장을 막는다(그대로 저장하면 비어 있어 모든 컨테이너가 된다) — 꺼진 단추 사유(마침표 없음)
+export const CONTAINERS_REQUIRED = '적용 컨테이너를 1개 이상 고르세요';
 
 const input = 'w-full rounded-[var(--r-md)] border border-slate-300 bg-field px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500';
 type Mode = 'easy' | 'form' | 'yaml';
@@ -66,13 +88,15 @@ const LV_TO: Record<Level, string> = { normal: '통과로', alert: '알림으로
 
 // 정책 편집 — 쉬운 설정(기본) · 고급 폼 · 고급 YAML 이 같은 draft 를 고친다.
 // 저장은 늘 「저장 전 확인」(한 줄 요약 + 최근 감사 로그 재평가 POST /api/policies/preview)을 거친다 (10/16 목업 확정)
-export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, existingIds, fresh, autoCheck, onSaved, onDeleted }: Props) {
+export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, existingIds, fresh, autoCheck, onSaved, onDeleted, containers, footHost, onValue, intro }: Props) {
   // 연쇄 규칙(kind: sequence, 11/04): 「고급 · YAML」만, 처음 YAML 은 규칙 그대로(windowSeconds · steps 포함).
   // draft 는 단일 규칙 편집용 — 연쇄 규칙이면 쓰지 않는 자리 값(머리의 「적용 결과」는 rule 에서 읽는다)
   const isSeq = !isSingleRule(rule);
   const [draft, setDraft] = useState<Draft>(() => toDraft(isSingleRule(rule) ? rule : { id: rule.id, kind: 'exec', action: rule.action, dryRun: rule.dryRun }));
   const [mode, setMode] = useState<Mode>(isSeq ? 'yaml' : 'easy');
-  const [yamlText, setYamlText] = useState(() => (isSeq ? YAML.stringify(rule) : ''));
+  const [yamlText, setYamlText] = useState(() => (isSeq ? YAML.stringify(stripView(rule)) : ''));
+  // 적용 범위 — 「지정」은 아직 0개여도 지정으로 남는다(카드가 저장을 막는다)
+  const [scope, setScope] = useState<Scope>(() => scopeOf(draft));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -100,7 +124,9 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
         // 단일 규칙 YAML 에 kind: sequence 를 쓰고 다른 탭으로 가면 거절 — 쉬운 설정 · 폼으로 가면 단계를 잃는다(11/04)
         if (!isSingleRule(parsed)) throw new Error(SEQ_YAML_ONLY);
         if (!isNew && parsed.id !== rule.id) throw new Error('기존 정책의 id는 바꿀 수 없음 — 새 정책으로 만드세요');
-        setDraft(toDraft(parsed));
+        const d = toDraft(parsed);
+        setDraft(d);
+        setScope(scopeOf(d));
       }
       setMode(next);
     } catch (e) {
@@ -147,6 +173,21 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoCheck]);
 
+  // 미저장 판단 값(정책 모양) — 편집 방식만 바꾼 것은 바뀐 것이 아니다
+  const valueRef = useRef(onValue);
+  useEffect(() => {
+    valueRef.current = onValue;
+  });
+  useEffect(() => {
+    let v: unknown;
+    try {
+      v = mode === 'yaml' ? (YAML.parse(yamlText) as unknown) : toRule(draft);
+    } catch {
+      v = mode === 'yaml' ? yamlText : draft;
+    }
+    valueRef.current?.(v);
+  }, [mode, draft, yamlText]);
+
   const save = async (r: Rule) => {
     setError('');
     setBusy(true);
@@ -176,10 +217,91 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
     }
   };
 
-  if (check) return <SaveCheck check={check} canWrite={canWrite} busy={busy} onBack={() => setCheck(null)} onSave={() => void save(check.rule)} />;
-
   const head = isSeq ? { action: rule.action, dryRun: !!rule.dryRun } : draft;
   const effective = head.action === 'kill' && head.dryRun ? 'kill → 알림만 (dry-run)' : head.action;
+  const inHost = !!containers?.host;
+  const picks = listOf(draft, 'containers');
+  const needPick = !isSeq && mode !== 'yaml' && scope === 'some' && !picks.length;
+  const slot = (ro: boolean, note?: string) =>
+    containers?.render({
+      scope,
+      containers: picks,
+      onChange: (sc, xs) => {
+        setScope(sc);
+        change(withList(draft, 'containers', xs));
+      },
+      action: head.action,
+      dryRun: head.dryRun,
+      readOnly: ro || !!readOnly || !canWrite,
+      note,
+    });
+  // 큰 창 오른쪽 칸: 늘 그린다(연쇄 · YAML 은 YAML 의 containers 칸으로 정함 — 읽기만)
+  const hosted =
+    inHost && containers?.host
+      ? createPortal(isSeq || mode === 'yaml' ? slot(true, '고급 · YAML 에서는 YAML 의 containers 칸으로 정합니다.') : slot(false), containers.host)
+      : null;
+
+  const introLine = intro && (
+    <p className="mb-3 text-xs text-text-3" data-part="editor-intro">
+      {intro}
+    </p>
+  );
+  if (check)
+    return (
+      <div className="flex h-full flex-col">
+        {introLine && <div className="shrink-0 px-5 pt-4">{introLine}</div>}
+        <div className="min-h-0 flex-1">
+          <SaveCheck check={check} canWrite={canWrite} busy={busy} onBack={() => setCheck(null)} onSave={() => void save(check.rule)} />
+        </div>
+        {hosted}
+      </div>
+    );
+
+  const foot = (
+    <>
+      {mode === 'form' && (
+        <label className="flex cursor-pointer items-center gap-2 text-sm select-none" title="kill 정책을 알림만 보내도록 강제 (오탐 시 컨테이너 보호)">
+          <span
+            role="switch"
+            aria-checked={draft.dryRun}
+            tabIndex={0}
+            onClick={() => update({ dryRun: !draft.dryRun })}
+            onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && update({ dryRun: !draft.dryRun })}
+            className={`relative h-5 w-9 rounded-full transition-colors ${draft.dryRun ? 'bg-amber-500' : 'bg-slate-300'}`}
+          >
+            <span className={`absolute top-0.5 size-4 rounded-full bg-white transition-all ${draft.dryRun ? 'left-4.5' : 'left-0.5'}`} />
+          </span>
+          dry-run
+        </label>
+      )}
+      {error && (
+        <span role="alert" className="min-w-0 flex-1 truncate text-sm text-red-600" title={error} data-part="editor-error">
+          {error}
+        </span>
+      )}
+      {saved && !error && <span className="flex-1 text-sm text-emerald-600">저장 후 엔진에 적용됨</span>}
+      <div className={footHost ? 'order-2 flex gap-2' : 'ml-auto flex gap-2'}>
+        {!isNew && canWrite && (
+          <button
+            type="button"
+            onClick={() => setAskDelete(true)}
+            disabled={busy || readOnly}
+            className="sg-btn text-danger-text hover:bg-danger-soft"
+          >
+            <Trash2 className="size-4" aria-hidden /> 삭제
+          </button>
+        )}
+        <ActionButton
+          onClick={() => void openCheck()}
+          disabled={busy || readOnly}
+          reason={needPick && CONTAINERS_REQUIRED}
+          className="sg-btn sg-btn-primary"
+        >
+          저장 전 확인 <ArrowRight className="size-3.5" aria-hidden />
+        </ActionButton>
+      </div>
+    </>
+  );
 
   return (
     <div className="flex h-full flex-col" data-view="rule-editor">
@@ -208,8 +330,9 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
       </div>
 
       <div data-fill="" className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        {introLine}
         {mode === 'easy' ? (
-          <PolicyEasy draft={draft} onChange={change} isNew={isNew} enforceKill={enforceKill} fresh={freshMark} />
+          <PolicyEasy draft={draft} onChange={change} isNew={isNew} enforceKill={enforceKill} fresh={freshMark} scope={!inHost && containers ? slot(false) : undefined} />
         ) : mode === 'yaml' ? (
           // 11/04f 코드 창(R1 11/04) — <id>.yaml · 입력칸이 곧 코드 영역(wrap off · 포커스 링 · 422 표시 그대로) · 남은 높이 채움
           <CodeWindow name={draft.id ? `${draft.id}.yaml` : null} lang="YAML" body="raw" fill>
@@ -268,15 +391,19 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
                 ))}
               </div>
             )}
-            <Field label="적용 컨테이너" hint="이름 또는 이미지 glob, 비우면 전체 (예: pkg-*)">
-              <textarea
-                className={`${input} min-h-14 font-mono text-xs`}
-                data-field="containers"
-                value={draft.lists.containers}
-                onChange={(e) => updateList('containers', e.target.value)}
-                placeholder="전체"
-              />
-            </Field>
+            {inHost ? null : containers ? (
+              slot(false)
+            ) : (
+              <Field label="적용 컨테이너" hint="이름 또는 이미지 glob, 비우면 전체 (예: pkg-*)">
+                <textarea
+                  className={`${input} min-h-14 font-mono text-xs`}
+                  data-field="containers"
+                  value={draft.lists.containers}
+                  onChange={(e) => updateList('containers', e.target.value)}
+                  placeholder="전체"
+                />
+              </Field>
+            )}
             {draft.kind === 'connect' && (
               <Field label="도메인 조회 없는 IP 직접 연결" hint="directIp — trace_dns 가 켜져 있을 때만 판단, 비우면 옛 동작">
                 <select className={input} data-field="directIp" value={draft.directIp} onChange={(e) => update({ directIp: e.target.value as DirectIp | '' })}>
@@ -301,45 +428,12 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
         </p>
       )}
 
-      <div className="flex shrink-0 items-center gap-3 border-t border-slate-100 px-5 py-3">
-        {mode === 'form' && (
-          <label className="flex cursor-pointer items-center gap-2 text-sm select-none" title="kill 정책을 알림만 보내도록 강제 (오탐 시 컨테이너 보호)">
-            <span
-              role="switch"
-              aria-checked={draft.dryRun}
-              tabIndex={0}
-              onClick={() => update({ dryRun: !draft.dryRun })}
-              onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && update({ dryRun: !draft.dryRun })}
-              className={`relative h-5 w-9 rounded-full transition-colors ${draft.dryRun ? 'bg-amber-500' : 'bg-slate-300'}`}
-            >
-              <span className={`absolute top-0.5 size-4 rounded-full bg-white transition-all ${draft.dryRun ? 'left-4.5' : 'left-0.5'}`} />
-            </span>
-            dry-run
-          </label>
-        )}
-        {error && <span className="min-w-0 flex-1 truncate text-sm text-red-600" title={error}>{error}</span>}
-        {saved && !error && <span className="flex-1 text-sm text-emerald-600">저장 후 엔진에 적용됨</span>}
-        <div className="ml-auto flex gap-2">
-          {!isNew && canWrite && (
-            <button
-              type="button"
-              onClick={() => setAskDelete(true)}
-              disabled={busy || readOnly}
-              className="sg-btn text-danger-text hover:bg-danger-soft"
-            >
-              <Trash2 className="size-4" aria-hidden /> 삭제
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => void openCheck()}
-            disabled={busy || readOnly}
-            className="sg-btn sg-btn-primary"
-          >
-            저장 전 확인 <ArrowRight className="size-3.5" aria-hidden />
-          </button>
-        </div>
-      </div>
+      {footHost ? (
+        createPortal(foot, footHost)
+      ) : (
+        <div className="flex shrink-0 items-center gap-3 border-t border-slate-100 py-3 pr-[88px] pl-5">{foot}</div>
+      )}
+      {hosted}
       {askDelete && (
         <ConfirmDialog
           title="정책 삭제"
@@ -374,6 +468,22 @@ function SaveCheck({
 }) {
   const pv = check.preview;
   const r = check.rule;
+  // 고치기 · 저장 후 적용
+  const actions = (
+    <>
+      <button type="button" onClick={onBack} className="sg-btn text-text-2 hover:bg-surface-2">
+        <ArrowLeft className="size-3.5" aria-hidden /> 고치기
+      </button>
+      {/* 조회자는 저장 버튼을 그리지 않는다(W16) — 미리보기는 조회자도 */}
+      {canWrite ? (
+        <button type="button" onClick={onSave} disabled={busy} className="sg-btn sg-btn-primary">
+          {busy ? '저장 중…' : '저장 후 적용'} <Play className="size-3.5" aria-hidden />
+        </button>
+      ) : (
+        <span className="text-xs text-slate-500">저장은 관리자만 할 수 있습니다</span>
+      )}
+    </>
+  );
   const groups = pv ? Object.entries(pv.changed.reduce<Record<string, number>>((m, x) => ((m[`${x.before}>${x.after}`] = (m[`${x.before}>${x.after}`] ?? 0) + 1), m), {})) : [];
   return (
     <div className="flex h-full flex-col" data-view="rule-editor">
@@ -442,24 +552,7 @@ function SaveCheck({
               )}
             </>
           )}
-          <div className="flex items-center gap-3 pt-1">
-            <button type="button" onClick={onBack} className="sg-btn text-text-2 hover:bg-surface-2">
-              <ArrowLeft className="size-3.5" aria-hidden /> 고치기
-            </button>
-            {/* 조회자는 저장 버튼을 그리지 않는다(W16) — 미리보기는 조회자도 */}
-            {canWrite ? (
-              <button
-                type="button"
-                onClick={onSave}
-                disabled={busy}
-                className="sg-btn sg-btn-primary"
-              >
-                저장 후 적용 <Play className="size-3.5" aria-hidden />
-              </button>
-            ) : (
-              <span className="text-xs text-slate-500">저장은 관리자만 할 수 있습니다</span>
-            )}
-          </div>
+          <div className="flex items-center gap-3 pt-1">{actions}</div>
         </section>
       </div>
     </div>

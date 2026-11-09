@@ -3,34 +3,27 @@ import { useState, type ReactNode } from 'react';
 import {
   actOf,
   chipsOf,
-  CONTAINERS_GROUP,
   GROUPS,
   ID_PATTERN,
   KIND_TEXT,
   listOf,
   NUM_FIELDS,
-  SANDBOX_SCOPE,
-  scopeOf,
   TYPE_LABEL,
   withList,
   type Act,
   type ChipGroupDef,
   type Draft,
   type ListField,
-  type Scope,
 } from '../lib/policyEasy';
 import type { Kind } from '../lib/types';
 
 // 정책 「쉬운 설정」(10/16): ① 무엇을 ② 어떤 값(칩, 바로 형식 검사) ③ 걸리면 ④ 어디에 ⑤ 이름. 요약 문장은 PolicyEditor 가 아래에 붙인다
+// 11/09: ④ 「어디에」는 적용 컨테이너 카드(features/policies/ContainersCard) — PolicyEditor 가 scope 로 넘긴다.
+//   큰 2단 창에서는 카드가 오른쪽 칸에 있어 ④ 를 그리지 않는다(scope 없음)
 const ACT_TEXT: Record<Act, [string, string]> = {
   alert: ['알림만 보내기', '컨테이너는 그대로 두고 알립니다'],
   kill: ['즉시 격리', '컨테이너를 바로 멈춥니다'],
   dry: ['시험 운영', '격리 대상으로 표시만 하고 멈추지 않습니다 — 새 정책을 먼저 써 볼 때'],
-};
-const SCOPE_TEXT: Record<Scope, [string, string]> = {
-  all: ['모든 컨테이너', '운영 중인 컨테이너와 설치 검사 모두'],
-  sandbox: ['설치 검사에서만', '패키지를 시험 설치하는 감시 컨테이너'],
-  some: ['지정한 컨테이너만', '이름이나 이미지 패턴으로 고릅니다'],
 };
 
 export function PolicyEasy({
@@ -39,22 +32,18 @@ export function PolicyEasy({
   isNew,
   enforceKill,
   fresh,
+  scope,
 }: {
   draft: Draft;
   onChange: (d: Draft) => void;
   isNew: boolean;
   enforceKill: boolean;
   fresh: { field: ListField; value: string } | null;
+  // ④ 「어디에」 칸(적용 컨테이너 카드). 없으면 ④ 를 그리지 않는다(큰 창 오른쪽 칸에 있을 때)
+  scope?: ReactNode;
 }) {
-  const [someScope, setSomeScope] = useState(scopeOf(d) === 'some');
   const g = GROUPS[d.kind];
-  const scope: Scope = someScope ? 'some' : scopeOf(d);
   const idOk = ID_PATTERN.test(d.id);
-
-  const pickScope = (v: Scope) => {
-    setSomeScope(v === 'some');
-    onChange(withList(d, 'containers', v === 'all' ? [] : v === 'sandbox' ? [SANDBOX_SCOPE] : listOf(d, 'containers').filter((c) => c !== SANDBOX_SCOPE)));
-  };
 
   return (
     <div className="grid max-w-3xl gap-5 text-sm">
@@ -91,11 +80,12 @@ export function PolicyEasy({
         />
         {!enforceKill && <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">지금 서버의 자동 격리가 꺼져 있어 「즉시 격리」도 알림만 갑니다 — 서버 설정 참고</p>}
       </Step>
-      <Step id="scope" n={4} title="어디에 적용할까요?">
-        <Radios name="easy-scope" value={scope} options={Object.entries(SCOPE_TEXT) as [Scope, [string, string]][]} onPick={pickScope} />
-        {scope === 'some' && <ChipGroup groupKey="containers" def={CONTAINERS_GROUP} draft={d} onChange={onChange} fresh={null} />}
-      </Step>
-      <Step id="name" n={5} title="이름을 붙여 주세요">
+      {scope && (
+        <Step id="scope" n={4} title="어디에 적용할까요?">
+          {scope}
+        </Step>
+      )}
+      <Step id="name" n={scope ? 5 : 4} title="이름을 붙여 주세요">
         <label className="grid gap-1">
           <span className="font-medium text-slate-700">
             설명 <span className="text-xs font-normal text-slate-400">목록에 보이는 한 줄</span>
@@ -104,9 +94,13 @@ export function PolicyEasy({
         </label>
         <label className="grid gap-1">
           <span className="font-medium text-slate-700">
-            정책 이름(영문) <span className="text-xs font-normal text-slate-400">{isNew ? '만든 뒤에는 바꿀 수 없습니다' : '바꿀 수 없음'}</span>
+            정책 이름(영문){' '}
+            <span data-required="" aria-hidden className="text-danger-text">
+              *
+            </span>{' '}
+            <span className="text-xs font-normal text-slate-400">{isNew ? '만든 뒤에는 바꿀 수 없습니다' : '바꿀 수 없음'}</span>
           </span>
-          <input className={`${inputCls} font-mono`} data-field="id" aria-label="정책 이름(영문)" value={d.id} disabled={!isNew} onChange={(e) => onChange({ ...d, id: e.target.value.trim() })} />
+          <input className={`${inputCls} font-mono`} data-field="id" aria-label="정책 이름(영문)" aria-required="true" value={d.id} disabled={!isNew} onChange={(e) => onChange({ ...d, id: e.target.value.trim() })} />
         </label>
         {!idOk && <p className="text-xs text-red-600">영문 소문자 · 숫자 · 하이픈(-)만 쓸 수 있습니다</p>}
         <label className="flex items-center gap-2">
