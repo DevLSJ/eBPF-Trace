@@ -8,7 +8,7 @@ import { expect, noPageOverflow, SHOTS, test } from './fixtures';
 //   · ins-0008 검사 실패 · ins-0007 취약 · ins-0006 옛 세션(scan 없음). 정적 악성 · 정적만 실행 중은 도우미(staticMalicious · scanRunning)로 넣는다
 
 const NOTE_RUNTIME = '정적 검사로는 악성 코드를 찾지 못했지만, 설치 중 행동을 커널에서 보고 잡았습니다.';
-const NOTE_STATIC = '설치 중 정책 위반은 없었지만, 정적 검사에서 설치 단계의 위험한 코드가 나왔습니다 — 공급망 검사에서 코드를 확인하세요.';
+const NOTE_STATIC = '설치 중 정책 위반은 없었지만, 정적 검사에서 설치 단계의 위험한 코드가 나왔습니다. 공급망 검사에서 코드를 확인하세요.';
 const SKIP_LOCAL = '로컬 패키지라 정적 검사 건너뜀';
 const SKIP_CARGO = 'cargo 는 정적 검사 미지원';
 
@@ -64,12 +64,12 @@ test.describe('11/04 종합 판정 — 설치 한 건에 런타임 + 정적 결�
     await expect(badge('ins-0013')).toHaveAttribute('data-static', 'running');
     await expect(badge('ins-0008')).toHaveText('실패');
     await expect(badge('ins-0008')).toHaveAttribute('title', 'GuardDog 시간 초과(120초)'); // 실패: title 에 오류
-    // 건너뜀: 회색 「—」 + title 에 이유 · 옛 세션(scan 없음): 「—」 title 없음
-    await expect(badge('ins-0012')).toHaveText('—');
+    // 건너뜀: 빈 칸 + title 에 이유 · 옛 세션(scan 없음): 빈 칸 title 없음(11/09 「—」 없앰)
+    await expect(badge('ins-0012')).toHaveText('');
     await expect(badge('ins-0012')).toHaveAttribute('data-static', 'skipped');
     await expect(badge('ins-0012')).toHaveAttribute('title', SKIP_LOCAL);
     await expect(badge('ins-0009')).toHaveAttribute('title', SKIP_CARGO);
-    await expect(badge('ins-0006')).toHaveText('—');
+    await expect(badge('ins-0006')).toHaveText('');
     await expect(badge('ins-0006')).toHaveAttribute('data-static', 'none');
     expect(await badge('ins-0006').getAttribute('title')).toBeNull();
     // 공급망 검사 화면의 판정 배지 그대로 — 악성 의심은 빨강 계열 배경(위험에만)
@@ -165,7 +165,7 @@ test.describe('11/04 종합 판정 — 설치 한 건에 런타임 + 정적 결�
     await allRows(page);
     const marks = await page.locator('tr[data-install] [data-static]').evaluateAll((els) => els.map((e) => [e.getAttribute('data-static'), e.textContent, e.getAttribute('title')]));
     expect(marks.length).toBe(8);
-    expect(marks.every(([k, t, ti]) => k === 'none' && t === '—' && ti === null), JSON.stringify(marks)).toBe(true);
+    expect(marks.every(([k, t, ti]) => k === 'none' && t === '' && ti === null), JSON.stringify(marks)).toBe(true);
     await page.goto('/installs?id=ins-0012');
     const osv = sheet(page).getByTestId('osv-result');
     await expect(osv).toContainText('버전 무관');

@@ -299,6 +299,9 @@ test.describe('11/09 시연 — 상세 탭 · 흐름 그림', () => {
     await expect(flow.locator('[data-node="outcome"]')).toHaveAttribute('data-state', 'on');
     await expect(flow.locator('[data-node="outcome"]')).toHaveAttribute('data-tone', 'ok');
     await expect(flow.locator('[data-node="outcome"] .flow-title')).toHaveText('통과');
+    // 11/09 「—」 없음: 결과 요점은 「[상태어] 설명」, 탭 안 글자에 「—」 없음
+    await expect(page.locator('[data-part="demo-flow-point"]')).toContainText('[통과] 위반 없이 설치 완료');
+    await expect(page.locator(FLOW_TAB)).not.toContainText('—');
     const ok = await probe(page, '--ok');
     await expect.poll(() => flow.locator('[data-node="outcome"]').evaluate((e) => getComputedStyle(e).borderTopColor)).toBe(ok);
   });

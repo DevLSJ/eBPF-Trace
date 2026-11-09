@@ -23,6 +23,9 @@ test.describe('설치 검사 「사용 방법」 (11/09)', () => {
     await expect(guide(page).locator('[data-step="env"]')).not.toContainText('SUPPLYGUARD_SANDBOX_TOKEN');
     await expect(guide(page).locator('[data-step="run"]')).toContainText('./sg-install pip requests');
     await expect(guide(page).locator('[data-part="exit-codes"] tbody tr')).toHaveCount(7);
+    // 11/09 「—」 없음: 종료 코드의 뜻은 「[상태어] 설명」
+    await expect(guide(page).locator('[data-part="exit-codes"] tbody tr').first().locator('td').nth(1)).toHaveText('[통과] 위반 없음');
+    await expect(guide(page)).not.toContainText('—');
     await expect(guide(page)).toContainText('감시받는 서버');
     expect(backend.requests.some((r) => r.method === 'GET' && r.path === '/sginstall/setup')).toBe(true);
   });

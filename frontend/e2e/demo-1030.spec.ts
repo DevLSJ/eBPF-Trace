@@ -67,7 +67,7 @@ test.describe('시연 패널', () => {
     await expect(page.locator('[data-sheet="install"]')).toHaveCount(0);
     for (const k of ['start', 'events', 'match', 'evidence', 'outcome']) await expect(step(page, k)).toHaveAttribute('data-state', 'done');
     // R3 11/04: 결과 한 줄 「격리됨 — 규칙 · 탐지→kill N ms」, 타임라인 막대 대신 「왜」 카드의 증거 수집 ms · 탐지→kill ms
-    await expect(result(page)).toContainText('격리됨 — pipe-to-shell · 탐지→kill 420 ms');
+    await expect(result(page)).toContainText('[격리] pipe-to-shell 위반 · 탐지→kill 420 ms');
     await expect(page.locator(`${DEMO} [data-part="kill-ms"]`)).toContainText('420 ms');
     await expect(page.locator(`${DEMO} [data-part="evidence-ms"]`)).toContainText('295 ms');
     await expect(page.locator(DEMO).getByRole('button', { name: '시연 시작' })).toBeEnabled();
@@ -106,7 +106,7 @@ test.describe('시연 패널', () => {
     // R3 11/04: 띠의 「다시 시도」 → 시작 단추(잠기지 않음)를 다시 누른다
     await page.locator(DEMO).getByRole('button', { name: '시연 시작' }).click();
     await expect(err).toHaveCount(0);
-    await expect(result(page)).toContainText('거부됨(차단 목록)');
+    await expect(result(page)).toContainText('[거부] 차단 목록에 있어 설치 전 거부됨');
     await expect(result(page)).toContainText('차단 해제 후 다시');
   });
 });
@@ -254,7 +254,7 @@ test.describe('건 보고서 1장', () => {
     await expect(rep.locator('[data-section="decision"]')).toContainText('타이포스쿼팅');
     await expect(rep.locator('[data-section="changes"]')).toContainText('pip:colourama');
     await expect(rep.locator('[data-section="changes"]')).toContainText('cdn.colourama.test');
-    await expect(rep.locator('[data-section="timeline"]')).toContainText('—'); // 타임라인 없는 옛 건
+    await expect(rep.locator('[data-section="timeline"]')).toContainText('타임라인 기록 없음(격리되지 않았거나 기록이 생기기 전의 건)'); // 타임라인 없는 옛 건
   });
 
   test('진입 3곳(설치 시트 · 토폴로지 판정 카드 · 대시보드 판정 대기 행) · 인쇄 · Markdown 복사', async ({ page, backend, context }) => {

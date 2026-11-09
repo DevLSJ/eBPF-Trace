@@ -67,14 +67,16 @@ test.describe('공급망 검사 보완(11/02)', () => {
     await scansApi(page, [repoScan]);
     await page.goto('/scans?id=scan-0011');
     const tests = page.locator('[data-part="tests"]');
-    await expect(tests.locator('summary')).toHaveText('테스트 코드 1 — 위험 점수 · 판정에 넣지 않음');
+    await expect(tests.locator('summary')).toHaveText('테스트 코드 1(위험 점수 · 판정에 넣지 않음)');
     await tests.locator('summary').click();
     const f = tests.locator('[data-finding]');
     await expect(f).toHaveCount(1);
     await expect(f).toHaveAttribute('data-loc', 'tests/test_requests.py:1827');
     await expect(f).toHaveAttribute('data-test', 'true');
     await expect(f).toContainText('테스트 코드');
-    await expect(page.getByText('위협 0 — GuardDog, 누르면 코드에서 그 줄')).toBeVisible();
+    await expect(page.getByText('위협 0(GuardDog, 누르면 코드에서 그 줄)')).toBeVisible();
+    // 11/09 「—」 없음: 저장소 검사 상세(패키지 · 위협 · 기능 · 테스트 코드 · 코드 보기 · 엔진 줄)
+    await expect(page.locator('[data-sheet="scan"]')).not.toContainText('—');
   });
 
   test('패키지 이름 검사는 자기 버전의 알려진 취약점을 「이 버전」으로 말한다', async ({ page, backend }) => {
@@ -82,7 +84,7 @@ test.describe('공급망 검사 보완(11/02)', () => {
     await scansApi(page, [djangoScan]);
     await page.goto('/scans?id=scan-0012');
     await expect(page.locator('[data-part="verdict"]')).toContainText('이 버전에 알려진 취약점이 75건 있습니다');
-    await expect(page.getByText('알려진 취약점 75 — OSV-Scanner, 이 패키지 버전 · 의존성 포함')).toBeVisible();
+    await expect(page.getByText('알려진 취약점 75(OSV-Scanner, 이 패키지 버전 · 의존성 포함)')).toBeVisible();
   });
 
   test('패키지 자신은 깨끗하고 의존성만 취약하면 「의존성에 …」로 말한다', async ({ page, backend }) => {
