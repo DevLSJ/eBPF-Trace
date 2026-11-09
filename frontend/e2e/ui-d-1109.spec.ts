@@ -405,7 +405,7 @@ test.describe('대시보드 — KPI 정의 · 큰 수 · 낮은 창(G33 · G34 �
     await page.goto('/');
     await ready(page);
     const title = (k: string) => page.locator(`${DASH} [data-kpi="${k}"]`).getAttribute('title');
-    expect(await title('collected')).toBe('이 기간에 커널에서 수집한 실행 · 파일 · 통신 · 조회 이벤트 수');
+    expect(await title('collected')).toBe('이 기간에 커널에서 수집한 실행 · 파일 · 통신 · 조회 이벤트 수(같은 1분 안 같은 동작 반복은 1건)');
     expect(await title('violations')).toBe('이 기간에 정책에 걸린 이벤트 수(격리 · 경고)');
     expect(await title('isolated')).toBe('이 기간에 격리한 컨테이너 수(설치 검사 컨테이너 포함)');
     expect(await title('installs')).toBe('이 기간에 시작한 설치 검사 수');
