@@ -1,5 +1,6 @@
-import { FileText } from "lucide-react";
+import { FileText, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
+import { ActionButton } from "../../components/ActionButton";
 import { Empty, LoadError, Panel } from "../../components/Panel";
 import { ChartRow, KpiRow, RangeChips, TopPanel } from "./Overview";
 import { useSummary } from "./summary";
@@ -7,7 +8,7 @@ import { SignalPills } from "./SignalPills";
 import { LevelBadge } from "../../components/VerdictBadge";
 import { useCases } from "../../hooks/cases-context";
 import { useStream } from "../../hooks/stream-context";
-import { fmtNum } from "../../lib/format";
+import { fmtNum, fmtTime } from "../../lib/format";
 import { TimeText } from "../../components/list/cells";
 import { scanHref, SOURCE_LABEL } from "../../lib/guide";
 import { installDest, topologyDest } from "../../lib/nav";
@@ -19,10 +20,11 @@ import { IntegrateBanner } from "../integration/IntegrateBanner";
 // 11/04e 재배치(R2 11/04, 목업 mock/README.md 11/04e A): 머리 한 줄(상태 신호등 · 「eBPF 감시 중」 · 기간) → KPI 6칸(종합 카드 밖 독립 줄, 길게 눌러 옮기기)
 //   → 차트 줄 3칸(수집량 추이 1.8 : 위반 추이 1 : 설치 검사 결과 1.2) → 아래 3칸(판정 대기 · 많이 걸린 정책 · 위반 많은 컨테이너 — 남은 높이 채움, 몸통만 스크롤).
 //   768 이상은 화면 안에 다 들어간다(스크롤 0). 시연 카드는 대시보드에서 뺐다(R3 시연 페이지, 사용자 결정 R2 11/04)
+// 11/09 G31: 머리 줄 오른쪽에 「최종 갱신 HH:mm:ss」(30초마다 자동 갱신) + 새로고침 단추 · G38: 「초당 N건」
 export function DashboardPage() {
   const { stats } = useStream();
-  const { range, setRange, sum } = useSummary();
-  const s = sum.data ?? null;
+  const { range, setRange, data: s, error, loading, updatedAt, reload } =
+    useSummary();
   return (
     <div data-part="dashboard" data-section="overview" className="sg-dash">
       <IntegrateBanner />
@@ -33,15 +35,38 @@ export function DashboardPage() {
           className="sg-dash-live flex items-center gap-1.5 text-xs text-text-3"
         >
           <span className="size-2 sg-blink rounded-full bg-ok" aria-hidden />
-          eBPF 감시 중 · 초당{" "}
-          <span className="num">
-            {fmtNum(Math.round((stats?.eventsPerSec ?? 0) * 10) / 10)}
-          </span>{" "}
-          evt
+          {/* 글자는 한 덩어리로(flex gap 이 「9.6 건」처럼 벌리지 않게) */}
+          <span>
+            <span className="sg-dash-live-label">eBPF 감시 중 · </span>초당{" "}
+            <span className="num">
+              {fmtNum(Math.round((stats?.eventsPerSec ?? 0) * 10) / 10)}
+            </span>
+            건
+          </span>
         </span>
+        <span
+          data-part="dash-updated"
+          className="sg-dash-updated text-xs text-text-3"
+          title="30초마다 자동 갱신"
+        >
+          최종 갱신{" "}
+          <span className="num">
+            {updatedAt ? fmtTime(new Date(updatedAt).toISOString()) : ""}
+          </span>
+        </span>
+        <ActionButton
+          className="tk-icon-btn sg-dash-refresh"
+          data-action="dash-refresh"
+          aria-label="새로고침(대시보드)"
+          title="새로고침(대시보드)"
+          reason={loading && "불러오는 중입니다"}
+          onClick={reload}
+        >
+          <RefreshCw className={loading ? "sg-spin" : undefined} aria-hidden />
+        </ActionButton>
         <RangeChips range={range} onPick={setRange} />
       </div>
-      <KpiRow s={s} range={range} error={sum.error} />
+      <KpiRow s={s} range={range} error={error} />
       <ChartRow s={s} />
       <div data-part="bottom" className="sg-dash-bottom">
         <Pending />

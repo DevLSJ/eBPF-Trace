@@ -6,11 +6,42 @@
 .sg-dash > * { flex: 0 0 auto; min-width: 0; }
 .sg-dash-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .sg-dash-top > .sg-dash-live { margin-left: auto; white-space: nowrap; }
+/* 11/09 G31: 머리 줄 = 신호등 · 감시 중 · 최종 갱신 · 새로고침 · 기간. 좁으면(≤1120: 1366 · 1280 창) 한 줄을 지키려고
+   「eBPF 감시 중 ·」 글자는 화면 읽기에만 남기고(신호등 「가젯 · 커널 감시 중」과 같은 뜻) 알약 · 기간 칩 좌우 여백을 8 로 */
+.sg-dash-top { container: dash-top / inline-size; }
+.sg-dash-top > .sg-dash-updated { white-space: nowrap; }
+.sg-dash-top > .sg-dash-refresh { margin-left: -6px; }
+@container dash-top (max-width: 1120px) {
+  .sg-dash-live-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .sg-pills > a, .sg-range-chips > button { padding-inline: 8px; }
+}
 .sg-dash-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
 .sg-dash-charts { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px; }
 .sg-dash-bottom { flex: 1 1 0; min-height: 120px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .sg-dash-bottom > * { min-height: 0; }
 .sg-dash-kpis > .kpi-card { min-height: 0; }
+
+/* 11/09 G34 · G36: KPI 카드 글자 잘림 0 — 보조 · 증감 줄은 말줄임 대신 줄을 바꾸고(낱말 안에서 끊지 않음),
+   KPI 줄 폭(카드 6칸)이 좁아지면 단계 축소. 1단(≤1240: 1440 창) 여백 14 · 아이콘 28 · 값 25 / 2단(≤1100: 1366 · 1280 창 · 768 미만 2열) 아이콘 칩 숨김 · 여백 12 · 값 22 · 글자 12~12.5.
+   1920×1080 · 1366×768 · 1280×720 에서 재어 정한 값(ui-d-1109 G34) */
+.sg-dash-kpis { container: dash-kpis / inline-size; }
+.sg-dash-kpis > .kpi-card > .kpi-sub { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
+.sg-dash-kpis .kpi-delta { flex-wrap: wrap; row-gap: 0; white-space: normal; }
+.sg-dash-kpis .kpi-delta > * { white-space: nowrap; }
+@container dash-kpis (max-width: 1240px) {
+  .sg-dash-kpis > .kpi-card { padding: 14px; column-gap: 8px; }
+  .sg-dash-kpis > .kpi-card > .kpi-ico { width: 28px; height: 28px; font-size: 13px; }
+  .sg-dash-kpis .kpi-val { font-size: 25px; }
+}
+@container dash-kpis (max-width: 1100px) {
+  .sg-dash-kpis > .kpi-card { padding: 12px; row-gap: 3px; }
+  .sg-dash-kpis > .kpi-card > .kpi-ico { display: none; }
+  .sg-dash-kpis > .kpi-card > .kpi-name, .sg-dash-kpis > .kpi-card > .kpi-num { grid-column: 1 / -1; }
+  .sg-dash-kpis > .kpi-card > .kpi-name { font-size: 12.5px; }
+  .sg-dash-kpis .kpi-val { font-size: 22px; }
+  .sg-dash-kpis .kpi-unit { font-size: 12px; }
+  .sg-dash-kpis .kpi-delta, .sg-dash-kpis > .kpi-card > .kpi-sub { font-size: 12px; }
+}
 
 /* 차트 칸 — 몸통 패딩 10/16/12, 상자 높이 = --chart-h(높이 800 이하 120) */
 .sg-dash-chart-body { display: flex; flex-direction: column; gap: 6px; padding: 10px 16px 12px; }

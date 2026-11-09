@@ -32,9 +32,15 @@ export interface KpiCardProps {
   className?: string;
   // 바깥(길게 눌러 옮기기 등)이 루트에 붙이는 속성(data-sort-id · tabIndex · aria-describedby)
   attrs?: Record<string, string | number | undefined>;
+  // 카드 툴팁 — 무엇을 세는지 한 줄(11/09 G33)
+  hint?: string;
 }
 
-export function KpiCard({ k, label, icon = '▦', stripe = 'accent', value, text, unit, tone, delta, sub, subTitle, to, wrapSub, className = '', attrs }: KpiCardProps) {
+// 1천만 이상은 만 단위로 줄인다(「1,235만」) — 정확한 값은 값 툴팁(11/09 G36). 그 밑은 천 단위 쉼표 그대로
+const BIG = 10_000_000;
+const kpiNum = (n: number) => (Math.abs(n) >= BIG ? `${fmtNum(Math.round(n / 10_000))}만` : fmtNum(n));
+
+export function KpiCard({ k, label, icon = '▦', stripe = 'accent', value, text, unit, tone, delta, sub, subTitle, to, wrapSub, className = '', attrs, hint }: KpiCardProps) {
   // 0 · 값 없음(빈 글자)이면 띠만 색 — 글자 값(퍼센트 등)은 value 를 주지 않아도 된다
   const zero = value === 0 || (value == null && (text == null || text === ''));
   const n = useCountUp(value ?? 0);
@@ -48,7 +54,9 @@ export function KpiCard({ k, label, icon = '▦', stripe = 'accent', value, text
       <span className="kpi-name">{label}</span>
       <i className="kpi-ico" data-icon={icon} aria-hidden />
       <div className="kpi-num" data-value="">
-        <b className={`kpi-val num tone-${!zero && tone ? tone : 'default'}`}>{text ?? fmtNum(n)}</b>
+        <b className={`kpi-val num tone-${!zero && tone ? tone : 'default'}`} title={text == null && value != null && Math.abs(value) >= BIG ? fmtNum(value) : undefined}>
+          {text ?? kpiNum(n)}
+        </b>
         {unit && <small className="kpi-unit">{unit}</small>}
       </div>
       {delta && (
@@ -69,11 +77,11 @@ export function KpiCard({ k, label, icon = '▦', stripe = 'accent', value, text
     </>
   );
   return to ? (
-    <Link {...to} className={cls} data-kpi={k} onAnimationEnd={onAnim} {...attrs}>
+    <Link {...to} className={cls} data-kpi={k} title={hint} onAnimationEnd={onAnim} {...attrs}>
       {body}
     </Link>
   ) : (
-    <div className={cls} data-kpi={k} onAnimationEnd={onAnim} {...attrs}>
+    <div className={cls} data-kpi={k} title={hint} onAnimationEnd={onAnim} {...attrs}>
       {body}
     </div>
   );
