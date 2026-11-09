@@ -1013,6 +1013,7 @@ test.describe('㉖ 명령 복사 알림 문구(SPEC 7절 — 성공 「~했습�
     await expect(page.locator('[data-toast="copy"]')).toHaveText(/「tools\/sg-install pip requests」 명령을 복사했습니다\.$/);
     await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('denied')) }, configurable: true }); });
     await page.getByTestId('page-actions').getByRole('button', { name: '명령 복사' }).click();
-    await expect(page.locator('[data-toast="copy"]')).toHaveText(/명령을 복사하지 못했습니다 — 「tools\/sg-install pip requests」을\(를\) 직접 입력하세요\.$/);
+    // 같은 key 알림이 다시 뜨면 끝에 반복 수(×2)가 붙는다 — 문장만 본다
+    await expect(page.locator('[data-toast="copy"]')).toContainText('명령을 복사하지 못했습니다 — 「tools/sg-install pip requests」을(를) 직접 입력하세요.');
   });
 });
