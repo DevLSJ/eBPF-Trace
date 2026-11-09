@@ -68,7 +68,7 @@ esac
 
 # 가젯 확인은 공개된 /health 의 source 로 한다 (/api/info 는 로그인 뒤)
 if ! health=$(curl -fsS -m 3 "$api/health" 2>/dev/null); then
-  echo "SupplyGuard 백엔드($api)에 연결할 수 없습니다. make sandbox-up 으로 먼저 띄우세요." >&2; exit 69
+  echo "SupplyGuard 백엔드($api)에 연결할 수 없습니다. 먼저 백엔드를 띄우세요(로컬: make dev · 실제 가젯 단독: make sandbox-up)." >&2; exit 69
 fi
 if [[ $(jget "$health" source) != gadget ]]; then
   echo "경고: 백엔드가 가젯 소스가 아닙니다. 설치는 진행하지만 커널 감시는 없습니다." >&2
