@@ -39,6 +39,6 @@ test.describe('백엔드 미지원', () => {
 
     await page.goto('/audit?kind=exec');
     await expect(page.locator('tr[data-audit]')).toHaveCount(backend.audit.filter((a) => a.event.kind === 'exec').length);
-    await expect(page.locator('tr[data-audit] [data-col="decision"]').first()).toHaveText('—');
+    await expect(page.locator('tr[data-audit] [data-col="decision"]').first()).toHaveText('');
   });
 });

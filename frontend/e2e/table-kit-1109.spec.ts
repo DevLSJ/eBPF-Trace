@@ -767,7 +767,7 @@ test.describe('⑯ 꺼진 단추 · 재조회 · 폭 손잡이 · 줄 끝 고정
 });
 
 test.describe('⑰ 칸 도우미', () => {
-  test('두 줄 칸(13.5/500 · 12 고정폭 흐림 · 줄간격 1.3) · 빈 값 「—」 · 시각 3형식(상대 시각 없음) · 시각 칸 표준 폭 160 · CSV = 화면 글', async ({ page, backend }) => {
+  test('두 줄 칸(13.5/500 · 12 고정폭 흐림 · 줄간격 1.3) · 빈 값은 빈 칸 · 시각 3형식(상대 시각 없음) · 시각 칸 표준 폭 160 · CSV = 화면 글', async ({ page, backend }) => {
     void backend;
     await openList(page);
     const muted = await cssVar(page, '--text-3');
@@ -780,7 +780,7 @@ test.describe('⑰ 칸 도우미', () => {
     await page.keyboard.press('Escape');
     expect(Math.round(await thW(page, 'seen'))).toBe(160);
     const empty = page.locator(`${T} tbody tr[data-row="r04"] td[data-col="note"]`);
-    await expect(empty).toHaveText('—');
+    await expect(empty).toHaveText('');
     expect(await empty.locator('.tk-empty').evaluate((e) => getComputedStyle(e).color)).toBe(muted);
     const seen = page.locator(`${T} tbody tr[data-row="r01"] td[data-col="seen"] time`);
     await expect(seen).toHaveText('2026-11-09 12:04:05');
@@ -788,7 +788,7 @@ test.describe('⑰ 칸 도우미', () => {
     const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-action="table-export"]').click()]);
     const lines = readFileSync((await dl.path())!, 'utf8').slice(1).trim().split('\n');
     expect(lines[0]).toBe('정책,종류,판정,담당,위반,메모,시각');
-    expect(lines[4], '빈 값도 화면 글(—) 그대로').toBe('policy-04,dns,allow,owner-d,21,—,2026-11-09 12:04:05');
+    expect(lines[4], '빈 값도 화면 글(빈 칸) 그대로').toBe('policy-04,dns,allow,owner-d,21,,2026-11-09 12:04:05');
     // 시트 안 두 줄 칸 · 시각 형식
     await page.locator(`${T} tbody tr[data-row="r01"]`).click();
     const sh = page.locator('[data-sheet="demo"]');
@@ -901,13 +901,13 @@ test.describe('⑳ 화면 상태 기본 문구', () => {
 });
 
 test.describe('㉑ 아이콘 단추 이름 · 꺼진 단추 사유', () => {
-  test('아이콘 단추는 title = aria-label 「동작 — 대상」 · 꺼진 사유는 마침표 없이(부품 기본 사유 포함)', async ({ page, backend }) => {
+  test('아이콘 단추는 title = aria-label 「동작(대상)」 · 꺼진 사유는 마침표 없이(부품 기본 사유 포함)', async ({ page, backend }) => {
     void backend;
     await openList(page);
     const act = (id: string) => page.locator(`${T} tbody tr[data-row="${id}"] td[data-col="act"] button`);
-    await expect(act('r01')).toHaveAttribute('aria-label', '되돌리기 — r01');
-    await expect(act('r01')).toHaveAttribute('title', '되돌리기 — r01');
-    await expect(act('r03')).toHaveAttribute('aria-label', '되돌리기 — r03');
+    await expect(act('r01')).toHaveAttribute('aria-label', '되돌리기(r01)');
+    await expect(act('r01')).toHaveAttribute('title', '되돌리기(r01)');
+    await expect(act('r03')).toHaveAttribute('aria-label', '되돌리기(r03)');
     await expect(act('r03')).toHaveAttribute('aria-disabled', 'true');
     await expect(act('r03')).toHaveAttribute('title', '시스템 규칙은 되돌릴 수 없습니다');
     const pairs = await page
@@ -1004,8 +1004,8 @@ test.describe('㉕ 꺼진 단추 모양 — aria-disabled 는 진짜 disabled �
   });
 });
 
-test.describe('㉖ 명령 복사 알림 문구(SPEC 7절 — 성공 「~했습니다.」 · 실패 「~하지 못했습니다 — ~하세요.」)', () => {
-  test('설치 검사 「명령 복사」: 성공은 「「명령」 명령을 복사했습니다.」, 실패는 「명령을 복사하지 못했습니다 — 「명령」을(를) 직접 입력하세요.」', async ({ page, backend, context }) => {
+test.describe('㉖ 명령 복사 알림 문구(SPEC 7절 — 성공 「~했습니다.」 · 실패 「~하지 못했습니다. ~하세요.」)', () => {
+  test('설치 검사 「명령 복사」: 성공은 「「명령」 명령을 복사했습니다.」, 실패는 「명령을 복사하지 못했습니다. 「명령」을(를) 직접 입력하세요.」', async ({ page, backend, context }) => {
     void backend;
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.goto('/installs');
@@ -1014,6 +1014,6 @@ test.describe('㉖ 명령 복사 알림 문구(SPEC 7절 — 성공 「~했습�
     await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('denied')) }, configurable: true }); });
     await page.getByTestId('page-actions').getByRole('button', { name: '명령 복사' }).click();
     // 같은 key 알림이 다시 뜨면 끝에 반복 수(×2)가 붙는다 — 문장만 본다
-    await expect(page.locator('[data-toast="copy"]')).toContainText('명령을 복사하지 못했습니다 — 「tools/sg-install pip requests」을(를) 직접 입력하세요.');
+    await expect(page.locator('[data-toast="copy"]')).toContainText('명령을 복사하지 못했습니다. 「tools/sg-install pip requests」을(를) 직접 입력하세요.');
   });
 });

@@ -139,14 +139,14 @@ test.describe('③ 정책 목록 표', () => {
     await expect(cell(page, 'sensitive-files', 'containers')).toHaveText('모든 컨테이너');
     await expect(cell(page, 'sandbox-egress', 'containers')).toHaveText('설치 검사');
     await expect(row(page, 'blocklist-hosts').locator('[data-system]')).toBeVisible();
-    // 마지막 위반 = 감사 로그 기준(없으면 「—」) · 마지막 수정 = updatedAt(없으면 「—」), 현황 시각 MM-DD HH:mm
+    // 마지막 위반 = 감사 로그 기준(없으면 빈 칸) · 마지막 수정 = updatedAt(없으면 빈 칸), 현황 시각 MM-DD HH:mm
     const hit = new Set(backend.audit.map((a) => a.ruleId));
     const noHit = backend.rules.find((r) => !hit.has(r.id))!;
     expect(hit.has('sensitive-files')).toBe(true);
     await expect(cell(page, 'sensitive-files', 'lastHit')).toHaveText(/^\d{2}-\d{2} \d{2}:\d{2}$/);
-    await expect(cell(page, noHit.id, 'lastHit')).toHaveText('—');
+    await expect(cell(page, noHit.id, 'lastHit')).toHaveText('');
     await expect(cell(page, 'sensitive-files', 'updated')).toHaveText(/^\d{2}-\d{2} \d{2}:\d{2}$/);
-    await expect(cell(page, 'sandbox-secrets', 'updated')).toHaveText('—');
+    await expect(cell(page, 'sandbox-secrets', 'updated')).toHaveText('');
     // 숨김 칸: 조건 요약 · 출처 · 수정자
     await page.locator('[data-table-tools="policies"] [data-action="table-columns"]').click();
     const picker = page.locator('[data-part="column-picker"]');
@@ -256,8 +256,8 @@ test.describe('④ 정책 상세 시트', () => {
     const diff = list.locator('[data-change="chg-0012"] [data-part="change-diff"]');
     await expect(diff.locator('[data-field="action"]')).toContainText('경고 → 격리');
     await expect(diff.locator('[data-field="denyPaths"]')).toContainText('/etc/shadow → /etc/shadow · /root/.ssh/ · /home/*/.ssh/*');
-    await expect(list.getByRole('button', { name: '되돌리기 — chg-0012' })).toBeVisible();
-    await expect(list.getByRole('button', { name: '되돌리기 — chg-0011' })).toHaveCount(0); // 만든 기록 — 변경 전 값 없음
+    await expect(list.getByRole('button', { name: '되돌리기(chg-0012)' })).toBeVisible();
+    await expect(list.getByRole('button', { name: '되돌리기(chg-0011)' })).toHaveCount(0); // 만든 기록 — 변경 전 값 없음
   });
 
   test('되돌리기: 확인 창(「~할까요?」 · 영향 · 사유 필수 · 확인 체크) → POST {changeId, reason} · 토스트 · 이력에 「정책 되돌림」 · 서버 오류 문장 그대로', async ({ page, backend, allowConsole }) => {
@@ -265,7 +265,7 @@ test.describe('④ 정책 상세 시트', () => {
     backend.seedPolicyHistory();
     await page.goto('/policies?id=sensitive-files&tab=changes');
     const list = page.locator(`${SHEET} [data-testid="policy-changes"]`);
-    await list.getByRole('button', { name: '되돌리기 — chg-0012' }).click();
+    await list.getByRole('button', { name: '되돌리기(chg-0012)' }).click();
     const d = page.locator('dialog[data-part="confirm"]');
     await expect(d.locator('h3')).toHaveText('정책 sensitive-files 을(를) 되돌릴까요?');
     await expect(d.locator('[data-part="confirm-body"]')).toContainText('변경 이전 값으로');
@@ -289,7 +289,7 @@ test.describe('④ 정책 상세 시트', () => {
     await expect(list.locator('[data-change]').first()).toContainText('오탐 증가');
     // 서버 거절(404) — 서버 문장 그대로
     await page.route(/\/api\/policies\/[^/]+\/revert$/, (r) => r.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: '변경 기록 없음' }) }));
-    await list.getByRole('button', { name: /^되돌리기 — / }).first().click();
+    await list.getByRole('button', { name: /^되돌리기\(/ }).first().click();
     await d.getByRole('textbox', { name: '사유' }).fill('다시');
     await d.getByRole('checkbox').check();
     await ok.click();
@@ -359,7 +359,7 @@ test.describe('⑤ 정책 생성 2단 창', () => {
     await pat.fill('none-*');
     await pat.press('Enter');
     await expect(card.locator('[data-entry="none-*"] [data-part="match-count"]')).toHaveText('지금 일치 0개');
-    await card.locator('[data-entry="none-*"]').getByRole('button', { name: '빼기 — none-*' }).click();
+    await card.locator('[data-entry="none-*"]').getByRole('button', { name: '빼기(none-*)' }).click();
     await expect(card.locator('[data-part="containers-error"]')).toHaveCount(0);
     await expect(save).not.toHaveAttribute('aria-disabled', 'true');
     await page.screenshot({ path: `${OUT}/1440-create-light.png` });

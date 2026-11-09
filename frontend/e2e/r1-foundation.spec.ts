@@ -226,9 +226,9 @@ test.describe('C KPI 카드', () => {
     await expect(iso.locator('[data-value]')).toHaveText('312ms');
     expect(await iso.locator('.kpi-unit').evaluate((e) => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight])).toEqual(['13px', '500']);
     expect(await iso.locator('.kpi-delta b').evaluate((e) => getComputedStyle(e).color)).not.toBe(await rgbOf(page, '--danger'));
-    // 글자 값(평가 지표처럼 「—」 · 퍼센트)도 같은 모양
-    await stage(page, 'kpi', { k: 'f1', label: '모델 시험 F1', icon: '◔', stripe: 'ok', value: null, text: '—', sub: '모델 결과 없음', box: { w: 260, h: 140 } });
-    await expect(page.locator(`${STAGE} [data-kpi="f1"] [data-value]`)).toHaveText('—');
+    // 글자 값(평가 지표처럼 빈 값 · 퍼센트)도 같은 모양 — 빈 값은 빈 칸(11/09)
+    await stage(page, 'kpi', { k: 'f1', label: '모델 시험 F1', icon: '◔', stripe: 'ok', value: null, text: '', sub: '모델 결과 없음', box: { w: 260, h: 140 } });
+    await expect(page.locator(`${STAGE} [data-kpi="f1"] [data-value]`)).toHaveText('');
     await expect(page.locator(`${STAGE} [data-kpi="f1"]`)).toHaveClass(/is-zero/);
   });
 

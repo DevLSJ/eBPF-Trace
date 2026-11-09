@@ -316,7 +316,7 @@ test.describe("C KPI 증감 줄(previous)", () => {
     expect(await delta(page, "installs")).toEqual({
       dir: "flat",
       tone: "neutral",
-      text: "— 변화 없음 지난 24시간 대비",
+      text: "변화 없음 지난 24시간 대비",
     });
     expect(await delta(page, "decided")).toEqual({
       dir: "down",

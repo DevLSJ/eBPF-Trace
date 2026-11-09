@@ -87,8 +87,8 @@ test.describe('② 표 칸 순서 · 시각 형식 · 빈 값', () => {
     const started = page.locator('tr[data-install] td[data-col="started"]').first();
     await expect(started).toHaveText(STATUS);
     await expect(started.locator('time')).toHaveAttribute('title', LOG);
-    // 판정이 없는 행의 판정 칸은 「—」
-    await expect(page.locator('tr[data-install] td[data-col="decision"]').filter({ hasText: '—' }).first()).toBeVisible();
+    // 판정이 없는 행의 판정 칸은 빈 칸
+    await expect(page.locator('tr[data-install] td[data-col="decision"]').filter({ hasNotText: /\S/ }).first()).toBeVisible();
 
     await scansApi(page);
     await page.goto('/scans');
@@ -102,7 +102,7 @@ test.describe('② 표 칸 순서 · 시각 형식 · 빈 값', () => {
     await expect(page.locator('table[data-table="users"] tbody tr').first()).toBeVisible();
     expect((await heads(page, 'users'))[0]).toBe('status');
     const last = page.locator('table[data-table="users"] td[data-col="last"]');
-    await expect(last.first()).toHaveText(new RegExp(`${STATUS.source}|^—$`));
+    await expect(last.first()).toHaveText(new RegExp(`${STATUS.source}|^$`));
   });
 
   test('기록류는 시각이 맨 앞 · YYYY-MM-DD HH:mm:ss 고정폭(감사 위반 · 판정 변경 이력 · 인증 감사)', async ({ page, backend }) => {
@@ -193,7 +193,7 @@ test.describe('③ 화면 문구', () => {
     await form.locator('[data-input="repo"]').click();
     await form.locator('[data-field="url"]').fill('https://example.test/x');
     await form.getByRole('button', { name: '검사 시작' }).click();
-    await expect(form.getByRole('alert')).toHaveText(/^저장소 주소는 https:\/\/github\.com\/<소유자>\/<저장소> 모양으로 입력하세요 — .+\.$/);
+    await expect(form.getByRole('alert')).toHaveText(/^저장소 주소는 https:\/\/github\.com\/<소유자>\/<저장소> 모양으로 입력하세요.+\.$/);
     await expect(form.locator('[data-field="url"]')).toHaveAttribute('placeholder', /^예: /);
     await form.locator('[data-input="package"]').click();
     await form.getByRole('button', { name: '검사 시작' }).click();
