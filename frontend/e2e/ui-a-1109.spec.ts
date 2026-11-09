@@ -95,7 +95,7 @@ test.describe('G01 테마 = 상단 해/달 단추 하나', () => {
     void backend;
     await page.emulateMedia({ colorScheme: 'light' });
     await ready(page);
-    expect(await bodyBg(page)).toBe(rgb('#F6F7FB'));
+    expect(await bodyBg(page)).toBe(rgb('#FFFFFF'));
     // 누름과 측정을 한 작업 안에서(부하로 측정이 450ms 뒤로 밀리지 않게)
     const during = await page.evaluate((sel) => {
       (document.querySelector(sel) as HTMLElement).click();
@@ -109,14 +109,14 @@ test.describe('G01 테마 = 상단 해/달 단추 하나', () => {
     expect(during.dur.split(', ')[0]).toBe('0.45s');
     expect(during.prop).toContain('background-color');
     await settled(page);
-    expect(await bodyBg(page)).toBe(rgb('#11131A'));
+    expect(await bodyBg(page)).toBe(rgb('#15202B'));
     expect(await page.evaluate(() => getComputedStyle(document.body).transitionDuration)).toBe('0s');
     // 동작 줄이기: 전환 규칙을 붙이지 않고 바로 바뀐다
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.locator(TOGGLE).click();
     expect(await page.evaluate(() => document.documentElement.classList.contains('sg-theme-anim'))).toBe(false);
     expect(await themeOf(page)).toBe('light');
-    expect(await bodyBg(page)).toBe(rgb('#F6F7FB'));
+    expect(await bodyBg(page)).toBe(rgb('#FFFFFF'));
   });
 
   test('계정 메뉴에는 테마 칸이 없다', async ({ page, backend }) => {

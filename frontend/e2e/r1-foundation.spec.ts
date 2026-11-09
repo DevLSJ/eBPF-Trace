@@ -805,7 +805,7 @@ test.describe('H 다크 모드', () => {
     await expect(page.locator(sel)).toBeVisible();
     expect(await tok(page, '--code-bg')).toBe('#0A0C11');
     expect(await tok(page, '--win-close')).toBe('#B8746E');
-    expect(await tok(page, '--line-soft')).toBe('#303442');
+    expect(await tok(page, '--line-soft')).toBe('#38444D'); // 11/09 밤 남색 선
     expect((await codeWinOf(page, sel)).bodyBg).toBe('rgb(10, 12, 17)');
     expect(await page.locator(`${sel} .cw-dot`).first().evaluate((e) => getComputedStyle(e).backgroundColor)).toBe('rgb(184, 116, 110)');
     await page.screenshot({ path: `${SCRATCH}/r1-dark.png` });

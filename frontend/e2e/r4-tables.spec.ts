@@ -620,16 +620,16 @@ test.describe('H 다크', () => {
       .locator('table[data-table="installs"] th')
       .first()
       .evaluate((e) => getComputedStyle(e).backgroundColor);
-    expect(th).toBe('rgb(40, 45, 56)'); // --surface-2 다크(11/05 표 머리 회색 바탕)
+    expect(th).toBe('rgb(21, 32, 43)'); // 표 머리 바탕 = 본문 면(11/09 밤 남색 #15202B — 회색 바탕 없음)
     const line = await page
       .locator('table[data-table="installs"] tbody td')
       .first()
       .evaluate((e) => getComputedStyle(e).borderBottomColor);
-    expect(line).toBe('rgb(48, 52, 66)'); // --line-soft 다크
+    expect(line).toBe('rgb(56, 68, 77)'); // --line-soft 다크(11/09 밤 #38444D)
     const bars = await barOf(page, 'table[data-table="installs"] tbody tr[data-install="ins-0012"]');
     expect(bars[0]).toBe('rgb(228, 81, 111)'); // --danger 다크
     const foot = await page.locator('[data-table-foot="installs"]').evaluate((e) => getComputedStyle(e).backgroundColor);
-    expect(foot).toBe('rgb(27, 30, 40)');
+    expect(foot).toBe('rgb(21, 32, 43)');
     await page.screenshot({ path: `${SCRATCH}/r4-installs-dark.png` });
     await page.goto('/audit');
     await expect(page.locator('table[data-table="audit"] tbody tr').first()).toBeVisible();
