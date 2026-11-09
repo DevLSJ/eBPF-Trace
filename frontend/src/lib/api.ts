@@ -6,6 +6,7 @@ import type {
   BlockList,
   Case,
   Change,
+  ChangesPage,
   ChatFacts,
   ChatLink,
   ChatRequest,
@@ -22,6 +23,7 @@ import type {
   Me,
   OsvResult,
   PolicyDefaults,
+  PolicyView,
   Preview,
   Proposal,
   Role,
@@ -138,9 +140,12 @@ export const api = {
   info: () => request<Info>('/info'),
   stats: () => request<Stats>('/stats'),
   recent: (limit = 500) => request<Verdict[]>(`/events/recent?limit=${limit}`),
-  listRules: () => request<Rule[]>('/policies'),
+  // 11/09: 정책마다 마지막 수정(updatedAt · updatedBy) — 저장할 때는 stripView 로 빼고 보낸다(백엔드가 모르는 칸을 거절)
+  listRules: () => request<PolicyView[]>('/policies'),
   exportYaml: () => request<string>('/policies/export'),
-  saveRule: (rule: Rule) => request<Rule>('/policies', json('POST', rule)),
+  saveRule: (rule: Rule) => request<PolicyView>('/policies', json('POST', rule)),
+  // 정책 되돌리기(11/09, 관리자 · 사유 필수): 그 변경 직전 값으로 정책 하나 전체 — 200 되돌린 정책 · 400 사유 · 404 기록 없음 · 409 시스템 규칙 · 만든 기록 · 이미 그 값
+  revertPolicy: (id: string, changeId: string, reason: string) => request<PolicyView>(`/policies/${enc(id)}/revert`, json('POST', { changeId, reason })),
   applyYaml: (yaml: string) =>
     request<Rule[]>('/policies', {
       method: 'PUT',
@@ -202,6 +207,8 @@ export const api = {
   blocklist: () => request<Blocklist>('/blocklist'),
   unblock: (list: BlockList, value: string, reason = '') => request<void>(`/blocklist/${list}/${enc(value)}`, json('DELETE', { reason })),
   changes: (limit = 100) => request<Change[]>(`/changes?limit=${limit}`),
+  // 변경 이력 쪽 번호(11/09) — rule = 그 정책을 다룬 기록만(전후 값도 그 정책 것만) · kind = 종류 완전 일치
+  changesPage: (p: { rule?: string; kind?: string; offset: number; limit: number }) => request<ChangesPage>(`/changes${qs(p)}`),
   osv: (ecosystem: string, name: string) => request<OsvResult>(`/osv${qs({ ecosystem, name })}`),
   // kill 직전 증거(10/20) — 컨테이너 이름 또는 ID(앞부분), 최근 것부터
   evidence: (container: string) => request<Evidence[]>(`/evidence${qs({ container })}`),

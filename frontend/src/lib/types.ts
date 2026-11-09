@@ -121,6 +121,19 @@ export type RuleStep = Omit<Rule, 'id' | 'description' | 'kind' | 'action' | 'dr
 
 export type DirectIp = 'allow' | 'alert' | 'kill';
 
+// 정책 API 가 내보내는 정책(11/09, backend api.policyView) — Rule + 마지막 수정(그 정책을 다룬 마지막 변경 기록의 시각 · 처리자).
+// 기록이 없으면(시드 정책) 두 키 없음. 저장(POST /api/policies)은 모르는 칸을 거절하므로 보낼 때는 stripView 로 뺀다
+export interface PolicyView extends Rule {
+  updatedAt?: string;
+  updatedBy?: string;
+}
+export function stripView<R extends Rule>(r: R): Rule {
+  const { updatedAt: _a, updatedBy: _b, ...rule } = r as R & PolicyView;
+  void _a;
+  void _b;
+  return rule;
+}
+
 export interface TrendPoint {
   t: string;
   exec: number;
@@ -466,12 +479,25 @@ export interface Change {
   id: string;
   at: string;
   by: string;
-  kind: 'proposal_applied' | 'proposal_discarded' | 'policy_edit' | 'policy_replace' | 'blocklist_remove' | string;
+  kind: 'proposal_applied' | 'proposal_discarded' | 'policy_edit' | 'policy_replace' | 'blocklist_remove' | 'policy_revert' | 'demo_run' | 'integration_test' | string;
   caseId?: string | null;
   proposalId?: string | null;
   summary: string;
-  // 확인 대화상자의 사유(W15 · W18) — 적용 · 버림 · 차단 해제. 옛 백엔드는 없음
+  // 확인 대화상자의 사유(W15 · W18) — 적용 · 버림 · 차단 해제 · 되돌리기(필수). 옛 백엔드는 없음
   reason?: string;
+  // 11/09(backend model.Change): 이 변경이 다룬 정책 id · 정책 id → 변경 전 · 후 정책 전체(키가 없으면 그때 그 정책이 없었음 — 만듦 · 지움) ·
+  // 되돌리기가 되돌린 변경 id. 옛 백엔드 · 정책과 무관한 변경은 없음
+  ruleIds?: string[];
+  before?: Record<string, Rule>;
+  after?: Record<string, Rule>;
+  revertOf?: string;
+}
+// GET /api/changes?offset=… 응답(11/09, backend api.ChangesPage) — total 은 거른 뒤 전체 수. rule 로 거르면 before · after 도 그 정책 값만
+export interface ChangesPage {
+  items: Change[];
+  total: number;
+  offset: number;
+  limit: number;
 }
 
 // 변경 이력 종류 이름 — 정책 화면 · 감사 화면이 같이 쓴다
@@ -481,6 +507,9 @@ export const CHANGE_KIND_LABEL: Record<string, string> = {
   policy_edit: '정책 편집',
   policy_replace: 'YAML 교체',
   blocklist_remove: '차단 해제',
+  policy_revert: '정책 되돌림',
+  demo_run: '시연 실행',
+  integration_test: '연결 테스트',
 };
 
 // 판정 미리보기(W15) — POST /api/cases/{id}/preview → 확인 대화상자의 「함께 일어나는 일」(서버 계산 그대로)
