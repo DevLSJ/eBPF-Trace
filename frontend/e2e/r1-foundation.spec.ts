@@ -207,7 +207,7 @@ test.describe('C KPI 카드', () => {
     expect(m).toMatchObject({ stripe: '4px', radius: '8px', size: '28px', weight: '700', icon: '⚠', icoW: 32, deltaTone: 'danger' });
     expect(m.stripeColor).toBe(await rgbOf(page, '--danger'));
     expect(m.valColor).toBe(await rgbOf(page, '--danger'));
-    expect(m.deltaColor).toBe(await rgbOf(page, '--danger'));
+    expect(m.deltaColor).toBe(await rgbOf(page, '--danger-text')); // 11/10: 작은 증감 글자는 위험 글자색(4.5:1 이상)
     // 값이 바뀌면 카운트업(중간 값을 지나) + 짧은 링
     await restage(page, { ...base, value: 2234, delta: { dir: 'up', text: '5', tone: 'danger', note: '지난 24시간 대비' } });
     await expect(card).toHaveClass(/kpi-ring/);

@@ -271,7 +271,7 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     const card = await css(page, '[data-part="auth"] > div', ['border-radius', 'background-color', 'border-top-color', 'box-shadow']);
     expect({ ...card, 'box-shadow': visible(card['box-shadow']) }).toEqual({ 'border-radius': '12px', 'background-color': rgb('#FFFFFF'), 'border-top-color': rgb('#EFF3F4'), 'box-shadow': SH_FLAT });
     const go = auth.getByRole('button', { name: '로그인' });
-    expect(await go.evaluate((e) => { const c = getComputedStyle(e); return [c.backgroundColor, c.color, c.borderRadius, Math.round(e.getBoundingClientRect().height)]; })).toEqual([rgb('#1769E8'), rgb('#FFFFFF'), '6px', 36]);
+    expect(await go.evaluate((e) => { const c = getComputedStyle(e); return [c.backgroundColor, c.color, parseFloat(c.borderRadius) >= e.getBoundingClientRect().height / 2, Math.round(e.getBoundingClientRect().height)]; })).toEqual([rgb('#1769E8'), rgb('#FFFFFF'), true, 36] /* 11/10: 로그인 주 버튼도 알약 */);
     expect(await auth.getByLabel('아이디').evaluate((e) => [getComputedStyle(e).borderRadius, getComputedStyle(e).backgroundColor])).toEqual(['6px', rgb('#FFFFFF')]);
   });
 
