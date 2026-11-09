@@ -1,6 +1,25 @@
-# SupplyGuard 운영 스택 (EC2 단일 호스트). 저장소 루트에서 실행한다:
+# SupplyGuard 운영 스택 (단일 호스트 · sg-vm · sg-ec2). 저장소 루트에서 실행한다:
 #   docker compose -p supplyguard --project-directory . -f deploy/docker-compose.yml up -d
-# 또는 deploy/compose.sh (같은 명령을 감싼 것). 변수는 루트 .env 에서 읽는다.
+# 또는 deploy/compose.sh (같은 명령을 감싼 것). 변수 · 비밀값은 루트 .env 에서 읽는다(.env.example 참고).
+#
+# ── 처리 과정 ───────────────────────────────────────────────────────────────
+#   커널 syscall ─▶ eBPF 가젯(Inspektor Gadget v0.56.1: exec · open · connect · trace_dns)
+#     ─▶ backend 수집(컨테이너 발견 auto: fanotify, 안 되면 docker-events)
+#     ─▶ 정책 판정(YAML: 단일 · dns · 연쇄 규칙) ─▶ 위반이면 증거 수집(≤0.7초) ─▶ Docker API kill + 웹훅/Slack
+#     ─▶ redis(실시간 버퍼) ─▶ WebSocket ─▶ 화면(React)
+#     ─▶ postgres(감사 로그 · 건 · 정책 변경 이력 · 차단 목록 · 계정 · 분 단위 수집량)
+#   설치 검사: tools/sg-install 이 sg-install-* 컨테이너에서 설치 → 같은 엔진이 감시 · 격리 + 같은 패키지 정적 검사 자동 시작
+#   공급망 검사: backend 가 검사기 컨테이너(GuardDog · OSV-Scanner)를 그때그때 띄움(scan_work 볼륨 공유)
+#   시연(DEMO_ENABLED=true): backend 가 Docker API 로 sg-install-demo-* 컨테이너를 띄워 benign · chain · all 재생
+#   AI 도우미: backend ─▶ Claude API(기본, ANTHROPIC_API_KEY) · 닿지 않으면 ollama(예비, --profile ai). 읽기 전용 조회 → 사실 문장 → 답
+#
+# ── 서비스 ─────────────────────────────────────────────────────────────────
+#   nginx     :80 입구. /api · /ws → backend, 나머지 → frontend
+#   backend   Go 1.26. 가젯 실행 · 판정 · 격리 · REST/WS · 로그인(쿠키 세션 · OTP · 역할) · 검사 · 시연 · AI 도우미
+#   frontend  React 18 + Vite 빌드 결과(정적 파일)
+#   postgres  17. 감사 · 정책 · 계정 저장(외부 포트 없음)
+#   redis     7. 실시간 이벤트 버퍼(외부 포트 없음)
+#   ollama    선택(--profile ai). 서버 안에서만 도는 예비 AI 모델
 services:
   nginx:
     image: nginx:stable-alpine
@@ -35,6 +54,11 @@ services:
       # Inspektor Gadget: 호스트 루트를 /host 로 보고 bpffs·tracefs를 알아서 마운트한다
       HOST_ROOT: /host
       DOCKER_HOST: unix:///var/run/docker.sock
+      # AI 도우미(11/09): 기본 Claude, 예비 Ollama. auto = 키가 있으면 Claude · 없으면 Ollama, ollama = 서버 밖으로 보내지 않음.
+      # ANTHROPIC_API_KEY 값은 .env 에만 둔다(이 파일 · 저장소에 넣지 않음)
+      CHAT_PROVIDER: ${CHAT_PROVIDER:-auto}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-opus-5-5}
+      CLAUDE_EFFORT: ${CLAUDE_EFFORT:-low}
     # eBPF 로드·호스트 PID 네임스페이스·컨테이너 메타데이터·Docker kill 에 필요한 권한.
     # 자기 스택은 IGNORE_CONTAINERS=supplyguard-* 로 관찰 대상에서 빠진다.
     privileged: true
@@ -100,8 +124,8 @@ services:
     restart: unless-stopped
     # 외부 포트 바인딩 없음 — Docker 내부 네트워크만 접근 가능
 
-  # AI 도우미(10/20) — 선택 기능: `--profile ai` 로만 뜬다(EC2 t3.medium 처럼 메모리가 작은 곳은 끄고 운영).
-  # 켜면 .env 에 OLLAMA_URL=http://ollama:11434. 모델은 볼륨에 한 번 받아 둔다: docker compose exec ollama ollama pull qwen2.5:3b
+  # AI 도우미 예비 모델(10/20 · 11/09 부터 기본은 Claude API, 이건 예비) — `--profile ai` 로만 뜬다(메모리 작은 EC2 는 끄고 운영).
+  # 켜면 .env 에 OLLAMA_URL=http://ollama:11434. Claude 가 닿지 않거나 CHAT_PROVIDER=ollama 일 때 쓴다. 모델은 볼륨에 한 번 받아 둔다: docker compose exec ollama ollama pull qwen2.5:3b
   ollama:
     image: ollama/ollama:latest
     profiles: ["ai"]
