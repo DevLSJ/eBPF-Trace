@@ -210,8 +210,9 @@ test.describe('11/04 종합 판정 — 설치 한 건에 런타임 + 정적 결�
       'ins-0007': false, // 설치 실패 + 취약 — 빨강 아님
       'ins-0006': true, // 격리(옛 세션)
     });
-    // 정적만 악성이면 건을 열지 않는다 — 판정 열 「—」, 기본 「판정 대기」 보기에는 없다
-    await expect(row(page, 'ins-0014').locator('td').nth(5)).toHaveText('—');
+    // 정적만 악성이면 건을 열지 않는다 — 판정 열은 빈 값(배지 없음), 기본 「판정 대기」 보기에는 없다
+    // 11/09: 빈 값 글자는 공통 표 부품이 정한다(「—」 → 빈 칸) — 여기서는 판정 배지가 없다는 것만 본다
+    await expect(row(page, 'ins-0014').locator('td').nth(5)).toHaveText(/^—?$/);
   });
 
   for (const [name, vp, theme] of [

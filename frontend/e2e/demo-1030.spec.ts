@@ -121,7 +121,7 @@ test.describe('격리 타임라인 · 종합 격리 지연', () => {
     await expect(bar.locator('[data-seg="detect"]')).toContainText('12 ms');
     await expect(bar.locator('[data-seg="evidence"]')).toContainText('295 ms');
     await expect(bar.locator('[data-seg="kill"]')).toContainText('110 ms');
-    await expect(bar.locator('[data-seg="notify"]')).toContainText('—'); // 설치 쪽은 알림 시각 없음
+    await expect(bar.locator('[data-seg="notify"]')).not.toContainText('ms'); // 설치 쪽은 알림 시각 없음(값 칸은 빈 값)
     await expect(bar.locator('[data-part="timeline-total"]')).toHaveText('격리까지 0.42초');
     await page.goto('/topology?node=c%3Apkg-reqeusts');
     const tb = page.getByTestId('topology-decision').locator('[data-testid="timeline-bar"]');
@@ -129,10 +129,10 @@ test.describe('격리 타임라인 · 종합 격리 지연', () => {
     await expect(tb.locator('[data-seg="notify"]')).toContainText('10 ms');
   });
 
-  test('대시보드 종합 「격리 지연 중앙값 N ms」 — count 0 이면 「—」', async ({ page, backend }) => {
+  test('대시보드 종합 「격리 지연 중앙값 N ms」 — count 0 이면 빈 칸(11/09 「—」 없앰)', async ({ page, backend }) => {
     await page.goto('/');
     const v = page.locator('[data-section="overview"] [data-kpi="isolation"] [data-value]');
-    await expect(v).toHaveText('—');
+    await expect(v).toHaveText('');
     await expect(page.locator('[data-section="overview"] [data-kpi="isolation"]')).toContainText('격리 지연 중앙값');
     backend.enableIsolation();
     await page.reload();
