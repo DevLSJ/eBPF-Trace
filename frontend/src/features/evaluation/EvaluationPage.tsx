@@ -15,6 +15,7 @@ import { reducedMotion } from '../../lib/motion';
 import { INSTALL_STATUS_LABEL, type EvalCandidate, type EvalModel, type EvalRuntime, type EvalScenario, type EvalStat, type EvalStatic, type Evaluation, type EvalVerdict, type InstallStatus } from '../../lib/types';
 import { ChartNote, HBars, RangeChart, type BarRow } from './charts';
 import { niceTicks, RATE_TICKS, type ColorKey, type TipLine } from './scale';
+import { meetsStaticTarget, STATIC_TARGET_TEXT } from './targets';
 import { Term, type TermKey } from './terms';
 
 // 평가(11/04 U1 — 목업 mock/shared/eval.js 확정본 · 11/04b · 11/04c) — 「이 탐지는 얼마나 맞고, 어디까지 믿을 수 있나?」
@@ -253,7 +254,7 @@ const ITEMS: { id: ItemId; group?: '정적' | '런타임'; name: string }[] = [
   { id: 'model', name: '규칙 · 모델 비교' },
   { id: 'limits', name: '결과의 한계' },
 ];
-// 상태 칩(글자 + 톤, 빨강 없음): 통과 · 주의는 기준이 있는 줄만(공격 시나리오 · 정상 설치), 규칙 우세는 모델 비교, 그 밖은 참고
+// 상태 칩(글자 + 톤, 빨강 없음): 통과 · 주의는 기준이 있는 줄만(판정 4칸 = 정적 목표치 · 공격 시나리오 · 정상 설치), 규칙 우세는 모델 비교, 그 밖은 참고
 type ChipKey = 'pass' | 'warn' | 'rule' | 'ref' | 'none';
 const CHIP: Record<ChipKey, [string, string]> = {
   pass: ['통과', 'sg-pill-ok'],
@@ -267,6 +268,7 @@ interface Summary {
   sub?: string; // 근거
   meter?: { v: number; tone: 'accent' | 'warn' }; // 비율이면 얇은 막대(0~1)
   chip: ChipKey;
+  goal?: string; // 칩 기준(툴팁 · 화면 낭독) — 판정 4칸 목표치
 }
 const NONE: Summary = { chip: 'none' };
 
@@ -313,9 +315,12 @@ function summaries(d: Evaluation): Record<ItemId, Summary> {
     out.dist = NONE;
     out.rules = NONE;
   }
-  // ③ 판정 4칸: 종합 점수(막대) · 적중률 · 탐지율
+  // ③ 판정 4칸: 종합 점수(막대) · 적중률 · 탐지율. 칩 = 정적 목표치(탐지율 · 오판율 둘 다 맞으면 통과), 값이 없으면 참고
   if (st?.confusion) {
     const mt = st.metrics ?? {};
+    const dr = mt.detectionRate ?? mt.recall;
+    const fr = mt.falsePositiveRate;
+    const judged = dr != null && fr != null;
     out.confusion = {
       value:
         mt.f1 != null ? (
@@ -326,7 +331,8 @@ function summaries(d: Evaluation): Record<ItemId, Summary> {
         ) : undefined,
       sub: hint(mt.precision != null && `적중률 ${pct(mt.precision)}`, mt.recall != null && `탐지율 ${pct(mt.recall)}`),
       meter: mt.f1 != null ? { v: mt.f1, tone: 'accent' } : undefined,
-      chip: 'ref',
+      chip: judged ? (meetsStaticTarget(dr, fr) ? 'pass' : 'warn') : 'ref',
+      goal: judged ? `목표: ${STATIC_TARGET_TEXT}` : undefined,
     };
   } else out.confusion = NONE;
 
@@ -451,7 +457,7 @@ function Row({ it, s, open, onToggle, children }: { it: (typeof ITEMS)[number]; 
           aria-expanded={open}
           aria-controls={`${id}p`}
           aria-labelledby={`${id}n`}
-          aria-describedby={`${id}s ${id}c`}
+          aria-describedby={s.goal ? `${id}s ${id}c ${id}g` : `${id}s ${id}c`}
           onClick={onToggle}
           className="eval-row"
         >
@@ -482,9 +488,14 @@ function Row({ it, s, open, onToggle, children }: { it: (typeof ITEMS)[number]; 
               )}
             </span>
           </span>
-          <span id={`${id}c`} data-chip={s.chip} className={`eval-chip sg-pill ${chipTone}`}>
+          <span id={`${id}c`} data-chip={s.chip} title={s.goal} className={`eval-chip sg-pill ${chipTone}`}>
             {chipText}
           </span>
+          {s.goal && (
+            <span id={`${id}g`} className="sg-sr-only">
+              {s.goal}
+            </span>
+          )}
         </button>
       </h2>
       <div id={`${id}p`} role="region" aria-labelledby={`${id}n`} className="eval-panel" onTransitionEnd={onEnd}>

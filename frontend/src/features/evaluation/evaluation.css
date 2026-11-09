@@ -21,10 +21,10 @@
 /* 지표 6칸 이름: 쉬운 이름이 길어 말줄임 대신 줄바꿈(단어 단위). index.css 의 .kpi-card > .kpi-name 보다 앞서게 선택자를 한 단계 높인다 */
 .kpi-card.eval-kpi > .kpi-name { white-space: normal; word-break: keep-all; line-height: 1.35; }
 
-/* 칸 머리 (?) — 용어 단추의 동그라미 모양(11/09 저녁 목록). 누르는 칸은 바깥으로 4px 넓힌다 */
+/* 칸 머리 (?) — 용어 단추의 동그라미 모양(11/09 저녁 목록). 글자는 화면 하한 12px(--fs-xs). 누르는 칸은 바깥으로 4px 넓힌다 */
 .eval-term.eval-q {
-  position: relative; display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 4px; vertical-align: 1px;
-  border: 1px solid currentColor; border-radius: 50%; color: var(--text-3); font-size: 10.5px; font-weight: 700; line-height: 1; text-decoration: none;
+  position: relative; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: 4px; vertical-align: 0;
+  border: 1px solid currentColor; border-radius: 50%; color: var(--text-3); font-size: var(--fs-xs); font-weight: 700; line-height: 1; text-decoration: none;
 }
 .eval-term.eval-q::after { content: ''; position: absolute; inset: -4px; }
 .eval-term.eval-q:hover { color: var(--accent-text); }
@@ -49,6 +49,7 @@
 .eval-item + .eval-item { border-top: 1px solid var(--line-soft); }
 /* 줄 머리 = 단추 하나(줄 전체를 누름). hover 는 표 행처럼 즉시. 포커스 링은 공통 링을 안쪽에(스크롤 칸이 바깥을 자른다 — 표 행과 같은 예외) */
 .eval-row {
+  position: relative; /* 화면 낭독 전용 글(.sg-sr-only · absolute)이 스크롤 칸 밖 main 을 넘치게 하지 않도록 단추 안에 가둔다 */
   width: 100%; min-height: 64px; padding-block: 10px; margin: 0; border: 0; background: none; color: var(--text);
   font: inherit; text-align: left; cursor: pointer;
 }

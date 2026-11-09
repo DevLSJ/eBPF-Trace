@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import './evaluation.css';
+import { STATIC_TARGET_TEXT } from './targets';
 
 // 평가 화면 용어 툴팁(11/09 사용자 결정 「평가 = 요점 3줄 + 쉬운 이름 + 용어 툴팁 + 자세한 표 접기」).
 // 점선 밑줄 단추 = 설명 있음. 마우스를 올리거나(툴팁 위로 옮겨도 유지) 키보드로 포커스하면 열리고, 벗어나거나 Esc · 스크롤이면 닫힌다.
@@ -40,7 +41,7 @@ export const GLOSSARY = {
   colState: {
     term: '상태',
     easy: '상태',
-    desc: '통과 = 기준 충족(공격 모두 탐지 · 대조군 탐지 0회, 정상 설치 위반 0건) · 주의 = 기준 미달, 펼쳐서 확인 · 규칙 우세 = 시험에서 규칙 판정의 종합 점수가 ML 모델보다 높음 · 참고 = 통과 기준이 없는 정보 · 결과 없음 = 측정 결과 파일 없음',
+    desc: `통과 = 기준 충족(공격 모두 탐지 · 대조군 탐지 0회, 정상 설치 위반 0건, 정적 ${STATIC_TARGET_TEXT}) · 주의 = 기준 미달, 펼쳐서 확인 · 규칙 우세 = 시험에서 규칙 판정의 종합 점수가 ML 모델보다 높음 · 참고 = 통과 기준이 없는 정보 · 결과 없음 = 측정 결과 파일 없음`,
   },
 } as const satisfies Record<string, Entry>;
 export type TermKey = keyof typeof GLOSSARY;
