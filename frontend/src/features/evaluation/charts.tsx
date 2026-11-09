@@ -73,13 +73,14 @@ function TipView({ tip }: { tip: Tip | null }) {
   );
 }
 
-export function Legend({ items }: { items: [string, ColorKey | 'p50' | 'band' | 'max'][] }) {
+// 범례 이름은 글자 또는 용어 단추(11/09 — Term)
+export function Legend({ items }: { items: [ReactNode, ColorKey | 'p50' | 'band' | 'max'][] }) {
   const sw = (c: ColorKey | 'p50' | 'band' | 'max') =>
     c === 'p50' ? 'size-2 rounded-full bg-accent' : c === 'band' ? 'h-2 w-3 rounded-[2px] bg-indigo-300' : c === 'max' ? 'h-2.5 w-0.5 bg-text-2' : `size-2 rounded-[2px] ${COLOR[c][1]}`;
   return (
     <div data-part="legend" className="flex flex-wrap gap-x-2.5 gap-y-1 text-xs text-text-3">
-      {items.map(([label, c]) => (
-        <span key={label} className="inline-flex items-center gap-1">
+      {items.map(([label, c], i) => (
+        <span key={i} className="inline-flex items-center gap-1">
           <i className={`inline-block ${sw(c)}`} aria-hidden />
           {label}
         </span>
@@ -118,7 +119,7 @@ export function HBars({
   rows: BarRow[];
   ticks: number[];
   tickFmt: (t: number) => string;
-  legend?: [string, ColorKey][];
+  legend?: [ReactNode, ColorKey][];
   labelW?: number;
   valueW?: number;
   minSeg?: number;
@@ -201,13 +202,13 @@ export interface RangeRow {
   lat: { p50: number; p95: number; max?: number };
   tip: TipLine[];
 }
-// 지연 범위: 행마다 0~max 선 · p50~p95 띠 · p50 점 · max 눈금
+// 지연 범위: 행마다 0~최대 선 · 중간값(p50)~95% 이내(p95) 띠 · 중간값 점 · 최대 눈금(11/09 쉬운 이름)
 export function RangeChart({ name, label, rows }: { name: string; label: string; rows: RangeRow[] }) {
   const [box, W] = useWidth();
   const [root, tip, showTip, hideTip] = useTip();
   const [on, setOn] = useState<string | null>(null);
   const rowH = 30;
-  const valueW = 64;
+  const valueW = 100; // 「95% 이내 484.6」
   const H = AXIS.t + rows.length * rowH + AXIS.b;
   const ticks = niceTicks(Math.max(1, ...rows.map((r) => r.lat.max ?? r.lat.p95)));
   const max = ticks[ticks.length - 1];
@@ -216,7 +217,7 @@ export function RangeChart({ name, label, rows }: { name: string; label: string;
   const x = (v: number) => lw + (Math.min(v, max) / max) * iw;
   return (
     <div ref={root} className="relative grid gap-1.5" data-chart={name}>
-      <Legend items={[['p50', 'p50'], ['p50 ~ p95', 'band'], ['max', 'max']]} />
+      <Legend items={[['중간값', 'p50'], ['중간값 ~ 95% 이내', 'band'], ['최대', 'max']]} />
       <div ref={box} className="relative min-w-0" style={{ height: H }}>
         {W > 0 && (
           <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} className="block">
@@ -237,7 +238,7 @@ export function RangeChart({ name, label, rows }: { name: string; label: string;
                   <line x1={x(mx)} x2={x(mx)} y1={cy - 6} y2={cy + 6} strokeWidth={2} className="stroke-text-2" />
                   <circle cx={x(L.p50)} cy={cy} r={4.5} strokeWidth={2} className="fill-accent stroke-surface" />
                   <text data-part="row-value" x={W - valueW + 8} y={cy + 4} className="num fill-text-2 text-xs">
-                    p95 {fmtNum(L.p95)}
+                    95% 이내 {fmtNum(L.p95)}
                   </text>
                   <rect
                     data-hit=""
