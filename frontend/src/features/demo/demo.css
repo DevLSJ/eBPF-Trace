@@ -5,10 +5,36 @@
 .demo-col { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .demo-col > section { flex: 1 1 auto; }
 .demo-col-body { height: 100%; min-height: 0; overflow-y: auto; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.demo-col-body[hidden] { display: none; } /* 탭 패널(11/09) — 숨긴 탭은 자리도 차지하지 않게 */
+
+/* 왼쪽: 한눈에 3줄(11/09) — 무엇을 · 잡는 규칙 · 예상 결과. 이름표 열 + 내용(줄바꿈 허용) */
+.scn-brief { flex-shrink: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
+.scn-brief dl { display: grid; gap: 5px; margin: 0; }
+.scn-brief dl > div { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.scn-brief dt { font-size: 12px; font-weight: 700; color: var(--text-3); white-space: nowrap; }
+.scn-brief dd { margin: 0; min-width: 0; font-size: 13px; line-height: 1.45; color: var(--text); word-break: keep-all; overflow-wrap: anywhere; }
+.scn-brief dd code { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.scn-brief dd .scn-expect { margin-right: 2px; }
+
+/* 왼쪽: 묶음(11/09) — 머리 = 이름 · 개수 · (접힘) 안의 이름 · 접기/펼치기. 고른 시나리오 묶음은 「선택 중」(잠김) */
+/* 3줄(위) · 시작 단추(아래)는 늘 보이고, 높이가 모자라면 묶음 목록만 스크롤(1440×900 등). 2px 여백은 포커스 링이 잘리지 않게 */
+.scn-groups { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 8px; margin: -2px; padding: 2px; }
+.scn-group { display: grid; gap: 4px; min-width: 0; }
+.scn-group-head { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 28px; padding: 2px 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer;
+  transition: background var(--t-fast) var(--ease); }
+.scn-group-head:hover:not([aria-disabled='true']) { background: var(--surface-2); }
+.scn-group-head[aria-disabled='true'] { cursor: default; }
+.scn-group-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.scn-group-name { flex-shrink: 0; font-size: 12.5px; font-weight: 700; color: var(--text-2); }
+.scn-group-count { flex-shrink: 0; min-width: 20px; padding: 0 6px; border-radius: var(--r-pill); background: var(--surface-3); color: var(--text-3); font-size: 12px; font-weight: 600; text-align: center; }
+.scn-group-peek { flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scn-group-act { flex-shrink: 0; margin-left: auto; font-size: 12px; font-weight: 600; color: var(--text-3); }
+.scn-group-head[aria-disabled='true'] .scn-group-act { color: var(--accent-text); }
 
 /* 왼쪽: 시나리오 */
-.scn-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.scn-item { width: 100%; text-align: left; display: grid; gap: 2px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; cursor: pointer;
+.scn-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.scn-list[hidden] { display: none; }
+.scn-item { width: 100%; text-align: left; display: grid; gap: 2px; padding: 7px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; cursor: pointer;
   transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
 .scn-item:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-2); }
 .scn-item.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
@@ -21,8 +47,7 @@
 .exp-isolated { background: var(--danger-soft); color: var(--danger-text); }
 .exp-passed { background: var(--ok-soft); color: var(--ok-text); }
 .scn-desc { min-width: 0; font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scn-long { margin: 0; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); font-size: 13px; line-height: 1.5; }
-.run-box { margin-top: auto; display: grid; gap: 8px; }
+.run-box { flex-shrink: 0; margin-top: auto; display: grid; gap: 8px; }
 .run-btn { height: 44px; justify-content: center; font-size: 15px; }
 .run-note { margin: 0; font-size: 12.5px; color: var(--text-3); line-height: 1.45; }
 .demo-error { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-left: 4px solid var(--danger); border-radius: var(--r-sm); background: var(--danger-soft); color: var(--danger-text); font-size: 13px; }
@@ -32,7 +57,7 @@
 .flow > li { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 14px; padding-bottom: 16px; }
 .flow > li:not(:last-child)::before { content: ''; position: absolute; left: 15px; top: 34px; bottom: 2px; width: 2px; border-radius: 1px; background: var(--border); transition: background var(--t-slow) var(--ease); }
 .flow > li[data-state='done']:not(:last-child)::before { background: var(--ok); }
-.flow-dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-3); color: var(--text-2); font-size: 13px; font-weight: 700;
+.flow .flow-dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-3); color: var(--text-2); font-size: 13px; font-weight: 700;
   transition: background var(--t-base) var(--ease), color var(--t-base) var(--ease); }
 .flow > li[data-state='done'] .flow-dot { background: var(--ok); color: var(--text-inverse); }
 .flow > li[data-state='active'] .flow-dot { background: var(--accent); color: var(--text-inverse); }
@@ -45,7 +70,7 @@
 .flow-delta { min-width: 84px; text-align: right; font-size: 13px; font-weight: 600; color: var(--accent-text); }
 .flow-body { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 13.5px; color: var(--text-2); }
 .flow-body > .ev-box { flex: 1 1 100%; }
-.tone-ok { color: var(--ok-text); }
+.flow-body .tone-ok { color: var(--ok-text); } /* 흐름 그림 노드의 .tone-ok(FlowHero 톤)와 섞이지 않게 */
 .ev-box { display: grid; gap: 6px; min-width: 0; }
 .ev-count { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .ev-count b { font-size: 22px; font-weight: 700; color: var(--text); }
@@ -112,6 +137,30 @@
 .why-links { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; }
 .why-link { font-size: 13px; }
 
+/* 오른쪽 탭(11/09) — 패널 머리 오른쪽의 분할 단추. 고른 탭 = 카드 바탕 + 강조 글자(선택 표시) */
+.demo-tabs { display: inline-flex; padding: 2px; border-radius: calc(var(--r-sm) + 2px); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--border); }
+.demo-tab { padding: 4px 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); font: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background var(--t-panel) var(--ease-panel), color var(--t-panel) var(--ease-panel), box-shadow var(--t-panel) var(--ease-panel); }
+.demo-tab:hover:not(.on) { color: var(--text); }
+.demo-tab.on { background: var(--surface); color: var(--accent-text); box-shadow: var(--sh-1), 0 0 0 1px var(--border); }
+.demo-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* 「흐름 그림」 탭(11/09) — 위 = 모드 칩(대기 · 실행 중 · 결과) + 한 줄, 가운데 = FlowHero 세로, 끝나면 「판정 근거 보기」 */
+.flow-mode { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; font-size: 13px; color: var(--text-2); }
+.flow-mode-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-mode-chip { flex-shrink: 0; padding: 1px 8px; border-radius: var(--r-pill); font-size: 12px; font-weight: 700; background: var(--surface-3); color: var(--text-2); }
+.flow-mode-chip.mode-live { background: var(--accent-soft); color: var(--accent-text); }
+.flow-mode-chip.mode-done.oc-isolated, .flow-mode-chip.mode-done.oc-failed { background: var(--danger-soft); color: var(--danger-text); }
+.flow-mode-chip.mode-done.oc-passed { background: var(--ok-soft); color: var(--ok-text); }
+.flow-mode-chip.mode-done.oc-detected, .flow-mode-chip.mode-done.oc-warned, .flow-mode-chip.mode-done.oc-timeout, .flow-mode-chip.mode-done.oc-refused { background: var(--warn-soft); color: var(--warn-text); }
+.demo-flow-body .flow-hero { gap: 12px; }
+.demo-flow-body .flow-node { padding: 10px 14px; }
+.demo-flow-body .flow-title { font-size: 14.5px; }
+.demo-flow-body .flow-sub { font-size: 12.5px; }
+.demo-flow-body .flow-point { min-height: 0; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); font-size: 13.5px; line-height: 1.45; color: var(--text); }
+.demo-flow-body .flow-point-step { font-size: 12px; }
+.flow-done { display: flex; justify-content: flex-end; }
+
 @media (max-width: 1279px) and (min-width: 768px) {
   .demo-page { grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) minmax(300px, 360px); }
 }
@@ -120,6 +169,7 @@
   /* 열은 내용 높이 그대로(패널 몸통 min-height 0 이 grid 자동 행을 줄이지 않게) */
   .demo-col { display: block; min-height: auto; }
   .demo-col-body { height: auto; overflow: visible; }
+  .scn-groups { flex: none; overflow: visible; }
   .ev-lines li { grid-template-columns: auto auto minmax(0, 1fr); }
   .ev-lines li .ev-comm, .ev-lines li > :last-child { display: none; }
   .flow-delta { min-width: 0; }
