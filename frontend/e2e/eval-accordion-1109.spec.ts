@@ -322,7 +322,7 @@ test.describe('평가 접는 목록(11/09 저녁)', () => {
       ['', '런타임 결과 없음'],
     ]);
     let s = await sums(page);
-    expect(s.map((x) => x[4])).toEqual(['참고', '참고', '참고', '결과 없음', '결과 없음', '결과 없음', '결과 없음', '참고']);
+    expect(s.map((x) => x[4])).toEqual(['참고', '참고', '주의', '결과 없음', '결과 없음', '결과 없음', '결과 없음', '참고']); // ③ = 정적 목표치(탐지율 68% < 80%)
     for (const x of s.slice(3, 7)) expect([x[2], x[3], x[5], x[6]], x[0]!).toEqual(['', '', 'none', null]);
     expect(s[7].slice(2, 4)).toEqual(['8건', '정적 8']);
     await row(page, 'latency').click();
