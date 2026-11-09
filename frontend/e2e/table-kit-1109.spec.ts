@@ -971,3 +971,35 @@ test.describe('㉔ 화면 설명 저장소(lib/screenCopy.ts)', () => {
     expect(m.screenNote('없는-화면')).toBe('');
   });
 });
+
+test.describe('㉕ 꺼진 단추 모양 — aria-disabled 는 진짜 disabled 와 같다(평소 · 마우스 올림, 11/09 메인 실측)', () => {
+  test('sg-btn 주 · 보조 · 위험 단추: aria-disabled="true" 의 바탕 · 글자 · 테두리 · 커서가 :disabled 와 같고 마우스를 올려도 그대로', async ({ page, backend }) => {
+    void backend;
+    await page.goto('/audit');
+    await expect(page.locator('main')).toBeVisible();
+    for (const cls of ['sg-btn sg-btn-primary', 'sg-btn sg-btn-secondary', 'sg-btn sg-btn-danger']) {
+      await page.evaluate((c) => {
+        for (const kind of ['real', 'aria']) {
+          const b = document.createElement('button');
+          b.className = c;
+          b.textContent = '단추';
+          b.dataset.zz = kind;
+          if (kind === 'real') b.disabled = true;
+          else b.setAttribute('aria-disabled', 'true');
+          document.body.appendChild(b);
+        }
+      }, cls);
+      const look = (kind: string) =>
+        page.locator(`button[data-zz="${kind}"]`).last().evaluate((e) => {
+          const s = getComputedStyle(e);
+          return [s.backgroundColor, s.color, s.borderTopColor, s.cursor, s.boxShadow].join(' | ');
+        });
+      const real = await look('real');
+      expect(await look('aria'), cls).toBe(real);
+      await page.locator('button[data-zz="aria"]').last().hover();
+      await expect.poll(() => look('aria'), { message: `${cls} hover` }).toBe(real);
+      await page.mouse.move(0, 0);
+      await page.evaluate(() => document.querySelectorAll('button[data-zz]').forEach((b) => b.remove()));
+    }
+  });
+});
