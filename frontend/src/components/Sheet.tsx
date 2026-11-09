@@ -3,13 +3,16 @@ import { useCallback, useContext, useEffect, useId, useRef, useState, type Keybo
 import { createPortal } from 'react-dom';
 import { dialogOpen, typingTarget } from '../lib/shell';
 import { SheetHostContext } from './header-slot';
+import { Skeleton } from './list/ListStates';
 import type { SheetNav } from './sheet-nav';
 import './table-kit.css';
 
 export type { SheetNav } from './sheet-nav';
 
 // 상세 패널 [11/05 결정 — 목업 sheet-1105 와 같은 모습]: 표 옆 칸이 아니라 본문 위에 겹쳐 오른쪽에서 미끄러져 나온다.
-//   - 뒤는 살짝 어둡게(누르면 닫힘) · Esc · ✕ 닫기 · 닫힐 때도 미끄러져 나감
+//   - 뒤는 살짝 어둡게(누르면 닫힘) · Esc · ✕ 닫기
+//   - 11/09 움직임(SPEC-1109 §2 · 참고 제품 A3 · B1 · B5): 열림만 효과 — 뒤 어둡게 120ms 먼저 · 오른쪽에서 밀려 들어옴 180ms(들어옴 곡선).
+//     닫힘은 효과 없이 바로. 열린 채 다른 줄을 고르면 다시 밀려 들어오지 않고 내용만 바뀐다 — 새 내용을 받는 동안 loading 이면 시트 안 스켈레톤
 //   - size: 'wide' = 본문 70% · 최대 1080px(공급망 검사 · 설치 검사), 'normal' = 720px(이벤트 · 감사 로그 · 토폴로지). 768 미만은 전체 화면
 //   - nav: 보이는 목록(현재 쪽) 안의 앞뒤 — 머리 「n / m ‹ ›」 · ↑↓, 닫지 않고 넘긴다
 //   - 열린 항목은 URL(?id=)에 남는다(화면 쪽). 같은 kind 가 방금 닫히고 다시 열리면(key 로 다시 그리기 · 이전/다음) 애니메이션을 되풀이하지 않는다
@@ -19,13 +22,10 @@ export type { SheetNav } from './sheet-nav';
 //   - 모든 시트: aria-modal · 열면 초점을 시트 안으로(고른 탭, 없으면 시트) · Tab 은 시트 안에서만 · 닫으면 연 자리로 초점
 //     (시트 밖 입력칸에서 쓰는 중이면 초점을 빼앗지 않는다)
 const lastGone: { kind: string; at: number } = { kind: '', at: 0 };
-// 나가는 애니메이션 길이 = --t-base(11/04f 원칙: 모션 토큰)
-const baseMs = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--t-base')) || 200;
 // 패널 밖에 열린 대화상자 · 메뉴(도우미 · 알림 · 계정 메뉴) — 그쪽이 Esc 를 먼저 받는다
 // 11/09: 펼친 선택 상자 · 칸 고르기([data-overlay])도 — 그것부터 닫는다
 const otherOverlay = () =>
   [...document.querySelectorAll('[role="dialog"], [role="menu"], [data-overlay]')].some((el) => !el.closest('.sg-sheet-layer') && el.getClientRects().length > 0);
-const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]';
 const focusables = (root: HTMLElement) =>
   [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => x.tabIndex >= 0 && x.getClientRects().length > 0 && !x.closest('dialog'));
@@ -48,6 +48,7 @@ export function Sheet({
   tabs,
   tab,
   onTab,
+  loading,
 }: {
   kind: string;
   title: ReactNode;
@@ -61,31 +62,28 @@ export function Sheet({
   tabs?: SheetTab[];
   tab?: string | null;
   onTab?: (key: string) => void;
+  // 새 항목 내용을 받는 중 — 본문 자리에 스켈레톤(머리 · 탭은 그대로)
+  loading?: boolean;
 }) {
   const host = useContext(SheetHostContext);
   const [still] = useState(() => lastGone.kind === kind && Date.now() - lastGone.at < 120);
-  const [closing, setClosing] = useState(false);
-  const closingRef = useRef(false);
+  const closedRef = useRef(false);
   const onCloseRef = useRef(onClose);
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+  // key 로 다시 그려질 때(화면이 앞뒤 넘김에 key 를 준 경우)만 「방금 사라짐」을 남긴다 — 사용자가 닫은 뒤 다시 열면 새로 밀려 들어온다
   useEffect(
     () => () => {
-      lastGone.kind = kind;
+      lastGone.kind = closedRef.current ? '' : kind;
       lastGone.at = Date.now();
     },
     [kind],
   );
   const close = useCallback(() => {
-    if (closingRef.current) return;
-    if (reduced()) return onCloseRef.current();
-    closingRef.current = true;
-    setClosing(true);
-    setTimeout(() => {
-      lastGone.kind = ''; // 닫고 나서 다시 여는 것은 새로 미끄러져 들어온다
-      onCloseRef.current();
-    }, baseMs());
+    if (closedRef.current) return;
+    closedRef.current = true;
+    onCloseRef.current();
   }, []);
   const navRef = useRef(nav);
   useEffect(() => {
@@ -156,7 +154,7 @@ export function Sheet({
   const label = typeof title === 'string' ? title : '상세';
   const layer = (
     <div
-      className={`sg-sheet-layer${still ? ' still' : ''}${closing ? ' closing' : ''}`}
+      className={`sg-sheet-layer${still ? ' still' : ''}`}
       data-layer={kind}
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
@@ -243,7 +241,7 @@ export function Sheet({
           className="sg-sheet-body min-h-0 flex-1 overflow-y-auto"
           {...(tabs?.length && curTab ? { role: 'tabpanel', id: `${uid}-panel`, 'aria-labelledby': tabId(curTab) } : {})}
         >
-          {children}
+          {loading ? <Skeleton rows={5} /> : children}
         </div>
       </aside>
     </div>

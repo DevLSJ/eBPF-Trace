@@ -3,10 +3,13 @@
 // window.__tk.mount('list' | 'modal', props) → Promise<{ unmount() }>. 무대는 화면 전체를 덮는 고정 상자 [data-tk-stage](z 65 — 도우미 60 위, 펼침 상자 70 아래).
 // 'list' 는 BrowserRouter 로 진짜 주소 쿼리를 쓴다(앱 라우터는 popstate 만 듣기에 서로 건드리지 않는다).
 /* eslint-disable react-refresh/only-export-components */
-import { createElement, useState, type ReactNode } from 'react';
+import { createElement, useMemo, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { GridCells, SortHead, StatusPill, TablePager } from '../src/components/DataTable';
+import { GridCells, SortHead, StatusPill, TablePager, TableScroll } from '../src/components/DataTable';
+import { fmtLog } from '../src/components/list/cell-format';
+import { TimeText, TwoLine } from '../src/components/list/cells';
+import { rowState } from '../src/components/list/hooks';
 import { FilterBar, SearchField } from '../src/components/list/SearchField';
 import { downloadCSV } from '../src/components/list/csv';
 import { Modal } from '../src/components/Modal';
@@ -15,10 +18,10 @@ import { Sheet } from '../src/components/Sheet';
 import { sheetNav } from '../src/components/sheet-nav';
 import { TableToolbar } from '../src/components/TableToolbar';
 import { useListQuery } from '../src/hooks/useListQuery';
-import { useTableKit, type Column } from '../src/hooks/useTableKit';
+import { COL_W, useTableKit, type Column } from '../src/hooks/useTableKit';
 import { useUnsaved } from '../src/hooks/useUnsaved';
 
-const K = { GridCells, SortHead, StatusPill, TablePager, FilterBar, SearchField, downloadCSV, Modal, Select, Sheet, sheetNav, TableToolbar, useListQuery, useTableKit, useUnsaved };
+const K = { GridCells, rowState, SortHead, StatusPill, TablePager, TableScroll, TwoLine, TimeText, FilterBar, SearchField, downloadCSV, Modal, Select, Sheet, sheetNav, TableToolbar, useListQuery, useTableKit, useUnsaved };
 const ready = async () => K;
 
 // ── 목록 무대 ──
@@ -33,6 +36,7 @@ interface Row {
   owner: string;
   hits: number;
   note: string;
+  seen: string;
 }
 const pad = (n: number) => String(n).padStart(2, '0');
 const ROWS: Row[] = Array.from({ length: 45 }, (_, i) => ({
@@ -42,22 +46,28 @@ const ROWS: Row[] = Array.from({ length: 45 }, (_, i) => ({
   action: ACTIONS[i % 3],
   owner: OWNERS[i % 12],
   hits: (i * 7) % 23,
-  note: `메모 ${pad(i + 1)}`,
+  note: i % 4 === 3 ? '' : `메모 ${pad(i + 1)}`, // 빈 값 → 「—」
+  seen: '2026-11-09T03:04:05Z',
 }));
 
-function columns(): Column<Row>[] {
+function columns(picked: Set<string>, toggle: (id: string) => void): Column<Row>[] {
   return [
-    { key: 'pick', label: '', fixed: true, cell: (r: Row) => <input type="checkbox" aria-label={`${r.name} 고르기`} onClick={(e) => e.stopPropagation()} /> },
+    {
+      key: 'pick',
+      label: '',
+      fixed: true,
+      cell: (r: Row) => <input type="checkbox" aria-label={`${r.name} 고르기`} checked={picked.has(r.id)} onChange={() => toggle(r.id)} onClick={(e) => e.stopPropagation()} />,
+    },
     { key: 'name', label: '정책', sort: (r: Row) => r.name, cell: (r: Row) => r.name },
     { key: 'kind', label: '종류', sort: (r: Row) => r.kind, cell: (r: Row) => r.kind },
     { key: 'action', label: '판정', sort: (r: Row) => r.action, cell: (r: Row) => r.action },
     { key: 'owner', label: '담당', sort: (r: Row) => r.owner, cell: (r: Row) => r.owner, maxWidth: 240 },
     { key: 'hits', label: '위반', num: true, sort: (r: Row) => r.hits, cell: (r: Row) => r.hits },
     { key: 'note', label: '메모', hidden: true, cell: (r: Row) => r.note, csv: (r: Row) => r.note },
-    { key: 'act', label: '', fixed: true, cell: () => <button type="button" aria-label="행 동작" onClick={(e) => e.stopPropagation()}>…</button> },
+    { key: 'seen', label: '시각', hidden: true, width: COL_W.time, sort: (r: Row) => r.seen, cell: (r: Row) => <TimeText value={r.seen} kind="log" />, csv: (r: Row) => fmtLog(r.seen) },
+    { key: 'act', label: '', fixed: true, stick: 'end', cell: () => <button type="button" aria-label="행 동작" onClick={(e) => e.stopPropagation()}>…</button> },
   ];
 }
-const COLS = columns();
 const TABS = [
   { key: 'detail', label: '상세' },
   { key: 'blocks', label: '차단 이력', count: 3 },
@@ -72,8 +82,23 @@ function ListDemo({ grid }: { grid: string }) {
     sortKeys: ['name', 'kind', 'action', 'owner', 'hits'],
     tabs: TABS.map((t) => t.key),
   });
-  const kit = K.useTableKit({ columns: COLS, grid, query: lq.table });
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const cols = useMemo(() => columns(picked, (id) => setPicked((s) => (s.has(id) ? new Set([...s].filter((x) => x !== id)) : new Set([...s, id])))), [picked]);
+  const kit = K.useTableKit({ columns: cols, grid, query: lq.table });
   const [refreshes, setRefreshes] = useState(0);
+  // 재조회(1.5초) · 시트 안 새 내용 받기(0.5초) 흉내 — 줄 · 시트는 그대로 둔다
+  const [refreshing, setRefreshing] = useState(false);
+  const [sheetLoading, setSheetLoading] = useState(false);
+  const refresh = () => {
+    setRefreshes((n) => n + 1);
+    setRefreshing(true);
+    window.setTimeout(() => setRefreshing(false), 1500);
+  };
+  const go = (id: string) => {
+    lq.open(id);
+    setSheetLoading(true);
+    window.setTimeout(() => setSheetLoading(false), 500);
+  };
   const f = lq.filters;
   const list = ROWS.filter((r) => (!f.q || r.name.includes(f.q)) && (!f.kind || r.kind === f.kind) && (!f.action || r.action === f.action) && (!f.owner || r.owner === f.owner));
   const view = kit.view(list);
@@ -88,19 +113,19 @@ function ListDemo({ grid }: { grid: string }) {
         <K.Select name="owner" label="담당" value={f.owner} options={OWNERS.map((v) => ({ value: v, label: v }))} onChange={(owner) => lq.setFilters({ owner })} />
       </K.FilterBar>
       <div className="sg-card flex min-h-0 flex-1 flex-col overflow-hidden">
-        <K.TableToolbar name="demo" total={list.length} kit={kit} onRefresh={() => setRefreshes((n) => n + 1)} onExport={() => K.downloadCSV('tk-demo.csv', kit.csv(list))} />
-        <div className="min-h-0 flex-1 overflow-auto" data-testid="tk-scroll">
+        <K.TableToolbar name="demo" total={list.length} kit={kit} onRefresh={refresh} refreshing={refreshing} onExport={() => K.downloadCSV('tk-demo.csv', kit.csv(list))} />
+        <K.TableScroll className="min-h-0 flex-1 overflow-auto" testId="tk-scroll">
           <table className="sg-table" data-table="demo">
             <K.SortHead kit={kit} />
             <tbody>
               {view.rows.map((r) => (
-                <tr key={r.id} data-row={r.id} tabIndex={0} aria-selected={r.id === lq.id} onClick={() => lq.open(r.id)} className="cursor-pointer">
-                  <K.GridCells kit={kit} row={r} />
+                <tr key={r.id} data-row={r.id} tabIndex={0} {...K.rowState({ open: r.id === lq.id, checked: picked.has(r.id) })} onClick={() => lq.open(r.id)} className="cursor-pointer">
+                  <K.GridCells kit={kit} row={r} bar={r.action === 'kill' ? 'danger' : null} />
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </K.TableScroll>
         <K.TablePager name="demo" total={view.total} from={view.from} to={view.to} page={view.page} size={kit.size} onPage={kit.setPage} onSize={kit.setSize} />
       </div>
       {cur && (
@@ -112,11 +137,17 @@ function ListDemo({ grid }: { grid: string }) {
           tabs={TABS}
           tab={lq.tab}
           onTab={lq.setTab}
-          nav={K.sheetNav(ids, cur.id, (id) => lq.open(id))}
+          nav={K.sheetNav(ids, cur.id, go)}
           onClose={lq.close}
+          loading={sheetLoading}
         >
           <div data-part="tab-body" data-tab-body={lq.tab}>
             <p>{lq.tab} 내용</p>
+            <K.TwoLine data-testid="two" top={cur.name} sub={cur.id} />
+            <p>
+              <K.TimeText data-testid="t-log" value={cur.seen} kind="log" /> · <K.TimeText data-testid="t-status" value={cur.seen} kind="status" /> ·{' '}
+              <K.TimeText data-testid="t-day" value={cur.seen} kind="day" />
+            </p>
             <button type="button" data-testid="inside-1">안쪽 단추 1</button>
             <input aria-label="안쪽 칸" />
             <button type="button" data-testid="inside-2">안쪽 단추 2</button>

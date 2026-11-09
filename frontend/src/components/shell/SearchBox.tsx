@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useStream } from '../../hooks/stream-context';
 import { api } from '../../lib/api';
 import { buildIndex, dialogOpen, searchIndex, searchKey, SEARCH_TYPE_KO, typingTarget, type SearchSources } from '../../lib/shell';
+import '../table-kit.css';
 
 // E. 사이드바 통합 검색(10/20 확정) — 목업 shared/shell-plus.js searchBox.
 // 패키지 · 컨테이너 · 규칙 id · 도메인 · 검사를 화면이 이미 쓰는 목록 API(설치 검사 · 공급망 검사 · 정책 · 차단 목록)와
@@ -127,7 +128,7 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
           id="shell-search-results"
           data-part="search-results"
           role="listbox"
-          className="absolute top-full right-0 left-0 z-50 mt-1 max-h-[min(26rem,calc(100vh-8rem))] min-w-72 overflow-y-auto rounded-lg border border-border bg-raised py-1 text-slate-800 shadow-[var(--sh-2)]"
+          className="tk-pop-in absolute top-full right-0 left-0 z-50 mt-1 max-h-[min(26rem,calc(100vh-8rem))] min-w-72 overflow-y-auto rounded-lg border border-border bg-raised py-1 text-slate-800 shadow-[var(--sh-2)]"
         >
           {items.length === 0 ? (
             <p className="px-3 py-2 text-xs text-slate-400">찾는 것이 없습니다</p>

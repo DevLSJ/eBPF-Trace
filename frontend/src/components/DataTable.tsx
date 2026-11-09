@@ -1,7 +1,10 @@
 import { ChevronDown, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown } from 'lucide-react';
-import { useRef, useState, type KeyboardEvent as RKeyboardEvent, type PointerEvent as RPointerEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type HTMLAttributes, type KeyboardEvent as RKeyboardEvent, type PointerEvent as RPointerEvent, type ReactNode } from 'react';
 import { COL_MAX, COL_MIN, COL_STEP, colMovable, colName, PAGE_SIZES, type Column, type SortState, type TableKit } from '../hooks/useTableKit';
 import { fmtNum } from '../lib/format';
+import { barStyle, type RowBar } from './list/hooks';
+import { isEmptyValue } from './list/cell-format';
+import { Dash } from './list/cells';
 import { announce } from './popover';
 import './table-kit.css';
 
@@ -9,7 +12,9 @@ import './table-kit.css';
 //   useTableKit  머리 클릭(키보드 Enter) 정렬(오름 → 내림) · 쪽 나누기(페이지당 20 · 50 · 100) · ?id= 로 들어온 행이 있는 쪽(reveal)
 //   SortHead     <thead> — 머리 sticky 42 · 회색 바탕 · 12/600, 정렬되는 칸은 버튼 + 꺾쇠(11/09: 늘 보임 · 정렬 중인 칸만 주 색) + aria-sort
 //                kit 을 주면(11/09) 보이는 칸 · 순서 · 폭을 kit 에서 읽고, 머리 경계 끌기(폭) · 머리 끌기(순서)를 켠다
-//   GridCells    kit.cols 순서대로 <td> (Column.cell · cellClass · 폭)
+//   GridCells    kit.cols 순서대로 <td> (Column.cell · cellClass · 폭 · 빈 값 「—」 · 줄 끝 고정 칸), bar = 첫 칸 왼쪽 3px 의미 막대(경고 · 위험만)
+//   rowState     (list/hooks.ts) 행 상태(11/09): 고른 줄(checked) · 열린 줄(open) = 같은 연한 강조 바탕, 열린 줄만 왼쪽 3px 주 색 · hover = 표 hover 회색 · 전환 0 · 흐리게 하지 않음
+//   TableScroll  표 스크롤 칸 — 가로 스크롤이 남았을 때만 data-hscroll(줄 끝 고정 칸 그림자)
 //   TablePager   아래 쪽 넘김(참고 대시보드, 11/05) 「총 45건 · 1/3 페이지」 ··· 「20개씩▾ |‹ ‹ 1 2 3 › ›|」(채움 칸 밖에 둔다). total 을 모르면(옛 응답) 「1–20 · 1 페이지」 + 이전/다음만
 //   BusyBar      재조회 때 머리 위 2px 진행 띠(이전 행은 그대로 둔다)
 //   StatusPill   상태 배지 — 27 · 12.5/750 · 톤 테두리 · 옅은 배경(참고 대시보드)
@@ -28,7 +33,7 @@ function SortIco({ dir }: { dir: Dir }) {
   );
 }
 const cellClass = <T,>(c: Column<T>, sized: boolean, extra?: string) =>
-  [c.num && 'num-col', c.fill && 'tk-fill', c.short && 'tk-short', sized && 'tk-sized', extra].filter(Boolean).join(' ') || undefined;
+  [c.num && 'num-col', c.fill && 'tk-fill', c.short && 'tk-short', sized && 'tk-sized', c.stick === 'end' && 'tk-stick-end', extra].filter(Boolean).join(' ') || undefined;
 const sizeStyle = (w: number | undefined) => (w === undefined ? undefined : { width: w, minWidth: w, maxWidth: w });
 
 export function SortHead<T>({ columns, sort, onSort, kit }: { columns?: Column<T>[]; sort?: SortState; onSort?: (key: string) => void; kit?: TableKit<T> }) {
@@ -142,7 +147,7 @@ export function SortHead<T>({ columns, sort, onSort, kit }: { columns?: Column<T
               scope="col"
               data-col={c.key}
               data-drop={drop?.key === c.key ? drop.side : undefined}
-              className={[c.num && 'num-col', c.short && 'tk-short', w !== undefined && 'tk-sized', movable && 'tk-movable'].filter(Boolean).join(' ') || undefined}
+              className={[c.num && 'num-col', c.short && 'tk-short', w !== undefined && 'tk-sized', movable && 'tk-movable', c.stick === 'end' && 'tk-stick-end'].filter(Boolean).join(' ') || undefined}
               style={sizeStyle(w)}
               aria-sort={c.sort ? (dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none') : undefined}
               onPointerDown={movable ? (e) => startMove(e, c.key) : undefined}
@@ -196,19 +201,52 @@ export function SortHead<T>({ columns, sort, onSort, kit }: { columns?: Column<T
   );
 }
 
-// kit.cols 순서 · 폭 그대로 행의 칸을 그린다(Column.cell 이 없으면 빈 칸)
-export function GridCells<T>({ kit, row }: { kit: TableKit<T>; row: T }) {
+// kit.cols 순서 · 폭 그대로 행의 칸을 그린다(Column.cell 이 없거나 빈 값이면 이름 있는 칸은 「—」)
+export function GridCells<T>({ kit, row, bar }: { kit: TableKit<T>; row: T; bar?: RowBar }) {
   return (
     <>
-      {kit.cols.map((c) => {
+      {kit.cols.map((c, i) => {
         const w = kit.width(c.key);
+        const v = c.cell?.(row);
+        const style = { ...sizeStyle(w), ...(i === 0 ? barStyle(bar) : undefined) };
         return (
-          <td key={c.key} data-col={c.key} className={cellClass(c, w !== undefined, c.cellClass)} style={sizeStyle(w)}>
-            {c.cell?.(row)}
+          <td key={c.key} data-col={c.key} className={cellClass(c, w !== undefined, c.cellClass)} style={Object.keys(style).length ? style : undefined}>
+            {colName(c) !== null && isEmptyValue(v) ? <Dash /> : v}
           </td>
         );
       })}
     </>
+  );
+}
+
+// 표를 감싸는 스크롤 칸 — 가로로 더 밀 수 있을 때만 data-hscroll(줄 끝 고정 칸의 왼쪽 그림자), 크기 · 칸 폭 · 스크롤이 바뀌면 다시 잰다
+export function TableScroll({ children, testId, ...rest }: { children: ReactNode; testId?: string } & HTMLAttributes<HTMLDivElement>) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setMore(el.scrollWidth > el.clientWidth + 1 && el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    const ro = new ResizeObserver(check);
+    const watch = () => {
+      ro.disconnect();
+      ro.observe(el);
+      for (const k of el.children) ro.observe(k);
+    };
+    watch();
+    const mo = new MutationObserver(watch);
+    mo.observe(el, { childList: true });
+    el.addEventListener('scroll', check, { passive: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+      el.removeEventListener('scroll', check);
+    };
+  }, []);
+  return (
+    <div ref={ref} data-testid={testId} data-hscroll={more ? '' : undefined} {...rest}>
+      {children}
+    </div>
   );
 }
 
@@ -302,9 +340,9 @@ export function TablePager({
   );
 }
 
-export function BusyBar({ on }: { on: boolean }) {
+export function BusyBar({ on, className }: { on: boolean; className?: string }) {
   return (
-    <div className="tk-busy" data-part="busy" hidden={!on} aria-hidden>
+    <div className={`tk-busy${className ? ` ${className}` : ''}`} data-part="busy" hidden={!on} aria-hidden>
       <i />
     </div>
   );

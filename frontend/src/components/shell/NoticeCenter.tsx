@@ -7,6 +7,7 @@ import { useStream } from '../../hooks/stream-context';
 import { api } from '../../lib/api';
 import { computeNotices, loadJSON, NOTICE_READ_KEY, saveJSON, type Notice } from '../../lib/shell';
 import type { Proposal } from '../../lib/types';
+import '../table-kit.css';
 
 // C. 알림 센터(상단 종, 10/20 확정) — 목업 shared/shell-plus.js bellCenter.
 // 판정 대기 · 적용하지 않은 제안 · 실시간 연결 끊김 · 도메인 판단 꺼짐 · dry-run · 알림 발송 실패 · 라이선스 30일 이하/만료 · 새 위반을 데이터로 계산한다.
@@ -124,7 +125,7 @@ export function NoticeCenter() {
           data-part="notices"
           role="dialog"
           aria-label="알림 센터"
-          className="absolute top-full right-0 z-50 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-raised shadow-[var(--sh-2)]"
+          className="tk-pop-in absolute top-full right-0 z-50 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-raised shadow-[var(--sh-2)]"
         >
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
             <b className="text-sm">알림</b>

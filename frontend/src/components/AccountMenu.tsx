@@ -79,7 +79,7 @@ export function AccountMenu() {
                 btn.current?.focus();
               }
             }}
-            className="absolute top-[calc(100%+6px)] right-0 z-40 grid min-w-40 rounded-lg border border-border bg-raised p-1 shadow-[var(--sh-2)]"
+            className="tk-pop-in absolute top-[calc(100%+6px)] right-0 z-40 grid min-w-40 rounded-lg border border-border bg-raised p-1 shadow-[var(--sh-2)]"
           >
             {[
               ['내 정보', () => setDialog('profile')] as const,

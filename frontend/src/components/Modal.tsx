@@ -1,7 +1,7 @@
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { errorText, isUnsupported } from '../lib/api';
-
+import { ActionButton } from './ActionButton';
 import './table-kit.css';
 
 // 모달 · 확인 대화상자 — 목업 shared/ui-kit.js 의 modal · confirmDialog 를 옮긴 것(W16).
@@ -11,7 +11,8 @@ import './table-kit.css';
 //        두 칸이 따로 스크롤 · 머리(제목 · ✕) · 바닥 버튼 줄(위 선) · 바깥 클릭으로 닫히지 않음(모든 크기 공통) · 768 미만은 1단으로 쌓음
 //   미저장 경고: confirmClose(xl 은 기본 켬)면 노란 띠 대신 확인 창 「계속 편집 / 버리고 닫기」. 값 비교는 hooks/useUnsaved.ts
 //   foot 에 함수를 주면 (close) => 단추 — 「취소」가 ✕ · Esc 와 같은 길(미저장 경고)로 닫힌다
-//   busy 동안은 ✕ · Esc · 취소로 닫히지 않는다(저장 중)
+//   busy 동안은 ✕ · Esc · 취소로 닫히지 않는다(저장 중 — ✕ 는 aria-disabled + 사유)
+//   움직임(11/09 SPEC-1109 §2 · 참고 제품 B2): 뒤 어둡게만 150ms(.tk-dialog::backdrop), 창 상자는 움직이지 않는다 — 모든 크기 · 확인 창 공통
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -114,14 +115,14 @@ export function Modal({
           tryClose();
         }}
         onKeyDown={onKeyDown}
-        className="tk-modal-xl m-auto rounded-[var(--r-xl)] border border-border bg-raised p-0 text-text shadow-[var(--sh-2)] backdrop:bg-black/50"
+        className="tk-dialog tk-modal-xl m-auto rounded-[var(--r-xl)] border border-border bg-raised p-0 text-text shadow-[var(--sh-2)] backdrop:bg-black/50"
       >
         <div className="tk-xl">
           <header className="tk-xl-head">
             <h3 className="min-w-0 flex-1 truncate text-base font-semibold">{title}</h3>
-            <button type="button" aria-label="닫기" onClick={tryClose} disabled={busy} className="rounded p-1 text-text-3 hover:bg-surface-2 hover:text-text">
+            <ActionButton aria-label="닫기" reason={busy && '저장 중'} onClick={tryClose} className="tk-icon-btn">
               <X className="size-4" aria-hidden />
-            </button>
+            </ActionButton>
           </header>
           <div className="tk-xl-body" data-part="modal-body" data-two={side != null ? '' : undefined}>
             <div className="tk-xl-main" data-part="modal-main">
@@ -154,7 +155,7 @@ export function Modal({
         tryClose();
       }}
       onKeyDown={onKeyDown}
-      className={`m-auto rounded-[var(--r-xl)] border border-border bg-raised p-0 text-text shadow-[var(--sh-2)] backdrop:bg-black/50 ${sz === 'md' ? 'w-[40rem]' : 'w-[28rem]'} max-w-[calc(100vw-2rem)]`}
+      className={`tk-dialog m-auto rounded-[var(--r-xl)] border border-border bg-raised p-0 text-text shadow-[var(--sh-2)] backdrop:bg-black/50 ${sz === 'md' ? 'w-[40rem]' : 'w-[28rem]'} max-w-[calc(100vw-2rem)]`}
     >
       <div className="grid gap-4 p-5">
         <div className="flex items-center justify-between gap-3">
@@ -215,7 +216,7 @@ function UnsavedAsk({ onKeep, onDiscard }: { onKeep: () => void; onDiscard: () =
         onKeep();
       }}
       onKeyDown={(e) => e.stopPropagation()}
-      className="tk-ask m-auto rounded-[var(--r-xl)] border border-border bg-raised p-0 text-text shadow-[var(--sh-2)] backdrop:bg-black/40"
+      className="tk-dialog tk-ask m-auto rounded-[var(--r-xl)] border border-border bg-raised p-0 text-text shadow-[var(--sh-2)] backdrop:bg-black/40"
     >
       <div className="grid gap-3 p-5">
         <h3 className="text-base font-semibold">저장하지 않은 변경 있음</h3>

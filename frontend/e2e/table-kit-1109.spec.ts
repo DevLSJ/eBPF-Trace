@@ -582,7 +582,12 @@ const cssVar = (page: Page, name: string, prop: 'color' | 'backgroundColor' | 'f
     },
     [name, prop] as const,
   );
-const settle = (page: Page) => page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
+// 시트 층의 열림 효과가 끝날 때까지(무대 뒤 「연동」 화면은 흐름 그림이 계속 움직여 문서 전체로는 재지 않는다)
+const settle = (page: Page) =>
+  page.waitForFunction(() => {
+    const l = document.querySelector('.sg-sheet-layer');
+    return !!l && l.getAnimations({ subtree: true }).every((a) => a.playState !== 'running');
+  });
 
 test.describe('⑬ 시트 움직임', () => {
   test('열림만 효과(뒤 어둡게 120ms · 밀려 들어옴 180ms 들어옴 곡선) · 열린 채 다른 줄 = 같은 시트에 내용만 교체(받는 동안 시트 안 스켈레톤) · 닫힘은 효과 없이 바로', async ({ page, backend }) => {
@@ -702,7 +707,8 @@ test.describe('⑯ 꺼진 단추 · 재조회 · 폭 손잡이 · 줄 끝 고정
     expect(await h.evaluate((e) => getComputedStyle(e, '::after').opacity)).toBe('0.7');
     await h.hover();
     await expect.poll(() => h.evaluate((e) => getComputedStyle(e, '::after').backgroundColor)).toBe(accent);
-    // 줄 끝 조작 칸: 오른쪽 고정, 가로 스크롤이 없으면 그림자 없음
+    // 줄 끝 조작 칸: 오른쪽 고정, 가로 스크롤이 없으면 그림자 없음(폭 1000 에서 정책 칸을 최대로 넓혀 넘치게)
+    await page.setViewportSize({ width: 1000, height: 900 });
     const scroll = page.getByTestId('tk-scroll');
     const act = page.locator(`${T} tbody tr`).first().locator('td[data-col="act"]');
     expect(await act.evaluate((e) => [getComputedStyle(e).position, getComputedStyle(e).boxShadow])).toEqual(['sticky', 'none']);
