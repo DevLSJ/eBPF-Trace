@@ -7,7 +7,7 @@ import { expect, test } from './fixtures';
 // 11/09 P2 — 공통 부품(다음 차례 정책 · 다른 목록 화면이 그대로 가져다 쓴다). 무대 e2e/table-kit-harness.tsx 위에서 본다.
 //   ① 표 도구줄(총 N건 · 새로고침 · 칸 고르기 · CSV)  ② 칸 고르기 · 저장 · 칸 기본으로  ③ 저장 실패 · 깨진 저장본
 //   ④ 칸 폭 끌기 · 키보드  ⑤ 칸 순서 끌기 · Alt+←/→  ⑥ 정렬 꺾쇠 · 쪽 넘김  ⑦ 필터 Select  ⑧ 검색칸 · 조건 지우기
-//   ⑨ 주소 쿼리 목록 상태  ⑩ 시트 부제 · 배지 · 탭 · 초점 가둠  ⑪ 큰 2단 창  ⑫ 미저장 경고
+//   ⑨ 목록 상태(10/21 유지 — 필터 · 쪽 · 정렬은 화면 상태, 주소에는 id · tab · 링크용 키만)  ⑩ 시트 부제 · 배지 · 탭 · 초점 가둠  ⑪ 큰 2단 창  ⑫ 미저장 경고
 // 2차(SPEC-1109 §2~4 — 참고 제품 답변 반영): ⑬ 시트 움직임  ⑭ 창 · 팝오버 움직임  ⑮ 행 상태  ⑯ 꺼진 단추 · 재조회 · 폭 손잡이 · 줄 끝 고정
 //   ⑰ 칸 도우미(두 줄 · 「—」 · 시각 형식 · 칸 폭 표준 · CSV 화면 글)  ⑱ 화면 제목 700 · 로그인 반경(11/05 값)
 // 3차(SPEC-1109 §7 화면 문구 — 공통 부품 몫): ⑲ 확인 창  ⑳ 화면 상태 기본 문구  ㉑ 아이콘 단추 이름 · 꺼진 사유  ㉒ 표 아래 안내 한 줄
@@ -264,7 +264,7 @@ test.describe('⑥ 정렬 표시 · 쪽 넘김', () => {
     await page.locator(`${T} th[data-col="hits"] .th-sort`).click();
     expect(await look('hits')).toMatchObject({ dir: 'desc', color: accent });
     expect((await look('name')).dir).toBe('none');
-    expect(q(page).sort).toBe('hits,desc');
+    expect(q(page).sort, '정렬은 주소에 남지 않음(10/21)').toBeUndefined();
     const foot = page.locator('[data-table-foot="demo"]');
     await expect(foot.locator('[data-part="range"]')).toHaveText('총 45건 · 1/3 페이지');
     await expect(foot.locator('[data-page="first"]')).toBeDisabled();
@@ -302,7 +302,7 @@ test.describe('⑦ 필터 Select', () => {
     await expect(lb).toHaveCount(0);
     await expect(trig).toBeFocused();
     await expect(trig).toHaveText('open');
-    expect(q(page).kind).toBe('open');
+    expect(q(page).kind, '필터는 주소에 남지 않음(10/21)').toBeUndefined();
     await expect(total(page)).toHaveText('총 9건');
     // 다시 열면 고른 항목이 강조(주 색 글자 + ✓)
     await page.keyboard.press('ArrowDown');
@@ -349,7 +349,7 @@ test.describe('⑧ 검색칸', () => {
     expect(q(page).q).toBeUndefined();
     await box.press('Enter');
     await expect(total(page)).toHaveText('총 10건');
-    expect(q(page).q).toBe('policy-1');
+    expect(q(page).q, '검색어는 주소 · 방문 기록에 남지 않음(10/21)').toBeUndefined();
     await box.pressSequentially('9x');
     await box.press('Escape');
     await expect(box).toHaveValue('policy-1');
@@ -357,7 +357,7 @@ test.describe('⑧ 검색칸', () => {
     await box.fill('policy-2');
     await page.locator('[data-table-tools="demo"]').click();
     await expect(total(page), '칸을 벗어나면 적용').toHaveText('총 10건');
-    expect(q(page).q).toBe('policy-2');
+    await expect(page.locator(`${T} tbody tr`).first()).toHaveAttribute('data-row', 'r20');
     await page.locator('[data-tk-stage] [data-filter="action"]').click();
     await page.getByRole('listbox', { name: '판정' }).getByRole('option', { name: 'kill' }).click();
     const clear = page.locator('[data-action="clear-conditions"]');
@@ -370,41 +370,79 @@ test.describe('⑧ 검색칸', () => {
   });
 });
 
-test.describe('⑨ 주소 쿼리 목록 상태', () => {
-  test('필터 · 쪽 · 정렬 · 상세 · 탭이 주소에 — 기본값은 지우고, 필터 · 정렬이 바뀌면 첫 쪽, 기록은 늘지 않음', async ({ page, backend }) => {
+test.describe('⑨ 목록 상태(10/21 유지)', () => {
+  test('필터 · 검색 · 쪽 · 정렬은 화면 상태(주소에 없음) · 주소에는 id · tab(첫 탭 생략)만 · 새로고침하면 필터 · 쪽 · 정렬은 기본값 · 기록은 늘지 않음', async ({ page, backend }) => {
     void backend;
-    await openList(page, '?sort=hits,desc&page=2');
-    expect(await page.locator(`${T} th[data-col="hits"]`).getAttribute('aria-sort')).toBe('descending');
+    await openList(page);
     const range = page.locator('[data-table-foot="demo"] [data-part="range"]');
-    await expect(range).toHaveText('총 45건 · 2/3 페이지');
     const len0 = await page.evaluate(() => history.length);
+    await page.locator(`${T} th[data-col="hits"] .th-sort`).click();
+    await page.locator(`${T} th[data-col="hits"] .th-sort`).click();
     await page.locator('[data-table-foot="demo"] [data-page="3"]').click();
-    expect(q(page)).toEqual({ sort: 'hits,desc', page: '3' });
+    await expect(range).toHaveText('총 45건 · 3/3 페이지');
+    expect(q(page), '정렬 · 쪽은 주소에 없음').toEqual({});
     await page.locator('[data-table-foot="demo"] [data-part="page-size"]').selectOption('50');
-    expect(q(page), '쪽 크기를 바꾸면 첫 쪽').toEqual({ sort: 'hits,desc', size: '50' });
+    await expect(range, '쪽 크기를 바꾸면 첫 쪽').toHaveText('총 45건 · 1/1 페이지');
     await page.locator('[data-table-foot="demo"] [data-part="page-size"]').selectOption('20');
     await page.locator('[data-table-foot="demo"] [data-page="2"]').click();
     await page.locator('[data-tk-stage] [data-filter="kind"]').click();
     await page.getByRole('listbox', { name: '종류' }).getByRole('option', { name: 'dns' }).click();
-    expect(q(page), '필터가 바뀌면 첫 쪽').toEqual({ sort: 'hits,desc', kind: 'dns' });
-    await page.locator(`${T} th[data-col="name"] .th-sort`).click();
-    expect(q(page), '기본 정렬(정책 오름)은 주소에서 지움').toEqual({ kind: 'dns' });
+    await expect(range, '필터가 바뀌면 첫 쪽').toHaveText('총 9건 · 1/1 페이지');
+    await page.getByRole('searchbox', { name: '정책 검색' }).fill('policy-0');
+    await page.getByRole('searchbox', { name: '정책 검색' }).press('Enter');
+    await expect(total(page)).toHaveText('총 2건');
+    expect(q(page), '필터 · 검색어도 주소에 없음').toEqual({});
     await page.locator(`${T} tbody tr`).first().click();
     const id = q(page).id;
     expect(id).toMatch(/^r\d\d$/);
-    expect(q(page).tab, '첫 탭은 주소에 없음').toBeUndefined();
+    expect(q(page), '열린 상세만 주소에 · 첫 탭은 주소에 없음').toEqual({ id });
     await page.locator('[data-sheet="demo"] [role="tab"][data-tab="changes"]').click();
-    expect(q(page)).toEqual({ kind: 'dns', id, tab: 'changes' });
+    expect(q(page)).toEqual({ id, tab: 'changes' });
     await page.reload();
     await stage(page, 'list');
-    await expect(page.locator('[data-sheet="demo"] [role="tab"][data-tab="changes"]')).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('[data-tk-stage] [data-filter="kind"]')).toHaveText('dns');
+    await expect(page.locator('[data-sheet="demo"] [role="tab"][data-tab="changes"]'), 'id · tab 은 새로고침에도 남음').toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('[data-tk-stage] [data-filter="kind"]'), '새로고침하면 필터는 기본값').toHaveText('종류 전체');
+    await expect(page.getByRole('searchbox', { name: '정책 검색' })).toHaveValue('');
+    await expect(total(page)).toHaveText('총 45건');
+    expect(await page.locator(`${T} th[data-col="name"]`).getAttribute('aria-sort'), '정렬도 기본값').toBe('ascending');
+    await expect(range).toHaveText('총 45건 · 1/3 페이지');
     await page.locator('[data-sheet="demo"] [role="tab"][data-tab="detail"]').click();
-    expect(q(page)).toEqual({ kind: 'dns', id });
+    expect(q(page)).toEqual({ id });
     await page.keyboard.press('Escape');
     await expect(page.locator('[data-sheet="demo"]')).toHaveCount(0);
-    expect(q(page)).toEqual({ kind: 'dns' });
+    expect(q(page)).toEqual({});
     expect(await page.evaluate(() => history.length), '바꿀 때마다 기록을 늘리지 않음(replace)').toBe(len0);
+  });
+
+  test('옛 주소의 필터 · 쪽 · 정렬은 한 번 적용한 뒤 주소에서 지운다 — id · tab · 목록과 상관없는 키는 남김, 다시 열면 기본값', async ({ page, backend }) => {
+    void backend;
+    await openList(page, '?kind=dns&sort=hits,desc&page=1&id=r04&tab=changes&other=keep');
+    await expect(total(page), '옛 주소 필터 적용').toHaveText('총 9건');
+    expect(await page.locator(`${T} th[data-col="hits"]`).getAttribute('aria-sort')).toBe('descending');
+    await expect(page.locator('[data-tk-stage] [data-filter="kind"]')).toHaveText('dns');
+    await expect(page.locator('[data-sheet="demo"] [role="tab"][data-tab="changes"]')).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(() => q(page), '필터 · 정렬 · 쪽 키만 지움').toEqual({ id: 'r04', tab: 'changes', other: 'keep' });
+    await page.reload();
+    await stage(page, 'list');
+    await expect(total(page), '한 번만 — 새로고침하면 기본값').toHaveText('총 45건');
+    await expect(page.locator('[data-sheet="demo"] [role="tab"][data-tab="changes"]')).toHaveAttribute('aria-selected', 'true');
+    // 옛 주소의 쪽도 한 번 적용
+    await openList(page, '?page=2');
+    await expect(page.locator('[data-table-foot="demo"] [data-part="range"]')).toHaveText('총 45건 · 2/3 페이지');
+    await expect.poll(() => q(page)).toEqual({});
+  });
+
+  test('다른 화면 링크의 state.filters 가 옛 주소 필터보다 먼저 · 적용 뒤 state 를 비운다', async ({ page, backend }) => {
+    void backend;
+    await page.goto(`${BASE}?kind=dns`);
+    await expect(page.locator('main')).toBeVisible();
+    await page.evaluate(() => history.replaceState({ usr: { filters: { kind: 'exec', q: 'policy-1' } }, key: 'tk-link', idx: 0 }, '', `${location.pathname}?kind=dns&id=r11`));
+    await stage(page, 'list');
+    await expect(page.locator('[data-tk-stage] [data-filter="kind"]')).toHaveText('exec');
+    await expect(page.getByRole('searchbox', { name: '정책 검색' })).toHaveValue('policy-1');
+    await expect(total(page)).toHaveText('총 2건');
+    await expect.poll(() => q(page)).toEqual({ id: 'r11' });
+    expect(await page.evaluate(() => (history.state as { usr?: unknown } | null)?.usr ?? null), 'state 비움').toBeNull();
   });
 
   test('틀린 값(정렬 칸 · 쪽 · 쪽 크기 · 필터 · 탭)은 기본값으로 읽고 주소에서 지운다', async ({ page, backend }) => {
