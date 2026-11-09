@@ -79,7 +79,7 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
   const box = (
     <div className={collapsed ? `absolute top-0 left-full z-50 ml-2 w-80 ${focused ? '' : 'hidden'}` : 'relative'}>
       <div className="relative">
-        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-slate-500" aria-hidden />
+        <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-text-3" aria-hidden />
         <input
           ref={input}
           type="search"
@@ -116,12 +116,12 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
               reset();
             }
           }}
-          className={`w-full rounded-[var(--r-md)] border py-1.5 pr-7 pl-8 text-sm focus:outline-none ${
+          className={`w-full rounded-full border py-2 pr-8 pl-10 text-sm focus:outline-none ${
             collapsed ? 'border-border-strong bg-surface text-text shadow-[var(--sh-2)]' : 'border-border bg-surface-2 text-text placeholder:text-text-3 focus:border-accent'
           }`}
         />
         {!q && (
-          <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border border-border-strong px-1 text-[10px] text-text-3" aria-hidden>
+          <kbd className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 rounded border border-border-strong px-1 text-[10px] text-text-3" aria-hidden>
             /
           </kbd>
         )}
@@ -177,8 +177,9 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
       }}
     >
       {collapsed && (
-        <button type="button" onClick={focus} aria-label="검색 (/)" title="검색 (/)" className="grid size-9 place-items-center rounded-md text-text-3 hover:bg-surface-2 hover:text-text">
-          <Search className="size-4" aria-hidden />
+        // 11/10: 접힌 사이드바(아이콘만)는 메뉴 줄과 같은 48 원 · 아이콘 24 · 알약 hover(shell.css .sg-nav-item)
+        <button type="button" onClick={focus} aria-label="검색 (/)" title="검색 (/)" className="sg-nav-item grid size-12 place-items-center text-text">
+          <Search className="size-6" aria-hidden />
         </button>
       )}
       {box}

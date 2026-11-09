@@ -4,7 +4,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/auth-context';
 import { useCases } from '../hooks/cases-context';
 import { useStream } from '../hooks/stream-context';
-import { AccountMenu } from './AccountMenu';
+import { AccountMenu, LicenseChip } from './AccountMenu';
 import { Assistant } from './Assistant';
 import { SheetHostContext } from './header-slot';
 import { ActionSlotProvider } from './PageActions';
@@ -16,6 +16,7 @@ import { useSidebar } from './shell/useSidebar';
 import { ThemeToggle } from './ThemeToggle';
 import { useSortable } from '../hooks/useSortable';
 import { WsStatus } from './WsStatus';
+import './shell.css';
 import { FRESH } from '../lib/nav';
 import { dialogOpen, loadJSON, saveJSON, screenOf, typingTarget } from '../lib/shell';
 
@@ -90,8 +91,12 @@ const INTEGRATION_ITEM: NavItem = {
 // 사이드바 아래 상태 칸(11/09 G38): 내부 이름은 툴팁으로만
 const SOURCE_KO: Record<string, string> = { mock: '모의 재생', gadget: '실시간 수집(eBPF)' };
 
-// W19(10/20 C · D · E): 알림 센터(종) · 통합 검색(/) · 사이드바 접기([, 1100px 이하 자동) · ? 도움말 · 실시간 끊김 배너.
-// 폭 고정(min-w-[1024px])을 없앴다 — 좁은 화면은 사이드바가 56px 로 접히고, 펼치면 본문 위에 겹쳐 뜬다(본문을 밀지 않음)
+// W19(10/20 C · D · E): 알림 센터(종) · 통합 검색(/) · 사이드바 접기([) · ? 도움말 · 실시간 끊김 배너.
+// 11/10 셸 배치(참고 사이트의 배치 원리 — 값 · 원리만, shell.css):
+//   [왼쪽 칸: 사이드바] [본문 단: 맨 위 고정 제목 줄 + 배너 + 본문] [오른쪽 여백]. 본문 단 = 좌우 1px 세로선 · 최대 --content-max,
+//   넓은 화면은 남는 폭을 왼쪽 칸 · 오른쪽 여백이 반씩 받아 사이드바 + 본문 단이 함께 가운데(사이드바는 본문 단 바로 옆).
+//   폭 단계: 1280 이상 글자 있는 사이드바 · 768~1279 아이콘만(펼치면 본문 위에 겹쳐 뜬다 — 본문을 밀지 않음) · 768 미만 서랍.
+//   제목 줄 = 화면 제목(하위 화면은 「정책 ›」) + 오른쪽 끝 작은 상태 묶음(실시간 · 종 · 해/달 · ? · 라이선스). 계정은 사이드바 맨 아래
 export function AppShell() {
   const { info, stats } = useStream();
   const { cases } = useCases();
@@ -109,9 +114,11 @@ export function AppShell() {
   const parent = screen?.parent ? screenOf(screen.parent) : undefined;
   const sideName = collapsed ? '사이드바 펼치기 ([)' : '사이드바 접기 ([)';
 
-  // 토스트(toast-context)가 사이드바 바로 옆에 붙도록 본문이 차지하는 사이드바 폭을 알린다(10/20). 겹쳐 뜬 펼침은 접힌 폭 기준, 서랍(768 미만)은 0
+  // 토스트(toast-context)가 사이드바 바로 옆에 붙도록 사이드바 오른쪽 끝을 알린다(10/20). 겹쳐 뜬 펼침은 접힌 폭 기준, 서랍(768 미만)은 0.
+  // 넓은 화면은 사이드바 + 본문 단이 가운데로 오므로 남는 폭의 절반을 더한다(shell.css 큰 틀과 같은 계산 — 본문 단 바깥 여백 -1 × 2 포함)
   useEffect(() => {
-    document.documentElement.style.setProperty('--sg-sidebar-w', mobile ? '0px' : collapsed || overlay ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)');
+    const w = collapsed || overlay ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w)';
+    document.documentElement.style.setProperty('--sg-sidebar-w', mobile ? '0px' : `calc(${w} + max(0px, (100vw - ${w} - var(--content-max) + 2px) / 2))`);
   }, [collapsed, overlay, mobile]);
 
   // 서랍은 Esc 로 닫힌다
@@ -137,79 +144,85 @@ export function AppShell() {
   }, []);
 
   const showAside = !mobile || mobileOpen;
+  const sideToggle = (
+    <button type="button" onClick={toggle} aria-label={sideName} title={sideName} className="sg-nav-item grid size-9 shrink-0 place-items-center text-text-3 hover:text-text">
+      {collapsed ? <ChevronsRight className="size-5" aria-hidden /> : <ChevronsLeft className="size-5" aria-hidden />}
+    </button>
+  );
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* 좁은 화면에서 펼친 사이드바는 겹쳐 뜬다 — 자리는 접힌 폭(56px)만 */}
-      {overlay && <div className="w-[var(--sidebar-w-collapsed)] shrink-0" aria-hidden />}
+    <div data-part="shell" className="sg-shell">
       {/* 768 미만 서랍의 배경 dim — 누르면 닫힘 */}
       {mobile && mobileOpen && <div data-part="sidebar-dim" className="fixed inset-0 z-40 bg-black/40" onClick={closeMobile} aria-hidden />}
-      {showAside && (
-        <aside
-          data-part="sidebar"
-          data-collapsed={String(collapsed)}
-          className={`flex shrink-0 flex-col border-r border-border bg-surface text-text-2 ${collapsed ? 'w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]'} ${
-            overlay || mobile ? 'fixed inset-y-0 left-0 z-50 shadow-[var(--sh-2)]' : ''
-          } ${mobile ? 'sg-drawer' : ''}`}
-        >
-          <Link to="/" className={`flex h-[var(--header-h)] shrink-0 items-center gap-2 text-text ${collapsed ? 'justify-center' : 'px-5'}`} title="SupplyGuard">
-            <ShieldCheck className="size-5 shrink-0 text-accent" aria-hidden />
-            <span className={collapsed ? 'sr-only' : 'font-semibold tracking-tight'}>SupplyGuard</span>
-            {mobile && (
-              <button type="button" onClick={closeMobile} aria-label="메뉴 닫기" title="메뉴 닫기" className="ml-auto rounded-md p-1.5 text-text-3 hover:bg-surface-2 hover:text-text">
-                <X className="size-4" aria-hidden />
-              </button>
-            )}
-          </Link>
-          <div className={collapsed ? 'px-2' : 'px-3'}>
-            <SearchBox collapsed={collapsed} />
-          </div>
-          <nav className="flex min-h-0 flex-col gap-3 overflow-y-auto px-2 py-3" aria-label="화면">
-            {groups.map((g, gi) => (
-              <NavGroup key={gi} g={!g.id ? { ...g, items: [...g.items, INTEGRATION_ITEM, ...(demoOn ? [DEMO_ITEM] : [])] } : g} collapsed={collapsed} pending={pending} />
-            ))}
-          </nav>
-          {!collapsed && (
-            <div className="mt-auto space-y-1 border-t border-border px-5 py-4 text-xs">
-              <div className="flex justify-between">
-                <span className="text-text-3">수집</span>
-                <span className="text-text" title={source}>
-                  {SOURCE_KO[source ?? ''] ?? ''}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-3">격리</span>
-                <span className={enforce ? 'text-danger-text' : 'text-warn-text'}>
-                  {enforce === undefined ? '' : enforce ? '자동 종료' : '알림만(dry-run)'}
-                </span>
-              </div>
-              {info?.gadgetVersion && (
-                <div className="flex justify-between">
-                  <span className="text-text-3" title="Inspektor Gadget">
-                    수집기 버전
-                  </span>
-                  <span className="num text-text">{info.gadgetVersion}</span>
-                </div>
+      <div data-part="rail" className="sg-shell-rail">
+        {/* 좁은 화면에서 펼친 사이드바는 겹쳐 뜬다 — 자리는 접힌 폭(56px)만 */}
+        {overlay && <div className="w-[var(--sidebar-w-collapsed)] shrink-0" aria-hidden />}
+        {showAside && (
+          <aside
+            data-part="sidebar"
+            data-collapsed={String(collapsed)}
+            className={`sg-side flex h-full shrink-0 flex-col text-text ${collapsed ? 'w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]'} ${
+              overlay || mobile ? 'fixed inset-y-0 left-0 z-50 shadow-[var(--sh-2)]' : ''
+            } ${mobile ? 'sg-drawer' : ''}`}
+          >
+            {/* 로고 줄(제목 줄과 같은 높이) — 펼침: 오른쪽 끝에 접기 단추 · 서랍: 닫기 단추. 접힘: 로고만, 펼치기 단추는 바로 아래 */}
+            <div className={`flex h-[var(--shell-title-h)] shrink-0 items-center ${collapsed ? 'justify-center' : 'gap-1 pr-2 pl-2'}`}>
+              <Link to="/" title="SupplyGuard" className={`sg-nav-item flex items-center gap-2 text-text ${collapsed ? 'size-12 justify-center' : 'min-w-0 flex-1 px-2 py-1.5'}`}>
+                <ShieldCheck className="size-7 shrink-0 text-accent" aria-hidden />
+                <span className={collapsed ? 'sr-only' : 'truncate text-[17px] font-bold tracking-tight'}>SupplyGuard</span>
+              </Link>
+              {mobile ? (
+                <button type="button" onClick={closeMobile} aria-label="메뉴 닫기" title="메뉴 닫기" className="sg-nav-item grid size-9 shrink-0 place-items-center text-text-3 hover:text-text">
+                  <X className="size-5" aria-hidden />
+                </button>
+              ) : (
+                !collapsed && sideToggle
               )}
             </div>
-          )}
-          {!mobile && (
-            <button
-              type="button"
-              onClick={toggle}
-              aria-label={sideName}
-              title={sideName}
-              className={`flex h-10 shrink-0 items-center border-t border-border text-text-3 hover:text-text ${collapsed ? 'mt-auto justify-center' : 'justify-end px-4'}`}
-            >
-              {collapsed ? <ChevronsRight className="size-4" aria-hidden /> : <ChevronsLeft className="size-4" aria-hidden />}
-            </button>
-          )}
-        </aside>
-      )}
+            {!mobile && collapsed && <div className="flex shrink-0 justify-center pb-1">{sideToggle}</div>}
+            <div className={`shrink-0 pb-2 ${collapsed ? 'px-1' : 'px-3'}`}>
+              <SearchBox collapsed={collapsed} />
+            </div>
+            <nav className={`flex min-h-0 flex-col gap-2 overflow-y-auto py-1 ${collapsed ? 'px-1' : 'px-2'}`} aria-label="화면">
+              {groups.map((g, gi) => (
+                <NavGroup key={gi} g={!g.id ? { ...g, items: [...g.items, INTEGRATION_ITEM, ...(demoOn ? [DEMO_ITEM] : [])] } : g} collapsed={collapsed} pending={pending} />
+              ))}
+            </nav>
+            {/* 맨 아래: 수집 · 격리 상태(펼침만) → 계정(표시 이름 · 역할, 메뉴는 위로) */}
+            <div className="mt-auto shrink-0 pt-2">
+              {!collapsed && (
+                <div data-part="side-status" className="space-y-1 px-5 pb-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-text-3">수집</span>
+                    <span className="text-text" title={source}>
+                      {SOURCE_KO[source ?? ''] ?? ''}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-text-3">격리</span>
+                    <span className={enforce ? 'text-danger-text' : 'text-warn-text'}>
+                      {enforce === undefined ? '' : enforce ? '자동 종료' : '알림만(dry-run)'}
+                    </span>
+                  </div>
+                  {info?.gadgetVersion && (
+                    <div className="flex justify-between">
+                      <span className="text-text-3" title="Inspektor Gadget">
+                        수집기 버전
+                      </span>
+                      <span className="num text-text">{info.gadgetVersion}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              <AccountMenu collapsed={collapsed} />
+            </div>
+          </aside>
+        )}
+      </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header data-part="header" className="flex h-[var(--header-h)] shrink-0 items-center gap-3 border-b border-border bg-surface px-4 md:gap-4 md:px-6">
+      <div data-part="column" className="sg-shell-col">
+        <header data-part="header" className="sg-titlebar flex shrink-0 items-center gap-3 px-4 md:gap-4 md:px-6">
           {mobile && (
-            <button type="button" onClick={openMobile} aria-label="메뉴" title="메뉴" aria-expanded={mobileOpen} className="rounded-md p-1.5 text-text-2 hover:bg-surface-2 hover:text-text">
+            <button type="button" onClick={openMobile} aria-label="메뉴" title="메뉴" aria-expanded={mobileOpen} className="sg-title-icon p-1.5 text-text-2 hover:text-text">
               <Menu className="size-5" aria-hidden />
             </button>
           )}
@@ -229,22 +242,18 @@ export function AppShell() {
               {screen?.label ?? ''}
             </h1>
           </div>
-          {/* 머리 줄 = 제목 + 상태 표시만. 화면 주 버튼은 본문 맨 위 설명 줄 오른쪽 끝(ScreenHead · PageActions, 11/09 밤 ③) */}
+          {/* 제목 줄 = 제목 + 상태 표시만. 화면 주 버튼은 본문 맨 위 설명 줄 오른쪽 끝(ScreenHead · PageActions, 11/09 밤 ③) */}
           <div className="min-w-0 flex-1" aria-hidden />
-          <WsStatus />
-          <NoticeCenter />
-          {/* 테마 = 해/달 단추 하나(11/09 G01) — 계정 메뉴의 테마 칸을 옮겼다 */}
-          <ThemeToggle />
-          <button
-            type="button"
-            onClick={() => setHelp(true)}
-            aria-label="사용 안내 (?)"
-            title="사용 안내 (?)"
-            className="hidden rounded-md p-1.5 text-text-3 hover:bg-surface-2 hover:text-text md:inline-flex"
-          >
-            <CircleHelp className="size-5" aria-hidden />
-          </button>
-          <AccountMenu />
+          <div data-part="title-status" className="flex shrink-0 items-center gap-1 md:gap-2">
+            <WsStatus />
+            <NoticeCenter />
+            {/* 테마 = 해/달 단추 하나(11/09 G01) */}
+            <ThemeToggle />
+            <button type="button" onClick={() => setHelp(true)} aria-label="사용 안내 (?)" title="사용 안내 (?)" className="sg-title-icon hidden p-1.5 text-text-3 hover:text-text md:inline-flex">
+              <CircleHelp className="size-5" aria-hidden />
+            </button>
+            <LicenseChip />
+          </div>
         </header>
         <StreamBanners />
         <DnsBanner />
@@ -263,6 +272,7 @@ export function AppShell() {
           <div ref={setSheetHost} data-part="sheet-host" className="sg-sheet-host" />
         </main>
       </div>
+      <div data-part="pad" className="sg-shell-pad" aria-hidden />
       <Assistant />
       {help && <HelpDialog onClose={() => setHelp(false)} />}
     </div>
@@ -270,6 +280,8 @@ export function AppShell() {
 }
 
 // 사이드바 묶음 — 길게 눌러(또는 Alt+↑/↓) 묶음 안에서만 순서를 바꾼다(11/04d, R1 11/04). 대시보드 줄(묶음 제목 없음)은 고정 · 묶음 순서 그대로
+// 메뉴 줄(11/10): 아이콘 24 + 글자 16/500 · 지금 화면 700 + 강조 글자색(아이콘 선도 굵게) · 상자 없음, hover = 알약(shell.css .sg-nav-item).
+//   접힘(아이콘만) = 48 원 안에 아이콘, 이름은 접근성 이름 · 툴팁
 function NavGroup({ g, collapsed, pending }: { g: (typeof groups)[number]; collapsed: boolean; pending: number }) {
   const byId = new Map(g.items.map((it) => [it.to.slice(1), it]));
   // 하위 메뉴 칸(묶음 제목 div)은 링크가 아니라 초점을 따로 받는다(Alt+↑/↓ 로 묶음째 옮기기) — focusable: false 면 칸마다 tabIndex 0
@@ -284,9 +296,9 @@ function NavGroup({ g, collapsed, pending }: { g: (typeof groups)[number]; colla
     <div ref={g.id ? ref : undefined} className={`flex flex-col gap-0.5 ${g.id ? containerClass : ''}`} data-nav-group={g.label ?? 'home'}>
       {g.label &&
         (collapsed ? (
-          <div className="mx-2 mb-1 border-t border-border" aria-hidden />
+          <div className="mx-3 mb-1 border-t border-border" aria-hidden />
         ) : (
-          <div className="px-3 pb-1 text-[11px] font-medium tracking-wide text-text-3">{g.label}</div>
+          <div className="px-3 pt-1 pb-0.5 text-xs font-medium tracking-wide text-text-3">{g.label}</div>
         ))}
       {list.map(({ to, label, icon: Icon, end, children }) =>
         children ? (
@@ -300,20 +312,26 @@ function NavGroup({ g, collapsed, pending }: { g: (typeof groups)[number]; colla
           title={collapsed ? label : undefined}
           {...(g.id ? itemProps(to.slice(1)) : {})}
           className={({ isActive }) =>
-            `relative flex items-center gap-3 rounded-[var(--r-sm)] py-2 text-sm transition-colors duration-[var(--t-fast)] ${collapsed ? 'justify-center px-0' : 'px-3'} ${
-              isActive ? 'bg-accent-soft font-medium text-accent-text' : 'hover:bg-surface-2 hover:text-text'
+            `sg-nav-item relative flex items-center ${collapsed ? 'mx-auto size-12 shrink-0 justify-center' : 'gap-4 px-3 py-2'} ${
+              isActive ? 'font-bold text-accent-text' : 'font-medium text-text'
             } ${g.id ? pickedClass(to.slice(1)) : ''}`
           }
         >
-          <Icon className="size-4 shrink-0" aria-hidden />
-          <span className={collapsed ? 'sr-only' : 'flex-1'}>{label}</span>
-          {to === '/' && pending > 0 && (
-            <span
-              className={`num rounded-full bg-warn px-1.5 text-[11px] font-semibold text-text-inverse ${collapsed ? 'absolute -top-0.5 right-0.5 px-1 text-[10px] leading-4' : ''}`}
-              aria-label={`판정 대기 ${pending}건`}
-            >
-              {pending}
-            </span>
+          {({ isActive }) => (
+            <>
+              <Icon className="size-6 shrink-0" strokeWidth={isActive ? 2.5 : 2} aria-hidden />
+              <span data-part="nav-label" className={collapsed ? 'sr-only' : 'min-w-0 flex-1 truncate leading-6'}>
+                {label}
+              </span>
+              {to === '/' && pending > 0 && (
+                <span
+                  className={`num rounded-full bg-warn px-1.5 text-[11px] leading-5 font-semibold text-text-inverse ${collapsed ? 'absolute top-0.5 right-0.5 px-1 text-[10px] leading-4' : ''}`}
+                  aria-label={`판정 대기 ${pending}건`}
+                >
+                  {pending}
+                </span>
+              )}
+            </>
           )}
         </NavLink>
         ),
@@ -322,7 +340,7 @@ function NavGroup({ g, collapsed, pending }: { g: (typeof groups)[number]; colla
   );
 }
 
-// 하위 메뉴(11/09 정책 화면 분리, SPEC-1109 §5): 펼친 사이드바 · 서랍 = 묶음 머리 + 들여 쓴 링크.
+// 하위 메뉴(11/09 정책 화면 분리, SPEC-1109 §5): 펼친 사이드바 · 서랍 = 묶음 머리 + 들여 쓴 링크(11/10: 선 없이 머리 글자 줄에 맞춰 들여 씀 · 15/500, 지금 화면 700).
 // 접힌 사이드바(56px) = 아이콘만, 올리면 120ms 뒤 · 초점이 들어오면 바로 오른쪽에 하위 메뉴만 겹쳐 뜬다(나가면 150ms 뒤 닫힘 — 틈을 건너는 동안)
 // 접고 펴기(11/09 밤 사용자 결정): 펼친 사이드바 · 서랍에서 묶음 머리를 누르면(Enter · Space) 하위 메뉴가 접히고 펴진다(--dur-base, 동작 줄이기면 바로).
 //   지금 화면이 속한 묶음은 늘 펼침(눌러도 접히지 않음 · 저장하지 않음), 다른 묶음은 마지막 상태를 이 브라우저에 기억 · 처음엔 접힘.
@@ -332,10 +350,8 @@ function navOpenMap(): Record<string, unknown> {
   const v = loadJSON<unknown>(NAV_OPEN_KEY, {});
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
-const subLink = (collapsed: boolean) => ({ isActive }: { isActive: boolean }) =>
-  `flex items-center rounded-[var(--r-sm)] py-1.5 text-sm transition-colors duration-[var(--t-fast)] ${collapsed ? 'px-3' : 'pr-3 pl-2'} ${
-    isActive ? 'bg-accent-soft font-medium text-accent-text' : 'text-text-2 hover:bg-surface-2 hover:text-text'
-  }`;
+const subLink = ({ isActive }: { isActive: boolean }) =>
+  `sg-nav-item sg-nav-sub flex items-center px-3 py-1.5 leading-6 ${isActive ? 'font-bold text-accent-text' : 'font-medium text-text-2 hover:text-text'}`;
 function SubNav({
   id,
   label,
@@ -386,7 +402,7 @@ function SubNav({
       to={x.to}
       end
       state={FRESH}
-      className={subLink(collapsed)}
+      className={subLink}
       onClick={() => {
         window.clearTimeout(timer.current);
         setHover(false);
@@ -405,7 +421,7 @@ function SubNav({
       data-open={String(open)}
       role="group"
       aria-label={label}
-      className={`relative flex flex-col rounded-[var(--r-sm)] ${pickedClass}`}
+      className={`relative flex flex-col rounded-[24px] ${pickedClass}`}
       onMouseEnter={() => collapsed && later(() => (place(), setHover(true)), 120)}
       onMouseLeave={() => collapsed && later(() => setHover(false), 150)}
       onFocus={() => {
@@ -418,8 +434,8 @@ function SubNav({
       }}
     >
       {collapsed ? (
-        <div className={`flex items-center justify-center gap-3 px-0 py-2 text-sm ${here ? 'rounded-[var(--r-sm)] bg-accent-soft text-accent-text' : ''}`} title={label}>
-          <Icon className="size-4 shrink-0" aria-hidden />
+        <div className={`sg-nav-item mx-auto flex size-12 items-center justify-center ${here ? 'font-bold text-accent-text' : 'font-medium text-text'}`} title={label}>
+          <Icon className="size-6 shrink-0" strokeWidth={here ? 2.5 : 2} aria-hidden />
           <span className="sr-only">{label}</span>
         </div>
       ) : (
@@ -437,10 +453,10 @@ function SubNav({
             e.preventDefault();
             toggle();
           }}
-          className={`flex items-center gap-3 rounded-[var(--r-sm)] py-2 pr-2 pl-3 text-sm transition-colors duration-[var(--dur-fast)] ${here ? 'cursor-default font-medium text-text' : 'cursor-pointer hover:bg-surface-2 hover:text-text'}`}
+          className={`sg-nav-item flex items-center gap-4 py-2 pr-3 pl-3 ${here ? 'sg-nav-here cursor-default font-bold text-text' : 'cursor-pointer font-medium text-text'}`}
         >
-          <Icon className="size-4 shrink-0" aria-hidden />
-          <span className="flex-1">{label}</span>
+          <Icon className="size-6 shrink-0" strokeWidth={here ? 2.5 : 2} aria-hidden />
+          <span className="min-w-0 flex-1 truncate leading-6">{label}</span>
           <ChevronDown
             data-part="subnav-chevron"
             className={`size-4 shrink-0 text-text-3 transition-transform duration-[var(--dur-fast)] ease-[var(--ease-move)] motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
@@ -456,8 +472,8 @@ function SubNav({
           className={`grid transition-[grid-template-rows,visibility] duration-[var(--dur-base)] ease-[var(--ease-move)] motion-reduce:transition-none ${open ? 'visible grid-rows-[1fr]' : 'invisible grid-rows-[0fr]'}`}
         >
           <div className="min-h-0 overflow-hidden">
-            {/* 위아래 · 오른쪽 여백 = 링크 초점 링(바깥 2px)이 잘리지 않게 */}
-            <div className="ml-[1.4rem] flex flex-col gap-0.5 border-l border-border py-[3px] pr-[3px] pl-2" data-part="subnav">
+            {/* 위아래 · 오른쪽 여백 = 링크 초점 링(바깥 2px)이 잘리지 않게. 왼쪽 40 = 링크 글자가 머리 글자(12 + 아이콘 24 + 사이 16)와 같은 줄 */}
+            <div className="flex flex-col gap-0.5 py-[3px] pr-[3px] pl-10" data-part="subnav">
               {links}
             </div>
           </div>

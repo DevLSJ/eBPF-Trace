@@ -1,10 +1,11 @@
 import { useStream } from '../hooks/stream-context';
 import { fmtNum } from '../lib/format';
 
+// 제목 줄 오른쪽 상태 묶음 맨 앞(11/10 셸 배치) — 작게(13px)
 export function WsStatus() {
   const { connected, stats } = useStream();
   return (
-    <div className="hidden items-center gap-4 text-sm md:flex" role="status">
+    <div className="hidden items-center gap-3 text-[13px] md:flex" role="status">
       <span className="flex items-center gap-1.5">
         <span className={`size-2 rounded-full ${connected ? 'bg-emerald-500' : 'sg-blink bg-slate-400'}`} />
         <span className={connected ? 'text-slate-700' : 'text-slate-500'}>{connected ? '실시간 연결됨' : '재연결 중…'}</span>

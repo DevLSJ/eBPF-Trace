@@ -1,4 +1,4 @@
-import { ChevronDown, UserRound } from 'lucide-react';
+import { ChevronUp, UserRound } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/auth-context';
@@ -8,7 +8,8 @@ import { AUTH_MSG, licenseText, licenseTone, PW_MIN, ROLE_KO, validatePassword }
 import { fmtDateTime } from '../lib/format';
 import { Modal } from './Modal';
 
-// 상단 오른쪽: 라이선스 칩 + 계정 메뉴(내 정보 · 비밀번호 변경 · 로그아웃) [W16, 목업 auth.js headerEl]
+// 라이선스 칩 + 계정 메뉴(내 정보 · 비밀번호 변경 · 로그아웃) [W16, 목업 auth.js headerEl]
+// 11/10 셸 배치: 라이선스 칩 = 제목 줄 오른쪽 상태 묶음 끝, 계정 = 사이드바 맨 아래(표시 이름 · 역할) — 메뉴는 위로 열린다
 const TONE: Record<string, string> = {
   ok: 'bg-emerald-50 text-emerald-700',
   warn: 'bg-amber-100 text-amber-800',
@@ -16,11 +17,30 @@ const TONE: Record<string, string> = {
   none: 'bg-slate-100 text-slate-600',
 };
 
-export function AccountMenu() {
+export function LicenseChip() {
+  const { me, noAuth } = useAuth();
+  if (!me) return null;
+  const lic = me.license;
+  const tone = noAuth ? 'none' : licenseTone(lic);
+  return (
+    <Link
+      to="/settings?tab=license"
+      data-part="license-chip"
+      data-tone={tone}
+      title={lic ? `${lic.keyMasked} · 만료 ${fmtDateTime(lic.expiresAt)}` : undefined}
+      className={`hidden shrink-0 rounded-full px-2 py-0.5 text-xs whitespace-nowrap md:inline ${TONE[tone]}`}
+    >
+      {noAuth ? '인증 없음' : licenseText(lic)}
+    </Link>
+  );
+}
+
+// collapsed = 아이콘만 사이드바(56) — 이름 · 역할은 툴팁과 화면 읽기 글자로만, 메뉴는 위로 · 오른쪽으로 펼쳐 본문 위에 겹친다
+export function AccountMenu({ collapsed = false }: { collapsed?: boolean }) {
   const { me, noAuth, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<'profile' | 'password' | null>(null);
-  const wrap = useRef<HTMLSpanElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -33,85 +53,79 @@ export function AccountMenu() {
   }, [open]);
 
   if (!me) return null;
-  const lic = me.license;
-  const tone = noAuth ? 'none' : licenseTone(lic);
   const pick = (f: () => void) => () => {
     setOpen(false);
     f();
   };
+  const role = ROLE_KO[me.user.role] ?? me.user.role;
 
   return (
-    <span className="flex shrink-0 items-center gap-2">
-      <Link
-        to="/settings?tab=license"
-        data-part="license-chip"
-        data-tone={tone}
-        title={lic ? `${lic.keyMasked} · 만료 ${fmtDateTime(lic.expiresAt)}` : undefined}
-        className={`hidden rounded-full px-2 py-0.5 text-xs whitespace-nowrap md:inline ${TONE[tone]}`}
+    <div className={`relative shrink-0 pt-1 pb-3 ${collapsed ? 'px-1' : 'px-2'}`} ref={wrap}>
+      <button
+        ref={btn}
+        type="button"
+        data-part="account"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={collapsed ? `${me.user.displayName} · ${role}` : undefined}
+        onClick={() => setOpen((o) => !o)}
+        className={`sg-nav-item flex items-center text-left text-text ${collapsed ? 'mx-auto size-12 justify-center' : 'w-full gap-3 px-2 py-1.5'}`}
       >
-        {noAuth ? '인증 없음' : licenseText(lic)}
-      </Link>
-      <span className="relative" ref={wrap}>
-        <button
-          ref={btn}
-          type="button"
-          data-part="account"
-          aria-haspopup="menu"
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 text-text-2" aria-hidden>
+          <UserRound className="size-5" />
+        </span>
+        {/* 글자 = 「표시 이름 · 역할」(가운데 점은 화면 읽기 글자 — 보이는 모양은 두 줄) */}
+        <span className={collapsed ? 'sr-only' : 'grid min-w-0 flex-1 leading-tight'}>
+          <span className="truncate text-[15px] font-bold">{me.user.displayName}</span>
+          <span className="sr-only"> · </span>
+          <span className="truncate text-[13px] text-text-3">{role}</span>
+        </span>
+        {!collapsed && <ChevronUp className={`size-4 shrink-0 text-text-3 transition-transform duration-[var(--dur-fast)] motion-reduce:transition-none ${open ? 'rotate-180' : ''}`} aria-hidden />}
+      </button>
+      {open && (
+        <div
+          role="menu"
+          data-part="account-menu"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setOpen(false);
+              btn.current?.focus();
+            }
+          }}
+          className={`tk-pop-in absolute bottom-[calc(100%-2px)] z-[60] grid min-w-48 rounded-lg border border-border bg-raised p-1 shadow-[var(--sh-2)] ${collapsed ? 'left-1' : 'right-2 left-2'}`}
         >
-          <UserRound className="size-4" aria-hidden />
-          <span className="hidden md:inline">
-            {me.user.displayName} · {ROLE_KO[me.user.role] ?? me.user.role}
-          </span>
-          <ChevronDown className="size-3.5" aria-hidden />
-        </button>
-        {open && (
-          <div
-            role="menu"
-            data-part="account-menu"
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setOpen(false);
-                btn.current?.focus();
-              }
-            }}
-            className="tk-pop-in absolute top-[calc(100%+6px)] right-0 z-40 grid min-w-40 rounded-lg border border-border bg-raised p-1 shadow-[var(--sh-2)]"
-          >
-            {[
-              ['내 정보', () => setDialog('profile')] as const,
-              ...(noAuth
-                ? []
-                : ([
-                    ['비밀번호 변경', () => setDialog('password')],
-                    ['로그아웃', () => void logout()],
-                  ] as const)),
-            ].map(([label, run], i) => {
-              // 11/09 G11: 로그아웃은 위험 글자색(토큰) + 위 구분선
-              const out = label === '로그아웃';
-              return (
-                <Fragment key={label}>
-                  {out && <div className="my-1 border-t border-border" role="separator" />}
-                  <button
-                    type="button"
-                    role="menuitem"
-                    autoFocus={i === 0}
-                    onClick={pick(run)}
-                    className={`rounded-md px-2.5 py-2 text-left text-[13px] focus:outline-none ${out ? 'text-danger-text hover:bg-danger-soft focus:bg-danger-soft' : 'hover:bg-slate-100 focus:bg-slate-100'}`}
-                  >
-                    {label}
-                  </button>
-                </Fragment>
-              );
-            })}
-            {/* 테마는 11/09(G01) 상단 해/달 단추(ThemeToggle) 하나로 옮겼다 */}
-          </div>
-        )}
-      </span>
+          {[
+            ['내 정보', () => setDialog('profile')] as const,
+            ...(noAuth
+              ? []
+              : ([
+                  ['비밀번호 변경', () => setDialog('password')],
+                  ['로그아웃', () => void logout()],
+                ] as const)),
+          ].map(([label, run], i) => {
+            // 11/09 G11: 로그아웃은 위험 글자색(토큰) + 위 구분선
+            const out = label === '로그아웃';
+            return (
+              <Fragment key={label}>
+                {out && <div className="my-1 border-t border-border" role="separator" />}
+                <button
+                  type="button"
+                  role="menuitem"
+                  autoFocus={i === 0}
+                  onClick={pick(run)}
+                  className={`rounded-md px-2.5 py-2 text-left text-[13px] focus:outline-none ${out ? 'text-danger-text hover:bg-danger-soft focus:bg-danger-soft' : 'hover:bg-slate-100 focus:bg-slate-100'}`}
+                >
+                  {label}
+                </button>
+              </Fragment>
+            );
+          })}
+          {/* 테마는 11/09(G01) 상단 해/달 단추(ThemeToggle) 하나로 옮겼다 */}
+        </div>
+      )}
       {dialog === 'profile' && <Profile onClose={() => setDialog(null)} />}
       {dialog === 'password' && <ChangePassword onClose={() => setDialog(null)} />}
-    </span>
+    </div>
   );
 }
 

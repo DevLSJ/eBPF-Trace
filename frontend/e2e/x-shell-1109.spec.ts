@@ -197,13 +197,12 @@ test.describe('폭 단계', () => {
       expect((await box(ev)).width).toBeLessThanOrEqual(56);
       await ev.hover();
       await expect.poll(async () => parseColor(await css(ev, 'background-color'))).toEqual([15, 20, 25, 0.1]);
-      // 본문 단은 사이드바 바로 옆 · 좌우 세로선
-      const col = await box(page.locator(COL));
-      expect(Math.round(col.x)).toBe(56);
+      // 본문은 사이드바 바로 옆(본문 단 왼쪽 세로선은 사이드바 끝 1px 과 겹침)
+      expect(Math.round((await box(page.locator('main'))).x)).toBe(56);
       await page.keyboard.press('[');
       await expect(side).toHaveAttribute('data-collapsed', 'false');
       expect(await css(side, 'position')).toBe('fixed');
-      expect(Math.round((await box(page.locator(COL))).x)).toBe(56); // 본문을 밀지 않음
+      expect(Math.round((await box(page.locator('main'))).x)).toBe(56); // 본문을 밀지 않음
       await noPageOverflow(page);
       await ev.click();
       await expect(page).toHaveURL(/\/events$/);
@@ -311,19 +310,19 @@ test.describe('제목 줄', () => {
 });
 
 test.describe('본문 단', () => {
-  test('1440: 사이드바 바로 옆 · 좌우 1px 세로선 · 오른쪽 끝까지', async ({ page, backend }) => {
+  test('1440: 사이드바 바로 옆 · 좌우 1px 세로선 · 본문 폭은 옛 배치 그대로(1200)', async ({ page, backend }) => {
     void backend;
     await open(page, '/', '[data-testid="pending"]');
     const col = page.locator(COL);
-    const [s, c] = [await box(page.locator(ASIDE)), await box(col)];
-    expect(Math.round(c.x)).toBe(Math.round(s.x + s.width));
-    expect(Math.round(c.x + c.width)).toBe(1440);
+    const s = await box(page.locator(ASIDE));
     expect(await css(col, 'border-left-width')).toBe('1px');
     expect(await css(col, 'border-right-width')).toBe('1px');
     expect(parseColor(await css(col, 'border-left-color'))[3]).toBe(1);
-    // main 은 본문 단 안쪽 전부
+    // 세로선은 사이드바 끝 · 화면 끝과 1px 겹치고, main 은 사이드바 바로 옆부터 화면 오른쪽 끝까지(표 칸이 줄지 않음)
     const m = await box(page.locator('main'));
-    expect(Math.round(m.width)).toBe(Math.round(c.width) - 2);
+    expect(Math.round(m.x)).toBe(Math.round(s.x + s.width));
+    expect(Math.round(m.x + m.width)).toBe(1440);
+    expect(Math.round(m.width)).toBe(1200);
   });
 
   test.describe('1920', () => {
@@ -333,8 +332,8 @@ test.describe('본문 단', () => {
       const max = parseFloat(await tokenOf(page, '--content-max'));
       const [s, c] = [await box(page.locator(ASIDE)), await box(page.locator(COL))];
       expect(Math.round(c.width)).toBe(max);
-      expect(Math.round(c.x)).toBe(Math.round(s.x + s.width));
-      expect(Math.abs(s.x - (1920 - (c.x + c.width)))).toBeLessThanOrEqual(1);
+      expect(Math.round(c.x)).toBe(Math.round(s.x + s.width) - 1); // 왼쪽 세로선 = 사이드바 끝 1px
+      expect(Math.abs(s.x - (1920 - (c.x + c.width)))).toBeLessThanOrEqual(2);
       expect(s.x).toBeGreaterThan(0);
       await noPageOverflow(page);
       backend.send({ type: 'verdict', data: killedVerdict('api-gw') });

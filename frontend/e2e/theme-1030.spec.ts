@@ -176,14 +176,14 @@ test.describe('F7 다크 모드', () => {
 test.describe('F8 768px 미만 · 뷰포트별 넘침 0', () => {
   test.describe('390 서랍 사이드바', () => {
     test.use({ viewport: { width: 390, height: 844 } });
-    test('사이드바는 서랍(메뉴 버튼 · dim · Esc) · 머리 56px · 시트 전체 화면 · 표 가로 스크롤', async ({ page, backend }) => {
+    test('사이드바는 서랍(메뉴 버튼 · dim · Esc) · 제목 줄 53px · 시트 전체 화면 · 표 가로 스크롤', async ({ page, backend }) => {
       void backend;
       await stubScans(page);
       await page.goto('/');
       await expect(page.getByTestId('pending')).toBeVisible();
       const side = page.locator('aside[data-part="sidebar"]');
       await expect(side).toBeHidden();
-      expect((await page.locator('header[data-part="header"]').boundingBox())!.height).toBe(56);
+      expect((await page.locator('header[data-part="header"]').boundingBox())!.height).toBe(53); // 11/10 셸 배치: 제목 줄 53
       const menu = page.getByRole('button', { name: '메뉴' });
       await menu.click();
       await expect(side).toBeVisible();

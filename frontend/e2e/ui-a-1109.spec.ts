@@ -26,26 +26,26 @@ async function ready(page: Page, path = '/') {
 }
 
 test.describe('G43 화면 제목', () => {
-  test('제목 = 21px/700(--fs-xl) · 머리 56px 그대로 · 1440×900 넘침 0', async ({ page, backend }) => {
+  test('제목 = 21px/700(--fs-xl) · 제목 줄 53px(11/10 셸 배치) · 1440×900 넘침 0', async ({ page, backend }) => {
     void backend;
     for (const path of ['/', '/policies', '/settings']) {
       await page.goto(path);
       const title = page.getByTestId('page-title');
       await expect(title).not.toBeEmpty();
       expect(await title.evaluate((e) => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight])).toEqual(['21px', '700']);
-      expect((await page.locator('header[data-part="header"]').boundingBox())!.height).toBe(56);
+      expect((await page.locator('header[data-part="header"]').boundingBox())!.height).toBe(53);
       await noPageOverflow(page);
     }
   });
 
   test.describe('390', () => {
     test.use({ viewport: { width: 390, height: 844 } });
-    test('390 에서도 21px · 머리 56px · 넘침 0', async ({ page, backend }) => {
+    test('390 에서도 21px · 제목 줄 53px · 넘침 0', async ({ page, backend }) => {
       void backend;
       await page.goto('/');
       await expect(page.getByTestId('pending')).toBeVisible();
       expect(await page.getByTestId('page-title').evaluate((e) => getComputedStyle(e).fontSize)).toBe('21px');
-      expect((await page.locator('header[data-part="header"]').boundingBox())!.height).toBe(56);
+      expect((await page.locator('header[data-part="header"]').boundingBox())!.height).toBe(53);
       await noPageOverflow(page);
     });
   });
@@ -85,10 +85,10 @@ test.describe('G01 테마 = 상단 해/달 단추 하나', () => {
     await expect(page.getByText('실시간 연결됨')).toBeVisible();
     expect(await themeOf(page)).toBe('light');
     await expect(btn).toHaveAttribute('aria-label', '어두운 화면으로');
-    // 오른쪽 위 묶음: 종(알림) 오른쪽 · 계정 왼쪽
-    const [bell, toggle, account] = await Promise.all(['[data-part="bell"]', TOGGLE, '[data-part="account"]'].map((s) => page.locator(`header ${s}`).boundingBox()));
+    // 오른쪽 위 묶음: 종(알림) 오른쪽 · 사용 안내 왼쪽(11/10 셸 배치 — 계정은 사이드바 맨 아래로 옮김)
+    const [bell, toggle, helpBtn] = await Promise.all(['[data-part="bell"]', TOGGLE, 'button[aria-label="사용 안내 (?)"]'].map((s) => page.locator(`header ${s}`).boundingBox()));
     expect(toggle!.x).toBeGreaterThan(bell!.x);
-    expect(toggle!.x).toBeLessThan(account!.x);
+    expect(toggle!.x).toBeLessThan(helpBtn!.x);
   });
 
   test('전환 450ms(--dur-slow) — 색만 바뀌고 끝나면 규칙을 뗀다 · 동작 줄이기면 즉시', async ({ page, backend }) => {
