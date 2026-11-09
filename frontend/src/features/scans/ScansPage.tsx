@@ -48,7 +48,7 @@ const RULE_KO: Record<string, string> = {
   'capability-filesystem-delete': '파일 · 폴더 삭제',
   'capability-filesystem-write-executable': '실행 파일 쓰기',
 };
-const input = 'h-8 min-w-0 rounded-md border border-slate-300 px-2 text-sm focus:border-indigo-500 focus:outline-none';
+const input = 'h-8 min-w-0 rounded-[var(--r-md)] border border-slate-300 bg-field px-2 text-sm focus:border-indigo-500 focus:outline-none';
 
 // GitHub 주소(W4) — 백엔드 scan.ParseGitHubURL 과 같은 형식(공개 저장소만): 저장소 · …/tree/<ref>[/<폴더>] · …/commit/<sha> · …/releases/tag/<태그>.
 // ?쿼리 · #조각은 무시. ref 에 / 가 든 브랜치(feature/x)는 지원하지 않는다(첫 조각이 브랜치로 읽힌다)
@@ -208,7 +208,7 @@ function ScanForm({ canWrite, onStarted }: { canWrite: boolean; onStarted: () =>
   };
   const tabs: [typeof kind, string][] = [['package', '패키지 이름'], ['repo', '저장소 주소'], ['file', '파일 올리기']];
   return (
-    <section className="shrink-0 rounded-lg border border-slate-200 bg-white" data-part="scan-form">
+    <section className="shrink-0 rounded-[var(--r-lg)] border border-card-line bg-surface shadow-[var(--sh-1)]" data-part="scan-form">
       <header className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
         <h2 className="text-sm font-semibold text-slate-800">검사할 대상</h2>
         <span className="text-xs text-slate-400">설치하기 전에 정적 검사 — 코드를 실행하지 않습니다</span>
@@ -244,7 +244,7 @@ function ScanForm({ canWrite, onStarted }: { canWrite: boolean; onStarted: () =>
         </div>
         {canWrite ? (
           <button type="button" aria-label="검사 시작" disabled={busy} onClick={() => void start()}
-            className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40">검사 시작</button>
+            className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-40">검사 시작</button>
         ) : (
           <span className="self-center text-xs text-slate-500">검사 시작은 관리자만</span>
         )}

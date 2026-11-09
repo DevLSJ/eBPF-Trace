@@ -112,7 +112,7 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
               reset();
             }
           }}
-          className={`w-full rounded-md border py-1.5 pr-7 pl-8 text-sm focus:outline-none ${
+          className={`w-full rounded-[var(--r-md)] border py-1.5 pr-7 pl-8 text-sm focus:outline-none ${
             collapsed ? 'border-border-strong bg-surface text-text shadow-[var(--sh-2)]' : 'border-border bg-surface-2 text-text placeholder:text-text-3 focus:border-accent'
           }`}
         />
@@ -127,7 +127,7 @@ export function SearchBox({ collapsed }: { collapsed: boolean }) {
           id="shell-search-results"
           data-part="search-results"
           role="listbox"
-          className="absolute top-full right-0 left-0 z-50 mt-1 max-h-[min(26rem,calc(100vh-8rem))] min-w-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-slate-800 shadow-xl"
+          className="absolute top-full right-0 left-0 z-50 mt-1 max-h-[min(26rem,calc(100vh-8rem))] min-w-72 overflow-y-auto rounded-lg border border-border bg-raised py-1 text-slate-800 shadow-[var(--sh-2)]"
         >
           {items.length === 0 ? (
             <p className="px-3 py-2 text-xs text-slate-400">찾는 것이 없습니다</p>

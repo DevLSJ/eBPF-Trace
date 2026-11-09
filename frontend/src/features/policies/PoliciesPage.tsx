@@ -177,7 +177,7 @@ export function PoliciesPage() {
                   <button
                     type="button"
                     onClick={() => select({ id: NEW })}
-                    className="flex items-center gap-1 rounded-md bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700"
+                    className="flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-fg hover:bg-primary-hover"
                   >
                     <Plus className="size-3.5" aria-hidden /> 새 정책
                   </button>
@@ -382,7 +382,7 @@ function BulkYaml({ canWrite, ruleCount, onApplied }: { canWrite: boolean; ruleC
             type="button"
             onClick={() => setAsk(true)}
             disabled={busy || text === null}
-            className="ml-auto rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-40"
+            className="ml-auto rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-40"
           >
             전체 교체 후 적용 ▶
           </button>

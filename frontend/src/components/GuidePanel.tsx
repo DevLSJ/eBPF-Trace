@@ -72,7 +72,7 @@ function Step({ i, done, unknown, title, children }: { i: number; done: boolean;
       <span
         aria-hidden
         className={`grid size-[22px] shrink-0 place-items-center rounded-full text-xs font-semibold ${
-          done ? 'bg-emerald-600 text-white' : unknown ? 'bg-amber-100 text-amber-800' : 'bg-indigo-50 text-indigo-700'
+          done ? 'bg-emerald-600 text-white' : unknown ? 'bg-amber-100 text-amber-800' : 'bg-indigo-50 text-accent-text'
         }`}
       >
         {done ? <Check className="size-3.5" /> : i}
@@ -117,7 +117,7 @@ function CaseView({ c, list, onSelect, onChange }: { c: Case; list: Case[]; onSe
         <label className="mb-2.5 grid gap-1">
           <span className="text-xs text-slate-500">건</span>
           <select
-            className="h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-[13px]"
+            className="h-8 w-full rounded-[var(--r-md)] border border-slate-300 bg-field px-2 text-[13px]"
             data-part="guide-case"
             aria-label="건 선택 (최근 5건)"
             value={c.id}
@@ -296,7 +296,7 @@ function SetupView({ onChange }: { onChange: () => void }) {
             <span
               aria-hidden
               className={`grid size-[22px] shrink-0 place-items-center rounded-full text-xs font-semibold ${
-                s.done === true ? 'bg-emerald-600 text-white' : s.done === null ? 'bg-amber-100 text-amber-800' : 'bg-indigo-50 text-indigo-700'
+                s.done === true ? 'bg-emerald-600 text-white' : s.done === null ? 'bg-amber-100 text-amber-800' : 'bg-indigo-50 text-accent-text'
               }`}
             >
               {s.done === true ? <Check className="size-3.5" /> : i + 1}
@@ -310,7 +310,7 @@ function SetupView({ onChange }: { onChange: () => void }) {
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                 {s.id === 'install' && (
                   <>
-                    <button type="button" className="rounded-md bg-indigo-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-indigo-700" aria-label="sg-install 명령 복사" onClick={() => copy(INSTALL_CMD)}>
+                    <button type="button" className="rounded-md bg-primary px-2 py-0.5 text-xs font-medium text-primary-fg hover:bg-primary-hover" aria-label="sg-install 명령 복사" onClick={() => copy(INSTALL_CMD)}>
                       명령 복사
                     </button>
                     <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">{INSTALL_CMD}</code>

@@ -191,7 +191,7 @@ function StaticCell({ s, sc }: { s: InstallSession; sc: InstallScan }) {
         {sc.reused && ' · 24시간 안 검사 결과 재사용'}
       </div>
       {sc.id && (
-        <Link to={`/scans?id=${encodeURIComponent(sc.id)}`} className="justify-self-start text-xs text-indigo-700 hover:underline" data-action="scan-link">
+        <Link to={`/scans?id=${encodeURIComponent(sc.id)}`} className="justify-self-start text-xs text-accent-text hover:underline" data-action="scan-link">
           공급망 검사에서 보기 →
         </Link>
       )}

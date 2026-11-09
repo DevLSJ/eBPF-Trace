@@ -52,7 +52,7 @@ interface Props {
   onDeleted: (id: string) => void;
 }
 
-const input = 'w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500';
+const input = 'w-full rounded-[var(--r-md)] border border-slate-300 bg-field px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500';
 type Mode = 'easy' | 'form' | 'yaml';
 const MODES: [Mode, string][] = [
   ['easy', '쉬운 설정'],

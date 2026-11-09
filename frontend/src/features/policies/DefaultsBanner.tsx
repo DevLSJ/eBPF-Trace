@@ -25,7 +25,7 @@ export function DefaultsBanner({ data, canWrite, onPreview }: { data: PolicyDefa
           data-action="defaults-toggle"
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
-          className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-100"
+          className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-xs text-accent-text hover:bg-indigo-100"
         >
           {open ? (
             <>
@@ -56,7 +56,7 @@ export function DefaultsBanner({ data, canWrite, onPreview }: { data: PolicyDefa
                   type="button"
                   data-action="default-preview"
                   onClick={() => onPreview(x)}
-                  className="shrink-0 rounded-md border border-indigo-300 bg-white px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50"
+                  className="shrink-0 rounded-md border border-indigo-300 bg-white px-2 py-1 text-xs text-accent-text hover:bg-indigo-50"
                 >
                   미리보기 후 추가
                 </button>

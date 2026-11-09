@@ -31,7 +31,7 @@ const levelOptions: { value: LevelFilter; label: string }[] = [
   { value: 'kill', label: '격리 (대상 포함)' },
 ];
 
-const ctl = 'h-8 rounded-md border border-slate-300 bg-white px-2 text-sm focus:border-indigo-500 focus:outline-none';
+const ctl = 'h-8 rounded-[var(--r-md)] border border-slate-300 bg-field px-2 text-sm focus:border-indigo-500 focus:outline-none';
 
 const LEVEL_TEXT: Record<string, string> = { alert: '경고', kill: '격리 (대상 포함)' };
 

@@ -24,18 +24,18 @@ const SHORTCUTS: [string, string][] = [
 
 export function HelpDialog({ onClose }: { onClose: () => void }) {
   return (
-    <Modal title="사용 안내" kind="help" wide onClose={onClose} foot={<button type="button" onClick={onClose} className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">닫기</button>}>
+    <Modal title="사용 안내" kind="help" wide onClose={onClose} foot={<button type="button" onClick={onClose} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover">닫기</button>}>
       <section className="grid gap-2">
         <h4 className="text-sm font-semibold">사용 흐름</h4>
         <ol data-part="flow" className="grid gap-1.5">
           {STEPS.map(([t, d, to], i) => (
             <li key={to} className="flex items-start gap-3 rounded-md border border-slate-100 px-3 py-2">
-              <span className="num mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-indigo-50 text-[11px] font-semibold text-indigo-700">{i + 1}</span>
+              <span className="num mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-indigo-50 text-[11px] font-semibold text-accent-text">{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <b className="text-sm">{t}</b>
                 <p className="text-xs text-slate-500">{d}</p>
               </div>
-              <Link to={to} onClick={onClose} className="shrink-0 rounded px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">
+              <Link to={to} onClick={onClose} className="shrink-0 rounded px-2 py-1 text-xs text-accent-text hover:bg-indigo-50">
                 이동
               </Link>
             </li>

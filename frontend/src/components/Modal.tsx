@@ -79,7 +79,7 @@ export function Modal({
           first.focus();
         }
       }}
-      className={`m-auto rounded-[var(--r-lg)] border border-border bg-surface p-0 text-text shadow-[var(--sh-hover)] backdrop:bg-black/50 ${wide ? 'w-[40rem]' : 'w-[28rem]'} max-w-[calc(100vw-2rem)]`}
+      className={`m-auto rounded-[var(--r-xl)] border border-border bg-raised p-0 text-text shadow-[var(--sh-2)] backdrop:bg-black/50 ${wide ? 'w-[40rem]' : 'w-[28rem]'} max-w-[calc(100vw-2rem)]`}
     >
       <div className="grid gap-4 p-5">
         <div className="flex items-center justify-between gap-3">
@@ -178,7 +178,7 @@ export function ConfirmDialog({
       guard={() => reason && text.trim() !== ''}
       foot={
         <>
-          <button type="button" data-confirm="cancel" onClick={onCancel} className="sg-btn text-text-2 hover:bg-surface-2">
+          <button type="button" data-confirm="cancel" onClick={onCancel} className="sg-btn text-text-2 hover:bg-surface-3">
             취소
           </button>
           <button
@@ -224,7 +224,7 @@ export function ConfirmDialog({
             value={text}
             placeholder="예: 이름이 requests 와 한 글자 다른 타이포스쿼팅"
             onChange={(e) => setText(e.target.value)}
-            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+            className="rounded-[var(--r-md)] border border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
           />
         </label>
       )}

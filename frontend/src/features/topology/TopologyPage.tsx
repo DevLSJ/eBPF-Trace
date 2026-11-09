@@ -218,7 +218,7 @@ export function TopologyPage() {
         <label className="flex items-center gap-1.5 text-sm text-slate-500">
           컨테이너
           <select
-            className="h-8 rounded-md border border-slate-300 bg-white px-2 text-sm"
+            className="h-8 rounded-[var(--r-md)] border border-slate-300 bg-field px-2 text-sm"
             value={container}
             onChange={(e) => {
               setFilters({ container: e.target.value });
@@ -295,11 +295,11 @@ export function TopologyPage() {
                 )}
                 <div className="mt-2 flex flex-wrap gap-3">
                   {selectedCase.level === 'killed' && (
-                    <Link {...evidenceDest(selectedCase.container)} className="inline-flex items-center gap-1.5 text-xs text-indigo-700 hover:underline">
+                    <Link {...evidenceDest(selectedCase.container)} className="inline-flex items-center gap-1.5 text-xs text-accent-text hover:underline">
                       <FileSearch className="size-3.5" aria-hidden /> 증거 보기
                     </Link>
                   )}
-                  <Link to={`/report?case=${encodeURIComponent(selectedCase.id)}`} data-action="report" className="inline-flex items-center gap-1.5 text-xs text-indigo-700 hover:underline">
+                  <Link to={`/report?case=${encodeURIComponent(selectedCase.id)}`} data-action="report" className="inline-flex items-center gap-1.5 text-xs text-accent-text hover:underline">
                     <FileText className="size-3.5" aria-hidden /> 보고서
                   </Link>
                 </div>
@@ -367,7 +367,7 @@ function NodeDetail({ n }: { n: TopoNode }) {
           <ul className="mt-1.5 flex flex-wrap gap-1.5">
             {rules.map(([id, cnt]) => (
               <li key={id}>
-                <Link to={`/policies?id=${encodeURIComponent(id)}`} className="rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-xs text-indigo-700 hover:underline">
+                <Link to={`/policies?id=${encodeURIComponent(id)}`} className="rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-xs text-accent-text hover:underline">
                   {id} ×{cnt}
                 </Link>
               </li>

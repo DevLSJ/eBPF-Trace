@@ -117,13 +117,13 @@ export function PolicyEasy({
   );
 }
 
-const inputCls = 'w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500';
+const inputCls = 'w-full rounded-[var(--r-md)] border border-slate-300 bg-field px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500';
 
 function Step({ id, n, title, children }: { id: string; n: number; title: string; children: ReactNode }) {
   return (
     <section className="grid gap-2" data-step={id}>
       <h3 className="flex items-center gap-2 font-semibold text-slate-800">
-        <span className="grid size-5.5 place-items-center rounded-full bg-indigo-50 text-xs text-indigo-700">{n}</span>
+        <span className="grid size-5.5 place-items-center rounded-full bg-indigo-50 text-xs text-accent-text">{n}</span>
         {title}
       </h3>
       {children}
@@ -184,7 +184,7 @@ function ChipGroup({
       <div>
         <b className="font-medium text-slate-700">{def.label}</b> <small className="text-xs text-slate-400">{def.hint}</small>
       </div>
-      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-slate-300 bg-white p-1.5">
+      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-[var(--r-md)] border border-slate-300 bg-field p-1.5">
         {chips.map((c) => (
           <span
             key={`${c.field}:${c.value}`}
@@ -207,7 +207,7 @@ function ChipGroup({
           </span>
         ))}
         <input
-          className="h-7 min-w-40 flex-1 px-1 text-sm focus:outline-none"
+          className="h-7 min-w-40 flex-1 bg-transparent px-1 text-sm focus:outline-none"
           placeholder="입력 후 Enter"
           aria-label={def.label}
           value={text}

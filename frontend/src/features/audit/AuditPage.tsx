@@ -27,7 +27,7 @@ import { isInstallContainer } from '../../lib/topology';
 import { caseLabel, CHANGE_KIND_LABEL, DECISION_LABEL, detailOf, KIND_LONG, KINDS, LEVEL_LABEL, levelOf, type AuditEntry, type Case } from '../../lib/types';
 import { EvidenceView } from './EvidenceView';
 
-const ctl = 'h-8 rounded-md border border-slate-300 bg-white px-2 text-sm focus:border-indigo-500 focus:outline-none';
+const ctl = 'h-8 rounded-[var(--r-md)] border border-slate-300 bg-field px-2 text-sm focus:border-indigo-500 focus:outline-none';
 const FILTERS = ['kind', 'action', 'rule', 'container', 'since', 'until'] as const;
 type FilterKey = (typeof FILTERS)[number];
 type Filters = Record<FilterKey, string>;
@@ -367,7 +367,7 @@ function Violations({
                     <td data-col="container" className="tk-short max-w-52 truncate" title={a.event.containerName}>
                       {install ? (
                         <span className="flex items-center gap-1.5">
-                          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-700">설치 검사</span>
+                          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-accent-text">설치 검사</span>
                           <span className="truncate font-mono text-slate-800">{install.label}</span>
                         </span>
                       ) : (
@@ -458,7 +458,7 @@ function AuditSheetLoader({
                   aria-selected={shown === k}
                   data-tab={k}
                   onClick={() => onTab(k)}
-                  className={`-mb-px border-b-2 px-3 py-1.5 text-xs font-medium ${shown === k ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+                  className={`-mb-px border-b-2 px-3 py-1.5 text-xs font-medium ${shown === k ? 'border-indigo-600 text-accent-text' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
                 >
                   {label}
                 </button>

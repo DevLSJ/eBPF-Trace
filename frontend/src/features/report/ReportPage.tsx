@@ -77,7 +77,7 @@ function Report({ d, author, at }: { d: ReportData; author: string; at: Date }) 
     <article data-testid="report" className="sg-card mx-auto grid max-w-3xl gap-5 p-5 text-sm text-slate-800 md:p-8 print:max-w-none print:border-0 print:p-0 print:shadow-none">
       <header data-section="title" className="grid gap-2 border-b border-slate-200 pb-4">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs font-medium text-indigo-700">{SOURCE_LABEL[d.source]}</span>
+          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs font-medium text-accent-text">{SOURCE_LABEL[d.source]}</span>
           {s ? <StatusBadge status={s.status} /> : c ? <LevelBadge level={c.level} /> : null}
           {c && <DecisionBadge decision={c.decision} />}
         </div>

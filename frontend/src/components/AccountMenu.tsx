@@ -79,7 +79,7 @@ export function AccountMenu() {
                 btn.current?.focus();
               }
             }}
-            className="absolute top-[calc(100%+6px)] right-0 z-40 grid min-w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-xl"
+            className="absolute top-[calc(100%+6px)] right-0 z-40 grid min-w-40 rounded-lg border border-border bg-raised p-1 shadow-[var(--sh-2)]"
           >
             {[
               ['내 정보', () => setDialog('profile')] as const,
@@ -179,7 +179,7 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
   const field = (label: string, v: string, set: (s: string) => void, auto: string) => (
     <label className="grid gap-1 text-sm">
       <b className="font-medium text-slate-700">{label}</b>
-      <input type="password" autoComplete={auto} value={v} onChange={(e) => set(e.target.value)} className="h-9 rounded-md border border-slate-300 px-2.5 focus:border-indigo-500 focus:outline-none" />
+      <input type="password" autoComplete={auto} value={v} onChange={(e) => set(e.target.value)} className="h-9 rounded-[var(--r-md)] border border-slate-300 px-2.5 focus:border-indigo-500 focus:outline-none" />
     </label>
   );
   return (
@@ -193,7 +193,7 @@ function ChangePassword({ onClose }: { onClose: () => void }) {
           <button type="button" onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
             취소
           </button>
-          <button type="button" disabled={busy} onClick={() => void save()} className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+          <button type="button" disabled={busy} onClick={() => void save()} className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50">
             바꾸기
           </button>
         </>

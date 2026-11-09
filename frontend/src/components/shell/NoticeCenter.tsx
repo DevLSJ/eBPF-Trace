@@ -124,7 +124,7 @@ export function NoticeCenter() {
           data-part="notices"
           role="dialog"
           aria-label="알림 센터"
-          className="absolute top-full right-0 z-50 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+          className="absolute top-full right-0 z-50 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-raised shadow-[var(--sh-2)]"
         >
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
             <b className="text-sm">알림</b>

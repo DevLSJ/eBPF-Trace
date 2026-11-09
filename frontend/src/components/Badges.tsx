@@ -77,7 +77,7 @@ export function ScanVerdictBadge({
 export function ScopeChip({ rule }: { rule: Rule }) {
   const s = scopeOf(rule);
   if (s.key === 'all') return null;
-  const tone = s.key === 'sandbox' ? 'bg-indigo-50 text-indigo-700' : 'bg-violet-50 text-violet-700';
+  const tone = s.key === 'sandbox' ? 'bg-indigo-50 text-accent-text' : 'bg-violet-50 text-violet-700';
   return (
     <span data-scope={s.key} className={`shrink-0 rounded px-1.5 py-0.5 text-xs whitespace-nowrap ${tone}`}>
       {s.label}

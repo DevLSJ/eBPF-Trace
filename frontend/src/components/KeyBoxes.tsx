@@ -68,7 +68,7 @@ export function KeyBoxes({
               enterDown.current = null;
               if (mine) onEnter?.();
             }}
-            className="h-9 w-[4.5rem] rounded-md border border-slate-300 text-center font-mono tracking-[0.15em] focus:border-indigo-500 focus:outline-none"
+            className="h-9 w-[4.5rem] rounded-[var(--r-md)] border border-slate-300 text-center font-mono tracking-[0.15em] focus:border-indigo-500 focus:outline-none"
           />
           {i < groups - 1 && (
             <span className="text-slate-400" aria-hidden>
