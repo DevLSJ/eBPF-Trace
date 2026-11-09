@@ -18,10 +18,7 @@
 /* 재조회 진행 띠 — 도구줄 아래 선 자리(줄 높이를 바꾸지 않게 겹쳐 둠) */
 .tk-busy.tk-tools-busy { position: absolute; left: 0; right: 0; bottom: -1px; z-index: 1; }
 
-/* ── 꺼진 단추(11/09 §3): aria-disabled="true" + 사유 툴팁 — 진짜 disabled 와 같은 모양, 초점은 감 ── */
-.sg-btn[aria-disabled='true'] { cursor: not-allowed; color: var(--disabled-fg); }
-.sg-btn-primary[aria-disabled='true'], .sg-btn-secondary[aria-disabled='true'], .sg-btn-danger[aria-disabled='true'] { background: var(--disabled-bg); color: var(--disabled-fg); }
-.sg-btn-secondary[aria-disabled='true'] { box-shadow: 0 0 0 1px var(--btn-secondary-ring); }
+/* ── 꺼진 단추(11/09 §3): sg-btn 의 aria-disabled 모양은 index.css 꺼짐 규칙 한 곳에(11/09 메인 — 두 곳에 두다 흰 배경 되돌림 뒤 어긋났음) ── */
 
 /* ── 펼침 상자(칸 고르기 · 선택 목록): 반경 10 · 드롭다운 그림자 ──
    열림 효과는 모든 팝오버가 하나(11/09 B3 권고 — 120ms 내려오기): .tk-pop · .tk-pop-in(알림 · 계정 메뉴 · 통합 검색 결과) */

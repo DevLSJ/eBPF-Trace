@@ -256,7 +256,8 @@ tr:focus-visible {
     white-space: nowrap;
     transition: background-color var(--dur-fast) var(--ease-color), color var(--dur-fast) var(--ease-color), border-color var(--dur-fast) var(--ease-color), box-shadow var(--dur-fast) var(--ease-color);
   }
-  .sg-btn:disabled {
+  /* 꺼진 단추 — 진짜 disabled 와 aria-disabled="true"(사유 툴팁 · 초점은 감, 11/09 §3)는 같은 모양 · hover 없음. 규칙은 여기 한 곳 */
+  .sg-btn:disabled, .sg-btn[aria-disabled='true'] {
     cursor: not-allowed;
     color: var(--disabled-fg);
   }
@@ -265,7 +266,7 @@ tr:focus-visible {
     background: var(--btn-primary-bg);
     color: var(--btn-primary-fg);
   }
-  .sg-btn-primary:not(:disabled):hover {
+  .sg-btn-primary:not(:disabled):not([aria-disabled='true']):hover {
     background: var(--btn-primary-hover);
   }
   /* 보조 = 파란 외곽선(테두리 50% · hover 바탕 4% + 테두리 100%). 다크 글자는 밝은 짝 */
@@ -275,7 +276,7 @@ tr:focus-visible {
     color: var(--btn-secondary-fg);
     border: 1px solid var(--btn-secondary-ring);
   }
-  .sg-btn-secondary:not(:disabled):hover {
+  .sg-btn-secondary:not(:disabled):not([aria-disabled='true']):hover {
     background: var(--accent-tint);
     border-color: var(--accent);
   }
@@ -284,15 +285,15 @@ tr:focus-visible {
     background: var(--btn-danger-bg);
     color: var(--text-inverse);
   }
-  .sg-btn-danger:not(:disabled):hover {
+  .sg-btn-danger:not(:disabled):not([aria-disabled='true']):hover {
     background: var(--btn-danger-hover);
   }
-  .sg-btn-primary:disabled,
-  .sg-btn-danger:disabled {
+  .sg-btn-primary:disabled, .sg-btn-primary[aria-disabled='true'],
+  .sg-btn-danger:disabled, .sg-btn-danger[aria-disabled='true'] {
     background: var(--disabled-bg);
     color: var(--disabled-fg);
   }
-  .sg-btn-secondary:disabled {
+  .sg-btn-secondary:disabled, .sg-btn-secondary[aria-disabled='true'] {
     border-color: var(--disabled-bg);
     color: var(--disabled-fg);
   }
