@@ -20,8 +20,11 @@ test.describe('정책 쉬운 설정', () => {
     await expect(ed.locator('[data-step]')).toHaveCount(5);
     expect(await ed.locator('[data-step]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.step))).toEqual(['what', 'values', 'action', 'scope', 'name']);
     await expect(ed.locator('[data-step="what"] input[value="open"]')).toBeChecked();
-    await expect(ed.locator('[data-summary]')).toContainText('/etc/shadow');
-    await expect(ed.locator('[data-summary]')).toContainText('즉시 격리');
+    // 11/09 밤 사용자: 편집 탭 아래 요약 띠는 화면을 가려 삭제 — 같은 요약은 「저장 전 확인」 창에서 본다
+    await expect(ed.locator('[data-summary]')).toHaveCount(0);
+    await ed.getByRole('button', { name: '저장 전 확인' }).click();
+    await expect(page.locator('[data-part="save-check"] [data-summary]')).toContainText('/etc/shadow');
+    await expect(page.locator('[data-part="save-check"] [data-summary]')).toContainText('즉시 격리');
     expect(await ed.locator('[data-mode]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.mode))).toEqual(['easy', 'form', 'yaml']);
     const row = page.locator('[data-rule="sensitive-files"]');
     await expect(row).toContainText('자격 증명·계정 파일 접근');
@@ -44,7 +47,7 @@ test.describe('정책 쉬운 설정', () => {
     expect(a).toEqual(expect.arrayContaining(['cidr:10.1.0.0/16', 'host:pypi.org', 'port:443']));
     expect(a.some((x) => x.endsWith(':99999'))).toBe(false);
     await expect(page.locator(`${ED} [data-chips="allow"] [data-chip-error]`)).toContainText('1~65535');
-    await expect(page.locator(`${ED} [data-summary]`)).toContainText('4444');
+    await expect(page.locator(`${ED} [data-summary]`)).toHaveCount(0); // 편집 탭 요약 띠 삭제(11/09 밤) — 값은 아래 고급 폼으로 확인
     await page.locator(`${ED} [data-mode="form"]`).click();
     await expect(page.locator(`${ED} textarea[data-field="denyPorts"]`)).toHaveValue(/4444/);
   });

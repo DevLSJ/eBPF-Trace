@@ -81,8 +81,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     await input.press('Enter');
     expect(await chips(page, 'block')).toEqual(['host:attacker.test', 'qtype:TXT', 'qtype:ALL']);
     await expect(ed.locator('[data-chips="block"] [data-chip-error]')).toBeVisible();
-    await expect(ed.locator('[data-summary]')).toContainText('attacker.test');
-    await expect(ed.locator('[data-summary]')).toContainText('TXT');
+    await expect(ed.locator('[data-summary]')).toHaveCount(0); // 편집 탭 요약 띠 삭제(11/09 밤) — 값은 아래 고급 폼으로 확인
     // 고급 폼: 허용 도메인 · 금지 도메인 · 금지 질의 유형 · 라벨 길이 상한 · 이름 길이 상한
     await ed.locator('[data-mode="form"]').click();
     for (const label of ['허용 도메인', '금지 도메인', '금지 질의 유형', '라벨 길이 상한', '이름 길이 상한']) await expect(ed).toContainText(label);
@@ -117,8 +116,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     const ed = page.locator(ED);
     await expect(ed.locator('[data-step="what"] input[value="dns"]')).toBeChecked();
     expect(await chips(page, 'allow')).toContain('host:pypi.org');
-    await expect(ed.locator('[data-summary]')).toContainText('설치 검사 컨테이너에서');
-    await expect(ed.locator('[data-summary]')).toContainText('격리 대상으로 표시만');
+    await expect(ed.locator('[data-summary]')).toHaveCount(0); // 편집 탭 요약 띠 삭제(11/09 밤) — 범위는 위 목록 칸으로 확인
     await ed.locator('[data-step="values"] [data-field="maxLabelLength"]').fill('99');
     await ed.getByRole('button', { name: '저장 전 확인' }).click();
     await expect(ed).toContainText('라벨 길이 상한');
