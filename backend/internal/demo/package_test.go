@@ -90,3 +90,24 @@ func TestDemoPackageShape(t *testing.T) {
 		t.Fatal("archive must carry pkg/reqeusts/{setup.py,README.md}")
 	}
 }
+
+// 시연 패키지가 설치 중에 찍는 줄은 설치 로그 · 시연 화면에 그대로 보인다 — 화면에 「—」(U+2014) 금지(11/09 저녁 사용자: 원본 · 사본 함께 고침).
+// 주석 · 독스트링은 화면에 나가지 않으므로 print 줄만 본다
+func TestDemoPackagePrintsWithoutEmDash(t *testing.T) {
+	for pkg, files := range packageFiles {
+		for _, name := range files {
+			if !strings.HasSuffix(name, ".py") {
+				continue
+			}
+			b, err := pkgFS.ReadFile(pkg + "/" + name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, line := range strings.Split(string(b), "\n") {
+				if strings.Contains(line, "print(") && strings.Contains(line, "—") {
+					t.Errorf("%s/%s:%d: 출력 줄에 「—」: %s", pkg, name, i+1, strings.TrimSpace(line))
+				}
+			}
+		}
+	}
+}
