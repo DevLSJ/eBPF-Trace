@@ -380,7 +380,8 @@ test('작은 위험 글자는 위험 글자색(밝은 · 어두운 모두 4.5:1 
 });
 
 // 11/10 메인 통합(X1 질문 4 · 「모두 승인」): 공통 버튼 클래스를 쓰지 않던 주 버튼도 알약 모양(크기 · 여백은 그대로)
-test('공통 클래스 밖 주 버튼도 알약(로그인 · 계정 추가 · 새 키 등록)', async ({ page, backend }) => {
+test('공통 클래스 밖 주 버튼도 알약(로그인)', async ({ page, backend, allowConsole }) => {
+  allowConsole(/^Failed to load resource: the server responded with a status of 401 /); // 로그인 전 세션 확인 401
   const pill = async (l: import('@playwright/test').Locator) => {
     await expect(l).toBeVisible();
     const r = await l.evaluate((e) => ({ rad: parseFloat(getComputedStyle(e).borderTopLeftRadius), h: e.getBoundingClientRect().height }));
