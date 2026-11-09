@@ -71,6 +71,43 @@ func TestDemoChainScriptHarmless(t *testing.T) {
 	}
 }
 
+// Tier 1(11/09) — 첫 동작 전 1초 대기. Docker Desktop 은 컨테이너 발견이 docker-events 라 시작 직후 약 0.1초를 못 본다
+// (11/09 Mac 실측: 1단계 wget exec 를 놓쳐 sandbox-secrets 1건만 · 종료 0, sg-vm fanotify 는 no-shell-download 로 1단계 격리 137).
+// 첫 wget 앞에는 echo(셸 내장) · sleep 1 만 있어야 하고, 단계 순서 wget → sleep 1 → cat /root/.netrc 는 그대로다
+func TestDemoChainScriptStartDelay(t *testing.T) {
+	lines := strings.Split(demo.ChainScript, "\n")
+	find := func(from int, prefix string) int {
+		for i := from; i < len(lines); i++ {
+			if strings.HasPrefix(strings.TrimSpace(lines[i]), prefix) {
+				return i
+			}
+		}
+		return -1
+	}
+	wget := find(0, "timeout 3 wget ")
+	if wget < 0 {
+		t.Fatalf("no wget step:\n%s", demo.ChainScript)
+	}
+	delayed := false
+	for _, l := range lines[:wget] {
+		switch l = strings.TrimSpace(l); {
+		case l == "sleep 1":
+			delayed = true
+		case strings.HasPrefix(l, "echo "):
+		default:
+			t.Errorf("only echo · sleep 1 may run before the first wget, got %q", l)
+		}
+	}
+	if !delayed {
+		t.Errorf("chain script must wait 1s (sleep 1) before the first wget — docker-events misses the first ~0.1s:\n%s", demo.ChainScript)
+	}
+	gap := find(wget+1, "sleep 1")
+	cat := find(wget+1, "cat /root/.netrc")
+	if gap != wget+1 || cat != gap+1 {
+		t.Errorf("step order must stay wget → sleep 1 → cat /root/.netrc (lines %d · %d · %d):\n%s", wget, gap, cat, demo.ChainScript)
+	}
+}
+
 // mock 소스: chain 은 pip 단계 없이 셸 → timeout → wget → 연결 → sleep → cat → 파일 열기 순서로 재생한다
 func TestDemoChainMockEvents(t *testing.T) {
 	m := ingestion.NewMock()
