@@ -10,13 +10,13 @@ import { api } from '../../lib/api';
 // 토큰(SANDBOX_TOKEN)은 관리자에게만 오고, 화면에는 가린 채 보인다(녹화 · 발표 화면에 남지 않게). 복사는 실제 값
 
 const EXIT_CODES: [string, string][] = [
-  ['0', '통과 — 위반 없음'],
-  ['2', '위반 — 격리 또는 경고, 이 화면에 새 건'],
-  ['3', '차단 목록 — 컨테이너를 띄우기 전 거부'],
-  ['1', '설치 실패 — 패키지 이름 · 버전 확인'],
-  ['4', '결과 확인 불가 — 통과로 보지 않음'],
-  ['69', '백엔드 연결 실패 — SUPPLYGUARD_API 확인'],
-  ['77', '토큰 거부 — SUPPLYGUARD_SANDBOX_TOKEN 확인'],
+  ['0', '[통과] 위반 없음'],
+  ['2', '[위반] 격리 또는 경고, 이 화면에 새 건'],
+  ['3', '[차단 목록] 컨테이너를 띄우기 전 거부'],
+  ['1', '[설치 실패] 패키지 이름 · 버전 확인'],
+  ['4', '[결과 확인 불가] 통과로 보지 않음'],
+  ['69', '[백엔드 연결 실패] SUPPLYGUARD_API 확인'],
+  ['77', '[토큰 거부] SUPPLYGUARD_SANDBOX_TOKEN 확인'],
 ];
 const TOKEN_PLACEHOLDER = '<관리자에게 받은 SANDBOX_TOKEN>';
 const RUN = ['./sg-install pip requests', './sg-install npm lodash@4', './sg-install cargo ripgrep'].join('\n');
@@ -38,7 +38,7 @@ export function UsageGuide({ onClose }: { onClose: () => void }) {
   // 복사 알림에는 명령을 다시 보이지 않는다(토큰이 화면에 남지 않게)
   const copy = (text: string, what: string) => {
     const ok = () => toast(`${what}을(를) 복사했습니다.`, { key: 'copy', tone: 'ok' });
-    const fail = () => toast(`${what}을(를) 복사하지 못했습니다 — 직접 입력하세요.`, { key: 'copy', tone: 'warn' });
+    const fail = () => toast(`${what}을(를) 복사하지 못했습니다. 직접 입력하세요.`, { key: 'copy', tone: 'warn' });
     try {
       navigator.clipboard.writeText(text).then(ok, fail);
     } catch {
@@ -52,12 +52,12 @@ export function UsageGuide({ onClose }: { onClose: () => void }) {
         <ul className="grid gap-0.5 text-xs text-text-2">
           <li>패키지를 개발자 PC 가 아닌 일회용 감시 컨테이너에서 설치함</li>
           <li>위반(외부 스크립트 실행 · 자격 증명 읽기 · 허용 밖 연결)이면 설치 완료 전 격리됨</li>
-          <li>SupplyGuard 가 감시받는 서버에서 실행 — eBPF 는 그 서버의 컨테이너만 관찰함</li>
+          <li>SupplyGuard 가 감시받는 서버에서 실행, eBPF 는 그 서버의 컨테이너만 관찰함</li>
         </ul>
-        {setup.error != null && <p className="text-xs text-danger-text">설정을 읽지 못했습니다 — 잠시 뒤 다시 여세요</p>}
+        {setup.error != null && <p className="text-xs text-danger-text">설정을 읽지 못했습니다. 잠시 뒤 다시 여세요.</p>}
         {s && !s.reporting && (
           <p data-part="reporting-off" role="note" className="rounded-md border border-[var(--warn-line)] bg-warn-soft px-3 py-2 text-xs">
-            설치 보고 꺼짐 — 서버 .env 에 SANDBOX_TOKEN 을 넣고 백엔드를 다시 시작해야 결과가 이 화면에 남습니다
+            설치 보고 꺼짐, 서버 .env 에 SANDBOX_TOKEN 을 넣고 백엔드를 다시 시작해야 결과가 이 화면에 남습니다
           </p>
         )}
 
@@ -71,7 +71,7 @@ export function UsageGuide({ onClose }: { onClose: () => void }) {
               <span className="text-xs text-text-2">이 서버와 같은 판 · 받은 뒤 서버로 옮겨 실행 권한 부여</span>
             </div>
           ) : (
-            <p className="text-xs text-text-2">서버에 스크립트 없음 — 저장소의 tools/sg-install 사용</p>
+            <p className="text-xs text-text-2">서버에 스크립트 없음, 저장소의 tools/sg-install 사용</p>
           )}
           <CodeWindow lang="sh" name="권한">
             {'chmod +x sg-install'}
@@ -94,7 +94,7 @@ export function UsageGuide({ onClose }: { onClose: () => void }) {
             {envLines(show) || '불러오는 중…'}
           </CodeWindow>
           <p className="text-xs text-text-2">
-            {s?.tokenRequired ? (s.token ? '토큰은 설치 보고 전용 — 관리 API 에는 쓸 수 없음' : '토큰은 관리자에게 받기') : '이 서버는 토큰 없이 보고를 받음(mock)'}
+            {s?.tokenRequired ? (s.token ? '토큰은 설치 보고 전용(관리 API 에는 쓸 수 없음)' : '토큰은 관리자에게 받기') : '이 서버는 토큰 없이 보고를 받음(mock)'}
           </p>
         </section>
 

@@ -18,12 +18,12 @@ export interface FlowHint {
 export const SCENARIO: Record<DemoScenario, { name: string; line: string; expect: Expect; long: string; brief: Brief; flow: FlowHint }> = {
   all: {
     name: '전부 순서대로',
-    line: '아래 다섯 공격을 차례로 — 첫 격리에서 멈춤',
+    line: '아래 다섯 공격을 차례로, 첫 격리에서 멈춤',
     expect: 'isolated',
     long: '설치 샌드박스에서 다섯 가지 공격 행동을 차례로 흘립니다. 실제와 같게 첫 격리(kill)에서 멈춥니다.',
     brief: {
       what: '공격 5종(셸 · 리버스 셸 · IP 직접 · 도메인 · DNS 유출) 차례로 실행함',
-      rule: '첫 위반 규칙이 격리 — 보통 pipe-to-shell',
+      rule: '첫 위반 규칙이 격리(보통 pipe-to-shell)',
       result: '첫 격리에서 멈춤 · 남은 공격 실행 안 됨',
     },
     flow: { event: '실행 · 통신 · DNS 공격 5종', rule: '첫 위반 규칙' },
@@ -32,7 +32,7 @@ export const SCENARIO: Record<DemoScenario, { name: string; line: string; expect
     name: '외부 스크립트 실행 + 비밀 파일 접근',
     line: 'sh -c "wget … | sh" → /etc/shadow',
     expect: 'isolated',
-    long: 'post-install 단계에서 셸로 외부 스크립트를 받아 실행하고(| sh) 계정 파일을 엽니다 — 무해한 시뮬(TEST-NET 주소).',
+    long: 'post-install 단계에서 셸로 외부 스크립트를 받아 실행하고(| sh) 계정 파일을 엽니다(무해한 시뮬, TEST-NET 주소).',
     brief: {
       what: '셸로 외부 스크립트를 받아 바로 실행 · /etc/shadow 열기 시도함',
       rule: 'pipe-to-shell(인자 「| sh」) · sensitive-files(계정 파일)',
@@ -56,10 +56,10 @@ export const SCENARIO: Record<DemoScenario, { name: string; line: string; expect
     name: 'DNS 없이 공인 IP 접속',
     line: 'connect 203.0.113.7:443 · 도메인 조회 없음',
     expect: 'isolated',
-    long: '도메인 조회 없이 공인 IP 로 바로 붙습니다 — trace_dns 가 켜져 있으면 directIp 규칙으로 판정합니다.',
+    long: '도메인 조회 없이 공인 IP 로 바로 붙습니다. trace_dns 가 켜져 있으면 directIp 규칙으로 판정합니다.',
     brief: {
       what: '도메인 조회 없이 공인 IP 203.0.113.7:443 으로 바로 연결함',
-      rule: 'sandbox-egress — directIp: kill(trace_dns 켜짐 기준)',
+      rule: 'sandbox-egress(directIp: kill, trace_dns 켜짐 기준)',
       result: '연결 시도 즉시 kill · 증거 보존됨',
     },
     flow: { event: 'connect IP:443 · 조회 없음', rule: 'sandbox-egress' },
@@ -90,12 +90,12 @@ export const SCENARIO: Record<DemoScenario, { name: string; line: string; expect
   },
   benign: {
     name: '정상 설치 대조군',
-    line: 'pip sg-demo-benign — 위반 없이 통과',
+    line: 'pip sg-demo-benign · 위반 없이 통과',
     expect: 'passed',
     long: '정상 패키지를 설치합니다. 정책에 걸리는 행동이 없어 격리 없이 「통과」로 끝나는 모습을 보여 줍니다.',
     brief: {
       what: '정상 패키지 sg-demo-benign 설치함',
-      rule: '걸리는 규칙 없음 — 모든 정책 통과',
+      rule: '걸리는 규칙 없음(모든 정책 통과)',
       result: '위반 없이 설치 완료 · 격리 · 증거 수집 없음',
     },
     flow: { event: 'pip 설치 정상 동작', rule: '위반 없음' },
@@ -104,7 +104,7 @@ export const SCENARIO: Record<DemoScenario, { name: string; line: string; expect
     name: '연쇄 규칙(다운로드 → 연결 → 비밀 파일)',
     line: 'wget 실행 → 외부 연결 → /root/.netrc',
     expect: 'isolated',
-    long: '연쇄 규칙 chain-download-secrets(dryRun — 시연용 시험 운영)의 진행을 보여 줍니다. 기본 정책 no-shell-download 가 1단계(wget 실행)에서 먼저 격리하므로 연쇄는 1/3 에서 멈춥니다(연쇄 완성 장면은 따로 녹화).',
+    long: '연쇄 규칙 chain-download-secrets(dryRun, 시연용 시험 운영)의 진행을 보여 줍니다. 기본 정책 no-shell-download 가 1단계(wget 실행)에서 먼저 격리하므로 연쇄는 1/3 에서 멈춥니다(연쇄 완성 장면은 따로 녹화).',
     brief: {
       what: 'wget 실행 → 외부 연결 → /root/.netrc 읽기 차례로 시도함',
       rule: 'no-shell-download 가 1단계(wget)에서 먼저 격리 · 연쇄 chain-download-secrets 는 dryRun',
@@ -169,7 +169,7 @@ export function markParts(text: string, reason?: string | null): [string, string
 
 export type Level3 = Exclude<Level, 'normal'>;
 export const levelOfDecider = (d: Pick<DemoDecider, 'action' | 'enforced'>): Level3 => (d.action !== 'kill' ? 'alert' : d.enforced ? 'killed' : 'held');
-export const VERDICT_KO: Record<Level3, string> = { killed: '격리', held: '격리 대상(dryRun — 알림만)', alert: '경고' };
+export const VERDICT_KO: Record<Level3, string> = { killed: '격리', held: '격리 대상(dryRun · 알림만)', alert: '경고' };
 
 export interface DemoModel {
   // undefined = 아직 모름(판정 기다리는 중 · 정보 없음), null = 위반 없음(통과)

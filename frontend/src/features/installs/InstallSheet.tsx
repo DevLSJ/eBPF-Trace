@@ -117,7 +117,7 @@ function Summary({ s }: { s: InstallSession }) {
         <>
           <dt className="text-slate-500">거부 이유</dt>
           <dd className="text-xs" data-testid="refused-by">
-            차단 목록의 {LIST_LABEL[s.refusedBy.list] ?? s.refusedBy.list} <code className="font-mono">{s.refusedBy.value}</code> — 컨테이너를 띄우기 전에 거부
+            차단 목록의 {LIST_LABEL[s.refusedBy.list] ?? s.refusedBy.list} <code className="font-mono">{s.refusedBy.value}</code>, 컨테이너를 띄우기 전에 거부
           </dd>
         </>
       )}

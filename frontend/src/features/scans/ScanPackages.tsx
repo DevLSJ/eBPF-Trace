@@ -74,11 +74,11 @@ export function ScanPackages({ s }: { s: Scan }) {
       );
       nav(`/policies?proposal=${encodeURIComponent(r.proposalId)}`);
     } catch (e) {
-      toast(`차단 제안을 만들지 못했습니다 — ${errorText(e)}`, { key: 'scan-block', tone: 'danger' });
+      toast(`차단 제안을 만들지 못했습니다(${errorText(e)}).`, { key: 'scan-block', tone: 'danger' });
     }
   };
   return (
-    <Section title={`패키지 ${list.length} — 잠금 · 의존성 파일에서 읽음, 같은 패키지 · 버전은 한 줄`}>
+    <Section title={`패키지 ${list.length}(잠금 · 의존성 파일에서 읽음, 같은 패키지 · 버전은 한 줄)`}>
       <div data-part="packages" className="grid gap-2">
         <div className="max-h-72 overflow-auto rounded-md border border-slate-200">
           <table className="sg-table">
@@ -110,7 +110,7 @@ export function ScanPackages({ s }: { s: Scan }) {
                         <input type="checkbox" className="accent-indigo-600" aria-label={`${g.key} 고르기`} checked={picked.has(g.key)} onChange={(e) => toggle(g.key, e.target.checked)} />
                       ) : (
                         <span className="text-xs text-slate-400" title={g.manager ? '이미 차단 목록에 있음' : '차단 목록이 다루지 않는 생태계'}>
-                          {g.manager ? '차단됨' : '—'}
+                          {g.manager ? '차단됨' : ''}
                         </span>
                       )}
                     </td>
@@ -142,7 +142,7 @@ export function ScanPackages({ s }: { s: Scan }) {
               <OctagonX className="size-3.5" aria-hidden /> 선택한 {sel.length}개 차단 목록에 올리기
             </button>
           ) : (
-            <span className="text-xs text-slate-500">차단할 패키지를 고르세요 — 취약점이 많은 것부터 위에 있습니다</span>
+            <span className="text-xs text-slate-500">차단할 패키지를 고르세요. 취약점이 많은 것부터 위에 있습니다.</span>
           ))}
       </div>
       {ask && (
@@ -152,8 +152,8 @@ export function ScanPackages({ s }: { s: Scan }) {
           okLabel={`${sel.length}개 올리기`}
           reason
           effects={[
-            `차단 제안 초안 — 패키지 ${sel.length}개: ${[...new Set(sel.map((g) => `${g.manager}:${g.name}`))].join(' · ')} (정책에서 미리보기 후 적용)`,
-            '적용하면 다음 sg-install 부터 이 패키지는 설치 전 거부(컨테이너를 띄우지 않음) — 차단은 버전과 무관',
+            `패키지 ${sel.length}개 차단 제안 초안(${[...new Set(sel.map((g) => `${g.manager}:${g.name}`))].join(' · ')}), 정책에서 미리보기 후 적용`,
+            '적용하면 다음 sg-install 부터 이 패키지는 설치 전 거부(컨테이너를 띄우지 않음), 차단은 버전과 무관',
             '공급망 검사 건을 「악성」으로 판정한 기록이 남습니다(사유는 판정 메모)',
           ]}
           undo="정책에서 제안을 「버림」하면 차단 없이 끝납니다. 적용한 뒤에는 차단 목록에서 「해제」"

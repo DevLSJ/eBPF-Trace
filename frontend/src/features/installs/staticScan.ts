@@ -1,7 +1,7 @@
 import type { InstallScan, InstallSession } from '../../lib/types';
 
 // 11/04 종합 판정(목업 main 617b658 확정) — 설치 세션의 자동 정적 검사(scan) 문구.
-// 건너뛴 이유: 목록 「—」 title 과 상세 OSV 칸 부제 끝에 같은 문구
+// 건너뛴 이유: 목록 빈 칸의 title 과 상세 OSV 칸 부제 끝에 같은 문구
 const SKIP_TEXT: Record<string, (manager: string) => string> = {
   local: () => '로컬 패키지라 정적 검사 건너뜀',
   unsupported: (m) => `${m} 는 정적 검사 미지원`,
@@ -13,7 +13,7 @@ export const skipText = (s: InstallSession) => (SKIP_TEXT[s.scan?.skip ?? ''] ??
 
 // 엇갈릴 때만 한 줄(둘 다 빨강) — 그 밖(둘 다 위험 · 둘 다 정상 · 실행 중 · 실패)은 문장 없음
 export const NOTE_RUNTIME = '정적 검사로는 악성 코드를 찾지 못했지만, 설치 중 행동을 커널에서 보고 잡았습니다.';
-export const NOTE_STATIC = '설치 중 정책 위반은 없었지만, 정적 검사에서 설치 단계의 위험한 코드가 나왔습니다 — 공급망 검사에서 코드를 확인하세요.';
+export const NOTE_STATIC = '설치 중 정책 위반은 없었지만, 정적 검사에서 설치 단계의 위험한 코드가 나왔습니다. 공급망 검사에서 코드를 확인하세요.';
 
 const runtimeHit = (s: InstallSession) => s.status === 'isolated' || s.status === 'warned';
 

@@ -160,7 +160,7 @@ function ScenarioCol({ scenario, setScenario, run, starting, now, start, error }
   const locked = isRunning || starting;
   const sec = isRunning && run ? elapsedSec(run, now) : 0;
   const note = isRunning
-    ? `실행 중 — 동시 1개 · 최대 90초(${sec}초 경과). 끝나면 다시 시작할 수 있습니다.`
+    ? `실행 중입니다(동시 1개 · 최대 90초, ${sec}초 경과). 끝나면 다시 시작할 수 있습니다.`
     : '한 번에 하나만 · 90초 안에 끝나지 않으면 멈춥니다. 컨테이너는 끝나면 지웁니다.';
   const { folded, toggle } = useFolds();
   return (
@@ -251,12 +251,12 @@ function ErrorBand({ error }: { error: DemoError }) {
 // ── 가운데: 실시간 5단계 ──
 const OUTCOME_STEP: Record<Outcome, (run: DemoRun) => string> = {
   running: () => '',
-  isolated: (r) => `격리(kill)${r.exitCode != null ? ` — 종료 코드 ${r.exitCode}` : ''}`,
-  passed: (r) => `통과${r.exitCode != null ? ` — 종료 코드 ${r.exitCode}` : ''}`,
-  detected: () => '탐지(격리 안 함 — 시연용 dryRun)',
-  warned: () => '경고 — 격리 정책에는 걸리지 않음',
-  refused: () => '거부 — 차단 목록',
-  timeout: () => '시간 초과 — 90초',
+  isolated: (r) => `[격리] 컨테이너 kill${r.exitCode != null ? `(종료 코드 ${r.exitCode})` : ''}`,
+  passed: (r) => `[통과] 설치 완료${r.exitCode != null ? `(종료 코드 ${r.exitCode})` : ''}`,
+  detected: () => '[탐지] 격리 안 함(시연용 dryRun)',
+  warned: () => '[경고] 격리 정책에는 걸리지 않음',
+  refused: () => '[거부] 차단 목록',
+  timeout: () => '[시간 초과] 90초',
   failed: () => '실패',
 };
 
@@ -271,13 +271,13 @@ function FlowCol({ run, m, steps, now, loadError }: { run: DemoRun | null; m: De
   const killMs = msBetween(m.tl?.detectedAt, m.tl?.killedAt);
   const ocText: Record<Outcome, string> = {
     running: `실행 중 · ${sec}초 경과`,
-    isolated: `격리됨 — ${m.d?.ruleId || '규칙'}${killMs !== null && m.tl?.killedAt ? ` · 탐지→kill ${fmtNum(killMs)} ms` : ''}`,
-    passed: '통과 — 위반 없음(대조군)',
-    detected: '탐지(격리 안 함 — 시연용 dryRun)',
-    warned: '경고 — 격리 정책에는 걸리지 않음',
-    refused: '거부됨(차단 목록) — 차단 목록에 있어 설치 전 거부됨, 차단 해제 후 다시',
-    timeout: '시간 초과 — 90초 안에 끝나지 않아 멈춤',
-    failed: `실패${run?.exitCode != null ? ` — 종료 코드 ${run.exitCode}` : ''}`,
+    isolated: `[격리] ${m.d?.ruleId || '규칙'} 위반${killMs !== null && m.tl?.killedAt ? ` · 탐지→kill ${fmtNum(killMs)} ms` : ''}`,
+    passed: '[통과] 위반 없음(대조군)',
+    detected: '[탐지] 시연용 dryRun 이라 격리 안 함',
+    warned: '[경고] 격리 정책에는 걸리지 않음',
+    refused: '[거부] 차단 목록에 있어 설치 전 거부됨, 차단 해제 후 다시',
+    timeout: '[시간 초과] 90초 안에 끝나지 않아 멈춤',
+    failed: run?.exitCode != null ? `[실패] 종료 코드 ${run.exitCode}` : '실패',
   };
   const body = (s: Step): ReactNode => {
     const fin = !!run && !m.running;
@@ -293,12 +293,12 @@ function FlowCol({ run, m, steps, now, loadError }: { run: DemoRun | null; m: De
               <code className="font-mono">{m.d.ruleId || '규칙 이름 없음'}</code> <DecisionPill lv={m.lv} />
             </>
           );
-        if (m.d === null && fin) return <span className="tone-ok">위반 없음 — 설치 중 행동이 모든 정책을 통과</span>;
+        if (m.d === null && fin) return <span className="tone-ok">[통과] 설치 중 행동에 위반 사항 없음</span>;
         return fin ? <None /> : <span className="text-text-3">판정 기다리는 중</span>;
       case 'evidence': {
-        if (s.state === 'skip') return <span className="text-text-3">{m.d ? '건너뜀 — 격리하지 않아 모으지 않음' : '건너뜀 — 위반 없음'}</span>;
+        if (s.state === 'skip') return <span className="text-text-3">{m.d ? '[건너뜀] 격리하지 않아 모으지 않음' : '[건너뜀] 위반 없음'}</span>;
         const evMs = msBetween(m.tl?.evidenceStartedAt, m.tl?.evidenceDoneAt);
-        if (m.tl?.evidenceDoneAt) return <span>로그 · 파일 변경 · 프로세스 — {evMs !== null ? `${fmtNum(evMs)} ms` : '시간 정보 없음'}</span>;
+        if (m.tl?.evidenceDoneAt) return <span>로그 · 파일 변경 · 프로세스 보존됨({evMs !== null ? `${fmtNum(evMs)} ms` : '시간 정보 없음'})</span>;
         return fin ? <None /> : null;
       }
       case 'outcome':
@@ -431,10 +431,10 @@ function FlowTab({ mode, scenario, run, m, steps, onWhy }: { mode: FlowMode; sce
   const oc = live ? m.outcome : null;
   const line =
     mode === 'idle'
-      ? `${name} — 예상 흐름${reducedMotion() ? '' : ' 자동 재생'}`
+      ? `${name} · 예상 흐름${reducedMotion() ? '' : ' 자동 재생'}`
       : mode === 'live'
-        ? `${name} — 실제 진행 단계 표시`
-        : `${name} — 결과에서 멈춤 · 시나리오 선택 시 대기로 전환`;
+        ? `${name} · 실제 진행 단계 표시`
+        : `${name} · 결과에서 멈춤, 시나리오 선택 시 대기로 전환`;
   return (
     <div
       className="demo-col-body demo-flow-body"
@@ -488,7 +488,7 @@ function WhyCol({
 
   let whyBody: ReactNode;
   if (!run) whyBody = <p className="why-muted">실행하면 판정을 만든 규칙과 이벤트가 여기에 나옵니다.</p>;
-  else if (d === null) whyBody = <p className="why-pass">걸린 규칙 없음 — 설치하는 동안 정책에 걸린 행동이 없었습니다(정상 대조군).</p>;
+  else if (d === null) whyBody = <p className="why-pass">걸린 규칙 없음. 설치하는 동안 정책에 걸린 행동이 없었습니다(정상 대조군).</p>;
   else if (d === undefined) whyBody = m.running ? <p className="why-muted">판정 기다리는 중…</p> : <None />;
   else
     whyBody = (
@@ -501,7 +501,7 @@ function WhyCol({
         </div>
         {d.description ? <p className="why-desc">{d.description}</p> : null}
         <p className="why-cond" data-part="why-condition">
-          {d.condition ? d.condition : <None>조건 — 정보 없음</None>}
+          {d.condition ? d.condition : <None>조건 정보 없음</None>}
         </p>
         {ev ? (
           // 11/04f 코드 창 — 원문은 줄바꿈(pre-wrap), 파일명 없음 · 종류는 실행이면 shell, 그 밖은 log · 걸린 부분 mark
@@ -554,7 +554,7 @@ function WhyCol({
                   {st.event.detail}
                 </code>
               ) : (
-                <span className="text-text-3">아직 — 이어지지 않음</span>
+                <span className="text-text-3">아직 이어지지 않음</span>
               )}
             </span>
             <span className="num text-text-3" data-part="seq-gap">
@@ -570,7 +570,7 @@ function WhyCol({
   let evEl: ReactNode;
   if (!killed) evEl = <p className="why-muted">{m.running ? '격리되면 kill 직전에 모읍니다' : '격리하지 않아 증거를 모으지 않았습니다'}</p>;
   else if (evidence === undefined) evEl = <p className="why-muted">모으는 중…</p>;
-  else if (!evidence) evEl = <None>증거 — 정보 없음</None>;
+  else if (!evidence) evEl = <None>증거 정보 없음</None>;
   else {
     const logs = String(evidence.logs || '')
       .split('\n')
@@ -627,7 +627,7 @@ function WhyCol({
                 )}
               </dd>
               <dt>프로세스</dt>
-              <dd>{ev ? <span className="font-mono">{`${ev.comm || '?'} · pid ${ev.pid ?? '?'}`}</span> : d === null ? '—' : <None />}</dd>
+              <dd>{ev ? <span className="font-mono">{`${ev.comm || '?'} · pid ${ev.pid ?? '?'}`}</span> : d === null ? '' : <None />}</dd>
             </dl>
           </section>
           <section className="why-sec" data-why="why">
@@ -639,8 +639,8 @@ function WhyCol({
             <h3>어떻게</h3>
             <div data-part="why-evidence">{evEl}</div>
             <div className="why-ms">
-              <span data-part="evidence-ms">증거 수집 {evMs !== null ? <b className="num">{fmtNum(evMs)} ms</b> : killed ? <None /> : '—'}</span>
-              <span data-part="kill-ms">탐지 → kill {killMs !== null ? <b className="num">{fmtNum(killMs)} ms</b> : killed ? <None /> : '—'}</span>
+              <span data-part="evidence-ms">증거 수집 {evMs !== null ? <b className="num">{fmtNum(evMs)} ms</b> : killed ? <None /> : ''}</span>
+              <span data-part="kill-ms">탐지 → kill {killMs !== null ? <b className="num">{fmtNum(killMs)} ms</b> : killed ? <None /> : ''}</span>
             </div>
           </section>
           {run && (caseId || run.installId || d?.ruleId) ? (

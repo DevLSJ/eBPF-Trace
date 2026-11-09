@@ -19,12 +19,12 @@ export function idleNodes(k: DemoScenario): FlowNode[] {
   return [
     { id: 'start', title: '설치 시작', sub: '감시 컨테이너 sg-install-demo-*', point: '감시 컨테이너에서 패키지 설치 시작됨' },
     { id: 'events', title: '커널 이벤트', sub: s.flow.event, point: `커널(eBPF)에서 ${s.flow.event} 포착됨` },
-    { id: 'match', title: '규칙 판정', sub: s.flow.rule, point: pass ? '모든 정책 통과 — 위반 없음 확인됨' : `${s.flow.rule} 에 걸림 — 격리 판정됨` },
+    { id: 'match', title: '규칙 판정', sub: s.flow.rule, point: pass ? '[통과] 모든 정책에서 위반 없음 확인됨' : `${s.flow.rule} 에 걸려 격리 판정됨` },
     pass
-      ? { id: 'evidence', title: '증거 수집', sub: '건너뜀 — 격리 없음', skip: true, point: '격리 없음 — 증거 수집 건너뜀' }
+      ? { id: 'evidence', title: '증거 수집', sub: '건너뜀(격리 없음)', skip: true, point: '격리 없어 증거 수집 건너뜀' }
       : { id: 'evidence', title: '증거 수집', sub: '로그 · 파일 변경 · 프로세스', point: 'kill 직전 로그 · 파일 변경 · 프로세스 0.7초 안에 보존됨' },
     pass
-      ? { id: 'outcome', title: '통과', sub: '위반 없이 설치 완료', tone: 'ok', point: '위반 없이 설치 완료 — 통과 처리됨' }
+      ? { id: 'outcome', title: '통과', sub: '위반 없이 설치 완료', tone: 'ok', point: '[통과] 위반 없이 설치 완료됨' }
       : { id: 'outcome', title: '격리', sub: '설치 끝나기 전 kill', tone: 'danger', point: '설치 끝나기 전 컨테이너 격리(kill)됨' },
   ];
 }
@@ -33,12 +33,12 @@ type Tone = NonNullable<FlowNode['tone']>;
 const OUTCOME: Record<Outcome, { title: string; tone: Tone; point: string }> = {
   running: { title: '격리 / 통과', tone: 'accent', point: '결과 기다리는 중' },
   isolated: { title: '격리', tone: 'danger', point: '설치 끝나기 전 컨테이너 격리(kill)됨' },
-  passed: { title: '통과', tone: 'ok', point: '위반 없이 설치 완료 — 통과 처리됨' },
-  detected: { title: '탐지(dryRun)', tone: 'warn', point: '탐지됨 — 시연용 dryRun 이라 격리 안 함' },
-  warned: { title: '경고', tone: 'warn', point: '경고 기록됨 — 격리 정책에는 걸리지 않음' },
+  passed: { title: '통과', tone: 'ok', point: '[통과] 위반 없이 설치 완료됨' },
+  detected: { title: '탐지(dryRun)', tone: 'warn', point: '[탐지] 시연용 dryRun 이라 격리 안 함' },
+  warned: { title: '경고', tone: 'warn', point: '[경고] 격리 정책에는 걸리지 않아 경고만 기록됨' },
   refused: { title: '거부', tone: 'warn', point: '차단 목록에 있어 설치 전 거부됨' },
   timeout: { title: '시간 초과', tone: 'warn', point: '90초 안에 끝나지 않아 멈춤' },
-  failed: { title: '실패', tone: 'danger', point: '시연 실행 실패 — 종료 코드 확인 필요' },
+  failed: { title: '실패', tone: 'danger', point: '[실패] 시연 실행 실패, 종료 코드 확인 필요' },
 };
 
 // 실행 중 · 끝난 실행 — 노드 문구는 실제 값(컨테이너 · 이벤트 수 · 규칙 · 증거 ms · 탐지→kill ms), 상태는 실시간 단계 그대로
@@ -52,8 +52,8 @@ export function liveFlow(run: DemoRun, m: DemoModel, steps: Step[]): { nodes: Fl
     : { id: 'events', title: '커널 이벤트', sub: m.running ? '첫 이벤트 기다리는 중' : '이벤트 없음', point: m.running ? '첫 커널 이벤트 기다리는 중' : '커널 이벤트 없음' };
 
   let match: FlowNode;
-  if (m.d && m.lv) match = { id: 'match', title: '규칙 판정', sub: `${m.d.ruleId || '규칙 이름 없음'} · ${LV_SHORT[m.lv]}`, point: `${m.d.ruleId || '규칙'} 에 걸림 — ${LV_SHORT[m.lv]} 판정됨` };
-  else if (m.d === null && fin) match = { id: 'match', title: '규칙 판정', sub: '위반 없음', point: '모든 정책 통과 — 위반 없음 확인됨' };
+  if (m.d && m.lv) match = { id: 'match', title: '규칙 판정', sub: `${m.d.ruleId || '규칙 이름 없음'} · ${LV_SHORT[m.lv]}`, point: `${m.d.ruleId || '규칙'} 에 걸려 ${LV_SHORT[m.lv]} 판정됨` };
+  else if (m.d === null && fin) match = { id: 'match', title: '규칙 판정', sub: '위반 없음', point: '[통과] 모든 정책에서 위반 없음 확인됨' };
   else match = { id: 'match', title: '규칙 판정', sub: fin ? '정보 없음' : '판정 기다리는 중', point: fin ? '판정 정보 없음' : '규칙 판정 기다리는 중' };
 
   const evMs = msBetween(m.tl?.evidenceStartedAt, m.tl?.evidenceDoneAt);
@@ -63,10 +63,10 @@ export function liveFlow(run: DemoRun, m: DemoModel, steps: Step[]): { nodes: Fl
       id: 'evidence',
       title: '증거 수집',
       sub: evMs !== null ? `${fmtNum(evMs)} ms` : '시간 정보 없음',
-      point: `kill 직전 로그 · 파일 변경 · 프로세스 보존됨${evMs !== null ? ` — ${fmtNum(evMs)} ms` : ''}`,
+      point: `kill 직전 로그 · 파일 변경 · 프로세스 보존됨${evMs !== null ? `(${fmtNum(evMs)} ms)` : ''}`,
     };
   else if (st('evidence') === 'skip')
-    evidence = { id: 'evidence', title: '증거 수집', sub: '건너뜀', point: m.d ? '격리하지 않음 — 증거 수집 건너뜀' : '위반 없음 — 증거 수집 건너뜀' };
+    evidence = { id: 'evidence', title: '증거 수집', sub: '건너뜀', point: m.d ? '격리하지 않아 증거 수집 건너뜀' : '위반 없어 증거 수집 건너뜀' };
   else if (fin) evidence = { id: 'evidence', title: '증거 수집', sub: '정보 없음', point: '증거 수집 정보 없음' };
   else if (st('evidence') === 'active') evidence = { id: 'evidence', title: '증거 수집', sub: '모으는 중', point: 'kill 직전 증거 수집 중' };
   else evidence = { id: 'evidence', title: '증거 수집', sub: '격리 시 kill 직전 수집', point: '격리 판정 시 kill 직전 증거 수집' };
@@ -79,9 +79,9 @@ export function liveFlow(run: DemoRun, m: DemoModel, steps: Step[]): { nodes: Fl
     running: m.lv === 'killed' ? '컨테이너 kill 중' : '결과 기다리는 중',
     isolated: killMs !== null ? `탐지→kill ${fmtNum(killMs)} ms` : '컨테이너 kill',
     passed: '위반 없이 설치 완료',
-    detected: '격리 안 함 — 시연용 dryRun',
+    detected: '격리 안 함(시연용 dryRun)',
     warned: '격리 정책에 걸리지 않음',
-    refused: '차단 목록 — 설치 전 거부',
+    refused: '설치 전 거부(차단 목록)',
     timeout: '90초 초과로 멈춤',
     failed: run.exitCode != null ? `종료 코드 ${run.exitCode}` : '실패',
   };

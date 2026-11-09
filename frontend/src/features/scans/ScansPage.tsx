@@ -60,11 +60,11 @@ const input = 'h-8 min-w-0 rounded-[var(--r-md)] border border-slate-300 bg-fiel
 
 // GitHub 주소(W4) — 백엔드 scan.ParseGitHubURL 과 같은 형식(공개 저장소만): 저장소 · …/tree/<ref>[/<폴더>] · …/commit/<sha> · …/releases/tag/<태그>.
 // ?쿼리 · #조각은 무시. ref 에 / 가 든 브랜치(feature/x)는 지원하지 않는다(첫 조각이 브랜치로 읽힌다)
-const GH_HINT = '저장소 주소는 https://github.com/<소유자>/<저장소> 모양으로 입력하세요 — 브랜치 · 폴더는 …/tree/<브랜치>/<폴더>, 커밋은 …/commit/<sha>, 릴리스는 …/releases/tag/<태그>.';
+const GH_HINT = '저장소 주소는 https://github.com/<소유자>/<저장소> 모양으로 입력하세요. 브랜치 · 폴더는 …/tree/<브랜치>/<폴더>, 커밋은 …/commit/<sha>, 릴리스는 …/releases/tag/<태그>.';
 const GH_RE = /^https:\/\/(?:www\.)?github\.com\/[\w.-]+\/[\w.-]+?(?:\.git)?(?:\/(?:tree\/[\w.+-]+(?:\/[\w.@+~-]+)*|commit\/[\w.+-]+|releases\/tag\/[\w.+-]+))?\/?$/;
 function repoUrlError(raw: string): string {
   const url = raw.trim().replace(/[?#].*$/, '');
-  if (/^https:\/\/(?:www\.)?github\.com\/[\w.-]+\/[\w.-]+\/(?:blob|raw)\//.test(url)) return '파일 하나는 「파일 올리기」로 검사하세요 — 저장소 주소는 …/tree/<브랜치>/<폴더>까지입니다.';
+  if (/^https:\/\/(?:www\.)?github\.com\/[\w.-]+\/[\w.-]+\/(?:blob|raw)\//.test(url)) return '파일 하나는 「파일 올리기」로 검사하세요. 저장소 주소는 …/tree/<브랜치>/<폴더>까지입니다.';
   if (!GH_RE.test(url)) return GH_HINT;
   if (/\/\.{1,2}(?:\/|$)/.test(url.slice('https://'.length))) return '하위 경로에 . 또는 .. 조각은 쓸 수 없습니다.';
   return '';
@@ -166,7 +166,7 @@ export function ScansPage() {
           ) : !list.data.length ? (
             <EmptyState
               what="공급망 검사"
-              hint={canWrite ? '위 칸에 패키지 이름 · 저장소 주소 · 파일을 넣어 첫 검사를 시작하세요. 예: pip reqeusts(requests 의 오타 — 타이포스쿼팅 시연)' : '관리자가 검사를 시작하면 여기에 쌓입니다.'}
+              hint={canWrite ? '위 칸에 패키지 이름 · 저장소 주소 · 파일을 넣어 첫 검사를 시작하세요. 예: pip reqeusts(requests 의 오타, 타이포스쿼팅 시연)' : '관리자가 검사를 시작하면 여기에 쌓입니다.'}
             />
           ) : !rows.length ? (
             <NoResults onClear={() => setQ('verdict', '')} />
@@ -222,7 +222,7 @@ function ScanForm({ canWrite, onStarted }: { canWrite: boolean; onStarted: () =>
     }
     if (kind === 'package' && !name.trim()) return setErr('패키지 이름을 입력하세요.');
     if (kind === 'file' && !file) return setErr('파일을 먼저 고르세요.');
-    if (kind === 'file' && file && file.size > MAX_UPLOAD) return setErr(`파일은 50MB까지입니다 — 「${file.name}」`);
+    if (kind === 'file' && file && file.size > MAX_UPLOAD) return setErr(`파일은 50MB까지입니다(「${file.name}」).`);
     setBusy(true);
     try {
       const r = await api.startScan(kind === 'file' ? file! : kind === 'repo' ? { kind, url: url.trim() } : { kind, manager, name: name.trim(), version: version.trim() });
@@ -239,7 +239,7 @@ function ScanForm({ canWrite, onStarted }: { canWrite: boolean; onStarted: () =>
     <section className="shrink-0 rounded-[var(--r-lg)] border border-card-line bg-surface shadow-[var(--sh-1)]" data-part="scan-form">
       <header className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
         <h2 className="text-sm font-semibold text-slate-800">검사할 대상</h2>
-        <span className="text-xs text-slate-400">설치하기 전에 정적 검사 — 코드를 실행하지 않습니다</span>
+        <span className="text-xs text-slate-400">설치하기 전에 정적 검사(코드를 실행하지 않음)</span>
       </header>
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 px-4 py-3">
         <div className="col-span-2 flex rounded-md border border-slate-300 p-0.5 text-xs font-medium justify-self-start" role="group" aria-label="입력">
@@ -320,7 +320,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
   // 설치 검사 명령 복사 — 문구는 hooks/useCopyCommand 와 같게(11/09), 성공 알림에는 「설치 검사」 이동 단추
   const copyCmd = (c: string) => {
     const ok = () => toast(`「${c}」 명령을 복사했습니다.`, { key: 'copy', tone: 'ok', action: { label: '설치 검사', ...dest('/installs', { status: 'all' }) } });
-    const fail = () => toast(`명령을 복사하지 못했습니다 — 「${c}」을(를) 직접 입력하세요.`, { key: 'copy', tone: 'warn' });
+    const fail = () => toast(`명령을 복사하지 못했습니다. 「${c}」을(를) 직접 입력하세요.`, { key: 'copy', tone: 'warn' });
     try {
       navigator.clipboard.writeText(c).then(ok, fail);
     } catch {
@@ -332,7 +332,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
       const r = await api.scanBlock(s.id, reason);
       nav(`/policies?proposal=${encodeURIComponent(r.proposalId)}`);
     } catch (e) {
-      toast(`차단 제안을 만들지 못했습니다 — ${errorText(e)}`, { key: 'scan-block', tone: 'danger' });
+      toast(`차단 제안을 만들지 못했습니다(${errorText(e)}).`, { key: 'scan-block', tone: 'danger' });
     }
   };
   const item = (f: ScanFinding) => {
@@ -360,7 +360,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
             {s.risk && <span className="text-xs">위험 점수 <b className="num">{s.risk.score.toFixed(1)}</b> / 10 · {RISK[s.risk.label] ?? s.risk.label}</span>}
           </div>
           <p className="text-xs text-slate-700">
-            {s.status === 'failed' ? `검사하지 못했습니다 — ${s.error}` : s.status === 'running' ? '검사 중입니다…'
+            {s.status === 'failed' ? `검사하지 못했습니다(${s.error}).` : s.status === 'running' ? '검사 중입니다…'
               : s.verdict === 'malicious' ? `설치 단계에서 위험한 행동을 하는 코드가 ${s.installThreats || threats.length}곳 있습니다. 설치하지 말고 차단 목록에 올리세요.`
               : s.verdict === 'vulnerable' ? vulnText()
               : s.verdict === 'caution' ? `설치 단계의 위험한 행동은 없고, 실행 중 동작 규칙(동적 로딩 · 환경 변수 읽기 등)에 ${threats.length}곳 걸렸습니다. 정상 라이브러리에도 흔한 패턴이니 코드 보기로 확인하세요.`
@@ -391,7 +391,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
           okLabel="올리기"
           reason
           effects={[
-            `차단 제안 초안 — 패키지 ${t.manager}:${t.name} (정책에서 미리보기 후 적용)`,
+            `패키지 ${t.manager}:${t.name} 차단 제안 초안(정책에서 미리보기 후 적용)`,
             '적용하면 다음 sg-install 부터 이 패키지는 설치 전 거부(컨테이너를 띄우지 않음)',
             '공급망 검사 건을 「악성」으로 판정한 기록이 남습니다(사유는 판정 메모)',
           ]}
@@ -403,28 +403,28 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
           }}
         />
       )}
-      <Section title={`위협 ${threats.length} — GuardDog, 누르면 코드에서 그 줄`}>
+      <Section title={`위협 ${threats.length}(GuardDog, 누르면 코드에서 그 줄)`}>
         <div data-part="findings" className="grid gap-2">
           {threats.length ? <ul className="grid gap-1">{threats.map(item)}</ul> : <p className="text-xs text-slate-500">없음</p>}
           {caps.length > 0 && (
             <details>
-              <summary className="cursor-pointer text-xs text-slate-500">기능(정보) {caps.length} — 위협은 아니지만 코드가 할 수 있는 일</summary>
+              <summary className="cursor-pointer text-xs text-slate-500">기능 {caps.length}(정보, 위협은 아니지만 코드가 할 수 있는 일)</summary>
               <ul className="mt-1 grid gap-1">{caps.map(item)}</ul>
             </details>
           )}
           {tests.length > 0 && (
             <details data-part="tests">
-              <summary className="cursor-pointer text-xs text-slate-500">테스트 코드 {tests.length} — 위험 점수 · 판정에 넣지 않음</summary>
+              <summary className="cursor-pointer text-xs text-slate-500">테스트 코드 {tests.length}(위험 점수 · 판정에 넣지 않음)</summary>
               <ul className="mt-1 grid gap-1">{tests.map(item)}</ul>
             </details>
           )}
         </div>
       </Section>
-      <Section title="코드 보기 — 빨강 = 위협 줄, 노랑 = 기능">
+      <Section title="코드 보기(빨강 = 위협 줄, 노랑 = 기능)">
         <CodeView s={s} focus={focus} setFocus={setFocus} />
       </Section>
       {vulns.length > 0 && (
-        <Section title={`알려진 취약점 ${fmtNum(s.vulnCount)} — OSV-Scanner, ${t.kind === 'package' ? '이 패키지 버전 · 의존성 포함' : '간접 의존성 포함'}`}>
+        <Section title={`알려진 취약점 ${fmtNum(s.vulnCount)}(OSV-Scanner, ${t.kind === 'package' ? '이 패키지 버전 · 의존성 포함' : '간접 의존성 포함'})`}>
           <table className="sg-table" data-part="vulns">
             <thead>
               <tr>{['패키지', '버전', '의존', '건수', '최고', 'ID'].map((x) => <th key={x}>{x}</th>)}</tr>
@@ -436,7 +436,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
                   <td className="font-mono">{v.version}</td>
                   <td>{v.direct ? '직접' : '간접'}</td>
                   <td className="num">{v.count}</td>
-                  <td><span className={`rounded px-1.5 py-0.5 ${Number(v.maxSeverity) >= 9 ? 'bg-red-900 text-white' : Number(v.maxSeverity) >= 7 ? 'bg-red-100 text-red-700' : Number(v.maxSeverity) >= 4 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100'}`}>{v.maxSeverity || '—'}</span></td>
+                  <td>{v.maxSeverity ? <span className={`rounded px-1.5 py-0.5 ${Number(v.maxSeverity) >= 9 ? 'bg-red-900 text-white' : Number(v.maxSeverity) >= 7 ? 'bg-red-100 text-red-700' : Number(v.maxSeverity) >= 4 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100'}`}>{v.maxSeverity}</span> : null}</td>
                   <td>{v.ids.slice(0, 2).map((x) => <a key={x} href={`https://osv.dev/vulnerability/${x}`} target="_blank" rel="noreferrer" className="mr-1 font-mono text-indigo-600 hover:underline">{x}</a>)}</td>
                 </tr>
               ))}
@@ -444,7 +444,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
           </table>
         </Section>
       )}
-      <p className="px-4 pb-3 text-xs text-slate-400">{(s.engines ?? []).map((e) => `${e.name} ${e.version}`).join(' · ')} — 오픈소스 정적 분석(Apache-2.0)</p>
+      <p className="px-4 pb-3 text-xs text-slate-400">{(s.engines ?? []).map((e) => `${e.name} ${e.version}`).join(' · ')}</p>
     </div>
   );
 }
@@ -481,7 +481,7 @@ function CodeView({ s, focus, setFocus }: { s: Scan; focus: string; setFocus: (v
             const tf = thr.get(n);
             const cf = cap.get(n);
             return (
-              <div key={n} data-line={n} title={tf ? `${tf.rule} — ${tf.message}` : cf ? `${cf.rule} — ${cf.message}` : undefined}
+              <div key={n} data-line={n} title={tf ? `${tf.rule} · ${tf.message}` : cf ? `${cf.rule} · ${cf.message}` : undefined}
                 className={`code-line ${tf ? 'hl-threat' : cf ? 'hl-cap' : ''} ${n === focusLine ? 'focus' : ''}`}>
                 <span className="ln">{n}</span>
                 <code>{mark(ln || ' ', tf ?? cf)}</code>
