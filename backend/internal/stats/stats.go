@@ -1,9 +1,12 @@
 // Package stats aggregates KPIs, the syscall trend and the risk score shown on
-// the dashboard. Every event is counted here, before WebSocket sampling.
+// the dashboard. Every event is counted here, before WebSocket sampling. The
+// per-minute collected counts (stored for the dashboard summary) count a
+// repeated (container, kind, comm, target) once per minute.
 package stats
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,7 +20,48 @@ const (
 	topN        = 5
 	maxTracked  = 1000
 	maxKilledUI = 20
+	// maxSeenPerMinute: 수집량 중복 제거(11/10)가 한 분에 기억하는 키 수 상한. 키 하나는 문자열 머리 4개 + 포트 +
+	// 맵 칸으로 약 150~250B(문자열 본문은 이벤트와 공유)라 꽉 차도 10MB 안팎이다. make dev 실측은 1,000건에
+	// 81개(분당 수백 개)라 정상 운영에서는 닿지 않고, 파일을 훑는 프로세스 같은 폭주 때만 넘는다.
+	// 넘으면 그 분의 새 키는 기억하지 않고 매번 센다(덜 줄어들 뿐 빠뜨리지 않음), 이미 기억한 키는 계속 1건.
+	maxSeenPerMinute = 50_000
 )
+
+// seenKey: 수집량에서 「같은 이벤트」의 기준(11/10) — 컨테이너 · 종류 · 프로세스(comm) · 대상.
+// 대상 = open 은 path, exec 는 실행 파일(인자 첫 토큰, 없으면 comm), connect 는 도메인(없으면 IP) + 포트,
+// dns 는 질의 이름 + qtype(qtype 은 aux 칸).
+type seenKey struct {
+	container string
+	kind      model.Kind
+	comm      string
+	target    string
+	aux       string
+	port      uint16
+}
+
+func keyOf(ev *model.Event) seenKey {
+	k := seenKey{container: ev.ContainerID, kind: ev.Kind, comm: ev.Comm}
+	if k.container == "" {
+		k.container = ev.ContainerName
+	}
+	switch ev.Kind {
+	case model.KindOpen:
+		k.target = ev.Path
+	case model.KindExec:
+		k.target, _, _ = strings.Cut(ev.Args, " ")
+		if k.target == "" {
+			k.target = ev.Comm
+		}
+	case model.KindConnect:
+		k.target, k.port = ev.DstHost, ev.DstPort
+		if k.target == "" {
+			k.target = ev.DstIP
+		}
+	case model.KindDNS:
+		k.target, k.aux = ev.DstHost, ev.Qtype
+	}
+	return k
+}
 
 type bucket struct {
 	sec        int64
@@ -77,8 +121,12 @@ type Aggregator struct {
 	violations  uint64
 	byContainer map[string]int
 	minutes     map[int64]*model.MinuteCount // 종합(10/16): 아직 저장하지 않은 1분 단위 수집량
-	killed      []Killed
-	risk        []riskHit
+	// 수집량 중복 제거(11/10): 지금 분(seenMin)에 이미 센 키. 분이 바뀌면 통째로 버린다.
+	// TakeMinutes(10초마다 저장)와 따로 두어 같은 분 안 중간 저장 뒤에도 다시 세지 않는다.
+	seenMin int64
+	seen    map[seenKey]struct{}
+	killed  []Killed
+	risk    []riskHit
 }
 
 func New() *Aggregator {
@@ -100,30 +148,19 @@ func (a *Aggregator) Observe(v model.Verdict) {
 	defer a.mu.Unlock()
 	now := a.now()
 	b := a.slot(now)
-	mk := now.Unix() / 60
-	m := a.minutes[mk]
-	if m == nil {
-		if a.minutes == nil {
-			a.minutes = map[int64]*model.MinuteCount{}
-		}
-		m = &model.MinuteCount{Minute: time.Unix(mk*60, 0).UTC()}
-		a.minutes[mk] = m
-	}
+	// 실시간 수(총계 · 초당 · 5분 추이)는 모든 이벤트를 센다
 	switch v.Event.Kind {
 	case model.KindExec:
 		b.exec++
-		m.Exec++
 	case model.KindOpen:
 		b.open++
-		m.Open++
 	case model.KindConnect:
 		b.connect++
-		m.Connect++
 	case model.KindDNS:
 		b.dns++
-		m.DNS++
 	}
 	a.total++
+	a.countMinute(now, &v.Event)
 	if !v.Matched {
 		return
 	}
@@ -133,6 +170,44 @@ func (a *Aggregator) Observe(v model.Verdict) {
 		a.byContainer[v.Event.ContainerName]++
 	}
 	a.risk = append(a.risk, riskHit{at: now, weight: riskWeight(v)})
+}
+
+// countMinute: 1분 단위 수집량(저장 · 종합 화면)에 더한다. 같은 1분 안 같은 키 반복은 1건(11/10).
+func (a *Aggregator) countMinute(now time.Time, ev *model.Event) {
+	switch ev.Kind {
+	case model.KindExec, model.KindOpen, model.KindConnect, model.KindDNS:
+	default:
+		return
+	}
+	mk := now.Unix() / 60
+	if mk != a.seenMin || a.seen == nil {
+		a.seenMin, a.seen = mk, map[seenKey]struct{}{}
+	}
+	k := keyOf(ev)
+	if _, dup := a.seen[k]; dup {
+		return
+	}
+	if len(a.seen) < maxSeenPerMinute {
+		a.seen[k] = struct{}{}
+	}
+	m := a.minutes[mk]
+	if m == nil {
+		if a.minutes == nil {
+			a.minutes = map[int64]*model.MinuteCount{}
+		}
+		m = &model.MinuteCount{Minute: time.Unix(mk*60, 0).UTC()}
+		a.minutes[mk] = m
+	}
+	switch ev.Kind {
+	case model.KindExec:
+		m.Exec++
+	case model.KindOpen:
+		m.Open++
+	case model.KindConnect:
+		m.Connect++
+	case model.KindDNS:
+		m.DNS++
+	}
 }
 
 // riskWeight: 최근 5분 위반 가중합이 위험 점수(0–100)가 된다.

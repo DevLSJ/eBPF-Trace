@@ -132,4 +132,33 @@ func TestCollectedSeenCapOverflowCountsEverything(t *testing.T) {
 	if want := int64(capKeys + 2); open != want {
 		t.Fatalf("open = %d, want %d", open, want)
 	}
+	if capKeys != maxSeenPerMinute || len(a.seen) > maxSeenPerMinute {
+		t.Fatalf("seen set %d keys, cap %d (test assumes %d)", len(a.seen), maxSeenPerMinute, capKeys)
+	}
+}
+
+// 이벤트 1건당 추가 비용: 반복 키(대부분의 경우)와 매번 새 키(상한까지)
+func BenchmarkObserveRepeatedKey(b *testing.B) {
+	a := New()
+	v := model.Verdict{Event: model.Event{Kind: model.KindOpen, ContainerID: "c1", ContainerName: "redis", Comm: "redis-server", Path: "/proc/self/stat"}}
+	b.ReportAllocs()
+	for b.Loop() {
+		a.Observe(v)
+	}
+}
+
+func BenchmarkObserveDistinctKeys(b *testing.B) {
+	a := New()
+	paths := make([]string, 65536) // 상한(50,000)을 넘겨 기억 · 넘침 두 길을 모두 지난다
+	for i := range paths {
+		paths[i] = fmt.Sprintf("/f/%d", i)
+	}
+	v := model.Verdict{Event: model.Event{Kind: model.KindOpen, ContainerID: "c1", Comm: "find"}}
+	b.ReportAllocs()
+	i := 0
+	for b.Loop() {
+		v.Event.Path = paths[i&65535]
+		i++
+		a.Observe(v)
+	}
 }
