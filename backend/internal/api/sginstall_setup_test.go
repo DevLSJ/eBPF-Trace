@@ -79,6 +79,12 @@ func TestSGInstallSetup(t *testing.T) {
 		t.Errorf("no token setup = %+v", s)
 	}
 
+	// SG_INSTALL_API 가 있으면 추정 대신 그 값(11/09 — make dev 는 실제 가젯인데 nginx 없이 :8000)
+	s, _ = getSetup(t, sgSetupServer(t, Deps{SandboxToken: "x", SGInstallAPI: "http://127.0.0.1:8000", Info: Info{Source: "gadget"}}, model.RoleAdmin))
+	if s.API != "http://127.0.0.1:8000" {
+		t.Errorf("SG_INSTALL_API override = %+v", s)
+	}
+
 	// 내려받기: 스크립트 그대로 · 첨부 파일 이름 sg-install
 	srv := sgSetupServer(t, gadget, model.RoleViewer)
 	r := do(t, "GET", srv.URL+"/api/tools/sg-install", "", "")
