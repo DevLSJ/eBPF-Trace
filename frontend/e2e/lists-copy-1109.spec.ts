@@ -360,9 +360,9 @@ test.describe('⑤ 표 도구 — 총 N건 · 새로고침 · 칸 고르기(저�
     await page.goto('/settings?tab=auth-audit');
     expect(Math.round(await page.locator('table[data-table="auth-audit"] th[data-col="at"]').evaluate((e) => e.getBoundingClientRect().width))).toBe(192);
     expect(await page.locator('table[data-table="auth-audit"] tbody td[data-col="at"]').first().evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+    expect(Math.round(await page.locator('table[data-table="auth-audit"] th[data-col="actor"]').evaluate((e) => e.getBoundingClientRect().width)), '사용자 칸 110').toBe(110);
     await page.goto('/audit?view=changes');
     expect(Math.round(await page.locator('table[data-table="history"] th[data-col="at"]').evaluate((e) => e.getBoundingClientRect().width))).toBe(192);
-    expect(Math.round(await page.locator('table[data-table="auth-audit"] th[data-col="actor"]').evaluate((e) => e.getBoundingClientRect().width)), '사용자 칸 110').toBe(110);
   });
 });
 

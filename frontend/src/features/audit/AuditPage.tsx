@@ -15,7 +15,8 @@ import { TableToolbar } from '../../components/TableToolbar';
 import { screenCopy } from '../../lib/screenCopy';
 import { GridCells, SortHead, StatusPill, TablePager, TableScroll } from '../../components/DataTable';
 import { actionTone } from '../../lib/actionTone';
-import { useTableKit, type Column, type TableKit } from '../../hooks/useTableKit';
+import { changeName } from '../policies/changeView';
+import { COL_W, useTableKit, type Column, type TableKit } from '../../hooks/useTableKit';
 import { KindBadge } from '../../components/KindBadge';
 import { PageActions } from '../../components/PageActions';
 import { Empty, LoadError, Panel } from '../../components/Panel';
@@ -31,7 +32,7 @@ import { shortId } from '../../lib/format';
 import { scanHref, SOURCE_LABEL } from '../../lib/guide';
 import { installDest, topologyDest } from '../../lib/nav';
 import { isInstallContainer } from '../../lib/topology';
-import { caseLabel, CHANGE_KIND_LABEL, DECISION_LABEL, detailOf, KIND_LONG, KINDS, LEVEL_LABEL, levelOf, type AuditEntry, type Case } from '../../lib/types';
+import { caseLabel, DECISION_LABEL, detailOf, KIND_LONG, KINDS, LEVEL_LABEL, levelOf, type AuditEntry, type Case } from '../../lib/types';
 import { EvidenceView } from './EvidenceView';
 
 // 입력 글자 13.5 · 포커스 링은 전역 규칙 하나(11/09 SPEC §1)
@@ -65,7 +66,7 @@ interface HistoryItem {
   reason: string;
 }
 const HISTORY_COLUMNS: Column<HistoryItem>[] = [
-  { key: 'at', label: '시각', sort: (x) => x.at, short: true, cellClass: 'text-xs text-slate-600', cell: (x) => <TimeText value={x.at} kind="log" />, csv: (x) => fmtLog(x.at) },
+  { key: 'at', label: '시각', sort: (x) => x.at, short: true, width: COL_W.log, cellClass: 'text-slate-600', cell: (x) => <TimeText value={x.at} kind="log" />, csv: (x) => fmtLog(x.at) },
   {
     key: 'kind',
     label: '종류',
@@ -340,7 +341,7 @@ function Violations({
   // CSV 내보내기 = 보이는 칸 · 화면 글(기간 안 전체 — 이미지 · 사유는 숨긴 칸을 켜면 함께 나간다)
   const columns = useMemo<Column<AuditEntry>[]>(
     () => [
-      { key: 'time', label: '시각', sort: (a) => Date.parse(a.event.timestamp), short: true, cellClass: 'text-xs text-slate-600', cell: (a) => <TimeText value={a.event.timestamp} kind="log" />, csv: (a) => fmtLog(a.event.timestamp) },
+      { key: 'time', label: '시각', sort: (a) => Date.parse(a.event.timestamp), short: true, width: COL_W.log, cellClass: 'text-slate-600', cell: (a) => <TimeText value={a.event.timestamp} kind="log" />, csv: (a) => fmtLog(a.event.timestamp) },
       { key: 'id', label: '#', num: true, sort: (a) => a.id, short: true, cellClass: 'num text-xs text-slate-400', cell: (a) => a.id },
       {
         key: 'container',
@@ -645,7 +646,8 @@ function History({ cases, since, until, filtered, onClear }: { cases: Case[] | n
     ...(changes.data ?? []).map((ch) => ({
       key: `chg:${ch.id}`,
       at: ch.at,
-      kind: CHANGE_KIND_LABEL[ch.kind] ?? ch.kind,
+      // 동작 이름은 정책 변경 이력 화면과 한 곳(changeName — 정책 저장 = 「정책 수정」 · 새 정책 = 「정책 생성」)
+      kind: changeName(ch),
       badge: null,
       badgeText: '',
       text: ch.summary,

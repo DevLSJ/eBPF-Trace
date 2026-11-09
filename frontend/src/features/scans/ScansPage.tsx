@@ -317,6 +317,16 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
   const vulns = s.vulns ?? [];
   const t = s.target;
   const cmd = t.kind === 'package' ? `sg-install ${t.manager} ${t.name}${t.version ? (t.manager === 'pip' ? '==' : '@') + t.version : ''}` : '';
+  // 설치 검사 명령 복사 — 문구는 hooks/useCopyCommand 와 같게(11/09), 성공 알림에는 「설치 검사」 이동 단추
+  const copyCmd = (c: string) => {
+    const ok = () => toast(`「${c}」 명령을 복사했습니다.`, { key: 'copy', tone: 'ok', action: { label: '설치 검사', ...dest('/installs', { status: 'all' }) } });
+    const fail = () => toast(`명령을 복사하지 못했습니다 — 「${c}」을(를) 직접 입력하세요.`, { key: 'copy', tone: 'warn' });
+    try {
+      navigator.clipboard.writeText(c).then(ok, fail);
+    } catch {
+      fail();
+    }
+  };
   const block = async (reason: string) => {
     try {
       const r = await api.scanBlock(s.id, reason);
@@ -365,7 +375,7 @@ function ScanDetail({ s, canWrite }: { s: Scan; canWrite: boolean }) {
           )}
           {s.status === 'done' && t.kind === 'package' && (
             <div className="flex flex-wrap gap-2">
-              <button type="button" aria-label="설치 검사로 실제 설치해 보기" onClick={() => { void navigator.clipboard?.writeText(cmd).catch(() => {}); toast(`「${cmd}」 명령을 복사했습니다.`, { key: 'copy', tone: 'ok', action: { label: '설치 검사', ...dest('/installs', { status: 'all' }) } }); }}
+              <button type="button" aria-label="설치 검사로 실제 설치해 보기" onClick={() => copyCmd(cmd)}
                 className="flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1 text-xs hover:bg-white"><Play className="size-3.5" aria-hidden /> 설치 검사로 실제 설치해 보기</button>
               {canWrite && <button type="button" aria-label="차단 목록에 올리기" onClick={() => setAskBlock(true)}
                 className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs disabled:opacity-40 ${s.verdict === 'malicious' ? 'bg-red-600 text-white hover:bg-red-700' : 'border border-slate-300 hover:bg-white'}`}><OctagonX className="size-3.5" aria-hidden /> 차단 목록에 올리기</button>}

@@ -746,7 +746,7 @@ function AuthAuditTab() {
 // 11/09 SPEC §4: 기록류 — 시각이 맨 앞(YYYY-MM-DD HH:mm:ss 고정폭)
 // 표 도구: 칸 보이기 · 폭 · 순서 = supplyguard.grid.settings-auth-audit.v1, CSV = 보이는 칸 · 화면 글(불러온 행)
 const AUTH_AUDIT_COLS: Column<AuthAuditEntry>[] = [
-  { key: 'at', label: '시각', sort: (a) => Date.parse(a.at), short: true, cellClass: 'text-xs', cell: (a) => <TimeText value={a.at} kind="log" />, csv: (a) => fmtLog(a.at) },
+  { key: 'at', label: '시각', sort: (a) => Date.parse(a.at), short: true, width: COL_W.log, cell: (a) => <TimeText value={a.at} kind="log" />, csv: (a) => fmtLog(a.at) },
   { key: 'actor', label: '계정', sort: (a) => a.actor, short: true, width: COL_W.user, cellClass: 'font-mono text-xs', cell: (a) => a.actor },
   { key: 'action', label: '동작', sort: (a) => ACTION_KO[a.action] ?? a.action, short: true, cell: (a) => ACTION_KO[a.action] ?? a.action },
   { key: 'target', label: '대상', sort: (a) => a.target, short: true, cellClass: 'font-mono text-xs', cell: (a) => a.target },
