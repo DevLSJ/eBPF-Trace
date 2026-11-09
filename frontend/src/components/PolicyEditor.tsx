@@ -425,11 +425,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
         )}
       </div>
 
-      {mode === 'easy' && (
-        <p className="shrink-0 border-t border-slate-100 bg-indigo-50 px-5 py-2.5 text-sm font-medium text-slate-800" data-summary="">
-          {summarize(draft)}
-        </p>
-      )}
+      {/* 11/09 밤 사용자: 쉬운 편집 아래 요약 띠(「모든 컨테이너에서 … 즉시 격리합니다.」)는 화면을 가려 삭제 — 같은 요약은 「저장 전 확인」 창과 정책 목록 설명 칸에 있다 */}
 
       {footHost ? (
         createPortal(foot, footHost)
