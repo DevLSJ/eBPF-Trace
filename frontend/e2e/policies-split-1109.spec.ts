@@ -509,3 +509,19 @@ test.describe('⑧ 화면 사진(1440 밝은 · 어두운, 390 밝은)', () => {
     await page.screenshot({ path: `${OUT}/390-sheet-light.png` });
   });
 });
+
+test.describe('통합 검색 — 차단 목록 결과는 차단 목록 화면으로(11/09 메인)', () => {
+  test('차단된 패키지 · 도메인 결과를 누르면 /policies/blocklist', async ({ page, backend }) => {
+    void backend;
+    await page.goto('/');
+    const box = page.getByRole('combobox', { name: /통합 검색/ });
+    for (const q of ['colourama', 'cdn.colourama.test']) {
+      await box.fill(q);
+      const hit = page.locator('[data-part="search-results"] [role="option"]').filter({ hasText: '차단 목록' }).first();
+      await expect(hit).toBeVisible();
+      await hit.click();
+      await expect(page).toHaveURL(/\/policies\/blocklist(\?|$)/);
+      await page.goto('/');
+    }
+  });
+});
