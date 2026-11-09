@@ -102,11 +102,14 @@ func run() error {
 	}
 	authSvc := auth.New(auth.Options{
 		Store: authStore, OTPRequired: cfg.AuthOTPRequired, SecretKey: cfg.AuthSecretKey, CookieSecure: cfg.AuthCookieSecure,
-		DevMode:    cfg.AuthDevMode, // config.Load 가 mock 소스에서만 허용한다
+		DevMode:    cfg.AuthDevMode, // config.Load 가 mock 소스(또는 LOCAL_DEV=true — 개발자 PC)에서만 허용한다
 		TrustProxy: true,            // compose 에서 backend 포트는 바깥에 없다 — nginx 가 넘기는 X-Real-IP 로 IP 실패 횟수를 센다
 	})
 	if cfg.AuthDevMode {
 		slog.Warn("AUTH_DEV_MODE=true: 개발 전용 로그인 — 실제 서버에서 쓰지 말 것 (초기 관리자 아이디=비밀번호 허용 · 비밀번호 변경 · 라이선스 단계 건너뜀)")
+		if cfg.EventSource != "mock" {
+			slog.Warn("LOCAL_DEV=true: 실제 가젯 소스에서 개발 전용 로그인을 씀 — 개발자 PC(make dev)만, 서버 .env 에 넣지 말 것", "source", cfg.EventSource)
+		}
 	}
 	// 계정이 하나도 없을 때만 ADMIN_USER / ADMIN_INITIAL_PASSWORD 로 관리자 1명 (비밀번호가 비었거나 5자 미만이면 시작 오류)
 	if created, err := authSvc.SeedAdmin(ctx, cfg.AdminUser, cfg.AdminInitialPassword); err != nil {

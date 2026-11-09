@@ -69,8 +69,11 @@ type Config struct {
 	AuthCookieSecure     bool
 	AuthSecretKey        string
 	// AuthDevMode: AUTH_DEV_MODE (기본 false, 11/04). 로컬 개발 전용 — 시드 관리자 admin/admin 허용 · 첫 로그인 단계(비밀번호 변경 · 라이선스) 건너뜀.
-	// EVENT_SOURCE=mock 일 때만 켤 수 있다(가젯 소스면 Load 가 오류)
+	// EVENT_SOURCE=mock 일 때만 켤 수 있다(가젯 소스면 Load 가 오류) — 단 LOCAL_DEV=true 를 함께 켜면 가젯 소스도 허용(11/09)
 	AuthDevMode bool
+	// LocalDev: LOCAL_DEV (기본 false, 11/09). 개발자 PC(Docker Desktop)에서 실제 가젯과 개발 전용 로그인을 함께 쓰는 make dev 만 켠다.
+	// 혼자서는 아무것도 바꾸지 않고, AUTH_DEV_MODE 의 「mock 전용」 검사만 풀어 준다. 서버 .env 에는 넣지 않는다
+	LocalDev bool
 	// 외부 알림(10/20): 둘 다 비면 비활성. PublicURL 은 알림의 대시보드 링크 앞에 붙는다
 	NotifyWebhookURL, NotifySlackURL, PublicURL string
 	// AI 도우미(10/20 · 11/09): ANTHROPIC_API_KEY 가 있으면 Claude 가 기본(질문 · 조회한 사실 문장이 Anthropic API 로 나간다),
@@ -137,6 +140,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if c.AuthCookieSecure, err = boolEnv("AUTH_COOKIE_SECURE", false); err != nil {
+		return c, err
+	}
+	if c.LocalDev, err = boolEnv("LOCAL_DEV", false); err != nil {
 		return c, err
 	}
 	if c.AuthDevMode, err = boolEnv("AUTH_DEV_MODE", false); err != nil {
@@ -207,7 +213,8 @@ func Load() (Config, error) {
 		return c, fmt.Errorf("EVENT_SOURCE: %q (gadget | mock)", c.EventSource)
 	}
 	// 개발 전용 로그인(admin/admin · 첫 로그인 단계 없음)이 실제 서버에서 켜지지 않게 — mock 이 아니면 시작하지 않는다
-	if c.AuthDevMode && c.EventSource != "mock" {
+	// 예외: LOCAL_DEV=true(make dev — 개발자 PC 의 Docker Desktop, 127.0.0.1 로만 연다)
+	if c.AuthDevMode && c.EventSource != "mock" && !c.LocalDev {
 		return c, fmt.Errorf("AUTH_DEV_MODE=true 는 EVENT_SOURCE=mock(로컬 개발)에서만 쓸 수 있음 — 실제 서버(%s)는 AUTH_DEV_MODE 를 지우거나 false 로", c.EventSource)
 	}
 	// 같은 값이면 CLI 토큰으로 관리자 쓰기가 열린다 — 두 토큰의 분리가 무너지므로 시작하지 않는다
