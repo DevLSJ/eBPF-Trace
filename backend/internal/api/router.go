@@ -499,7 +499,7 @@ func (h *handlers) replacePolicies(w http.ResponseWriter, r *http.Request) {
 var errPolicyMissing = errors.New("정책 없음")
 
 // systemRuleMsg: blocklist-hosts 는 차단 목록에서 만들어지므로 정책 API 로 다룰 수 없다
-const systemRuleMsg = "blocklist-hosts 는 차단 목록에서 관리하는 시스템 규칙 — 차단 목록(/api/blocklist)에서 바꾼다"
+const systemRuleMsg = "blocklist-hosts 는 차단 목록에서 관리하는 시스템 규칙, 차단 목록(/api/blocklist)에서 바꾼다"
 
 func (h *handlers) deletePolicy(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")

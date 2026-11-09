@@ -116,7 +116,7 @@ func (s *Service) RevertPolicy(ctx context.Context, id, changeID, reason string)
 		return rules.Rule{}, invalid("changeId 가 필요함")
 	}
 	if rules.IsSystemRule(id) {
-		return rules.Rule{}, conflict("%s: 차단 목록에서 관리하는 시스템 규칙 — 차단 목록에서 변경", id)
+		return rules.Rule{}, conflict("%s: 차단 목록에서 관리하는 시스템 규칙(차단 목록에서 변경)", id)
 	}
 	unlock := s.lockWrite()
 	defer unlock()
@@ -131,7 +131,7 @@ func (s *Service) RevertPolicy(ctx context.Context, id, changeID, reason string)
 	raw, ok := src.Before[id]
 	if !ok {
 		if _, made := src.After[id]; made {
-			return rules.Rule{}, conflict("이 변경 전에는 정책 %s 없음(새로 만든 기록) — 지우려면 정책 삭제 사용", id)
+			return rules.Rule{}, conflict("이 변경 전에는 정책 %s 없음(새로 만든 기록), 지우려면 정책 삭제 사용", id)
 		}
 		return rules.Rule{}, conflict("이 변경에는 정책 %s 의 변경 전 값 없음", id)
 	}

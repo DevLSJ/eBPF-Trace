@@ -250,7 +250,7 @@ func (s *Service) Apply(ctx context.Context, id, reason string) (model.Proposal,
 		case "except":
 			i := slices.IndexFunc(nextPols, func(r rules.Rule) bool { return r.ID == ch.RuleID })
 			if i < 0 || rules.IsSystemRule(ch.RuleID) {
-				return model.Proposal{}, model.Case{}, conflict("규칙 %s 이 없어 적용할 수 없음 — 제안을 버리고 다시 판정하세요", ch.RuleID)
+				return model.Proposal{}, model.Case{}, conflict("규칙 %s 이 없어 적용할 수 없음, 제안을 버리고 다시 판정하세요", ch.RuleID)
 			}
 			nextPols[i] = withValue(nextPols[i], ch.Field, ch.Value)
 			changed[ch.RuleID] = true
@@ -326,7 +326,7 @@ func (s *Service) Discard(ctx context.Context, id, reason string) (model.Proposa
 	p := cur.Clone()
 	p.State = model.ProposalDiscarded
 	chg := model.Change{ID: s.nextID("chg"), At: now, By: s.actor(ctx), Kind: model.ChangeProposalDiscarded,
-		CaseID: ptr(p.CaseID), ProposalID: ptr(p.ID), Summary: "제안 버림 — 변경 없이 건 종결", Reason: reason}
+		CaseID: ptr(p.CaseID), ProposalID: ptr(p.ID), Summary: "제안 버림(변경 없이 건 종결)", Reason: reason}
 	var commit store.ReviewCommit
 	commit.Proposals = []model.Proposal{p}
 	commit.Changes = []model.Change{chg}
@@ -379,7 +379,7 @@ func summarize(changes []model.ProposalChange) string {
 		parts = append(parts, fmt.Sprintf("예외 %d개 추가(%s)", len(exc), strings.Join(slices.Compact(exc), ", ")))
 	}
 	if len(parts) == 0 {
-		return "변경 없음 — 건 종결"
+		return "변경 없음(건 종결)"
 	}
 	return strings.Join(parts, " · ")
 }

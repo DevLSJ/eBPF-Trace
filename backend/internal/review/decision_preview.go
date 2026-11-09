@@ -74,7 +74,7 @@ func (s *Service) PreviewDecision(ctx context.Context, id string, decision model
 	for _, n := range notes {
 		out.Effects = append(out.Effects, Effect{Kind: EffectNote, Text: n})
 	}
-	out.Effects = append(out.Effects, Effect{Kind: EffectNext, Text: "판정하면 제안 초안이 생깁니다 — 아직 아무것도 바뀌지 않으며, 정책 화면에서 미리보기 후 적용합니다"})
+	out.Effects = append(out.Effects, Effect{Kind: EffectNext, Text: "판정하면 제안 초안이 생깁니다. 아직 아무것도 바뀌지 않으며, 정책 화면에서 미리보기 후 적용합니다"})
 	return out, nil
 }
 
@@ -105,7 +105,7 @@ func (s *Service) blockEffects(ctx context.Context, changes []model.ProposalChan
 			Text: fmt.Sprintf("이미 차단 목록에 있는 %d개(%s)는 그대로 둡니다", len(already), strings.Join(vals, ", "))})
 	}
 	if len(fresh) == 0 {
-		out = append(out, Effect{Kind: EffectNone, Text: "새로 차단할 대상이 없습니다 — 적용하면 건만 종결합니다"})
+		out = append(out, Effect{Kind: EffectNone, Text: "새로 차단할 대상이 없습니다. 적용하면 건만 종결합니다"})
 		return out
 	}
 	var hosts []string
@@ -120,12 +120,12 @@ func (s *Service) blockEffects(ctx context.Context, changes []model.ProposalChan
 				running, runErr = s.runningByImage(ctx)
 			}
 			if runErr != nil {
-				out = append(out, Effect{Kind: EffectImage, Text: fmt.Sprintf("이미지 %s — 실행 중 컨테이너 수를 확인하지 못했습니다. 적용하면 이 이미지로 시작하는 컨테이너는 격리됩니다", ch.Value)})
+				out = append(out, Effect{Kind: EffectImage, Text: fmt.Sprintf("이미지 %s 의 실행 중 컨테이너 수를 확인하지 못했습니다. 적용하면 이 이미지로 시작하는 컨테이너는 격리됩니다", ch.Value)})
 				continue
 			}
 			n := running[ch.Value]
 			out = append(out, Effect{Kind: EffectImage, Count: ptr(n),
-				Text: fmt.Sprintf("같은 이미지(%s)를 쓰는 실행 중 컨테이너 %d개 — 적용하면 다음 시작 때 격리됩니다(지금 실행은 그대로)", ch.Value, n)})
+				Text: fmt.Sprintf("같은 이미지(%s)를 쓰는 실행 중 컨테이너 %d개, 적용하면 다음 시작 때 격리됩니다(지금 실행은 그대로)", ch.Value, n)})
 		case model.ListHosts:
 			hosts = append(hosts, ch.Value)
 		}
@@ -189,10 +189,10 @@ func exceptionEffects(cur []rules.Rule, changes []model.ProposalChange) []Effect
 			scope = "컨테이너 " + strings.Join(cur[i].Containers, ", ")
 		}
 		out = append(out, Effect{Kind: EffectException,
-			Text: fmt.Sprintf("규칙 %s 예외 추가 — %s 에 %s (범위: %s). 적용 즉시 엔진에 반영됩니다", ch.RuleID, ch.Field, ch.Value, scope)})
+			Text: fmt.Sprintf("규칙 %s 예외 추가(%s 에 %s, 범위: %s). 적용 즉시 엔진에 반영됩니다", ch.RuleID, ch.Field, ch.Value, scope)})
 	}
 	if len(out) == 0 {
-		out = append(out, Effect{Kind: EffectNone, Text: "자동으로 만들 예외가 없습니다 — 정책 탭에서 직접 고칩니다"})
+		out = append(out, Effect{Kind: EffectNone, Text: "자동으로 만들 예외가 없습니다. 정책 탭에서 직접 고칩니다"})
 	}
 	return out
 }

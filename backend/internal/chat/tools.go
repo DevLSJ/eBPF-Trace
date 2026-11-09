@@ -251,7 +251,7 @@ func (s *Service) searchAudit(ctx context.Context, f *Facts, container, rule str
 		}
 		seen[a.RuleID] = true
 		k++
-		s := fmt.Sprintf("예시 %d: %s %s %s — 정책 %s", k, a.Event.Timestamp.Format("2006-01-02 15:04:05"), kindText[a.Event.Kind], quote(a.Event.Detail(), clipDetail), a.RuleID)
+		s := fmt.Sprintf("예시 %d: %s %s %s, 정책 %s", k, a.Event.Timestamp.Format("2006-01-02 15:04:05"), kindText[a.Event.Kind], quote(a.Event.Detail(), clipDetail), a.RuleID)
 		if a.Reason != "" {
 			s += ", 사유 " + quote(a.Reason, 80)
 		}
@@ -412,7 +412,7 @@ func (s *Service) scan(f *Facts, id string) []Link {
 				continue
 			}
 			k++
-			s := fmt.Sprintf("위협 %d: %s — %s:%d", k, x.Rule, x.File, x.Line)
+			s := fmt.Sprintf("위협 %d: %s(%s:%d)", k, x.Rule, x.File, x.Line)
 			if x.Message != "" {
 				s += " " + quote(x.Message, 100)
 			}

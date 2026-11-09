@@ -207,7 +207,7 @@ func (s *Service) falsePositiveChanges(c *model.CaseRecord, p *model.Proposal) {
 		}
 		// 연쇄 규칙(11/04): 상태 없는 Evaluate 로는 다시 맞힐 수 없어 빈 제안이 된다 — 자동 예외 없이 안내만
 		if i := slices.IndexFunc(work, func(r rules.Rule) bool { return r.ID == ev.RuleID }); i >= 0 && work[i].Kind == model.KindSequence {
-			addNote(p, fmt.Sprintf("연쇄 규칙 %s 은 자동 예외를 만들지 않습니다 — 정책 탭에서 직접 수정하세요", ev.RuleID))
+			addNote(p, fmt.Sprintf("연쇄 규칙 %s 은 자동 예외를 만들지 않습니다. 정책 탭에서 직접 수정하세요", ev.RuleID))
 			continue
 		}
 		for range len(work) + 1 {
@@ -216,7 +216,7 @@ func (s *Service) falsePositiveChanges(c *model.CaseRecord, p *model.Proposal) {
 				break
 			}
 			if rules.IsSystemRule(v.RuleID) {
-				addNote(p, fmt.Sprintf("도메인 %s 은 차단 목록에 있습니다 — 차단 목록에서 해제하세요", ev.Event.DstHost))
+				addNote(p, fmt.Sprintf("도메인 %s 은 차단 목록에 있습니다. 차단 목록에서 해제하세요", ev.Event.DstHost))
 				break
 			}
 			i := slices.IndexFunc(work, func(r rules.Rule) bool { return r.ID == v.RuleID })
@@ -224,16 +224,16 @@ func (s *Service) falsePositiveChanges(c *model.CaseRecord, p *model.Proposal) {
 			if !ok {
 				if work[i].Kind == model.KindDNS {
 					// allowHosts 가 없는 dns 규칙에 allowHosts 를 넣으면 그 밖의 모든 질의가 「허용 목록 밖」 위반이 된다 — 자동으로 만들지 않는다(10/30)
-					addNote(p, fmt.Sprintf("dns 규칙 %s 은 허용 목록이 없어 자동 예외를 만들지 않습니다(allowHosts 를 넣으면 그 밖의 도메인 질의가 모두 위반이 됩니다) — 정책 탭에서 직접 수정하세요", v.RuleID))
+					addNote(p, fmt.Sprintf("dns 규칙 %s 은 허용 목록이 없어 자동 예외를 만들지 않습니다(allowHosts 를 넣으면 그 밖의 도메인 질의가 모두 위반이 됩니다). 정책 탭에서 직접 수정하세요", v.RuleID))
 				} else {
-					addNote(p, fmt.Sprintf("실행 규칙 %s 은 자동 예외를 만들지 않습니다 — 정책 탭에서 직접 수정하세요", v.RuleID))
+					addNote(p, fmt.Sprintf("실행 규칙 %s 은 자동 예외를 만들지 않습니다. 정책 탭에서 직접 수정하세요", v.RuleID))
 				}
 				break
 			}
 			trial := slices.Clone(work)
 			trial[i] = withValue(trial[i], field, value)
 			if again := rules.New(trial).Evaluate(ev.Event); again.Matched && again.RuleID == v.RuleID {
-				addNote(p, fmt.Sprintf("규칙 %s 은 금지 목록에 걸려 예외로 풀 수 없습니다 — 정책 탭에서 직접 수정하세요", v.RuleID))
+				addNote(p, fmt.Sprintf("규칙 %s 은 금지 목록에 걸려 예외로 풀 수 없습니다. 정책 탭에서 직접 수정하세요", v.RuleID))
 				break
 			}
 			work = trial
@@ -342,15 +342,20 @@ func (s *Service) FromScan(ctx context.Context, sc model.Scan, pkgs []model.Scan
 	}
 	id := found.Case.ID
 	unlock()
-	note := "공급망 검사 " + sc.ID
+	// 판정 메모(11/09 「— 표기 없앰」): 「공급망 검사 <id>(위험 점수 · 선택 패키지), 사유: …」
+	var detail []string
 	if sc.Risk != nil {
-		note += fmt.Sprintf(" — 위험 점수 %.1f", sc.Risk.Score)
+		detail = append(detail, fmt.Sprintf("위험 점수 %.1f", sc.Risk.Score))
 	}
 	if picked != "" {
-		note += " — 선택 패키지 " + picked
+		detail = append(detail, "선택 패키지 "+picked)
+	}
+	note := "공급망 검사 " + sc.ID
+	if len(detail) > 0 {
+		note += "(" + strings.Join(detail, " · ") + ")"
 	}
 	if reason != "" {
-		note += " — 사유: " + reason
+		note += ", 사유: " + reason
 	}
 	return s.Decide(ctx, id, model.DecisionMalicious, note)
 }

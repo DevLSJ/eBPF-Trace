@@ -221,14 +221,14 @@ func (s *Service) start(ctx context.Context, in Input, o startOpts) (string, err
 
 	// 검사를 띄울 수 없는 환경이면 기록을 만들기 전에 503 으로 원인을 알린다(11/02 — 전엔 「서버 오류」 500)
 	if err := os.MkdirAll(s.o.Dir, 0o755); err != nil {
-		return "", &Error{503, fmt.Sprintf("검사 작업 폴더를 만들 수 없습니다(SCAN_DIR=%s) — 백엔드의 검사 작업 볼륨을 확인하세요", s.o.Dir)}
+		return "", &Error{503, fmt.Sprintf("검사 작업 폴더를 만들 수 없습니다(SCAN_DIR=%s). 백엔드의 검사 작업 볼륨을 확인하세요", s.o.Dir)}
 	}
 	if p, ok := s.o.Docker.(interface{ Ping(context.Context) error }); ok {
 		pctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		err := p.Ping(pctx)
 		cancel()
 		if err != nil {
-			return "", &Error{503, "검사기 컨테이너를 띄울 수 없습니다 — Docker 에 연결되지 않습니다"}
+			return "", &Error{503, "검사기 컨테이너를 띄울 수 없습니다(Docker 에 연결되지 않음)"}
 		}
 	}
 	s.mu.Lock()
@@ -326,13 +326,13 @@ func (s *Service) acquire() error {
 		if s.o.QueueWait >= time.Minute && s.o.QueueWait%time.Minute == 0 {
 			wait = fmt.Sprintf("%d분", int(s.o.QueueWait.Minutes()))
 		}
-		return fmt.Errorf("검사 대기 시간 초과 — %s 동안 앞선 검사가 끝나지 않았습니다(동시 실행 SCAN_CONCURRENCY=%d)", wait, s.o.Concurrency)
+		return fmt.Errorf("검사 대기 시간 초과, %s 동안 앞선 검사가 끝나지 않았습니다(동시 실행 SCAN_CONCURRENCY=%d)", wait, s.o.Concurrency)
 	}
 }
 
 // oom: 검사기 종료 코드 137 — 메모리 한도(SCAN_MEMORY_MB)에 걸려 죽었다
 func (s *Service) oom(engine string) error {
-	return fmt.Errorf("검사기 메모리 부족(%s, 종료 코드 137) — SCAN_MEMORY_MB(지금 %d)를 늘리거나 더 작은 대상으로 검사하세요", engine, s.o.MemoryMB)
+	return fmt.Errorf("검사기 메모리 부족(%s, 종료 코드 137), SCAN_MEMORY_MB(지금 %d)를 늘리거나 더 작은 대상으로 검사하세요", engine, s.o.MemoryMB)
 }
 
 const exitOOM = 137
@@ -618,7 +618,7 @@ func (s *Service) BlockPackages(ctx context.Context, id string, sel []model.Scan
 	var chosen []model.ScanPackage
 	if sc.Target.Kind == "package" {
 		if len(sel) > 0 {
-			return "", bad("패키지 이름으로 검사한 것은 그 패키지를 올립니다 — packages 없이 보내세요")
+			return "", bad("패키지 이름으로 검사한 것은 그 패키지를 올립니다. packages 없이 보내세요")
 		}
 	} else {
 		switch {
@@ -627,7 +627,7 @@ func (s *Service) BlockPackages(ctx context.Context, id string, sel []model.Scan
 		case len(sel) > maxBlockPackages:
 			return "", bad("한 번에 %d개까지 올릴 수 있습니다", maxBlockPackages)
 		case len(sc.Packages) == 0:
-			return "", bad("이 검사 결과에는 패키지 목록이 없습니다 — 잠금 · 의존성 파일(requirements.txt · package-lock.json · Cargo.lock)이 있어야 합니다")
+			return "", bad("이 검사 결과에는 패키지 목록이 없습니다. 잠금 · 의존성 파일(requirements.txt · package-lock.json · Cargo.lock)이 있어야 합니다")
 		}
 		for _, p := range sel {
 			r, err := resolvePackage(sc.Packages, p)
@@ -688,7 +688,7 @@ func resolvePackage(list []model.ScanPackage, p model.ScanPackage) (model.ScanPa
 	case len(managers) == 0:
 		return model.ScanPackage{}, bad("검사 결과에 없는 패키지: %s", name)
 	case len(managers) > 1:
-		return model.ScanPackage{}, bad("%s 은(는) 여러 매니저(%s)에 있습니다 — manager 를 지정하세요", name, strings.Join(managers, " · "))
+		return model.ScanPackage{}, bad("%s 은(는) 여러 매니저(%s)에 있습니다. manager 를 지정하세요", name, strings.Join(managers, " · "))
 	}
 	r := byManager[managers[0]]
 	if p.Version != "" {
