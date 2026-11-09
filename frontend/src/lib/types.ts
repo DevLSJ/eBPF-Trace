@@ -161,8 +161,10 @@ export interface Info {
   dnsResolve?: 'ok' | 'off';
   // 10/20: 외부 알림 채널 상태(호스트만). 알림 서비스가 없는 백엔드는 생략
   notify?: NotifyStatus;
-  // 10/20: AI 도우미(POST /api/chat) 사용 가능(OLLAMA_URL 설정) — true 일 때만 도우미 패널에 「AI 도우미」 탭. 옛 백엔드는 없음
+  // 10/20: AI 도우미(POST /api/chat) 사용 가능(ANTHROPIC_API_KEY 또는 OLLAMA_URL) — false 면 탭 안에서 켜는 법을 안내. 옛 백엔드는 없음
   chat?: boolean;
+  // 11/09: 쓰는 모델 — claude 면 질문 · 조회한 사실이 Anthropic API 로 나간다(설정 화면 「AI 도우미」 절). 챗봇이 꺼져 있거나 옛 백엔드면 없음
+  chatEngine?: ChatEngine;
   // 10/20: 실제로 쓰이는 컨테이너 발견 방식 fanotify | docker-events(mock · 가젯 시작 전은 빈 값) · docker-events 일 때 놓칠 수 있는 구간 안내
   discovery?: string;
   discoveryNote?: string;
@@ -808,4 +810,11 @@ export interface IntegrationStatus {
   containers: IntegrationContainer[];
   listError?: string;
   test: IntegrationTest | null;
+}
+
+// 11/09: AI 도우미가 쓰는 모델(키는 담지 않음). backup = 기본 모델이 닿지 않거나 거절할 때 쓰는 예비
+export interface ChatEngine {
+  provider: 'claude' | 'ollama';
+  model: string;
+  backup?: 'ollama';
 }

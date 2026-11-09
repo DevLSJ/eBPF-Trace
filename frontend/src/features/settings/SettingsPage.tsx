@@ -13,6 +13,7 @@ import { PageActions } from '../../components/PageActions';
 import { resetLayout } from '../../lib/layout';
 import { useLoad } from '../../hooks/useLoad';
 import { api, ApiError, authApi, errorText } from '../../lib/api';
+import { engineName, LOCAL_ONLY, NOT_SENT_ITEMS, SENT_ITEMS } from '../../lib/chatEngine';
 import { AUTH_MSG, daysLeft, licenseText, ROLE_KO } from '../../lib/auth';
 import { fmtDateTime, fmtNum } from '../../lib/format';
 import type { AuthAuditEntry, Info, Role, UserView } from '../../lib/types';
@@ -194,6 +195,7 @@ function ServerTab() {
           desc={i.discoveryNote || (i.discovery === 'fanotify' ? '컨테이너가 시작되는 순간부터 관찰합니다' : '새 컨테이너를 어떻게 찾아 감시에 붙이는지')}
         />
       </Section>
+      <AiSection info={i} />
       <Section title="도메인 판단" part="dns">
         <Row
           label="trace_dns"
@@ -206,6 +208,47 @@ function ServerTab() {
         바꾸는 방법: 서버의 .env 에서 위 값을 고친 뒤 백엔드를 다시 시작하세요. 화면에서는 바꾸지 않습니다 — 범위를 잘못 넓히면 다른 컨테이너가 격리될 수 있습니다.
       </p>
     </div>
+  );
+}
+
+// AI 도우미(11/09) — 쓰는 모델 · 예비 · 밖으로 나가는 데이터 범위. 보기만(바꾸는 것은 서버 .env)
+function AiSection({ info }: { info: Info }) {
+  const e = info.chatEngine;
+  const on = info.chat === true;
+  const claude = on && e?.provider === 'claude';
+  return (
+    <Section title="AI 도우미" part="ai">
+      <Row
+        label="모델"
+        value={on ? engineName(e) : '꺼짐'}
+        env="CHAT_PROVIDER · CLAUDE_MODEL"
+        desc={!on ? 'ANTHROPIC_API_KEY 나 OLLAMA_URL 이 있으면 켜짐' : claude ? '질문과 조회한 사실을 Anthropic API 로 보내 답을 받음' : LOCAL_ONLY}
+      />
+      {on && <Row label="예비" value={e?.backup ? '로컬 Ollama' : '없음'} env="OLLAMA_URL" desc="기본 모델에 닿지 않거나 답을 거절할 때 같은 질문을 넘김" />}
+      {claude && (
+        <div data-part="ai-scope" className="grid gap-3 border-t border-slate-100 pt-2 text-xs text-slate-600 sm:grid-cols-2">
+          <div>
+            <b className="text-sm font-medium text-slate-800">밖으로 나가는 데이터</b>
+            <ul data-part="ai-sent" className="mt-1 grid list-disc gap-0.5 pl-4">
+              {SENT_ITEMS.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <b className="text-sm font-medium text-slate-800">보내지 않는 데이터</b>
+            <ul data-part="ai-not-sent" className="mt-1 grid list-disc gap-0.5 pl-4">
+              {NOT_SENT_ITEMS.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+            <p className="mt-2">
+              서버 밖으로 보내지 않으려면 <code>CHAT_PROVIDER=ollama</code>
+            </p>
+          </div>
+        </div>
+      )}
+    </Section>
   );
 }
 

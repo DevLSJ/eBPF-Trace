@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom';
 import { api, ApiError, errorText } from '../lib/api';
 import { splitHref } from '../lib/nav';
-import type { ChatLink } from '../lib/types';
+import { engineFootnote, engineHeader } from '../lib/chatEngine';
+import type { ChatEngine, ChatLink } from '../lib/types';
 import { CodeWindow } from './CodeWindow';
 
-// 「AI 도우미」 탭 본문 (10/20 W13, 목업 mock/shared/chat.js). POST /api/chat → 로컬 모델(Ollama qwen2.5:3b)의 답을 SSE 로 받아 흘려 보인다.
+// 「AI 도우미」 탭 본문 (10/20 W13, 목업 mock/shared/chat.js). POST /api/chat → 서버가 고른 모델(11/09: Claude 기본 · 로컬 Ollama 예비)의 답을 SSE 로 받아 흘려 보인다.
 // - 판정 상태(facts.status) · 관련 화면(links)은 모델이 아니라 서버가 붙인 값 — 상태 칩은 모델 문장보다 우선이라고 표시한다
 // - 대화는 이 탭(sessionStorage supplyguard.chat)에만 최근 30개. 서버에는 최근 6턴만 문맥으로 보낸다
 // - 읽기 전용: 판정 · 정책을 바꾸지 않는다
@@ -51,7 +52,7 @@ function save(msgs: Msg[]) {
   }
 }
 
-export function ChatPanel({ active }: { active: boolean }) {
+export function ChatPanel({ active, engine }: { active: boolean; engine?: ChatEngine }) {
   const { pathname, search } = useLocation();
   const [msgs, setMsgs] = useState<Msg[]>(load);
   const [busy, setBusy] = useState(false);
@@ -145,7 +146,9 @@ export function ChatPanel({ active }: { active: boolean }) {
   return (
     <section data-part="chat" aria-label="AI 도우미" className="flex min-h-0 flex-1 flex-col">
       <header className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-1.5">
-        <span className="text-xs text-slate-500">로컬 모델 qwen2.5:3b · 데이터는 서버 밖으로 나가지 않음</span>
+        <span data-part="chat-engine" data-provider={engine?.provider ?? 'ollama'} className="text-xs text-slate-500">
+          {engineHeader(engine)}
+        </span>
         <button type="button" aria-label="대화 지우기" onClick={clear} className="ml-auto rounded px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800">
           지우기
         </button>
@@ -208,20 +211,34 @@ export function ChatPanel({ active }: { active: boolean }) {
           </button>
         )}
       </div>
-      <p className="shrink-0 px-3 pt-1 pb-2 text-[11px] text-slate-400">읽기 전용 — 판정 · 정책 변경은 하지 않습니다. 첫 질문은 모델을 불러오느라 1분 넘게 걸릴 수 있습니다.</p>
+      <p className="shrink-0 px-3 pt-1 pb-2 text-[11px] text-slate-400">{engineFootnote(engine)}</p>
     </section>
   );
 }
 
 // 답 속 코드 블록(```종류 [파일명] … ```) → 코드 창. 흘려보내는 중 안 닫힌 블록도 그때까지의 코드를 창에 둔다(11/04f)
+// 코드 밖 글자의 **굵게** 는 굵은 글자로(11/09 — Claude 답이 가끔 쓴다). 그 밖의 마크다운은 글자 그대로
 const FENCE = /```([^\n`]*)\n([\s\S]*?)(?:\n?```|$)/g;
+const BOLD = /\*\*([^*\n]+?)\*\*/g;
+function inline(text: string, key: number): ReactNode[] {
+  const out: ReactNode[] = [];
+  let at = 0;
+  BOLD.lastIndex = 0;
+  for (let m = BOLD.exec(text); m; m = BOLD.exec(text)) {
+    if (m.index > at) out.push(text.slice(at, m.index));
+    out.push(<strong key={`${key}-${m.index}`}>{m[1]}</strong>);
+    at = BOLD.lastIndex;
+  }
+  if (at < text.length) out.push(text.slice(at));
+  return out;
+}
 function rich(text: string) {
-  if (!text.includes('```')) return text;
+  if (!text.includes('```')) return text.includes('**') ? inline(text, 0) : text;
   const out: ReactNode[] = [];
   let at = 0;
   FENCE.lastIndex = 0;
   for (let m = FENCE.exec(text); m; m = FENCE.exec(text)) {
-    if (m.index > at) out.push(text.slice(at, m.index).replace(/\n$/, ''));
+    if (m.index > at) out.push(...inline(text.slice(at, m.index).replace(/\n$/, ''), at));
     const [lang, name] = m[1].trim().split(/\s+/);
     out.push(
       <CodeWindow key={m.index} name={name || null} lang={lang || null}>
@@ -231,7 +248,7 @@ function rich(text: string) {
     at = FENCE.lastIndex;
     if (!m[0].length) break;
   }
-  if (at < text.length) out.push(text.slice(at).replace(/^\n/, ''));
+  if (at < text.length) out.push(...inline(text.slice(at).replace(/^\n/, ''), at));
   return out;
 }
 
