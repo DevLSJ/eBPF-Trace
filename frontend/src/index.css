@@ -528,8 +528,9 @@ th[aria-sort="ascending"] .th-sort::after { content: '↑'; opacity: 1; color: v
 th[aria-sort="descending"] .th-sort::after { content: '↓'; opacity: 1; color: var(--accent); }
 .th-sort:hover { color: var(--text); }
 .th-sort:focus-visible { border-radius: 4px; }
-/* 상태 배지(참고 대시보드): 높이 27 · 최소 폭 62 · 12.5/750 · 1px 톤 테두리 · 알약 모양. 톤 색은 두 테마 같은 값 */
-.sg-pill { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: 27px; min-width: 62px; padding: 0 8.8px; border: 1px solid var(--pill-line, var(--pill-neutral-line)); border-radius: 16px; background: var(--pill-bg, var(--pill-neutral-bg)); color: var(--pill-fg, var(--pill-neutral-fg)); font-size: 12.5px; font-weight: 750; line-height: 1; white-space: nowrap; }
+/* 상태 배지(참고 대시보드 크기): 높이 27 · 최소 폭 62 · 12.5 · 알약 모양. 톤 색은 두 테마 같은 값.
+   11/09 SPEC(11/02 「태그 글자 · 테두리를 진하게」): 굵기 700 · 1px 테두리 = 글자색(currentColor) — 다크도 같은 규칙. --pill-*-line 은 쓰지 않는다(이름만 남김) */
+.sg-pill { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: 27px; min-width: 62px; padding: 0 8.8px; border: 1px solid currentColor; border-radius: 16px; background: var(--pill-bg, var(--pill-neutral-bg)); color: var(--pill-fg, var(--pill-neutral-fg)); font-size: 12.5px; font-weight: 700; line-height: 1; white-space: nowrap; }
 .sg-pill-neutral { --pill-bg: var(--pill-neutral-bg); --pill-fg: var(--pill-neutral-fg); --pill-line: var(--pill-neutral-line); }
 .sg-pill-accent { --pill-bg: var(--pill-accent-bg); --pill-fg: var(--pill-accent-fg); --pill-line: var(--pill-accent-line); }
 .sg-pill-info { --pill-bg: var(--pill-info-bg); --pill-fg: var(--pill-info-fg); --pill-line: var(--pill-info-line); }
