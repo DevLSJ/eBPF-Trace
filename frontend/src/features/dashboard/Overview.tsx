@@ -111,7 +111,7 @@ function kpiDefs(s: Summary, range: string): KpiDef[] {
       sub: kinds(subNum),
       subTitle: kinds(fmtNum),
       to: dest("/events", { normal: "1" }),
-      hint: "이 기간에 커널에서 수집한 실행 · 파일 · 통신 · 조회 이벤트 수",
+      hint: "이 기간에 커널에서 수집한 실행 · 파일 · 통신 · 조회 이벤트 수(같은 1분 안 같은 동작 반복은 1건)",
     },
     {
       k: "violations",
