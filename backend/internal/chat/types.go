@@ -1,4 +1,4 @@
-// Package chat: AI 도우미(10/16 결정) — POST /api/chat 의 질문 → 의도 분류 → 읽기 전용 조회 → 한국어 사실 문장 → 로컬 Ollama 답 스트리밍.
+// Package chat: AI 도우미(10/16 결정) — POST /api/chat 의 질문 → 의도 분류 → 읽기 전용 조회 → 한국어 사실 문장 → 모델 답 스트리밍(11/09 부터 Claude 기본 · 로컬 Ollama 예비).
 //
 // 틀리면 안 되는 값(판정 상태 · 관련 화면 링크)은 모델이 아니라 서버가 붙인다(실측: qwen2.5:3b 가 판정 상태를 지어냄).
 // 모델에는 원시 JSON 이 아니라 한국어 사실 문장만 넣는다(실측: 원시 JSON 이면 「데이터 없음」으로 틀림).
@@ -30,8 +30,11 @@ var (
 	ErrBusy    = errors.New("다른 질문에 답하는 중입니다. 잠시 뒤 다시 물어 주세요")
 )
 
-// MsgModelDown: Ollama 가 꺼져 있거나 모델이 없을 때 error 이벤트 문구
-const MsgModelDown = "AI 모델이 준비되지 않았습니다(OLLAMA_URL)"
+// MsgModelDown: 모델에 닿지 못함(Claude 키 · 한도 · 서버 오류, Ollama 꺼짐 · 모델 없음) — error 이벤트 문구
+const MsgModelDown = "AI 모델에 연결하지 못했습니다(ANTHROPIC_API_KEY · OLLAMA_URL 확인)"
+
+// MsgRefused: 모델 안전 장치가 답을 거절(11/09) — 조회한 사실은 화면에 그대로 있다
+const MsgRefused = "AI 모델이 이 질문에는 답하지 않았습니다(안전 장치). 아래 조회한 사실을 참고하세요"
 
 // Request: POST /api/chat 본문
 type Request struct {
