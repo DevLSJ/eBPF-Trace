@@ -6,6 +6,8 @@ import { expect, test } from './fixtures';
 //   ① 표 도구줄(총 N건 · 새로고침 · 칸 고르기 · CSV)  ② 칸 고르기 · 저장 · 칸 기본으로  ③ 저장 실패 · 깨진 저장본
 //   ④ 칸 폭 끌기 · 키보드  ⑤ 칸 순서 끌기 · Alt+←/→  ⑥ 정렬 꺾쇠 · 쪽 넘김  ⑦ 필터 Select  ⑧ 검색칸 · 조건 지우기
 //   ⑨ 주소 쿼리 목록 상태  ⑩ 시트 부제 · 배지 · 탭 · 초점 가둠  ⑪ 큰 2단 창  ⑫ 미저장 경고
+// 2차(SPEC-1109 §2~4 — LOGuard 답변 반영): ⑬ 시트 움직임  ⑭ 창 · 팝오버 움직임  ⑮ 행 상태  ⑯ 꺼진 단추 · 재조회 · 폭 손잡이 · 줄 끝 고정
+//   ⑰ 칸 도우미(두 줄 · 「—」 · 시각 형식 · 칸 폭 표준 · CSV 화면 글)  ⑱ 화면 제목 700 · 로그인 반경(11/05 값)
 // 무대 뒤 화면은 주소 쿼리를 읽지 않는 「연동」(/integration).
 
 type Stage = { unmount: () => void };
@@ -79,7 +81,7 @@ test.describe('② 칸 고르기', () => {
     await expect(pop).toBeVisible();
     await expect(pop).toHaveAttribute('role', 'dialog');
     const items = pop.locator('label[data-col]');
-    expect(await items.allInnerTexts(), '이름 없는 칸(체크 · 행 동작)은 목록에 없다').toEqual(['정책', '종류', '판정', '담당', '위반', '메모']);
+    expect(await items.allInnerTexts(), '이름 없는 칸(체크 · 행 동작)은 목록에 없다').toEqual(['정책', '종류', '판정', '담당', '위반', '메모', '시각']);
     const box = (name: string) => pop.getByRole('checkbox', { name });
     await expect(box('메모')).not.toBeChecked();
     await box('메모').check();
@@ -216,7 +218,7 @@ test.describe('⑤ 칸 순서', () => {
     await page.keyboard.press('Alt+ArrowLeft');
     await page.keyboard.press('Alt+ArrowLeft');
     expect(await heads(page), '맨 앞 이름 칸 앞으로는 못 감(체크 칸 제자리)').toEqual(['pick', 'name', 'action', 'owner', 'kind', 'hits', 'act']);
-    expect(JSON.parse((await saved(page))!).order).toEqual(['name', 'action', 'owner', 'kind', 'hits', 'note']);
+    expect(JSON.parse((await saved(page))!).order).toEqual(['name', 'action', 'owner', 'kind', 'hits', 'note', 'seen']);
     await page.reload();
     await stage(page, 'list');
     expect(await heads(page)).toEqual(['pick', 'name', 'action', 'owner', 'kind', 'hits', 'act']);
@@ -564,5 +566,207 @@ test.describe('⑫ 미저장 경고', () => {
     await d.locator('[data-action="form-cancel"]').click();
     await expect(ask).toHaveCount(0);
     await expect(page.locator('[data-tk-closed="1"]')).toHaveCount(1);
+  });
+});
+
+// ── 11/09 2차: SPEC-1109 §2 움직임 · §3 상태별 모양 · §4 표 ──
+const cssVar = (page: Page, name: string, prop: 'color' | 'backgroundColor' | 'fontFamily' = 'color') =>
+  page.evaluate(
+    ([n, p]) => {
+      const e = document.createElement('i');
+      e.style.setProperty(p === 'color' ? 'color' : p === 'fontFamily' ? 'font-family' : 'background-color', `var(${n})`);
+      document.body.append(e);
+      const v = getComputedStyle(e)[p];
+      e.remove();
+      return v;
+    },
+    [name, prop] as const,
+  );
+const settle = (page: Page) => page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
+
+test.describe('⑬ 시트 움직임', () => {
+  test('열림만 효과(뒤 어둡게 120ms · 밀려 들어옴 180ms 들어옴 곡선) · 열린 채 다른 줄 = 같은 시트에 내용만 교체(받는 동안 시트 안 스켈레톤) · 닫힘은 효과 없이 바로', async ({ page, backend }) => {
+    void backend;
+    await openList(page);
+    await page.locator(`${T} tbody tr[data-row="r01"]`).click();
+    const sh = page.locator('[data-sheet="demo"]');
+    await expect(sh).toBeVisible();
+    const anim = await page.evaluate(() => {
+      const l = document.querySelector('.sg-sheet-layer')!;
+      const a = getComputedStyle(l);
+      const b = getComputedStyle(l.querySelector('.sg-sheet')!);
+      return [a.animationName, a.animationDuration, b.animationName, b.animationDuration, b.animationTimingFunction];
+    });
+    expect(anim).toEqual(['sg-scrim-in', '0.12s', 'sg-slide-in', '0.18s', 'cubic-bezier(0.16, 1, 0.3, 1)']);
+    await settle(page);
+    await sh.evaluate((e) => ((e as HTMLElement & { tkMark?: number }).tkMark = 1));
+    await sh.getByTestId('inside-1').focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(sh.locator('[data-part="skeleton"]'), '받는 동안 시트 안 스켈레톤').toBeVisible();
+    expect(
+      await sh.evaluate((e) => [(e as HTMLElement & { tkMark?: number }).tkMark, e.getAnimations().filter((a) => a.playState === 'running').length]),
+      '같은 시트 · 다시 미끄러지지 않음',
+    ).toEqual([1, 0]);
+    await expect(sh.locator('[data-part="skeleton"]')).toHaveCount(0);
+    await expect(sh.locator('[data-part="sheet-subtitle"]')).toHaveText('r02');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.sg-sheet-layer'), '닫힘 효과 없음').toHaveCount(0, { timeout: 150 });
+  });
+});
+
+test.describe('⑭ 창 · 팝오버 움직임', () => {
+  test('큰 창 · 확인 창 = 뒤 어둡게만 150ms(창 상자는 그대로) · 칸 고르기 · 선택 목록 · 알림 · 계정 메뉴 = 같은 열림 120ms', async ({ page, backend }) => {
+    void backend;
+    await page.goto(BASE);
+    const pop = (sel: string) => page.locator(sel).evaluate((e) => [getComputedStyle(e).animationName, getComputedStyle(e).animationDuration]);
+    await page.locator('[data-part="bell"]').click();
+    expect(await pop('[data-part="notices"]')).toEqual(['tk-pop-in', '0.12s']);
+    await page.keyboard.press('Escape');
+    await page.locator('[data-part="account"]').click();
+    expect(await pop('[data-part="account-menu"]')).toEqual(['tk-pop-in', '0.12s']);
+    await page.keyboard.press('Escape');
+    await stage(page, 'modal');
+    const back = (sel: string) =>
+      page.locator(sel).evaluate((e) => [getComputedStyle(e).animationName, getComputedStyle(e, '::backdrop').animationName, getComputedStyle(e, '::backdrop').animationDuration]);
+    expect(await back('dialog[data-part="tk-form"]')).toEqual(['none', 'tk-fade', '0.15s']);
+    await page.locator('dialog[data-part="tk-form"] input[name="name"]').fill('x');
+    await page.keyboard.press('Escape');
+    expect(await back('dialog[data-part="unsaved"]')).toEqual(['none', 'tk-fade', '0.15s']);
+    await page.goto(BASE);
+    await stage(page, 'list');
+    await page.locator('[data-action="table-columns"]').click();
+    expect(await pop('[data-part="column-picker"]')).toEqual(['tk-pop-in', '0.12s']);
+    await page.keyboard.press('Escape');
+    await page.locator('[data-tk-stage] [data-filter="kind"]').click();
+    expect(await pop('[data-overlay="select"]')).toEqual(['tk-pop-in', '0.12s']);
+  });
+});
+
+test.describe('⑮ 행 상태', () => {
+  test('고른 줄 · 열린 줄 = 같은 연한 강조 바탕, 열린 줄만 왼쪽 3px 주 색 · 위험 막대는 그대로 · hover 는 표 hover 회색 · 전환 0 · 흐리게 하지 않음', async ({ page, backend }) => {
+    void backend;
+    await openList(page);
+    const soft = await cssVar(page, '--accent-soft', 'backgroundColor');
+    const hover = await cssVar(page, '--row-hover', 'backgroundColor');
+    const accent = await cssVar(page, '--accent');
+    const danger = await cssVar(page, '--danger');
+    const look = (id: string) =>
+      page.locator(`${T} tbody tr[data-row="${id}"]`).evaluate((tr) => {
+        const c = getComputedStyle(tr);
+        return { bg: c.backgroundColor, tr: c.transitionDuration, op: c.opacity, bar: getComputedStyle((tr as HTMLTableRowElement).cells[0]).boxShadow };
+      });
+    await page.locator(`${T} tbody tr[data-row="r05"] td[data-col="hits"]`).hover();
+    expect(await look('r05')).toMatchObject({ bg: hover, tr: '0s', op: '1', bar: 'none' });
+    await page.locator(`${T} tbody tr[data-row="r02"] input[type="checkbox"]`).check();
+    await expect(page.locator(`${T} tbody tr[data-row="r02"]`)).toHaveAttribute('data-checked', '');
+    await page.mouse.move(5, 5);
+    expect(await look('r02'), '고른 줄 — 막대 없음').toMatchObject({ bg: soft, bar: 'none' });
+    expect((await look('r03')).bar, '위험(격리 판정) 줄 막대').toContain(danger);
+    await page.locator(`${T} tbody tr[data-row="r01"]`).click();
+    await expect(page.locator(`${T} tbody tr[data-row="r01"]`)).toHaveAttribute('data-open', '');
+    const open = await look('r01');
+    expect(open.bg).toBe(soft);
+    expect(open.bar).toContain(accent);
+    expect(open.bar).toMatch(/3px 0px 0px 0px inset|inset 3px 0px 0px 0px/);
+    expect(await page.locator(`${T} tbody tr`).evaluateAll((els) => els.every((e) => getComputedStyle(e).opacity === '1'))).toBe(true);
+  });
+});
+
+test.describe('⑯ 꺼진 단추 · 재조회 · 폭 손잡이 · 줄 끝 고정', () => {
+  test('aria-disabled + 사유(초점은 감) · 재조회는 이전 줄 유지 + 맨 위 진행 띠 · 손잡이 늘 .7 · 올리면 주 색 · 가로 스크롤이 남았을 때만 줄 끝 그림자', async ({ page, backend }) => {
+    void backend;
+    await openList(page);
+    const accent = await cssVar(page, '--accent', 'backgroundColor');
+    // 꺼진 「칸 기본으로」 — 진짜 disabled 가 아니라 aria-disabled + 사유, 초점은 간다
+    await page.locator('[data-action="table-columns"]').click();
+    const reset = page.locator('[data-action="columns-reset"]');
+    await expect(reset).toHaveAttribute('aria-disabled', 'true');
+    await expect(reset).toHaveAttribute('title', '이미 기본 칸');
+    expect(await reset.evaluate((e) => (e as HTMLButtonElement).disabled)).toBe(false);
+    await reset.focus();
+    await expect(reset).toBeFocused();
+    await page.keyboard.press('Escape');
+    // 재조회: 줄은 그대로, 진행 띠 · 새로고침은 사유와 함께 꺼짐
+    const rows = page.locator(`${T} tbody tr`);
+    const refresh = page.locator('[data-action="table-refresh"]');
+    await refresh.click();
+    const busy = page.locator('[data-table-tools="demo"] [data-part="busy"]');
+    await expect(busy).toBeVisible();
+    await expect(rows).toHaveCount(20);
+    await expect(refresh).toHaveAttribute('aria-disabled', 'true');
+    await expect(refresh).toHaveAttribute('title', '불러오는 중');
+    await expect(busy).toBeHidden();
+    await expect(refresh).not.toHaveAttribute('aria-disabled', 'true');
+    // 폭 손잡이: 늘 보임 .7 · 올리면 주 색
+    const h = page.locator(`${T} th[data-col="kind"] [data-part="col-resize"]`);
+    expect(await h.evaluate((e) => getComputedStyle(e, '::after').opacity)).toBe('0.7');
+    await h.hover();
+    await expect.poll(() => h.evaluate((e) => getComputedStyle(e, '::after').backgroundColor)).toBe(accent);
+    // 줄 끝 조작 칸: 오른쪽 고정, 가로 스크롤이 없으면 그림자 없음
+    const scroll = page.getByTestId('tk-scroll');
+    const act = page.locator(`${T} tbody tr`).first().locator('td[data-col="act"]');
+    expect(await act.evaluate((e) => [getComputedStyle(e).position, getComputedStyle(e).boxShadow])).toEqual(['sticky', 'none']);
+    await expect(scroll).not.toHaveAttribute('data-hscroll', /.*/);
+    const nh = page.locator(`${T} th[data-col="name"] [data-part="col-resize"]`);
+    for (let i = 0; i < 60; i++) await nh.press('ArrowRight');
+    await expect(scroll).toHaveAttribute('data-hscroll', '');
+    expect(await act.evaluate((e) => getComputedStyle(e).boxShadow)).not.toBe('none');
+    await scroll.evaluate((e) => (e.scrollLeft = e.scrollWidth));
+    await expect(scroll, '오른쪽 끝까지 밀면 그림자 없음').not.toHaveAttribute('data-hscroll', /.*/);
+    expect(await act.evaluate((e) => getComputedStyle(e).boxShadow)).toBe('none');
+  });
+});
+
+test.describe('⑰ 칸 도우미', () => {
+  test('두 줄 칸(13.5/500 · 12 고정폭 흐림 · 줄간격 1.3) · 빈 값 「—」 · 시각 3형식(상대 시각 없음) · 시각 칸 표준 폭 160 · CSV = 화면 글', async ({ page, backend }) => {
+    void backend;
+    await openList(page);
+    const muted = await cssVar(page, '--text-3');
+    const mono = await cssVar(page, '--mono', 'fontFamily');
+    await page.locator('[data-action="table-columns"]').click();
+    const pop = page.locator('[data-part="column-picker"]');
+    await pop.getByRole('checkbox', { name: '메모' }).check();
+    await pop.getByRole('checkbox', { name: '시각' }).check();
+    await expect(pop, '여러 칸을 연달아 켜도 열린 채').toBeVisible();
+    await page.keyboard.press('Escape');
+    expect(Math.round(await thW(page, 'seen'))).toBe(160);
+    const empty = page.locator(`${T} tbody tr[data-row="r04"] td[data-col="note"]`);
+    await expect(empty).toHaveText('—');
+    expect(await empty.locator('.tk-empty').evaluate((e) => getComputedStyle(e).color)).toBe(muted);
+    const seen = page.locator(`${T} tbody tr[data-row="r01"] td[data-col="seen"] time`);
+    await expect(seen).toHaveText('2026-11-09 12:04:05');
+    expect(await seen.evaluate((e) => getComputedStyle(e).fontFamily)).toBe(mono);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-action="table-export"]').click()]);
+    const lines = readFileSync((await dl.path())!, 'utf8').slice(1).trim().split('\n');
+    expect(lines[0]).toBe('정책,종류,판정,담당,위반,메모,시각');
+    expect(lines[4], '빈 값도 화면 글(—) 그대로').toBe('policy-04,dns,allow,owner-d,21,—,2026-11-09 12:04:05');
+    // 시트 안 두 줄 칸 · 시각 형식
+    await page.locator(`${T} tbody tr[data-row="r01"]`).click();
+    const sh = page.locator('[data-sheet="demo"]');
+    const two = await sh.getByTestId('two').evaluate((e) => {
+      const t = getComputedStyle(e.querySelector('.tk-2l-top')!);
+      const b = getComputedStyle(e.querySelector('.tk-2l-sub')!);
+      return [t.fontSize, t.fontWeight, t.lineHeight, b.fontSize, b.lineHeight, b.color, b.fontFamily];
+    });
+    expect(two).toEqual(['13.5px', '500', '17.55px', '12px', '15.6px', muted, mono]);
+    const t = (id: string) => sh.getByTestId(id).evaluate((e) => [e.tagName, e.textContent, e.getAttribute('title'), e.getAttribute('datetime')]);
+    expect(await t('t-log')).toEqual(['TIME', '2026-11-09 12:04:05', null, '2026-11-09T03:04:05.000Z']);
+    expect(await t('t-status')).toEqual(['TIME', '11-09 12:04', '2026-11-09 12:04:05', '2026-11-09T03:04:05.000Z']);
+    expect(await t('t-day')).toEqual(['TIME', '2026-11-09', '2026-11-09 12:04:05', '2026-11-09T03:04:05.000Z']);
+    await expect(sh, '상대 시각 없음').not.toContainText(/분 전|시간 전|일 전/);
+  });
+});
+
+test.describe('⑱ 화면 제목 · 로그인(11/05 값)', () => {
+  test('화면 제목 굵기 700 · 로그인 카드 반경 12 · 로그인 입력창 반경 6', async ({ page, backend, allowConsole }) => {
+    await page.goto(BASE);
+    expect(await page.getByTestId('page-title').evaluate((e) => getComputedStyle(e).fontWeight)).toBe('700');
+    allowConsole(/^Failed to load resource: the server responded with a status of 401 /);
+    backend.auth.loggedOut();
+    await page.goto('/');
+    const auth = page.locator('[data-part="auth"]');
+    await expect(auth).toHaveAttribute('data-step', 'login');
+    expect(await page.locator('[data-part="auth"] > div').first().evaluate((e) => getComputedStyle(e).borderRadius)).toBe('12px');
+    expect(await auth.getByLabel('아이디').evaluate((e) => getComputedStyle(e).borderRadius)).toBe('6px');
   });
 });
