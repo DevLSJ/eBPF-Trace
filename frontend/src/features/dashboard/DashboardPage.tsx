@@ -21,6 +21,7 @@ import { IntegrateBanner } from "../integration/IntegrateBanner";
 //   → 차트 줄 3칸(수집량 추이 1.8 : 위반 추이 1 : 설치 검사 결과 1.2) → 아래 3칸(판정 대기 · 많이 걸린 정책 · 위반 많은 컨테이너 — 남은 높이 채움, 몸통만 스크롤).
 //   768 이상은 화면 안에 다 들어간다(스크롤 0). 시연 카드는 대시보드에서 뺐다(R3 시연 페이지, 사용자 결정 R2 11/04)
 // 11/09 G31: 머리 줄 오른쪽에 「최종 갱신 HH:mm:ss」(30초마다 자동 갱신) + 새로고침 단추 · G38: 「초당 N건」
+// 11/09 밤 ③: 최종 갱신 · 새로고침 · 기간 = 주 버튼 칸(data-part="page-actions") 하나로 묶어 맨 위 줄 오른쪽 끝 — 설명 줄이 있는 화면과 같은 자리
 export function DashboardPage() {
   const { stats } = useStream();
   const { range, setRange, data: s, error, loading, updatedAt, reload } =
@@ -44,27 +45,33 @@ export function DashboardPage() {
             건
           </span>
         </span>
-        <span
-          data-part="dash-updated"
-          className="sg-dash-updated text-xs text-text-3"
-          title="30초마다 자동 갱신"
+        {/* 화면 주 버튼 자리(11/09 밤 ③) — 다른 화면의 설명 줄 오른쪽 끝과 같은 규칙: 맨 위 줄 오른쪽 끝에 최종 갱신 · 새로고침 · 기간 */}
+        <div
+          data-part="page-actions"
+          className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2"
         >
-          최종 갱신{" "}
-          <span className="num">
-            {updatedAt ? fmtTime(new Date(updatedAt).toISOString()) : ""}
+          <span
+            data-part="dash-updated"
+            className="sg-dash-updated text-xs whitespace-nowrap text-text-3"
+            title="30초마다 자동 갱신"
+          >
+            최종 갱신{" "}
+            <span className="num">
+              {updatedAt ? fmtTime(new Date(updatedAt).toISOString()) : ""}
+            </span>
           </span>
-        </span>
-        <ActionButton
-          className="tk-icon-btn sg-dash-refresh"
-          data-action="dash-refresh"
-          aria-label="새로고침(대시보드)"
-          title="새로고침(대시보드)"
-          reason={loading && "불러오는 중입니다"}
-          onClick={reload}
-        >
-          <RefreshCw className={loading ? "sg-spin" : undefined} aria-hidden />
-        </ActionButton>
-        <RangeChips range={range} onPick={setRange} />
+          <ActionButton
+            className="tk-icon-btn sg-dash-refresh -ml-1.5"
+            data-action="dash-refresh"
+            aria-label="새로고침(대시보드)"
+            title="새로고침(대시보드)"
+            reason={loading && "불러오는 중입니다"}
+            onClick={reload}
+          >
+            <RefreshCw className={loading ? "sg-spin" : undefined} aria-hidden />
+          </ActionButton>
+          <RangeChips range={range} onPick={setRange} />
+        </div>
       </div>
       <KpiRow s={s} range={range} error={error} />
       <ChartRow s={s} />

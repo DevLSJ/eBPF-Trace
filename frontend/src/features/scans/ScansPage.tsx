@@ -11,7 +11,7 @@ import { fmtStatus } from '../../components/list/cell-format';
 import { downloadCSV } from '../../components/list/csv';
 import { ScreenNote } from '../../components/ScreenNote';
 import { TableToolbar } from '../../components/TableToolbar';
-import { screenCopy } from '../../lib/screenCopy';
+import { ScreenHead } from '../../components/ScreenHead';
 import { AppliedFilters, EmptyState, ListError, NoResults, PagerSlot, Skeleton } from '../../components/list/ListStates';
 import { TimeText } from '../../components/list/cells';
 import { ActionButton } from '../../components/ActionButton';
@@ -153,9 +153,7 @@ export function ScansPage() {
   return (
     <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] gap-4">
       <div className="flex min-h-0 flex-col gap-3">
-        <p data-part="screen-copy" data-screen="scans" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
-          {screenCopy('scans')}
-        </p>
+        <ScreenHead screen="scans" />
         <ScanForm canWrite={canWrite} onStarted={() => { select(''); list.reload(); }} />
         <Panel title="검사 기록" testId="scans" className="min-h-0 flex-1" actions={list.data?.length ? <FilterChips label="결과" options={vOptions} value={vf} onChange={(v) => setQ('verdict', v)} /> : undefined}>
           <div className="flex h-full flex-col">

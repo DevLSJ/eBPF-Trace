@@ -19,7 +19,7 @@ import { useCopyCommand } from '../../hooks/useCopyCommand';
 import { useInterval, useLoad } from '../../hooks/useLoad';
 import { useTableKit, type Column, type TableKit } from '../../hooks/useTableKit';
 import { api } from '../../lib/api';
-import { screenCopy } from '../../lib/screenCopy';
+import { ScreenHead } from '../../components/ScreenHead';
 import { FIELD } from '../../lib/fieldNames';
 import { fmtNum } from '../../lib/format';
 import { duration, EXAMPLE_COMMAND, sessionLabel, violationTotal } from '../../lib/pkg';
@@ -166,9 +166,7 @@ export function InstallsPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <p data-part="screen-copy" data-screen="installs" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
-        {screenCopy('installs')}
-      </p>
+      <ScreenHead screen="installs" />
       <div className="flex min-h-0 flex-1 gap-4">
       <PageActions>
         <button type="button" onClick={() => setGuide(true)} className="sg-btn sg-btn-sm sg-btn-secondary">

@@ -12,7 +12,7 @@ import { FilterBar, SearchField } from '../../components/list/SearchField';
 import { ScreenNote } from '../../components/ScreenNote';
 import { Select } from '../../components/Select';
 import { TableToolbar } from '../../components/TableToolbar';
-import { screenCopy } from '../../lib/screenCopy';
+import { ScreenHead } from '../../components/ScreenHead';
 import { GridCells, SortHead, StatusPill, TablePager, TableScroll } from '../../components/DataTable';
 import { actionTone } from '../../lib/actionTone';
 import { changeName } from '../policies/changeView';
@@ -172,9 +172,7 @@ export function AuditPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <p data-part="screen-copy" data-screen="audit" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
-        {screenCopy('audit')}
-      </p>
+      <ScreenHead screen="audit" />
       <div className="flex min-h-0 flex-1 gap-4">
       <PageActions>
         <div className="flex rounded-md border border-slate-300 p-0.5" role="group" aria-label="보기">

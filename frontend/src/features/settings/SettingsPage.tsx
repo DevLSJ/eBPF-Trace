@@ -14,7 +14,7 @@ import { fmtDay, fmtLog, fmtStatus } from '../../components/list/cell-format';
 import { rowState } from '../../components/list/hooks';
 import { Select } from '../../components/Select';
 import { TableToolbar } from '../../components/TableToolbar';
-import { screenCopy } from '../../lib/screenCopy';
+import { ScreenHead } from '../../components/ScreenHead';
 import { useAuth } from '../../hooks/auth-context';
 import { useToast } from '../../hooks/toast-context';
 import { PageActions } from '../../components/PageActions';
@@ -43,9 +43,7 @@ export function SettingsPage() {
   const toast = useToast();
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-    <p data-part="screen-copy" data-screen="settings" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
-      {screenCopy('settings')}
-    </p>
+    <ScreenHead screen="settings" />
     <div className="sg-card flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* 화면 머리 오른쪽 「화면 배치 기본 순서로」(11/04d, R1 11/04) — 확인 없이 즉시 · 토스트 · 조회자도(이 브라우저에만 저장된 값). 열린 사이드바는 바로 기본 순서 */}
       <PageActions>

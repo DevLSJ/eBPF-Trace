@@ -21,7 +21,7 @@ import { AttackChain } from '../../components/AttackChain';
 import { DecisionBadge } from '../../components/Badges';
 import { DecisionBox } from '../../components/DecisionBox';
 import { PageActions } from '../../components/PageActions';
-import { screenCopy } from '../../lib/screenCopy';
+import { ScreenHead } from '../../components/ScreenHead';
 import { Empty, Panel } from '../../components/Panel';
 import { Section, Sheet } from '../../components/Sheet';
 import { TimelineBar } from '../../components/TimelineBar';
@@ -328,9 +328,7 @@ export function TopologyPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <p data-part="screen-copy" data-screen="topology" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
-        {screenCopy('topology')}
-      </p>
+      <ScreenHead screen="topology" />
     <div data-fill="" className="flex min-h-0 flex-1 gap-4 max-md:flex-col max-md:overflow-y-auto">
       <PageActions>
         <label className="flex items-center gap-1.5 text-sm text-slate-500">

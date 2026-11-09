@@ -10,7 +10,7 @@ import { useAutoRetry } from '../../components/list/hooks';
 import { FilterBar, SearchField } from '../../components/list/SearchField';
 import { ScreenNote } from '../../components/ScreenNote';
 import { Select } from '../../components/Select';
-import { screenCopy } from '../../lib/screenCopy';
+import { ScreenHead } from '../../components/ScreenHead';
 import { PageActions } from '../../components/PageActions';
 import { Panel } from '../../components/Panel';
 import { CodeWindow } from '../../components/CodeWindow';
@@ -80,9 +80,7 @@ export function EventsPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <p data-part="screen-copy" data-screen="events" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
-        {screenCopy('events')}
-      </p>
+      <ScreenHead screen="events" />
       <div className="flex min-h-0 flex-1 gap-4">
       <PageActions>
         {/* 머리 칸이 좁으면(768px 등) 일시정지는 목록 필터 줄로 옮긴다(W20) */}

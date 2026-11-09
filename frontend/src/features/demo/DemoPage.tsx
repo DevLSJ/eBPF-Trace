@@ -12,7 +12,7 @@ import { useAuth } from '../../hooks/auth-context';
 import { useStream } from '../../hooks/stream-context';
 import { fmtNum, shortId } from '../../lib/format';
 import { reducedMotion } from '../../lib/motion';
-import { screenCopy } from '../../lib/screenCopy';
+import { ScreenHead } from '../../components/ScreenHead';
 import { KIND_SHORT } from '../../lib/policyEasy';
 import type { DemoRun, DemoScenario, Evidence, InstallSession } from '../../lib/types';
 import { idleNodes, liveFlow, type FlowMode } from './flow';
@@ -92,9 +92,7 @@ export function DemoPage() {
   const mode: FlowMode = !demo.run ? 'idle' : m.running ? 'live' : demo.run.id === idleAfter ? 'idle' : 'done';
   return (
     <div className="demo-wrap">
-      <p data-part="screen-copy" data-screen="demo" className="m-0 shrink-0 truncate text-[length:var(--fs-sm)] text-text-3">
-        {screenCopy('demo')}
-      </p>
+      <ScreenHead screen="demo" />
     <div data-part="demo-page" className="demo-page">
       <ScenarioCol {...demo} setScenario={pick} />
       <FlowCol run={demo.run} m={m} steps={steps} now={demo.now} loadError={demo.loadError} />

@@ -17,7 +17,7 @@ import { useListQuery } from '../../hooks/useListQuery';
 import { useLoad } from '../../hooks/useLoad';
 import { COL_W, useTableKit, type Column } from '../../hooks/useTableKit';
 import { api, failText } from '../../lib/api';
-import { screenCopy } from '../../lib/screenCopy';
+import { ScreenHead } from '../../components/ScreenHead';
 import type { BlockEntry, BlockList } from '../../lib/types';
 
 // 차단 목록(11/09 정책 화면 분리 — 옛 정책 화면 아래 칸을 옮김, 기능 그대로): 악성 확정으로 막은 패키지 · 이미지 · 도메인.
@@ -102,9 +102,7 @@ export function BlocklistPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3" data-screen="policies-blocklist">
-      <p className="shrink-0 text-[13.5px] text-text-3" data-part="screen-copy">
-        {screenCopy('policies/blocklist')}
-      </p>
+      <ScreenHead screen="policies/blocklist" />
       <FilterBar name="blocklist" active={lq.active} onClear={lq.clearFilters}>
         <SearchField label="차단 목록 검색" placeholder="값 · 처리자" value={f.q} onApply={(v) => lq.setFilters({ q: v })} />
         <Select name="list" label="종류" value={f.list} options={LISTS} onChange={(v) => lq.setFilters({ list: v })} />

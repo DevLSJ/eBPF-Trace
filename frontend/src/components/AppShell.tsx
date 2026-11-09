@@ -6,7 +6,8 @@ import { useCases } from '../hooks/cases-context';
 import { useStream } from '../hooks/stream-context';
 import { AccountMenu } from './AccountMenu';
 import { Assistant } from './Assistant';
-import { HeaderSlotContext, SheetHostContext } from './header-slot';
+import { SheetHostContext } from './header-slot';
+import { ActionSlotProvider } from './PageActions';
 import { HelpDialog } from './shell/HelpDialog';
 import { NoticeCenter } from './shell/NoticeCenter';
 import { SearchBox } from './shell/SearchBox';
@@ -87,7 +88,6 @@ export function AppShell() {
   const { isAdmin } = useAuth();
   const demoOn = isAdmin && info?.demo === true;
   const { pathname } = useLocation();
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
   const [sheetHost, setSheetHost] = useState<HTMLElement | null>(null); // 상세 패널 자리(11/05) — main 위에 겹친다
   const [help, setHelp] = useState(false);
   const { collapsed, narrow, mobile, mobileOpen, toggle, openMobile, closeMobile } = useSidebar(pathname);
@@ -219,8 +219,8 @@ export function AppShell() {
               {screen?.label ?? ''}
             </h1>
           </div>
-          {/* 768 미만: 머리 칸의 화면 버튼은 가로로 넘기며 본다(머리 높이 56px 유지) */}
-          <div ref={setSlot} className="flex min-w-0 flex-1 items-center gap-3 max-md:overflow-x-auto max-md:[scrollbar-width:none]" data-testid="page-actions" />
+          {/* 머리 줄 = 제목 + 상태 표시만. 화면 주 버튼은 본문 맨 위 설명 줄 오른쪽 끝(ScreenHead · PageActions, 11/09 밤 ③) */}
+          <div className="min-w-0 flex-1" aria-hidden />
           <WsStatus />
           <NoticeCenter />
           {/* 테마 = 해/달 단추 하나(11/09 G01) — 계정 메뉴의 테마 칸을 옮겼다 */}
@@ -239,7 +239,7 @@ export function AppShell() {
         <StreamBanners />
         <DnsBanner />
         <main className="relative min-h-0 flex-1 overflow-hidden p-4 md:p-6">
-          <HeaderSlotContext.Provider value={slot}>
+          <ActionSlotProvider>
             <SheetHostContext.Provider value={sheetHost}>
               {/* 화면 전환: fade + 4px 상승(경로가 바뀔 때만 — 같은 화면의 ?id= 는 그대로). 바깥 칸이 움직이는 4px 를 잘라 본문 넘침이 생기지 않는다 */}
               <div className="h-full min-h-0 overflow-hidden">
@@ -248,7 +248,7 @@ export function AppShell() {
                 </div>
               </div>
             </SheetHostContext.Provider>
-          </HeaderSlotContext.Provider>
+          </ActionSlotProvider>
           {/* 상세 패널 자리: 비어 있으면 클릭을 통과시킨다 */}
           <div ref={setSheetHost} data-part="sheet-host" className="sg-sheet-host" />
         </main>

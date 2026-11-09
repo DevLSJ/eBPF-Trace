@@ -15,7 +15,7 @@ import { useListQuery } from '../../hooks/useListQuery';
 import { useLoad } from '../../hooks/useLoad';
 import { COL_W, useTableKit, type Column } from '../../hooks/useTableKit';
 import { api } from '../../lib/api';
-import { screenCopy } from '../../lib/screenCopy';
+import { ScreenHead } from '../../components/ScreenHead';
 import type { Change } from '../../lib/types';
 import { ActionTag, ChangeDiff } from './ChangeParts';
 import { CHANGE_KIND_OPTIONS, changeHasDiff, changeName } from './changeView';
@@ -105,9 +105,7 @@ export function ChangesPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3" data-screen="policies-changes">
-      <p className="shrink-0 text-[13.5px] text-text-3" data-part="screen-copy">
-        {screenCopy('policies/changes')}
-      </p>
+      <ScreenHead screen="policies/changes" />
       <FilterBar name="changes" active={lq.active} onClear={lq.clearFilters}>
         <SearchField label="변경 이력 검색" placeholder="내용 · 처리자 · 정책 ID" value={f.q} onApply={(v) => lq.setFilters({ q: v })} />
         <Select name="kind" label="종류" value={f.kind} options={CHANGE_KIND_OPTIONS} onChange={(v) => lq.setFilters({ kind: v })} />

@@ -29,7 +29,7 @@ import { api } from '../../lib/api';
 import { FIELD } from '../../lib/fieldNames';
 import { mergeDefault } from '../../lib/policyDefaults';
 import { fromTemplate, KIND_SHORT, ruleFromBlock, ruleWithAllow } from '../../lib/policyEasy';
-import { screenCopy } from '../../lib/screenCopy';
+import { ScreenHead } from '../../components/ScreenHead';
 import { caseLabel, KINDS, stripView, SYSTEM_RULES, type Kind, type PolicyView, type Rule } from '../../lib/types';
 import { BulkYamlModal } from './BulkYamlModal';
 import { CreatePolicyModal, type CreateStart } from './CreatePolicyModal';
@@ -245,9 +245,7 @@ export function PoliciesPage() {
           </div>
         </PageActions>
       )}
-      <p className="shrink-0 text-[13.5px] text-text-3" data-part="screen-copy">
-        {screenCopy('policies')}
-      </p>
+      <ScreenHead screen="policies" />
       {(drafts.length > 0 || (!!proposals.error && !proposals.data)) && (
         <section className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[var(--r-md)] border border-warn bg-warn-soft px-4 py-2 text-[13.5px]" data-testid="proposals">
           {proposals.error && !proposals.data ? (
