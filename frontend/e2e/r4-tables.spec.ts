@@ -187,7 +187,7 @@ const SCREENS: [string, string, (p: Page) => Promise<void>][] = [
 
 // ── A 설치 검사 ──
 test.describe('A 설치 검사 표', () => {
-  test('머리 sticky 12/600 · 정렬 aria-sort(오름 → 내림 · 키보드) · 행 44~48 · 숫자 오른쪽 · 배지 12.5/750 + 테두리 · 막대는 판정 대기 · 격리만', async ({ page, backend }) => {
+  test('머리 sticky 12/600 · 정렬 aria-sort(오름 → 내림 · 키보드) · 행 44~48 · 숫자 오른쪽 · 배지 12.5/700 + 글자색 테두리 · 막대는 판정 대기 · 격리만', async ({ page, backend }) => {
     void backend;
     await page.goto('/installs');
     await page.locator('[data-chip="all"]').click();
@@ -224,7 +224,7 @@ test.describe('A 설치 검사 표', () => {
         .evaluate((e) => e.classList.contains('tk-fill')),
     ).toBe(true);
     expect(await page.locator(`table[data-table="${T}"] th[data-col="started"]`).evaluate((e) => e.classList.contains('tk-short'))).toBe(true);
-    expect(await pillStyle(page, `table[data-table="${T}"] tbody [data-status]`)).toEqual({ fs: '12.5px', fw: '750', line: true, radius: true });
+    expect(await pillStyle(page, `table[data-table="${T}"] tbody [data-status]`)).toEqual({ fs: '12.5px', fw: '700', line: true, radius: true });
     // 막대: 격리(위험) · 판정 대기 경고(경고)만, 통과 없음
     await page.locator(`table[data-table="${T}"] th[data-col="started"] button`).click();
     const danger = await tokRgb(page, '--danger');
@@ -320,7 +320,7 @@ test.describe('B 공급망 검사 표', () => {
         .first()
         .evaluate((e) => getComputedStyle(e).textAlign),
     ).toBe('right');
-    expect(await pillStyle(page, `table[data-table="${T}"] tbody td[data-col="verdict"] > span`)).toEqual({ fs: '12.5px', fw: '750', line: true, radius: true });
+    expect(await pillStyle(page, `table[data-table="${T}"] tbody td[data-col="verdict"] > span`)).toEqual({ fs: '12.5px', fw: '700', line: true, radius: true });
     const danger = await tokRgb(page, '--danger');
     const bars = await barOf(page, `table[data-table="${T}"] tbody tr`);
     expect(bars[0]).toBe(danger); // 악성(점수 8.2 — 내림 정렬 첫 행)
@@ -388,7 +388,7 @@ test.describe('C 감사 로그 쪽 번호', () => {
         .first()
         .evaluate((e) => getComputedStyle(e).textAlign),
     ).toBe('right');
-    expect(await pillStyle(page, `table[data-table="${T}"] tbody td[data-col="level"] > span`)).toMatchObject({ fs: '12.5px', fw: '750', line: true });
+    expect(await pillStyle(page, `table[data-table="${T}"] tbody td[data-col="level"] > span`)).toMatchObject({ fs: '12.5px', fw: '700', line: true });
     await page.screenshot({ path: `${SCRATCH}/r4-audit.png` });
   });
 

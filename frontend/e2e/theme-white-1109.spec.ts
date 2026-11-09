@@ -178,16 +178,16 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     const row = page.locator(`${T} tbody tr`).nth(1);
     await row.hover();
     await expect.poll(() => row.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe('rgba(0, 0, 0, 0.04)');
-    // 상태 배지 — 크기 · 톤 그대로
+    // 상태 배지 — 크기 · 톤 그대로, 11/09 SPEC: 굵기 700 · 테두리 = 글자색(11/02 「태그 글자 · 테두리를 진하게」)
     const pill = page.locator(`${T} tbody .sg-pill-ok`).first();
     await expect(pill).toBeVisible();
     expect(await pill.evaluate((e) => { const c = getComputedStyle(e); return [c.height, c.fontSize, c.fontWeight, c.borderTopWidth, c.borderTopColor, c.backgroundColor, c.color, c.minWidth]; })).toEqual([
-      '27px', '12.5px', '750', '1px', rgb('#BDE7D6'), rgb('#EAF7F1'), rgb('#137653'), '62px',
+      '27px', '12.5px', '700', '1px', rgb('#137653'), rgb('#EAF7F1'), rgb('#137653'), '62px',
     ]);
     // 격리 배지 = 위험 톤(11/05 결정)
     const iso = page.locator(`${T} tbody [data-status="isolated"]`).first();
     await expect(iso).toBeVisible();
-    expect(await iso.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color, getComputedStyle(e).borderTopColor])).toEqual([rgb('#FDECEF'), rgb('#B52D49'), rgb('#F4C4CE')]);
+    expect(await iso.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color, getComputedStyle(e).borderTopColor])).toEqual([rgb('#FDECEF'), rgb('#B52D49'), rgb('#B52D49')]);
     // 쪽 넘김
     const foot = page.locator('[data-table-foot="installs"]');
     await expect(foot.locator('[data-part="range"]')).toHaveText('총 45건 · 1/3 페이지');
@@ -261,7 +261,7 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     expect(await css(page, 'dialog[data-part="help"] button:text("닫기")', ['background-color', 'color'])).toEqual({ 'background-color': rgb('#1769E8'), color: rgb('#FFFFFF') });
   });
 
-  test('로그인: 흰 계열 바탕(그라데이션 없음) · 카드 반경 8 · 들림 그림자 · 주 버튼 파랑 · 입력창 흰 바탕', async ({ page, backend, allowConsole }) => {
+  test('로그인: 흰 계열 바탕(그라데이션 없음) · 카드 반경 12 · 입력 반경 6(11/05 값) · 들림 그림자 · 주 버튼 파랑 · 입력창 흰 바탕', async ({ page, backend, allowConsole }) => {
     allowConsole(/^Failed to load resource: the server responded with a status of 401 /);
     backend.auth.loggedOut();
     await page.goto('/');
@@ -269,10 +269,10 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     await expect(auth).toHaveAttribute('data-step', 'login');
     expect(await auth.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).backgroundImage])).toEqual([rgb('#F6F7FB'), 'none']);
     const card = await css(page, '[data-part="auth"] > div', ['border-radius', 'background-color', 'border-top-color', 'box-shadow']);
-    expect({ ...card, 'box-shadow': visible(card['box-shadow']) }).toEqual({ 'border-radius': '8px', 'background-color': rgb('#FFFFFF'), 'border-top-color': rgb('#ECEEF4'), 'box-shadow': SH_LIFT });
+    expect({ ...card, 'box-shadow': visible(card['box-shadow']) }).toEqual({ 'border-radius': '12px', 'background-color': rgb('#FFFFFF'), 'border-top-color': rgb('#ECEEF4'), 'box-shadow': SH_LIFT });
     const go = auth.getByRole('button', { name: '로그인' });
     expect(await go.evaluate((e) => { const c = getComputedStyle(e); return [c.backgroundColor, c.color, c.borderRadius, Math.round(e.getBoundingClientRect().height)]; })).toEqual([rgb('#1769E8'), rgb('#FFFFFF'), '6px', 36]);
-    expect(await auth.getByLabel('아이디').evaluate((e) => [getComputedStyle(e).borderRadius, getComputedStyle(e).backgroundColor])).toEqual(['8px', rgb('#FFFFFF')]);
+    expect(await auth.getByLabel('아이디').evaluate((e) => [getComputedStyle(e).borderRadius, getComputedStyle(e).backgroundColor])).toEqual(['6px', rgb('#FFFFFF')]);
   });
 
   test('다크: 바탕 · 카드 · 표 머리 · 행 호버 · 주/보조/비활성 버튼 · 입력창 · 대화상자 = 11/05 다크 값, 파랑 글자는 밝은 짝 · 배지는 라이트와 같은 톤', async ({ page, backend }) => {
@@ -296,7 +296,7 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
     expect(await css(page, '#btn-probe [data-k="primary-off"]', ['background-color', 'color'])).toEqual({ 'background-color': 'rgba(255, 255, 255, 0.12)', color: 'rgba(255, 255, 255, 0.3)' });
     const pill = page.locator('table[data-table="installs"] tbody .sg-pill-ok').first();
     await expect(pill).toBeVisible();
-    expect(await pill.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color])).toEqual([rgb('#EAF7F1'), rgb('#137653')]);
+    expect(await pill.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color, getComputedStyle(e).borderTopColor, getComputedStyle(e).fontWeight])).toEqual([rgb('#EAF7F1'), rgb('#137653'), rgb('#137653'), '700']);
     await page.goto('/events');
     const search = page.getByPlaceholder('이름 검색');
     await expect(search).toBeVisible();
@@ -321,7 +321,8 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
       if (theme === 'dark') await pickTheme(page, 'dark');
       const t = await tokens(page, ['--text', '--text-2', '--text-3', '--field-placeholder', '--bg', '--surface', '--surface-2', '--surface-3', '--surface-raised', '--field-bg',
         '--btn-primary-bg', '--btn-primary-fg', '--btn-primary-hover', '--btn-secondary-fg', '--btn-danger-bg', '--btn-danger-hover', '--text-inverse', '--accent', '--accent-text', '--accent-soft',
-        '--danger-text', '--danger-soft', '--ink', '--ink-2', '--ink-text', '--ink-muted']);
+        '--danger-text', '--danger-soft', '--ink', '--ink-2', '--ink-text', '--ink-muted',
+        ...['ok', 'warn', 'neutral', 'danger', 'info', 'accent', 'dark'].flatMap((k) => [`--pill-${k}-fg`, `--pill-${k}-bg`])]);
       for (const fg of ['--text', '--text-2', '--text-3', '--field-placeholder'])
         for (const bg of ['--bg', '--surface', '--surface-2', '--surface-3', '--surface-raised', '--field-bg'])
           expect(contrast(t[fg], t[bg]), `${theme} ${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
@@ -331,6 +332,8 @@ test.describe('11/09 흰 배경 — 11/05 참고 대시보드 값 + 대비 수�
         ['--btn-secondary-fg', '--surface'], ['--btn-secondary-fg', '--bg'], ['--btn-secondary-fg', '--surface-raised'],
         ['--danger-text', '--surface'], ['--danger-text', '--bg'], ['--danger-text', '--danger-soft'], ['--accent-text', '--accent-soft'], ['--accent-text', '--surface'],
         ['--ink-text', '--ink'], ['--ink-muted', '--ink'], ['--ink-muted', '--ink-2'],
+        // 상태 배지: 글자 = 테두리(currentColor) — 배지 바탕 위 4.5:1
+        ...['ok', 'warn', 'neutral', 'danger', 'info', 'accent', 'dark'].map((k): [string, string] => [`--pill-${k}-fg`, `--pill-${k}-bg`]),
       ];
       for (const [fg, bg] of pairs) expect(contrast(t[fg], t[bg]), `${theme} ${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
     }
