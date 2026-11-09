@@ -96,8 +96,10 @@ type Info struct {
 	IgnoreContainers []string `json:"ignoreContainers"`
 	// DNSResolve: "ok" = trace_dns 가 돌고 있어 도메인 · 직접 IP 연결을 판정한다 | "off" = 도메인 미확인 연결은 fail-open. 요청 때마다 Deps.DNSTraced 로 채운다
 	DNSResolve string `json:"dnsResolve"`
-	// Chat: AI 도우미 사용 가능(OLLAMA_URL 설정) — 화면이 「AI 도우미」 탭을 보일지 정한다
+	// Chat: AI 도우미 사용 가능(ANTHROPIC_API_KEY 또는 OLLAMA_URL) — 화면이 「AI 도우미」 탭을 보일지 정한다
 	Chat bool `json:"chat"`
+	// ChatEngine: 쓰는 모델(11/09) — 설정 화면이 「밖으로 나가는 데이터」를 provider 로 정해 보인다. 챗봇이 꺼져 있으면 생략
+	ChatEngine *chat.Engine `json:"chatEngine,omitempty"`
 	// Discovery: 실제로 쓰이는 컨테이너 발견 방식 "fanotify" | "docker-events" (mock · 가젯 시작 전은 빈 값). 요청 때마다 Deps.Discovery 로 채운다
 	Discovery string `json:"discovery"`
 	// DiscoveryNote: docker-events 일 때 놓칠 수 있는 구간 안내, 아니면 빈 값
@@ -117,6 +119,10 @@ func Router(d Deps) http.Handler {
 	// 로그인이 켜져 있으면 늘 true (mock 이어도 쓰기는 관리자 계정만)
 	d.Info.AuthRequired = d.Auth != nil || !(d.AllowAnonymousWrites && d.AdminToken == "")
 	d.Info.Chat = d.Chat != nil
+	if d.Chat != nil {
+		e := d.Chat.Engine()
+		d.Info.ChatEngine = &e
+	}
 	d.Info.Demo = d.Demo != nil
 	if d.Info.WatchContainers == nil {
 		d.Info.WatchContainers = []string{}

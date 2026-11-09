@@ -71,7 +71,11 @@ type Config struct {
 	AuthDevMode bool
 	// 외부 알림(10/20): 둘 다 비면 비활성. PublicURL 은 알림의 대시보드 링크 앞에 붙는다
 	NotifyWebhookURL, NotifySlackURL, PublicURL string
-	// AI 도우미(10/20): OLLAMA_URL 이 비면 챗봇 비활성(라우트 없음). 모델은 로컬 Ollama — 데이터가 서버 밖으로 나가지 않는다
+	// AI 도우미(10/20 · 11/09): ANTHROPIC_API_KEY 가 있으면 Claude 가 기본(질문 · 조회한 사실 문장이 Anthropic API 로 나간다),
+	// OLLAMA_URL 이 있으면 예비(또는 키가 없을 때 기본 — 데이터가 서버 밖으로 나가지 않음). 둘 다 비면 챗봇 비활성(라우트 없음).
+	// CHAT_PROVIDER=auto|claude|ollama 로 하나만 쓰게 할 수 있다
+	ChatProvider                            string
+	AnthropicKey, ClaudeModel, ClaudeEffort string
 	OllamaURL, OllamaModel, OllamaKeepAlive string
 
 	// 시연 실행(10/30): DEMO_ENABLED=true 면 /api/demo 가 열린다(시연 전용 — 운영은 끈다). DemoImage 는 시연 컨테이너 이미지(SG_PIP_IMAGE, sg-install 과 같은 변수)
@@ -108,6 +112,10 @@ func Load() (Config, error) {
 		NotifyWebhookURL:   env("NOTIFY_WEBHOOK_URL", ""),
 		NotifySlackURL:     env("NOTIFY_SLACK_URL", ""),
 		PublicURL:          env("PUBLIC_URL", ""),
+		ChatProvider:       env("CHAT_PROVIDER", "auto"),
+		AnthropicKey:       env("ANTHROPIC_API_KEY", ""),
+		ClaudeModel:        env("CLAUDE_MODEL", "claude-opus-5-5"),
+		ClaudeEffort:       env("CLAUDE_EFFORT", "low"),
 		OllamaURL:          env("OLLAMA_URL", ""),
 		OllamaModel:        env("OLLAMA_MODEL", "qwen2.5:3b"),
 		OllamaKeepAlive:    env("OLLAMA_KEEP_ALIVE", "30m"),

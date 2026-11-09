@@ -13,6 +13,9 @@ import (
 
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/chat"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/rules"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/stats"
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/store"
 )
 
 // 가짜 Ollama: 스트리밍 NDJSON. release 가 있으면 첫 조각 뒤 닫힐 때까지 멈춘다
@@ -207,5 +210,29 @@ func TestChatHandlerKeepalive(t *testing.T) {
 	}
 	if len(evs) == 0 || evs[len(evs)-1].event != "done" {
 		t.Errorf("끝 이벤트 = %+v", evs)
+	}
+}
+
+// /api/info 의 chatEngine(11/09): 쓰는 모델 · 예비 — 설정 화면이 「밖으로 나가는 데이터」를 정한다. 키는 담지 않는다. 챗봇이 꺼져 있으면 생략
+func TestInfoChatEngine(t *testing.T) {
+	mem := store.NewMemory()
+	svc, err := chat.New(chat.Options{AnthropicKey: "sk-ant-test-secret", OllamaURL: "http://127.0.0.1:9", Review: chatCases{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		chat     *chat.Service
+		want     string
+		dontWant string
+	}{
+		{svc, `"chatEngine":{"provider":"claude","model":"claude-opus-5-5","backup":"ollama"}`, "sk-ant-test-secret"},
+		{nil, `"chat":false`, `"chatEngine"`},
+	} {
+		srv := httptest.NewServer(Router(Deps{Engine: rules.New(nil), Policies: mem, Audit: mem, Buffer: mem, Stats: stats.New().Snapshot, Chat: c.chat}))
+		body := readBody(t, do(t, "GET", srv.URL+"/api/info", "", ""))
+		srv.Close()
+		if !strings.Contains(body, c.want) || strings.Contains(body, c.dontWant) {
+			t.Errorf("info = %s\nwant %s, not %s", body, c.want, c.dontWant)
+		}
 	}
 }

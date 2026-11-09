@@ -6,6 +6,8 @@ MOCK_ORIGINS := http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1:876
 # AUTH_DEV_MODE 는 EVENT_SOURCE=mock 에서만 켜진다(가젯이면 백엔드가 시작 거부). 메모리 저장소라 재시작마다 이 비밀번호로 다시 시작한다.
 # 개발 전용 고정값 — 운영 .env 에 쓰지 않는다 (.env.example 참고)
 DEV_ADMIN_PW := admin
+# Claude 키(11/09): 저장소 루트 .env.local(gitignore · 600)에 ANTHROPIC_API_KEY=… 가 있으면 make dev · backend 가 읽는다. 없으면 AI 도우미는 꺼진 채
+LOCAL_ENV := set -a; [ -f .env.local ] && . ./.env.local; set +a;
 DEV_AUTH := AUTH_OTP_REQUIRED=false AUTH_DEV_MODE=true ADMIN_INITIAL_PASSWORD=$(DEV_ADMIN_PW)
 # sandbox-up(실제 가젯)은 개발 모드를 켜지 않는다 — 아이디와 다른 비밀번호 · 첫 로그인 비밀번호 변경 → 라이선스 → OTP 그대로
 SANDBOX_ADMIN_PW := sg-dev-admin-pw
@@ -35,14 +37,14 @@ setup:
 ## dev: 백엔드(mock, :8000) + Vite(:5173) 를 같이 띄운다. Ctrl-C 로 둘 다 종료. 프론트 의존성이 없으면 먼저 npm ci(새 clone)
 dev:
 	@test -d frontend/node_modules || { echo "frontend 의존성이 없어 먼저 설치합니다(npm ci) — 처음 한 번은 make setup 권장"; cd frontend && npm ci --no-audit --no-fund; }
-	@trap 'kill 0' EXIT INT TERM; \
+	@trap 'kill 0' EXIT INT TERM; $(LOCAL_ENV) \
 	  (cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true DEMO_ENABLED=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) $(DEV_EVAL) $(DEV_SCAN) go run ./cmd/server) & \
 	  (cd frontend && npm run dev) & \
 	  wait
 
 ## backend: mock 소스 백엔드만 (목업 '실제 백엔드' 모드가 붙을 수 있게 CORS 출처 포함)
 backend:
-	cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true DEMO_ENABLED=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) $(DEV_EVAL) $(DEV_SCAN) go run ./cmd/server
+	@$(LOCAL_ENV) cd backend && EVENT_SOURCE=mock ENFORCE_KILL=true DEMO_ENABLED=true ALLOWED_ORIGINS=$(MOCK_ORIGINS) $(DEV_AUTH) $(DEV_EVAL) $(DEV_SCAN) go run ./cmd/server
 
 frontend:
 	cd frontend && npm run dev

@@ -295,11 +295,12 @@ func run() error {
 		}
 	}()
 
-	// AI 도우미(10/20): 읽기 전용 조회 → 한국어 사실 문장 → 로컬 Ollama. 판정 상태 · 링크는 서버가 붙인다
+	// AI 도우미(10/20 · 11/09): 읽기 전용 조회 → 한국어 사실 문장 → Claude(기본) · Ollama(예비). 판정 상태 · 링크는 서버가 붙인다
 	sum := summary.New(audit, collected, reviewView{rv})
 	var chatSvc *chat.Service
-	if cfg.OllamaURL != "" {
-		o := chat.Options{OllamaURL: cfg.OllamaURL, Model: cfg.OllamaModel, KeepAlive: cfg.OllamaKeepAlive,
+	if cfg.AnthropicKey != "" || cfg.OllamaURL != "" {
+		o := chat.Options{Provider: cfg.ChatProvider, AnthropicKey: cfg.AnthropicKey, ClaudeModel: cfg.ClaudeModel, ClaudeEffort: cfg.ClaudeEffort,
+			OllamaURL: cfg.OllamaURL, Model: cfg.OllamaModel, KeepAlive: cfg.OllamaKeepAlive,
 			Review: reviewView{rv}, Audit: audit, Summary: sum, Policies: policies}
 		if scans != nil {
 			o.Scans = scans // typed nil 을 인터페이스에 넣지 않는다
@@ -307,6 +308,8 @@ func run() error {
 		if chatSvc, err = chat.New(o); err != nil {
 			return fmt.Errorf("chat: %w", err)
 		}
+		e := chatSvc.Engine() // 키는 남기지 않는다
+		slog.Info("chat", "provider", e.Provider, "model", e.Model, "backup", e.Backup)
 	}
 
 	mux := http.NewServeMux()

@@ -12,7 +12,7 @@
    → (위반) 증거 수집(≤0.7초) → Docker kill + 웹훅/Slack 알림
    → Redis 버퍼 → WebSocket → React 대시보드 · PostgreSQL 감사 로그
 REST · WS 앞: 로그인(쿠키 세션 · 역할 · OTP) — CLI 는 Bearer ADMIN_TOKEN, sg-install 은 SANDBOX_TOKEN
-공급망 검사: GuardDog · OSV-Scanner 검사기 컨테이너 / AI 도우미: 로컬 Ollama(선택)
+공급망 검사: GuardDog · OSV-Scanner 검사기 컨테이너 / AI 도우미: Claude API(기본, 선택) · 로컬 Ollama(예비 또는 단독)
 ```
 
 | 구성 | 스택 | 위치 |
@@ -143,7 +143,8 @@ deploy/compose.sh pull && deploy/deploy.sh      # 백업 → 반영 → 확인 �
 deploy/compose.sh logs -f backend
 ```
 
-- AI 도우미를 켜려면 `.env` 에 `OLLAMA_URL=http://ollama:11434` 를 넣고 compose 를 `--profile ai` 로 띄운 뒤 모델을 한 번 받는다(`ollama pull qwen2.5:3b`, 메모리 4GB)
+- AI 도우미를 켜려면 `.env` 에 `ANTHROPIC_API_KEY` 를 넣는다(기본 모델 `claude-opus-5-5`, `CLAUDE_MODEL` 로 바꿈). 질문 · 최근 대화 · 서버가 조회한 사실 문장이 Anthropic API 로 나가며, 범위는 설정 → 서버 「AI 도우미」에 보인다. 로컬 `make dev` 는 저장소 루트 `.env.local` 의 키를 읽는다
+- 서버 밖으로 보내지 않으려면 `CHAT_PROVIDER=ollama` 와 `OLLAMA_URL=http://ollama:11434` 를 넣고 compose 를 `--profile ai` 로 띄운 뒤 모델을 한 번 받는다(`ollama pull qwen2.5:3b`, 메모리 4GB). 키와 `OLLAMA_URL` 이 둘 다 있으면 Ollama 는 예비
 - 알림: `NOTIFY_WEBHOOK_URL` · `NOTIFY_SLACK_URL` · `PUBLIC_URL`
 - 컨테이너 발견 `CONTAINER_DISCOVERY=auto`(fanotify 먼저, 안 되면 docker-events — 시작 직후 약 0.1초는 놓칠 수 있음)
 
