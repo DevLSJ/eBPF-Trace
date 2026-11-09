@@ -78,13 +78,13 @@ export const evidenceCounts = (e: Evidence) => ({
 });
 export const violationCount = (d: ReportData) => d.violations.reduce((n, v) => n + ((v as { count?: number }).count || 1), 0);
 
-// 요약 3줄(무엇이 · 언제 · 어떤 규칙)
+// 요약 3줄(무엇이 · 언제 · 어떤 정책 — 이름은 lib/fieldNames.ts)
 export function summaryLines(d: ReportData): [string, string][] {
   const when = `시작 ${fmtDateTime(d.startedAt)}${d.finishedAt ? ` · 끝 ${fmtDateTime(d.finishedAt)}` : ''}${d.case ? ` · 건 열림 ${fmtDateTime(d.case.openedAt)}` : ''}`;
   return [
     ['무엇이', `${d.label}${d.image ? ` (${d.image})` : ''}${d.container ? ` · 컨테이너 ${d.container}` : ''}`],
     ['언제', when],
-    ['어떤 규칙', `${d.ruleIds.length ? `${d.ruleIds.join(', ')} · ` : ''}위반 ${violationCount(d)}건`],
+    [`어떤 ${FIELD.policy}`, `${d.ruleIds.length ? `${d.ruleIds.join(', ')} · ` : ''}위반 ${violationCount(d)}건`],
   ];
 }
 

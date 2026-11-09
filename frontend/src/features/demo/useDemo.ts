@@ -147,7 +147,7 @@ export function useDemo(enabled: boolean) {
         setError({ status: 409, text: '이미 실행 중입니다. 끝나면 다시 시작할 수 있습니다.' });
         void refresh();
       } else if (e instanceof ApiError && e.status === 503) setError({ status: 503, text: e.message || 'Docker 에 연결할 수 없습니다' });
-      else if (isUnsupported(e)) setError({ status: 404, text: '이 백엔드에는 시연 API 가 없습니다(DEMO_ENABLED 꺼짐)' });
+      else if (isUnsupported(e)) setError({ status: 404, text: '시연 기능이 꺼져 있습니다. 서버 설정에서 시연을 켠 뒤 다시 시작하세요.' });
       else setError({ status: e instanceof ApiError ? e.status : null, text: failText('시연을 시작하지 못했습니다.', e) });
     } finally {
       setStarting(false);
