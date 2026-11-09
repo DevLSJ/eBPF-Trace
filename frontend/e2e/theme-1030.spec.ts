@@ -82,9 +82,9 @@ test.describe('F6 디자인 토큰 · 부품 · 모션', () => {
     expect(await page.locator('[data-sheet="install"]').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#FFFFFF'));
     // dns 배지는 warn 토큰
     await page.goto('/policies');
-    await page.getByRole('button', { name: '새 정책' }).click();
+    await page.getByRole('button', { name: '정책 생성' }).click(); // 11/09: 큰 2단 창 · 바닥 줄 단추
     await page.locator('[data-template="dns-exfil"]').click();
-    await page.locator('[data-view="rule-editor"]').getByRole('button', { name: '저장 전 확인' }).click();
+    await page.locator('dialog[data-part="policy-create"] [data-part="modal-foot"]').getByRole('button', { name: '저장 전 확인' }).click();
     await page.locator('[data-part="save-check"]').getByRole('button', { name: '저장 후 적용' }).click();
     const badge = page.locator('[data-rule^="runtime-dns-exfil"] [data-kind-badge="dns"]').first();
     expect(await badge.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color])).toEqual([rgb('#FFF5DF'), rgb('#946000')]);

@@ -261,9 +261,11 @@ test.describe('인증 — 앱 안에서', () => {
     await page.goto(`/policies?proposal=${draft.id}`);
     await expect(page.getByTestId('proposal').getByRole('button', { name: '미리보기' })).toBeVisible(); // 바꾸지 않는 POST 는 조회자도
     await expect(page.getByTestId('proposal').getByRole('button', { name: /^(적용|버림)$/ })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '새 정책' })).toHaveCount(0);
-    await expect(page.getByTestId('blocklist').getByRole('button', { name: '해제' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '정책 생성' })).toHaveCount(0); // 11/09 「새 정책」 → 「정책 생성」
     await expect(page.getByLabel('관리자 토큰')).toHaveCount(0);
+    await page.goto('/policies/blocklist'); // 11/09: 차단 목록 페이지
+    await expect(page.getByTestId('blocklist').locator('[data-block]').first()).toBeVisible();
+    await expect(page.getByTestId('blocklist').getByRole('button', { name: '해제' })).toHaveCount(0);
     await page.goto('/policies?id=egress-allowlist');
     await expect(page.locator('[data-view="rule-editor"]').getByRole('button', { name: '삭제' })).toHaveCount(0);
 

@@ -86,7 +86,8 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
     expect(s.steps?.[1].allowCidrs).toContain('::1');
     // 저장 뒤에도 YAML 하나
     await expect(page.locator(`${ED} [data-mode]`)).toHaveCount(1);
-    await expect(page.getByTestId('changes').locator('[data-change]').first()).toContainText('정책 편집');
+    await page.goto('/policies/changes'); // 11/09: 변경 이력 페이지 · 태그는 끝말(정책 수정)
+    await expect(page.getByTestId('changes').locator('[data-change]').first()).toContainText('정책 수정');
   });
 
   test('④ 검증: 백엔드 422 문구를 그대로 보인다(단계 1개 · 창 0 · 단계에 action · 최상위 조건 · 중첩 sequence · 빈 단계) / 단일 규칙 YAML 에 kind: sequence → 다른 탭 거절', async ({ page, backend, allowConsole }) => {
@@ -114,7 +115,7 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
     }
     expect(backend.rules.find((r) => r.id === SEQ_RULE_ID)).toEqual(sequenceRule());
     // 단일 규칙: YAML 에서 kind: sequence 로 바꾸고 쉬운 설정으로 가면 거절(단계를 잃지 않게) — YAML 탭에 남는다
-    await page.locator(`[data-rule="sensitive-files"]`).click();
+    await page.goto('/policies?id=sensitive-files'); // 11/09: 목록은 시트 뒤 — 주소로 연다
     const ed = page.locator(ED);
     await ed.locator('[data-mode="yaml"]').click();
     await ta.fill(orig.replace(`id: ${SEQ_RULE_ID}`, 'id: sensitive-files'));
@@ -125,7 +126,7 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
 
   test('⑤ 새 기본 규칙: 연쇄 규칙이 없으면 안내 띠 → 「미리보기 후 추가」 → 연쇄 저장 전 확인(미리보기 없음) → 저장하면 단계 3개 그대로', async ({ page, backend }) => {
     backend.policyDefaults = { missing: [sequenceRule()], differs: [] };
-    await page.goto('/policies?id=sensitive-files');
+    await page.goto('/policies'); // 11/09: 띠는 목록 위(시트가 열려 있으면 가림)
     await page.locator('[data-action="defaults-toggle"]').click();
     const item = page.locator(`[data-default="${SEQ_RULE_ID}"]`);
     await expect(item).toContainText('새 규칙');
@@ -145,7 +146,7 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
     cur.windowSeconds = 20;
     cur.steps![2].denyPaths = SEQ_PATHS.filter((p) => p !== '/root/.kube/config');
     backend.policyDefaults = { missing: [], differs: [{ id: SEQ_RULE_ID, default: sequenceRule(), current: structuredClone(cur) }] };
-    await page.goto('/policies?id=sensitive-files');
+    await page.goto('/policies'); // 11/09: 띠는 목록 위
     await page.locator('[data-action="defaults-toggle"]').click();
     const item = page.locator(`[data-default="${SEQ_RULE_ID}"]`);
     await expect(item).toContainText('steps[2].denyPaths +/root/.kube/config');
@@ -165,7 +166,7 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
     const two = backend.rules.find((r) => r.id === SEQ_RULE_ID)!;
     two.steps = two.steps!.slice(0, 2);
     backend.policyDefaults = { missing: [], differs: [{ id: SEQ_RULE_ID, default: sequenceRule(), current: structuredClone(two) }] };
-    await page.goto('/policies?id=sensitive-files');
+    await page.goto('/policies'); // 11/09: 띠는 목록 위
     await page.locator('[data-action="defaults-toggle"]').click();
     await expect(page.locator(`[data-default="${SEQ_RULE_ID}"]`)).toContainText('steps: 지금 단계 유지 (기본은 exec → connect → open)');
     await page.locator(`[data-default="${SEQ_RULE_ID}"] [data-action="default-preview"]`).click();

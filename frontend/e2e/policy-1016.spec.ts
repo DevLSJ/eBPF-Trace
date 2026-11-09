@@ -63,12 +63,13 @@ test.describe('정책 쉬운 설정', () => {
     const w = backend.writes().find((r) => r.path === '/policies' && r.method === 'POST')!;
     expect(JSON.parse(w.body!).action).toBe('alert');
     expect(w.auth).toBeNull(); // W16: 쿠키 세션
-    await expect(page.getByTestId('changes').locator('[data-change]').first()).toContainText('정책 편집');
+    await page.goto('/policies/changes'); // 11/09: 변경 이력은 「정책」 아래 페이지 · 태그는 끝말(정책 수정)
+    await expect(page.getByTestId('changes').locator('[data-change]').first()).toContainText('정책 수정');
   });
 
   test('새 정책: 목적별 템플릿 → 값이 채워진 쉬운 설정 → 저장', async ({ page, backend }) => {
     await page.goto('/policies');
-    await page.getByRole('button', { name: '새 정책' }).click();
+    await page.getByRole('button', { name: '정책 생성' }).click(); // 11/09: 큰 2단 창
     const tpl = page.locator('[data-view="templates"] [data-template]');
     // 10/20: count() 는 기다리지 않아 부하 때 그려지기 전 0 개로 잡혔다(전체 실행 간헐 실패 3회) — 6번째가 보일 때까지 기다린다
     await expect(tpl.nth(5)).toBeVisible();
@@ -77,7 +78,8 @@ test.describe('정책 쉬운 설정', () => {
     expect(await chips(page, 'block')).toContain('port:4444');
     const id = await page.locator(`${ED} [data-step="name"] input[data-field="id"]`).inputValue();
     expect(id).toMatch(/^[a-z0-9-]{4,}$/);
-    await page.locator(ED).getByRole('button', { name: '저장 전 확인' }).click();
+    // 11/09: 생성 창은 바닥 줄(취소 · 저장 전 확인)
+    await page.locator('dialog[data-part="policy-create"] [data-part="modal-foot"]').getByRole('button', { name: '저장 전 확인' }).click();
     await page.locator(`${ED} [data-part="save-check"]`).getByRole('button', { name: '저장 후 적용' }).click();
     await expect(page).toHaveURL(new RegExp(`id=${id}`));
     const saved = backend.rules.find((r) => r.id === id)!;

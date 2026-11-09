@@ -394,9 +394,12 @@ test.describe('D 코드 창(macOS 창 모양)', () => {
     const ta = page.locator(`${sel} textarea[aria-label="정책 YAML"]`);
     await expect(ta).toHaveAttribute('wrap', 'off');
     await expect(ta).toHaveValue(/egress-allowlist/);
-    await page.getByTitle('전체 정책을 YAML로 보기·일괄 적용').click();
-    await expect(page.locator(`${sel} textarea[aria-label="전체 정책 YAML"]`)).toBeVisible();
-    expect(await codeWinOf(page, sel)).toMatchObject({ name: 'policies.yaml', lang: 'YAML', bodyTag: 'textarea' });
+    // 11/09: 전체 YAML 은 머리 「YAML 일괄 적용」 큰 창
+    await page.goto('/policies');
+    await page.getByRole('button', { name: 'YAML 일괄 적용' }).click();
+    const all = `dialog[data-part="bulk-yaml"] ${CW}`;
+    await expect(page.locator(`${all} textarea[aria-label="전체 정책 YAML"]`)).toBeVisible();
+    expect(await codeWinOf(page, all)).toMatchObject({ name: 'policies.yaml', lang: 'YAML', bodyTag: 'textarea' });
   });
 
   test('⑥ AI 도우미 답 속 코드 블록(```json event.json) → 코드 창, 흘려보내는 중 안 닫힌 블록도 창', async ({ page, backend }) => {
@@ -716,7 +719,7 @@ test.describe('G 길게 눌러 옮기기', () => {
     await page.evaluate(() => localStorage.setItem('supplyguard.layout', JSON.stringify({ v: 1, sidebar: { install: ['zzz', 'evaluation', 'installs', 7, 'evaluation'], records: 'x' } })));
     await page.reload();
     await expect(groupLinks(page, '설치 검사')).toHaveText(['평가', '설치 검사', '공급망 검사']);
-    await expect(groupLinks(page, '설정 · 기록')).toHaveText(['정책', '감사 로그', '설정']);
+    await expect(groupLinks(page, '설정 · 기록')).toHaveText(['정책', '차단 목록', '변경 이력', '감사 로그', '설정']); // 11/09 정책 하위 메뉴
   });
 
   test('평가 지표 6칸: Alt+←/→ · 길게 눌러 끌기(그리드) · 저장 evaluationKpi · 칸은 tabindex 0', async ({ page, backend }) => {

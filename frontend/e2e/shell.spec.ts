@@ -9,7 +9,8 @@ test.describe('셸', () => {
     await expect(nav.locator('[data-nav-group]')).toHaveCount(4);
     for (const g of ['설치 검사', '런타임 감시', '설정 · 기록']) await expect(nav.locator(`[data-nav-group="${g}"]`)).toBeVisible();
     await expect(nav.locator('[data-nav-group="런타임 감시"] a')).toHaveText(['이벤트', '토폴로지']);
-    await expect(nav.locator('[data-nav-group="설정 · 기록"] a')).toHaveText(['정책', '감사 로그', '설정']); // W16: 「설정」 화면
+    // 11/09: 「정책」은 하위 메뉴 묶음(정책 · 차단 목록 · 변경 이력) — W16: 「설정」 화면
+    await expect(nav.locator('[data-nav-group="설정 · 기록"] a')).toHaveText(['정책', '차단 목록', '변경 이력', '감사 로그', '설정']);
     for (const [label, title] of [
       ['설치 검사', '설치 검사'],
       ['이벤트', '이벤트'],

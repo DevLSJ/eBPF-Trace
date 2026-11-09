@@ -48,7 +48,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
   test('정책 템플릿 「DNS 유출 패턴 차단」 → 쉬운 설정 ①② 문구 · 칩(질의 유형 · 도메인) · 길이 칸 2개 → 고급 폼(dns 에서만) → YAML', async ({ page, backend }) => {
     void backend;
     await page.goto('/policies');
-    await page.getByRole('button', { name: '새 정책' }).click();
+    await page.getByRole('button', { name: '정책 생성' }).click(); // 11/09: 큰 2단 창
     const tpl = page.locator('[data-view="templates"] [data-template="dns-exfil"]');
     await expect(tpl).toContainText('DNS 유출 패턴 차단');
     await expect(tpl).toContainText('긴 라벨 · 긴 이름 · TXT 질의를 알림');
@@ -100,7 +100,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     expect(yaml).toContain('maxNameLength: 120');
     expect(yaml).toContain('denyHosts');
     // 저장 → 규칙 모양 그대로(숫자 · 대문자)
-    await ed.getByRole('button', { name: '저장 전 확인' }).click();
+    await page.locator('dialog[data-part="policy-create"] [data-part="modal-foot"]').getByRole('button', { name: '저장 전 확인' }).click(); // 11/09: 생성 창 바닥 줄
     await page.locator(`${ED} [data-part="save-check"]`).getByRole('button', { name: '저장 후 적용' }).click();
     const saved = backend.rules.find((r) => r.id.startsWith('runtime-dns-exfil'))!;
     expect(saved).toMatchObject({ kind: 'dns', action: 'alert', denyQtypes: ['TXT', 'ALL'], denyHosts: ['attacker.test'], maxLabelLength: 40, maxNameLength: 120 });
@@ -110,7 +110,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     backend.enableDns();
     await page.goto('/policies?id=sandbox-dns');
     await expect(page.locator('[data-rule="runtime-dns-exfil"] [data-kind-badge="dns"]')).toHaveText('조회');
-    await expect(page.locator('[data-rule="sandbox-dns"] [data-scope="sandbox"]')).toHaveText('설치 검사 전용');
+    await expect(page.locator('[data-rule="sandbox-dns"] [data-scope="sandbox"]')).toHaveText('설치 검사'); // 11/09 적용 컨테이너 칸 용어
     const ed = page.locator(ED);
     await expect(ed.locator('[data-step="what"] input[value="dns"]')).toBeChecked();
     expect(await chips(page, 'allow')).toContain('host:pypi.org');

@@ -89,6 +89,7 @@ test.describe('B 확인 대화상자 — 대상 · 함께 일어나는 일 · �
     await d.locator('[data-confirm="ok"]').click();
     await expect(detail.getByTestId('proposal-state')).toContainText('적용됨');
     expect(bodyOf(reqs(backend, 'POST', /\/apply$/)[0])).toEqual({ reason: 'C2 도메인 확인' });
+    await page.goto('/policies/changes'); // 11/09: 변경 이력 페이지
     await expect(page.getByTestId('changes').locator('[data-change]').first()).toContainText('C2 도메인 확인');
     await page.goto('/audit?view=changes');
     const row = page.locator('[data-history^="chg:"]').first();
@@ -108,6 +109,7 @@ test.describe('B 확인 대화상자 — 대상 · 함께 일어나는 일 · �
     await d.locator('[data-confirm="ok"]').click();
     await expect(page.getByTestId('proposal-state')).toContainText('버림');
     expect(bodyOf(reqs(backend, 'POST', /\/discard$/)[0])).toEqual({ reason: '이번엔 그대로 둔다' });
+    await page.goto('/policies/changes'); // 11/09: 변경 이력 페이지
     const first = page.getByTestId('changes').locator('[data-change]').first();
     await expect(first).toContainText('제안 버림');
     await expect(first).toContainText('이번엔 그대로 둔다');
@@ -116,11 +118,11 @@ test.describe('B 확인 대화상자 — 대상 · 함께 일어나는 일 · �
   });
 
   test('차단 해제: 대화상자(다시 설치 가능) · 사유 → DELETE 본문 {reason}', async ({ page, backend }) => {
-    await page.goto('/policies');
+    await page.goto('/policies/blocklist'); // 11/09: 차단 목록 페이지 · 확인 창은 SPEC-1109 §7 양식(제목 「~할까요?」 · 영향 범위)
     await page.getByTestId('blocklist').locator('[data-block="packages:pip:colourama"]').getByRole('button', { name: '해제' }).click();
     const d = dialog(page);
-    await expect(d.locator('[data-part="confirm-target"]')).toHaveText('패키지 pip:colourama');
-    await expect(d.locator('[data-part="confirm-effects"]')).toContainText('다시 설치할 수 있습니다');
+    await expect(d.locator('h3')).toHaveText('pip:colourama 차단을 해제할까요?');
+    await expect(d.locator('[data-part="confirm-impact"]')).toContainText('다시 설치할 수 있습니다');
     await d.locator('textarea[name="reason"]').fill('오탐 재확인');
     await d.locator('[data-confirm="ok"]').click();
     await expect(page.getByTestId('blocklist').locator('[data-block="packages:pip:colourama"]')).toHaveCount(0);
@@ -137,16 +139,20 @@ test.describe('B 확인 대화상자 — 대상 · 함께 일어나는 일 · �
     await expect(d.locator('[data-part="confirm-target"]')).toHaveText('egress-allowlist');
     await expect(d.locator('textarea')).toHaveCount(0);
     await d.locator('[data-confirm="ok"]').click();
+    await expect(page.locator('[data-sheet="policy"]')).toHaveCount(0); // 11/09: 지우면 시트가 닫히고 목록에서 빠짐
+    await expect(page.locator('[data-rule="sensitive-files"]')).toBeVisible();
     await expect(page.locator('[data-rule="egress-allowlist"]')).toHaveCount(0);
     expect(reqs(backend, 'DELETE', /^\/policies\/egress-allowlist$/)).toHaveLength(1);
 
+    // 11/09: 「YAML 일괄 적용」 큰 창 · 확인 창은 SPEC-1109 §7 양식(영향 범위 · 확인 체크)
     await page.goto('/policies?id=__yaml__');
-    await page.getByRole('button', { name: '전체 교체 후 적용 ▶' }).click();
-    await expect(d.locator('h3')).toHaveText('전체 정책 교체');
-    await expect(d.locator('[data-part="confirm-effects"]')).toContainText('YAML 에 없는 정책은 지워집니다');
+    await page.locator('dialog[data-part="bulk-yaml"]').getByRole('button', { name: '전체 교체 후 적용' }).click();
+    await expect(d.locator('h3')).toHaveText('정책 전체를 YAML 로 교체할까요?');
+    await expect(d.locator('[data-part="confirm-impact"]')).toContainText('YAML 에 없는 정책은 지워집니다');
     await expect(d.locator('textarea')).toHaveCount(0);
+    await d.getByRole('checkbox').check();
     await d.locator('[data-confirm="ok"]').click();
-    await expect(page.getByText('개 정책을 엔진에 적용함')).toBeVisible();
+    await expect(page.locator('dialog[data-part="bulk-yaml"]')).toContainText('개를 엔진에 적용했습니다.');
     expect(reqs(backend, 'PUT', /^\/policies$/)).toHaveLength(1);
   });
 });
@@ -642,9 +648,11 @@ test.describe('조회자 — 보이는데 못 누르는 버튼 없음', () => {
     await page.goto('/audit?id=200');
     await expect(page.locator('[data-sheet="audit"]')).toBeVisible();
     await expect(page.locator('[data-action="block-this"], [data-action="allow-this"]')).toHaveCount(0);
-    await page.goto('/policies?id=__yaml__');
+    await page.goto('/policies/blocklist'); // 11/09: 차단 목록 페이지
     await expect(page.getByTestId('blocklist').locator('[data-block]').first()).toBeVisible();
     await expect(page.getByTestId('blocklist').getByRole('button', { name: '해제' })).toHaveCount(0);
+    await page.goto('/policies?id=__yaml__');
+    await expect(page.locator('dialog[data-part="bulk-yaml"]')).toContainText('읽기 전용');
     await expect(page.getByRole('button', { name: /전체 교체/ })).toHaveCount(0);
     await page.goto('/policies?id=egress-allowlist');
     await expect(page.locator('[data-view="rule-editor"]').getByRole('button', { name: '삭제' })).toHaveCount(0);
