@@ -117,7 +117,7 @@ def scn_udp():
     # UDP 비컨 — 203.0.113.7:53·4444 로 데이터그램 2개 전송(응답 기다리지 않음).
     # 엔진은 TCP 와 DNS(53 · 5353)만 관찰 — 일반 UDP 는 보이지 않는 음성 대조군. 이벤트에 뜨지 않아야 정상.
     print("[demo] udp start")
-    print("[demo]   NEGATIVE CONTROL: 일반 UDP 는 엔진에 보이지 않는다 — TCP 와 DNS(53 · 5353)만 관찰 (이벤트 미탐이 정상)")
+    print("[demo]   NEGATIVE CONTROL: 일반 UDP 는 엔진에 보이지 않는다. TCP 와 DNS(53 · 5353)만 관찰 (이벤트 미탐이 정상)")
     for port in (53, 4444):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -152,7 +152,7 @@ def main():
         print(f"[demo] no matching scenario in SG_DEMO_SCENARIOS={want!r} "
               "(use all|shell|revshell|direct-ip|domain|dns-exfil|udp)")
         return
-    print("[demo] done — 정상 설치라면 여기 도달하지만, SupplyGuard 는 shell 시나리오에서 이미 격리한다.")
+    print("[demo] done. 정상 설치라면 여기 도달하지만, SupplyGuard 는 shell 시나리오에서 이미 격리한다.")
 
 
 if __name__ == "__main__":
