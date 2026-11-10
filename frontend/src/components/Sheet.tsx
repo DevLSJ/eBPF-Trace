@@ -94,6 +94,8 @@ export function Sheet({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || typingTarget(e) || dialogOpen() || otherOverlay()) return;
+      // 트리(파일 트리 등) 안의 ↑↓ 는 트리가 쓴다 — 시트의 이전 · 다음 행으로 넘기지 않는다(11/10)
+      if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && (e.target as HTMLElement | null)?.closest?.('[role="tree"]')) return;
       const n = navRef.current;
       const act = e.key === 'Escape' ? close : e.key === 'ArrowUp' ? n?.prev : e.key === 'ArrowDown' ? n?.next : null;
       if (!act) return;
