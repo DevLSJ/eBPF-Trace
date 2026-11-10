@@ -404,7 +404,8 @@ test.describe('대시보드 — KPI 정의 · 큰 수 · 낮은 창(G33 · G34 �
     void backend;
     await page.goto('/');
     await ready(page);
-    const title = (k: string) => page.locator(`${DASH} [data-kpi="${k}"]`).getAttribute('title');
+    // 첫 줄 = 무엇을 세는지(11/10 부터 끝 줄에 「집계 범위 …」가 붙는다 — dash-decision-link-1110.spec.ts)
+    const title = async (k: string) => ((await page.locator(`${DASH} [data-kpi="${k}"]`).getAttribute('title')) ?? '').split('\n')[0];
     expect(await title('collected')).toBe('이 기간에 커널에서 수집한 실행 · 파일 · 통신 · 조회 이벤트 수(같은 1분 안 같은 동작 반복은 1건)');
     expect(await title('violations')).toBe('이 기간에 정책에 걸린 이벤트 수(격리 · 경고)');
     expect(await title('isolated')).toBe('이 기간에 격리한 컨테이너 수(설치 검사 컨테이너 포함)');

@@ -963,7 +963,7 @@ export class MockBackend {
         return !!c && (dec === 'pending' ? c.state === 'open' : c.decision === dec);
       };
       const rows = this.audit.filter((a) => {
-        if (dec && !decCase(a.caseId)) return false;
+        if (dec && !decCase(a.caseId ?? null)) return false;
         const t = new Date(a.event.timestamp).getTime();
         return (
           (!q.get('kind') || a.event.kind === q.get('kind')) &&

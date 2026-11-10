@@ -26,7 +26,7 @@ test.describe('11/10 대시보드 판정 줄 → 감사 로그 판정 필터', (
     await openDecision(page, 'malicious');
     await expect(page.locator('[data-filter="decision"]')).toHaveAttribute('data-value', 'malicious');
     await expect(page.locator('[data-chip="decision"]')).toContainText('판정: 악성');
-    await expect(page.getByText('총 2건')).toBeVisible();
+    await expect(page.getByText('총 2건').first()).toBeVisible();
     const cells = page.locator(`${ROWS} td[data-col="decision"]`);
     await expect(cells).toHaveCount(2);
     await expect(cells).toHaveText(['악성', '악성']);
@@ -41,7 +41,7 @@ test.describe('11/10 대시보드 판정 줄 → 감사 로그 판정 필터', (
     expect(want).toBeGreaterThan(0);
     await openDecision(page, 'pending');
     await expect(page.locator('[data-chip="decision"]')).toContainText('판정: 판정 대기');
-    await expect(page.getByText(`총 ${want}건`)).toBeVisible();
+    await expect(page.getByText(`총 ${want}건`).first()).toBeVisible();
     const cells = page.locator(`${ROWS} td[data-col="decision"]`);
     expect(await cells.count()).toBeGreaterThan(0);
     for (const t of await cells.allInnerTexts()) expect(t).toBe('판정 대기');
@@ -52,7 +52,7 @@ test.describe('11/10 대시보드 판정 줄 → 감사 로그 판정 필터', (
     await openDecision(page, 'false_positive');
     await expect(page.locator('[data-filter="decision"]')).toHaveAttribute('data-value', 'false_positive');
     await expect(page.locator('[data-chip="decision"]')).toContainText('판정: 오탐');
-    await expect(page.getByText('총 0건')).toBeVisible();
+    await expect(page.getByText('총 0건').first()).toBeVisible();
   });
 
   test('감사 로그 거르기 줄에 「판정」 선택 상자 — 고르면 그 판정만', async ({ page, backend }) => {
