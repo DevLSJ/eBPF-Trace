@@ -8,7 +8,7 @@ import {
 import { KpiCard } from "../../components/KpiCard";
 import { Empty, LoadError, Panel } from "../../components/Panel";
 import { useSortable } from "../../hooks/useSortable";
-import { fmtNum } from "../../lib/format";
+import { fmtDateTime, fmtNum } from "../../lib/format";
 import {
   kpiDelta,
   type DeltaTone,
@@ -205,6 +205,8 @@ export function KpiRow({
   error: unknown;
 }) {
   const defs = s ? kpiDefs(s, range) : [];
+  // 실제 집계 범위(11/10 사용자) — 기간은 칸 경계(1시간 = 분 · 24시간 = 시 · 7일 = 6시간)부터라 이름보다 조금 짧을 수 있다. 계산은 그대로, 툴팁 끝 줄에 적는다
+  const span = s ? `\n집계 범위 ${fmtDateTime(s.from)} ~ 지금` : "";
   const by = new Map(defs.map((x) => [x.k, x]));
   const { ref, order, containerClass, itemProps, pickedClass } =
     useSortable<HTMLDivElement>({
@@ -245,7 +247,7 @@ export function KpiRow({
               sub={x.sub}
               subTitle={x.subTitle ?? x.sub}
               to={x.to}
-              hint={x.hint}
+              hint={`${x.hint}${span}`}
               className={pickedClass(id)}
               attrs={itemProps(id)}
             />
@@ -365,10 +367,35 @@ function Results({ s }: { s: Summary }) {
           ))}
         </ul>
         {/* 판정 · 차단 목록은 한 줄씩(카드 높이를 차트와 맞춘다) — 차단 목록 종류별 수는 툴팁 */}
+        {/* 판정 줄(11/10 사용자): 하나씩 누르면 감사 로그가 그 판정으로 걸러져 열린다(기간은 걸지 않음 · 필터는 화면 상태) */}
         <span className="sg-res-line" data-part="res-decisions">
-          <span className="text-text-3">판정</span> 악성{" "}
-          <b className={D.malicious ? "tone-danger" : ""}>{D.malicious}</b> ·
-          오탐 <b>{D.falsePositive}</b> · 대기 <b>{D.pending}</b>
+          <span className="text-text-3">판정</span>{" "}
+          <Link
+            {...dest("/audit", { decision: "malicious" })}
+            data-decision="malicious"
+            className="sg-res-dec"
+            title="악성으로 판정한 건의 감사 기록 보기"
+          >
+            악성 <b className={D.malicious ? "tone-danger" : ""}>{D.malicious}</b>
+          </Link>{" "}
+          ·{" "}
+          <Link
+            {...dest("/audit", { decision: "false_positive" })}
+            data-decision="false_positive"
+            className="sg-res-dec"
+            title="오탐으로 판정한 건의 감사 기록 보기"
+          >
+            오탐 <b>{D.falsePositive}</b>
+          </Link>{" "}
+          ·{" "}
+          <Link
+            {...dest("/audit", { decision: "pending" })}
+            data-decision="pending"
+            className="sg-res-dec"
+            title="판정 대기 건의 감사 기록 보기"
+          >
+            대기 <b>{D.pending}</b>
+          </Link>
         </span>
         <Link
           to="/policies"

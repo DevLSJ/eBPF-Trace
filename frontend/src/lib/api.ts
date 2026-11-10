@@ -154,6 +154,8 @@ async function request<T>(path: string, init: RequestInit = {}, flow = false): P
 export interface AuditParams {
   kind?: string;
   action?: string;
+  // 판정(11/10): malicious | false_positive | pending(열린 건)
+  decision?: string;
   rule?: string;
   container?: string;
   since?: string;

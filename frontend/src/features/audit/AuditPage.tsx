@@ -38,7 +38,7 @@ import { EvidenceView } from './EvidenceView';
 
 // 입력 글자 13.5 · 포커스 링은 전역 규칙 하나(11/09 SPEC §1)
 const ctl = 'h-8 rounded-[var(--r-md)] border border-slate-300 bg-field px-2';
-const FILTERS = ['kind', 'action', 'rule', 'container', 'since', 'until'] as const;
+const FILTERS = ['kind', 'action', 'decision', 'rule', 'container', 'since', 'until'] as const;
 type FilterKey = (typeof FILTERS)[number];
 type Filters = Record<FilterKey, string>;
 
@@ -46,6 +46,8 @@ type Filters = Record<FilterKey, string>;
 const toIso = (v: string) => (v ? new Date(v).toISOString() : '');
 const fdt = (v: string) => v.replace('T', ' ');
 const ACTION_KO: Record<string, string> = { alert: '경고', kill: '격리' };
+// 판정(11/10): 건의 판정으로 거른다(서버 decision) — 대시보드 「설치 검사 결과」 판정 줄에서도 이 값으로 연다
+const DECISION_OPTIONS = (['malicious', 'false_positive', 'pending'] as const).map((d) => ({ value: d as string, label: DECISION_LABEL[d] }));
 const KIND_OPTIONS = KINDS.map((k) => ({ value: k as string, label: k === 'dns' ? `dns (${KIND_LONG.dns})` : k }));
 const ACTION_OPTIONS = [
   { value: 'alert', label: '경고 (alert)' },
@@ -163,6 +165,7 @@ export function AuditPage() {
       ? [
           !!filters.kind && { key: 'kind', label: `종류: ${filters.kind}`, clear: () => clearKeys(['kind']) },
           !!filters.action && { key: 'action', label: `대응: ${ACTION_KO[filters.action] ?? filters.action}`, clear: () => clearKeys(['action']) },
+          !!filters.decision && { key: 'decision', label: `판정: ${DECISION_LABEL[filters.decision as keyof typeof DECISION_LABEL] ?? filters.decision}`, clear: () => clearKeys(['decision']) },
           !!filters.rule && { key: 'rule', label: `${FIELD.policy}: ${filters.rule}`, clear: () => clearKeys(['rule']) },
           !!filters.container && { key: 'container', label: `컨테이너: ${filters.container}`, clear: () => clearKeys(['container']) },
           periodChip,
@@ -210,6 +213,7 @@ export function AuditPage() {
                 <SearchField label="컨테이너 검색" placeholder="컨테이너 이름" width={200} value={filters.container} onApply={(v) => setFilter('container', v)} />
                 <Select name="kind" label="종류" value={filters.kind} options={KIND_OPTIONS} onChange={(v) => setFilter('kind', v)} />
                 <Select name="action" label="대응" value={filters.action} options={ACTION_OPTIONS} onChange={(v) => setFilter('action', v)} />
+                <Select name="decision" label="판정" value={filters.decision} options={DECISION_OPTIONS} onChange={(v) => setFilter('decision', v)} />
               </FilterBar>
             )}
             <label className="flex items-center gap-1.5 text-slate-500">
@@ -704,7 +708,7 @@ function useAuditExport(filters: Filters, kit: TableKit<AuditEntry>) {
     setErr('');
     setBusy(true);
     try {
-      const q: AuditParams = { kind: filters.kind, action: filters.action, rule: filters.rule, container: filters.container, since: toIso(filters.since), until: toIso(filters.until) };
+      const q: AuditParams = { kind: filters.kind, action: filters.action, decision: filters.decision, rule: filters.rule, container: filters.container, since: toIso(filters.since), until: toIso(filters.until) };
       const all: AuditEntry[] = [];
       let before: number | undefined;
       while (all.length < CSV_MAX) {
