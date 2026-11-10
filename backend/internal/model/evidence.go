@@ -18,6 +18,14 @@ type Proc struct {
 	Cmd  string `json:"cmd"`
 }
 
+// EvidenceFile: 격리 직전에 저장한 설치 스크립트 하나(11/10 증거 코드 보기). 글 파일만, Content 는 앞에서 64KB 까지
+type EvidenceFile struct {
+	Path      string `json:"path"`
+	Size      int64  `json:"size"`
+	Truncated bool   `json:"truncated"`
+	Content   string `json:"content"`
+}
+
 type Evidence struct {
 	ID            string    `json:"id"`
 	ContainerID   string    `json:"containerId"`
@@ -28,6 +36,8 @@ type Evidence struct {
 	Logs      string       `json:"logs"`
 	Changes   []FileChange `json:"changes"`
 	Processes []Proc       `json:"processes"`
+	// Files: 설치 스크립트 내용(최대 6개). 옛 증거 · 못 읽었으면 비어 있다
+	Files []EvidenceFile `json:"files,omitempty"`
 	// Partial: 수집 시간 상한(700ms)이나 오류로 일부만 모았음. Error 에 빠진 부분이 적힌다
 	Partial    bool   `json:"partial"`
 	DurationMs int    `json:"durationMs"`
@@ -42,6 +52,9 @@ func (e Evidence) Clone() Evidence {
 	}
 	if e.Processes != nil {
 		c.Processes = append([]Proc(nil), e.Processes...)
+	}
+	if e.Files != nil {
+		c.Files = append([]EvidenceFile(nil), e.Files...)
 	}
 	return c
 }

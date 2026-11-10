@@ -80,6 +80,9 @@ type parts struct {
 	logs    []byte
 	changes []dockerapi.Change
 	procs   []dockerapi.Proc
+	files   []model.EvidenceFile
+	// filesOn: 스크립트 읽기를 시작했다(읽을 것이 있고 Docker 가 FileReader 일 때만) — 아니면 빠진 부분으로 세지 않는다
+	filesOn bool
 	done    map[string]bool
 	errs    map[string]error
 }
@@ -135,6 +138,21 @@ func (c *Collector) Collect(ctx context.Context, containerID string) (model.Evid
 			p.mu.Lock()
 			p.changes = ch
 			p.mu.Unlock()
+			// 11/10: diff 를 받은 뒤 같은 예산 안에서 설치 스크립트 내용을 읽는다(diff 고루틴이 끝나기 전에 Add — Wait 와 안전)
+			if fr, ok := c.Docker.(FileReader); ok {
+				if paths := pickScripts(ch); len(paths) > 0 {
+					p.mu.Lock()
+					p.filesOn = true
+					p.mu.Unlock()
+					run("files", func() error {
+						fs, ferr := readScripts(cctx, fr, containerID, paths)
+						p.mu.Lock()
+						p.files = fs
+						p.mu.Unlock()
+						return ferr
+					})
+				}
+			}
 		}
 		return err
 	})
@@ -170,8 +188,13 @@ func (c *Collector) Collect(ctx context.Context, containerID string) (model.Evid
 	for _, pr := range p.procs {
 		ev.Processes = append(ev.Processes, model.Proc{PID: pr.PID, User: pr.User, Cmd: pr.Cmd})
 	}
+	ev.Files = append([]model.EvidenceFile(nil), p.files...)
+	names := []string{"inspect", "logs", "diff", "top"}
+	if p.filesOn {
+		names = append(names, "files")
+	}
 	var missing []string
-	for _, name := range []string{"inspect", "logs", "diff", "top"} {
+	for _, name := range names {
 		switch {
 		case p.done[name]:
 		case p.errs[name] != nil:
