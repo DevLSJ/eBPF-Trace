@@ -64,3 +64,17 @@ func TestReadFile(t *testing.T) {
 		t.Fatalf("gone = %v, want ErrNotFound", err)
 	}
 }
+
+// Inspect 는 마운트의 컨테이너 안 경로(Destination)만 돌려준다 — 호스트 경로(Source)는 담지 않는다(증거 코드 보기가 /pkg/<이름> 을 찾는 데 씀)
+func TestInspectMountDests(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"Id":"abc","Name":"/sg-install-pip-1","Config":{"Image":"python:3.12-slim"},"State":{"Pid":7,"Running":true},` +
+			`"Mounts":[{"Type":"bind","Source":"/Users/me/secret/reqeusts","Destination":"/pkg/reqeusts","RW":false}]}`))
+	}))
+	defer srv.Close()
+	c := &Client{http: srv.Client(), base: srv.URL}
+	got, err := c.Inspect(context.Background(), "abc")
+	if err != nil || len(got.MountDests) != 1 || got.MountDests[0] != "/pkg/reqeusts" {
+		t.Fatalf("MountDests = %v, %v", got.MountDests, err)
+	}
+}

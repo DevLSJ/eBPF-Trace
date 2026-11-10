@@ -134,3 +134,32 @@ func TestCollectWithoutFileReader(t *testing.T) {
 		t.Fatalf("%v %+v", err, ev)
 	}
 }
+
+// diff 가 늦어도(큰 캐시 · 바쁜 호스트) 로컬 패키지 폴더(마운트 /pkg/<이름>)의 설치 스크립트는 inspect 만으로 읽는다
+func TestCollectScriptsFromMountWhenDiffSlow(t *testing.T) {
+	f := &mountFake{fileFake: &fileFake{fakeDocker: newFake(), files: map[string]string{
+		"/pkg/reqeusts/setup.py": "import subprocess\n",
+	}}}
+	f.delay["diff"] = 5 * time.Second
+	c := New(f, store.NewMemory())
+	c.Budget = 200 * time.Millisecond
+	ev, err := c.Collect(context.Background(), cid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ev.Files) != 1 || ev.Files[0].Path != "/pkg/reqeusts/setup.py" {
+		t.Fatalf("files = %+v (error %q)", ev.Files, ev.Error)
+	}
+	if !ev.Partial || !strings.Contains(ev.Error, "diff") || strings.Contains(ev.Error, "files") {
+		t.Fatalf("only the diff is missing: %q", ev.Error)
+	}
+}
+
+// mountFake: inspect 가 /pkg/reqeusts 마운트를 알려 준다
+type mountFake struct{ *fileFake }
+
+func (f *mountFake) Inspect(ctx context.Context, id string) (dockerapi.Container, error) {
+	ct, err := f.fileFake.Inspect(ctx, id)
+	ct.MountDests = []string{"/pkg/reqeusts", "/work"}
+	return ct, err
+}
