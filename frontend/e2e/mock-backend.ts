@@ -956,7 +956,14 @@ export class MockBackend {
       const since = q.get('since') ? new Date(q.get('since')!).getTime() : -Infinity;
       const until = q.get('until') ? new Date(q.get('until')!).getTime() : Infinity;
       const before = Number(q.get('before') ?? Infinity);
+      // 판정(11/10, backend api audit decision): 건의 판정 — pending = 열린 건. 건이 없는 기록은 빠진다
+      const dec = q.get('decision');
+      const decCase = (id: string | null) => {
+        const c = id ? this.cases.find((x) => x.id === id) : undefined;
+        return !!c && (dec === 'pending' ? c.state === 'open' : c.decision === dec);
+      };
       const rows = this.audit.filter((a) => {
+        if (dec && !decCase(a.caseId)) return false;
         const t = new Date(a.event.timestamp).getTime();
         return (
           (!q.get('kind') || a.event.kind === q.get('kind')) &&
