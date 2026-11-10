@@ -545,6 +545,15 @@ export interface Evidence {
   partial: boolean;
   durationMs: number;
   error?: string;
+  // 11/10 — 격리 직전에 저장한 설치 스크립트(setup.py · pyproject.toml · package.json · build.rs · *.sh, 최대 6개 · 파일당 64KB). 옛 증거에는 없다
+  files?: EvidenceFile[];
+}
+
+export interface EvidenceFile {
+  path: string;
+  size: number;
+  truncated: boolean;
+  content: string;
 }
 
 export interface OsvResult {

@@ -375,10 +375,13 @@ test.describe('D 코드 창(macOS 창 모양)', () => {
     await expect(ev3.locator('[data-part="evidence-logs"]')).toContainText('Running setup.py');
     const tree = ev3.locator('[data-part="evidence-changes"]');
     await expect(tree.locator('[role="tree"]')).toHaveCount(1);
-    await expect(tree.locator('[data-change-kind]')).toHaveText(['C', 'A', 'D']); // 폴더 이름순(/root · /tmp · /var)
-    await expect(tree.locator('[role="treeitem"][data-kind="file"]')).toHaveCount(3);
+    // 폴더 이름순(/root · /tmp · /var). 11/10: 표시는 등급(A · F), 종류는 속성 · 툴팁 · 위반 대상 /etc/shadow(읽기만 함)가 F 새 줄로 맨 위
+    await expect(tree.locator('[data-change-kind]')).toHaveText(['A', 'A', 'A']);
+    expect(await tree.locator('[data-change-kind]').evaluateAll((e) => e.map((x) => x.getAttribute('data-change-kind')))).toEqual(['C', 'A', 'D']);
+    await expect(tree.locator('[role="treeitem"][data-kind="file"]')).toHaveCount(4);
     await expect(tree.locator('[role="treeitem"][aria-selected]')).toHaveCount(0); // 선택 없음
-    expect(await tree.locator('[role="treeitem"][data-kind="dir"]').evaluateAll((e) => e.map((x) => x.getAttribute('aria-expanded')))).not.toContain('false'); // 모두 펼침
+    // 11/10: 처음 접힘, 비정상(F)이 든 폴더만 펼침
+    expect(await tree.locator('[role="treeitem"][data-kind="dir"]').evaluateAll((e) => e.map((x) => `${x.getAttribute('data-path')}:${x.getAttribute('aria-expanded')}`))).toEqual(['/etc:true', '/root:false', '/tmp:false', '/var:false', '/var/log:false']);
     // 한 폴더(/tmp)뿐이면 표 그대로
     await expect(page.locator('[data-evidence="ev-2"] table[data-part="evidence-changes"] [data-change-kind]')).toHaveText(['A', 'A']);
   });
