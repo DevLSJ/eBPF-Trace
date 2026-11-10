@@ -662,7 +662,9 @@ th[aria-sort="descending"] .th-sort::after { content: '↓'; opacity: 1; color: 
 .ft-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ft-badge { flex-shrink: 0; margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--text-2); font: 600 12px/18px var(--mono); text-align: center; }
 .ft-badge.ft-threat { background: var(--danger-soft); color: var(--danger-text); }
-.ft-badge.ev-A { color: var(--ok); } .ft-badge.ev-C { color: var(--warn); } .ft-badge.ev-D { color: var(--danger-text); }
+.ft-badge.ev-ok { background: var(--ok-soft); color: var(--ok-text); } /* 11/10 증거 등급: 정상 A 초록 · 비정상 F 위험 글자색 + 연한 위험 바탕 */
+.ft-badge.ev-bad { background: var(--danger-soft); color: var(--danger-text); }
+.ft-item:not([aria-selected="true"]) > .ft-row:has(> .ev-bad) .ft-name { color: var(--danger-text); }
 .ft-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-base) var(--ease-move); }
 .ft-item[aria-expanded="false"] > .ft-kids { grid-template-rows: 0fr; }
 .ft-kids > [role="group"] { min-height: 0; overflow: hidden; margin-left: 11px; border-left: 1px solid var(--border); visibility: visible; transition: visibility 0s; }
@@ -673,6 +675,11 @@ th[aria-sort="descending"] .th-sort::after { content: '↓'; opacity: 1; color: 
 .code-split { display: grid; grid-template-columns: minmax(140px, 32%) minmax(0, 1fr); gap: 10px; align-items: start; min-width: 0; }
 .code-split > .ftree { max-height: 352px; }
 @media (max-width: 767px) { .code-split { grid-template-columns: minmax(0, 1fr); } .code-split > .ftree { max-height: 200px; } }
+/* 11/10 증거: 트리 · 저장된 설치 스크립트 코드 창 — 카드 폭 560 미만이면 코드 창이 아래(시트 폭 기준이라 컨테이너 쿼리) */
+.ev-files { container-type: inline-size; }
+.ev-split { display: grid; grid-template-columns: minmax(180px, 40%) minmax(0, 1fr); gap: 10px; align-items: start; min-width: 0; }
+.ev-split > .ftree { max-height: 360px; }
+@container (max-width: 559px) { .ev-split { grid-template-columns: minmax(0, 1fr); } .ev-split > .ftree { max-height: 240px; } }
 @media (prefers-reduced-motion: reduce) {
   .code-win[data-click="1"]:hover { transform: none; }
   .ft-item[aria-expanded="false"] > .ft-kids > [role="group"] { transition-delay: 0s; } /* 전역 규칙은 transition 을 끄지만 지연 값은 남는다 */

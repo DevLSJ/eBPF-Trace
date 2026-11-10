@@ -97,12 +97,13 @@ test.describe('11/10 증거 파일 트리: 등급 A/F · 접힘 · 설치 스크
   test('처음 접힘(비정상 폴더만 펼침) · A/F 표시와 색 · 읽기만 한 위반 대상 새 줄 · 비정상 맨 위 · 개수 한 줄 · 1440 밝은', async ({ page, backend }) => {
     await open(page, backend);
     const t = tree(page);
-    // ① 비정상이 든 /etc · /pkg · /pkg/reqeusts 만 펼침, 나머지는 접힘
+    // ① 비정상이 든 폴더만 펼침(/etc/shadow · /root/.ssh/id_rsa 는 이 컨테이너가 읽기만 한 위반 대상, setup.py 는 위반 줄), 나머지는 접힘
     expect(await expanded(t)).toEqual({
       '/etc': 'true',
       '/pkg': 'true',
       '/pkg/reqeusts': 'true',
-      '/root': 'false',
+      '/root': 'true',
+      '/root/.ssh': 'true',
       '/tmp': 'false',
       '/usr': 'false',
       '/usr/lib': 'false',
@@ -114,6 +115,9 @@ test.describe('11/10 증거 파일 트리: 등급 A/F · 접힘 · 설치 스크
     });
     // 비정상이 든 폴더가 맨 위(그다음 이름순)
     expect(await t.locator(':scope [role="tree"] > [role="treeitem"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-path')))).toEqual(['/etc', '/pkg', '/root', '/tmp', '/usr', '/var']);
+    // /root 안에서도 비정상이 든 .ssh 가 .bashrc 보다 위
+    expect(await item(page, '/root').locator(':scope > .ft-kids > [role="group"] > [role="treeitem"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-path')))).toEqual(['/root/.ssh', '/root/.bashrc']);
+    await expect(badge(page, '/root/.ssh/id_rsa')).toHaveText('F');
     // 같은 폴더 안에서도 비정상 파일이 먼저(setup.py 가 build.sh · pyproject.toml 보다 위)
     expect(await item(page, '/pkg/reqeusts').locator(':scope > .ft-kids [role="treeitem"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-path')))).toEqual([
       '/pkg/reqeusts/setup.py',
@@ -140,24 +144,27 @@ test.describe('11/10 증거 파일 트리: 등급 A/F · 접힘 · 설치 스크
     await expect(f).toHaveCSS('color', await tokenRgb(page, '--danger-text'));
     await expect(f).toHaveCSS('background-color', await tokenRgb(page, '--danger-soft'));
     await expect(badge(page, '/pkg/reqeusts/pyproject.toml')).toHaveCSS('color', await tokenRgb(page, '--ok-text'));
-    // 개수 한 줄(파일 9 = diff 6 + 새 줄 /etc/shadow + 저장만 된 스크립트 2)
-    await expect(card(page).locator('[data-part="evidence-grade-sum"]')).toHaveText('비정상 2개 · 정상 7개');
+    // 개수 한 줄(파일 10 = diff 6 + 새 줄 /etc/shadow · /root/.ssh/id_rsa + 저장만 된 스크립트 2)
+    await expect(card(page).locator('[data-part="evidence-grade-sum"]')).toHaveText('비정상 3개 · 정상 7개');
     await expect(card(page).getByText('A 정상 · F 비정상')).toBeVisible();
-
-    // 키보드 동작 그대로: ↓ 다음 항목 · → 접힌 폴더 펼침
-    await item(page, '/etc').focus();
-    await page.keyboard.press('ArrowDown');
-    await expect(item(page, '/etc/shadow')).toBeFocused();
-    await item(page, '/root').focus();
-    await page.keyboard.press('ArrowRight');
-    await expect(item(page, '/root')).toHaveAttribute('aria-expanded', 'true');
-    await page.keyboard.press('ArrowLeft');
-    await expect(item(page, '/root')).toHaveAttribute('aria-expanded', 'false');
 
     expect(await dashes(page)).toEqual([]);
     await settled(page);
     await card(page).locator('[data-part="evidence-files"]').scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${SHOT}/evidence-tree-1440-light.png` });
+
+    // 키보드 동작 그대로: → 접힌 폴더 펼침 · ← 접힘 · Enter 토글
+    //   (↑↓ 는 시트가 캡처 단계에서 먼저 받아 다른 행으로 넘긴다 — 이 변경 전부터 같은 동작이라 여기서는 보지 않는다)
+    await item(page, '/tmp').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(item(page, '/tmp')).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('ArrowLeft');
+    await expect(item(page, '/tmp')).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('Enter');
+    await expect(item(page, '/tmp')).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Enter');
+    await expect(item(page, '/tmp')).toHaveAttribute('aria-expanded', 'false');
+
   });
 
   test('설치 스크립트 코드 창: F 파일이 처음부터 열림 · 위반 줄 빨강 · 개수 · 내용 없는 파일 · 잘린 파일', async ({ page, backend }) => {
@@ -210,7 +217,7 @@ test.describe('11/10 증거 파일 트리: 등급 A/F · 접힘 · 설치 스크
     await expect(t.locator('[role="treeitem"][aria-selected]')).toHaveCount(0);
     await expect(badge(page, '/etc/shadow')).toHaveText('F');
     await expect(badge(page, '/pkg/reqeusts/setup.py')).toHaveText('A'); // 내용이 없으니 diff 만으로는 정상
-    await expect(card(page).locator('[data-part="evidence-grade-sum"]')).toHaveText('비정상 1개 · 정상 6개');
+    await expect(card(page).locator('[data-part="evidence-grade-sum"]')).toHaveText('비정상 2개 · 정상 6개');
     expect((await expanded(t))['/etc']).toBe('true');
     expect((await expanded(t))['/pkg']).toBe('false');
     // 파일을 눌러도 아무 일 없음(지금처럼)
@@ -222,16 +229,16 @@ test.describe('11/10 증거 파일 트리: 등급 A/F · 접힘 · 설치 스크
     const { row } = seed(backend, { files: false });
     const changes = [] as { kind: string; path: string }[];
     for (let d = 0; d < 98; d++) for (let i = 0; i < 5; i++) changes.push({ kind: 'A', path: `/usr/lib/python3.12/site-packages/m${String(d).padStart(2, '0')}/f${i}.py` });
-    for (let i = 0; i < 10; i++) changes.push({ kind: 'A', path: `/root/x${i}` });
+    for (let i = 0; i < 10; i++) changes.push({ kind: 'A', path: `/opt/x${i}` });
     backend.evidence[0].changes = changes;
     await page.goto(`/audit?id=${row.id}&tab=evidence`);
     const t = tree(page);
     await expect(t).toBeVisible();
     const ex = await expanded(t);
-    expect(Object.entries(ex).filter(([, v]) => v === 'true').map(([k]) => k)).toEqual(['/etc']);
-    await expect(card(page).locator('[data-part="evidence-grade-sum"]')).toHaveText('비정상 1개 · 정상 500개');
-    // 처음 보이는 줄: 맨 위 폴더 3개(/etc · /root · /usr) + /etc/shadow
-    expect(await t.locator('[role="treeitem"]').evaluateAll((els) => els.filter((e) => !e.parentElement?.closest('[aria-expanded="false"]')).length)).toBe(4);
+    expect(Object.entries(ex).filter(([, v]) => v === 'true').map(([k]) => k)).toEqual(['/etc', '/root', '/root/.ssh']);
+    await expect(card(page).locator('[data-part="evidence-grade-sum"]')).toHaveText('비정상 2개 · 정상 500개');
+    // 처음 보이는 줄: 맨 위 폴더 4개(/etc · /root · /opt · /usr) + /etc/shadow + /root/.ssh · id_rsa
+    expect(await t.locator('[role="treeitem"]').evaluateAll((els) => els.filter((e) => !e.parentElement?.closest('[aria-expanded="false"]')).map((e) => e.getAttribute('data-path')))).toEqual(['/etc', '/etc/shadow', '/root', '/root/.ssh', '/root/.ssh/id_rsa', '/opt', '/usr']);
   });
 
   test('1440 어두운: F 위험 글자색(어두운 값) · 코드 창 위반 줄', async ({ page, backend }) => {
