@@ -249,10 +249,14 @@
   transform: translateY(-2px);
   box-shadow: var(--sh-1);
 }
-.int-count.got.k-exec b { color: var(--k-exec); }
-.int-count.got.k-open b { color: var(--k-open); }
-.int-count.got.k-connect b { color: var(--k-connect); }
-.int-count.got.k-dns b { color: var(--k-dns); }
+/* 11/10: 차트 범례용 전역 .k-<종류>(진한 바탕)가 칸에 걸려 글씨가 안 보였다 — 칸은 옅은 종류 바탕 + 진한 종류 글자(대비 4.5:1 이상) */
+.int-count.k-exec { --kc-bg: var(--k-exec-soft); --kc-fg: var(--k-exec-text); }
+.int-count.k-open { --kc-bg: var(--k-open-soft); --kc-fg: var(--k-open-text); }
+.int-count.k-connect { --kc-bg: var(--k-connect-soft); --kc-fg: var(--k-connect-text); }
+.int-count.k-dns { --kc-bg: var(--warn-soft); --kc-fg: var(--warn-text); }
+.int-count[class*="k-"] { background: var(--surface); border: 1px solid var(--line); color: var(--text-2); }
+.int-count.got[class*="k-"] { background: var(--kc-bg); border-color: transparent; color: var(--kc-fg); }
+.int-count.got[class*="k-"] b { color: var(--kc-fg); }
 .int-watch {
   flex: 1;
   min-height: 220px;
