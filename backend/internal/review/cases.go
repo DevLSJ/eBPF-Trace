@@ -34,6 +34,21 @@ func (s *Service) ListCases(q CaseQuery) []model.Case {
 	return out
 }
 
+// CaseIDsByDecision: 판정으로 고른 건 id 전부(상한 없음, 11/10 감사 로그 판정 필터).
+// pending = 열린 건(대시보드 「대기」와 같은 셈), malicious · false_positive = 건의 판정(종결 포함)
+func (s *Service) CaseIDsByDecision(d model.Decision) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := []string{}
+	for _, id := range s.caseIDs {
+		c := s.cases[id].Case
+		if (d == model.DecisionPending && c.State == model.CaseOpen) || (d != model.DecisionPending && c.Decision == d) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 func (s *Service) GetCase(id string) (model.Case, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

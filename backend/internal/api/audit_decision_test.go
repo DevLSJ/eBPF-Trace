@@ -16,7 +16,8 @@ import (
 
 // GET /api/audit?decision=(11/10 사용자): 대시보드 「설치 검사 결과」 판정 줄(악성 · 오탐 · 대기)을 누르면
 // 감사 로그를 그 판정으로 거른다. 판정은 건(case)에 있으므로 서버가 건 id 로 거른다 — 쪽 번호 · 총 건수가 맞게.
-//   malicious · false_positive = 건의 판정, pending = 열린 건(대시보드 「대기」와 같은 셈). 건이 없는 기록은 어디에도 안 든다
+//
+//	malicious · false_positive = 건의 판정, pending = 열린 건(대시보드 「대기」와 같은 셈). 건이 없는 기록은 어디에도 안 든다
 func TestAuditDecisionFilter(t *testing.T) {
 	mem := store.NewMemory()
 	engine := rules.New(nil)

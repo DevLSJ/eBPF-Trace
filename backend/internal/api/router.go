@@ -341,6 +341,19 @@ func (h *handlers) audit(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "action: alert | kill")
 		return
 	}
+	// 판정(11/10): 대시보드 판정 줄 · 감사 로그 「판정」 선택 상자. 건이 없는 서버(Review nil)면 0건
+	if d := model.Decision(q.Get("decision")); d != "" {
+		switch d {
+		case model.DecisionMalicious, model.DecisionFalsePositive, model.DecisionPending:
+		default:
+			writeErr(w, http.StatusBadRequest, "decision: malicious | false_positive | pending")
+			return
+		}
+		aq.ByCase = true
+		if h.Review != nil {
+			aq.CaseIDs = h.Review.CaseIDsByDecision(d)
+		}
+	}
 	var err error
 	if aq.Since, err = parseTime(q.Get("since")); err != nil {
 		writeErr(w, http.StatusBadRequest, "since: RFC3339")
