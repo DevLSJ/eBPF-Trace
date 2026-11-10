@@ -19,9 +19,9 @@ async function pick(page: Page, id: 'single' | 'multi' | 'install') {
   await expect(page.locator(W)).toHaveAttribute('data-step', '1');
 }
 
-// 움직임이 끝난 뒤 찍는다(흐린 사진 방지)
-async function shoot(page: Page, name: string) {
-  await page.evaluate(() =>
+// 움직임이 끝날 때까지(끝없는 움직임은 빼고)
+const settle = (page: Page) =>
+  page.evaluate(() =>
     Promise.all(
       document
         .getAnimations()
@@ -29,7 +29,16 @@ async function shoot(page: Page, name: string) {
         .map((a) => a.finished.catch(() => undefined)),
     ),
   );
+
+// 움직임이 끝난 뒤 찍는다(흐린 사진 방지)
+async function shoot(page: Page, name: string) {
+  await settle(page);
+  // 마법사 안 스크롤까지 한 장에 — 잠시 창을 늘려 찍고 되돌린다
+  const vp = page.viewportSize()!;
+  const extra = await page.locator(W).evaluate((e) => e.scrollHeight - e.clientHeight);
+  if (extra > 0) await page.setViewportSize({ width: vp.width, height: vp.height + extra });
   await page.screenshot({ path: `${OUT}/integ-cards-${name}.png`, fullPage: true });
+  await page.setViewportSize(vp);
 }
 
 // 화면 글자(코드 창 포함)에 「—」가 없다
@@ -229,13 +238,16 @@ test.describe('11/10 연동 시나리오 — 어두운 화면 · 390', () => {
         const pv = page.locator(`${W} ${id === 'install' ? '[data-part="term-steps"]' : '[data-part="scn-preview"]'}`);
         const [a, b] = [await input.boundingBox(), await pv.boundingBox()];
         expect(b!.y, '1024 미만은 위아래').toBeGreaterThanOrEqual(a!.y + a!.height - 1);
+        await settle(page); // 행 들어오기 움직임(옆에서 밀려 들어옴)이 끝난 뒤 잰다
         const over = await page.evaluate(() => {
           const d = document.documentElement;
           const main = document.querySelector('main')!;
           const wiz = document.querySelector('[data-part="wizard"]')!;
-          return { doc: d.scrollWidth - window.innerWidth, main: main.scrollWidth - main.clientWidth, wiz: wiz.scrollWidth - wiz.clientWidth };
+          const right = wiz.getBoundingClientRect().right;
+          const wide = [...wiz.querySelectorAll('*')].filter((e) => e.getBoundingClientRect().right > right + 0.5).map((e) => `${e.tagName}.${String(e.className).slice(0, 30)}:${Math.round(e.getBoundingClientRect().width)}`);
+          return { doc: d.scrollWidth - window.innerWidth, main: main.scrollWidth - main.clientWidth, wiz: wiz.scrollWidth - wiz.clientWidth, wide: wide.slice(0, 40) };
         });
-        expect(over).toEqual({ doc: 0, main: 0, wiz: 0 });
+        expect(over).toEqual({ doc: 0, main: 0, wiz: 0, wide: [] });
         await noDash(page);
         await shoot(page, `390-${id}`);
       });
