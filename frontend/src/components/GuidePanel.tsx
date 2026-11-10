@@ -106,8 +106,8 @@ function CaseView({ c, list, onSelect, onChange }: { c: Case; list: Case[]; onSe
             : '컨테이너를 종료했습니다(kill). 15초 뒤 재기동되면 차단 이미지일 때만 즉시 다시 격리됩니다.',
         ]
       : c.level === 'held'
-        ? ['text-amber-700', '격리 대상', 'dry-run 이라 알림만 보냈습니다. 컨테이너가 살아 있습니다. 필요하면 직접 멈추고, 격리 모드(ENFORCE_KILL)를 켜세요.']
-        : ['text-amber-700', '경고', '격리 정책이 아니라 알림만 보냈습니다. 컨테이너는 계속 동작 중입니다.'];
+        ? ['text-amber-700', '격리 대상', 'dry-run 이라 격리하지 않고 경고만 남겼습니다. 컨테이너가 살아 있습니다. 필요하면 직접 멈추고, 격리 모드(ENFORCE_KILL)를 켜세요.']
+        : ['text-amber-700', '경고', '격리 정책이 아니라 경고만 남겼습니다. 컨테이너는 계속 동작 중입니다.'];
   const notify = notifyState(info);
   const notifyTone = notify.state === 'sent' ? 'text-emerald-700' : notify.state === 'failed' ? 'text-red-700' : notify.state === 'off' ? 'text-amber-700' : 'text-slate-500';
 

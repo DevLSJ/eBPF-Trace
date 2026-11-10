@@ -337,7 +337,7 @@ test.describe('G38 내부 이름 → 쉬운 말', () => {
     await ready(page, '/settings');
     const side = page.locator('aside[data-part="sidebar"]');
     await expect(side).toContainText('모의 재생');
-    await expect(side).toContainText('알림만(dry-run)');
+    await expect(side).toContainText('경고만(dry-run)');
     await expect(side).not.toContainText('Mock');
     const banner = page.locator('[data-banner="dns"]');
     await expect(banner).toContainText('도메인 판단 꺼짐');
@@ -357,7 +357,7 @@ test.describe('G38 내부 이름 → 쉬운 말', () => {
     expect(await settingNames(page, ['[data-view="server"]'])).toEqual([]);
     // 알림 팝오버(격리 꺼짐 · 도메인 판단 꺼짐)
     await page.locator('[data-part="bell"]').click();
-    await expect(page.locator('[data-notice="dryrun"]')).toContainText('알림만(dry-run)');
+    await expect(page.locator('[data-notice="dryrun"]')).toContainText('경고만(dry-run)');
     expect(await settingNames(page, ['[data-part="notices"]'])).toEqual([]);
     await page.keyboard.press('Escape');
     // 도우미 「AI 도우미」 탭의 꺼짐 안내

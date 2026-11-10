@@ -4,7 +4,8 @@ import { createPortal } from 'react-dom';
 import YAML from 'yaml';
 import { api, errorText, sentence } from '../lib/api';
 import { fmtNum } from '../lib/format';
-import { ID_PATTERN, listOf, NUM_FIELDS, scopeOf, summarize, toDraft, toRule, withList, type Draft, type ListField, type Scope } from '../lib/policyEasy';
+import { FIELD } from '../lib/fieldNames';
+import { ID_PATTERN, KIND_SHORT, listOf, NUM_FIELDS, scopeOf, summarize, toDraft, toRule, withList, type Draft, type ListField, type Scope } from '../lib/policyEasy';
 import { SEQ_KILL_WARN, SEQ_NO_PREVIEW, SEQ_YAML_ONLY, seqSummary } from '../lib/sequence';
 import { ActionButton } from './ActionButton';
 import { ConfirmDialog } from './Modal';
@@ -89,8 +90,8 @@ const MODES: [Mode, string][] = [
 ];
 // 연쇄 규칙(11/04): 쉬운 설정 · 폼에는 단계가 없어 YAML 하나
 const SEQ_MODES: [Mode, string][] = [['yaml', '고급 · YAML']];
-const LV: Record<Level, string> = { normal: '통과', alert: '알림', held: '격리 대상', killed: '격리' };
-const LV_TO: Record<Level, string> = { normal: '통과로', alert: '알림으로', held: '격리 대상으로', killed: '격리로' };
+const LV: Record<Level, string> = { normal: '통과', alert: '경고', held: '격리 대상', killed: '격리' };
+const LV_TO: Record<Level, string> = { normal: '통과로', alert: '경고로', held: '격리 대상으로', killed: '격리로' };
 
 // 정책 편집 — 쉬운 설정(기본) · 고급 폼 · 고급 YAML 이 같은 draft 를 고친다.
 // 저장은 늘 「저장 전 확인」(한 줄 요약 + 최근 감사 로그 재평가 POST /api/policies/preview)을 거친다 (10/16 목업 확정)
@@ -224,7 +225,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
   };
 
   const head = isSeq ? { action: rule.action, dryRun: !!rule.dryRun } : draft;
-  const effective = head.action === 'kill' && head.dryRun ? 'kill → 알림만 (dry-run)' : head.action;
+  const effective = head.action === 'kill' && head.dryRun ? 'kill → 경고만(시험 운영)' : head.action;
   const inHost = !!containers?.host;
   const picks = listOf(draft, 'containers');
   const needPick = !isSeq && mode !== 'yaml' && scope === 'some' && !picks.length;
@@ -267,7 +268,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
   const foot = (
     <>
       {mode === 'form' && (
-        <label className="flex cursor-pointer items-center gap-2 text-sm select-none" title="kill 정책을 알림만 보내도록 강제 (오탐 시 컨테이너 보호)">
+        <label className="flex cursor-pointer items-center gap-2 text-sm select-none" title="kill 정책을 격리하지 않고 경고만 남기도록 강제(오탐 시 컨테이너 보호)">
           <span
             role="switch"
             aria-checked={draft.dryRun}
@@ -278,7 +279,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
           >
             <span className={`absolute top-0.5 size-4 rounded-full bg-white transition-all ${draft.dryRun ? 'left-4.5' : 'left-0.5'}`} />
           </span>
-          dry-run
+          시험 운영(dry-run)
         </label>
       )}
       {error && (
@@ -353,24 +354,26 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
           </CodeWindow>
         ) : (
           <div className="grid max-w-2xl gap-4 text-sm">
-            <Field label="id" hint="소문자·숫자·하이픈">
+            <Field label={FIELD.policyId} hint="소문자·숫자·하이픈">
               <input className={input} value={draft.id} disabled={!isNew} onChange={(e) => update({ id: e.target.value })} />
             </Field>
             <Field label="설명">
               <input className={input} value={draft.description} onChange={(e) => update({ description: e.target.value })} />
             </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="kind">
+              <Field label="종류">
                 <select className={input} data-field="kind" value={draft.kind} onChange={(e) => update({ kind: e.target.value as Kind })}>
                   {KINDS.map((k) => (
-                    <option key={k}>{k}</option>
+                    <option key={k} value={k}>
+                      {k}({KIND_SHORT[k]})
+                    </option>
                   ))}
                 </select>
               </Field>
-              <Field label="action">
-                <select className={input} value={draft.action} onChange={(e) => update({ action: e.target.value as Rule['action'] })}>
-                  <option value="alert">alert(알림)</option>
-                  <option value="kill">kill(컨테이너 강제 종료)</option>
+              <Field label="판정">
+                <select className={input} data-field="action" value={draft.action} onChange={(e) => update({ action: e.target.value as Rule['action'] })}>
+                  <option value="alert">alert(경고)</option>
+                  <option value="kill">kill(격리)</option>
                 </select>
               </Field>
             </div>
@@ -412,7 +415,7 @@ export function PolicyEditor({ rule, isNew, canWrite, readOnly, enforceKill, exi
                 <select className={input} data-field="directIp" value={draft.directIp} onChange={(e) => update({ directIp: e.target.value as DirectIp | '' })}>
                   <option value="">(비움)</option>
                   <option value="allow">allow(통과)</option>
-                  <option value="alert">alert(알림)</option>
+                  <option value="alert">alert(경고)</option>
                   <option value="kill">kill(격리)</option>
                 </select>
               </Field>

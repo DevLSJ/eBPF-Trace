@@ -51,9 +51,9 @@ export function SignalPills() {
     {
       key: 'kill',
       tone: enforce === true ? 'ok' : enforce === false ? 'warn' : 'muted',
-      text: enforce === true ? '자동 격리 켜짐' : enforce === false ? '자동 격리 · 알림만' : '자동 격리 · 미확인',
+      text: enforce === true ? '자동 격리 켜짐' : enforce === false ? '자동 격리 · 경고만' : '자동 격리 · 미확인',
       to: '/settings',
-      title: enforce === false ? '「즉시 격리」 정책도 알림만 보냅니다(ENFORCE_KILL=false)' : '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다',
+      title: enforce === false ? '「즉시 격리」 정책도 격리하지 않고 경고만 남깁니다(ENFORCE_KILL=false)' : '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다',
     },
     {
       key: 'notify',

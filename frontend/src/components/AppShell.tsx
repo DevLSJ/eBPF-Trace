@@ -200,7 +200,7 @@ export function AppShell() {
                   <div className="flex justify-between">
                     <span className="text-text-3">격리</span>
                     <span className={enforce ? 'text-danger-text' : 'text-warn-text'}>
-                      {enforce === undefined ? '' : enforce ? '자동 종료' : '알림만(dry-run)'}
+                      {enforce === undefined ? '' : enforce ? '자동 종료' : '경고만(dry-run)'}
                     </span>
                   </div>
                   {info?.gadgetVersion && (

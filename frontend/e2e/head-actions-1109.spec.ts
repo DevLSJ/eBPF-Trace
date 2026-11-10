@@ -86,7 +86,7 @@ test.describe('③ 주 버튼 = 화면 설명 줄 오른쪽 끝(1440)', () => {
     // 예전 시험이 찾는 이름(getByTestId('page-actions'))도 이 자리 하나뿐
     await expect(page.getByTestId('page-actions')).toHaveCount(1);
     await expect(head.getByTestId('page-actions')).toHaveCount(1);
-    await expect(head.locator('[data-part="screen-copy"]')).toHaveText('컨테이너 행동을 판정하는 정책을 만들고 적용 범위를 관리합니다.');
+    await expect(head.locator('[data-part="screen-copy"]')).toHaveText('컨테이너 행동을 탐지하는 정책을 만들고 적용 범위를 관리합니다.');
     await expect(head.locator('[data-part="screen-copy"]')).toHaveAttribute('data-screen', 'policies');
     await expectRightOfCopy(page, '/policies');
     await headerHasNoActions(page, '/policies');

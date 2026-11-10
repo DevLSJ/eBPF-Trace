@@ -59,7 +59,7 @@ test.describe('정책 쉬운 설정', () => {
     await page.locator(ED).getByRole('button', { name: '저장 전 확인' }).click();
     const chk = page.locator(`${ED} [data-part="save-check"]`);
     await expect(chk.locator('[data-preview-count]')).toBeVisible();
-    await expect(chk).toContainText('격리에서 알림으로 바뀜');
+    await expect(chk).toContainText('격리에서 경고로 바뀜');
     expect(backend.writes().filter((r) => r.path === '/policies')).toHaveLength(0);
     await page.screenshot({ path: `${SHOTS}/1440-11-policy-save-check.png` });
     await chk.getByRole('button', { name: '저장 후 적용' }).click();

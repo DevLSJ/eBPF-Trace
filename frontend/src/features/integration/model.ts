@@ -6,8 +6,8 @@ import type { Info, InstallSession, IntegrationContainer, IntegrationEnv, Integr
 export const FLOW: FlowNode[] = [
   { id: 'label', title: '내 컨테이너', sub: '라벨 한 줄', point: '컨테이너에 supplyguard.watch=true 라벨 추가됨' },
   { id: 'kernel', title: '커널 eBPF', sub: '실행 · 파일 · 통신 · 조회', point: '커널에서 실행 · 파일 열기 · 네트워크 연결 · DNS 질의 수집됨' },
-  { id: 'judge', title: 'SupplyGuard', sub: '정책으로 판정', point: '정책(YAML)과 비교해 정상 · 경고 · 격리 판정됨' },
-  { id: 'act', title: '경고 · 격리', sub: 'supplyguard.enforce', tone: 'danger', point: '위반은 기록 · 알림, 격리 라벨이 있으면 증거 수집 뒤 즉시 격리됨' },
+  { id: 'judge', title: 'SupplyGuard', sub: '정책으로 탐지', point: '정책(YAML)과 비교해 위반 탐지, 경고 · 격리로 나뉨' },
+  { id: 'act', title: '경고 · 격리', sub: 'supplyguard.enforce', tone: 'danger', point: '경고는 기록 후 알림 발송, 격리 라벨이 있으면 증거 수집 뒤 즉시 격리됨' },
 ];
 
 export type Tone = 'ok' | 'warn' | 'off';
@@ -41,7 +41,7 @@ export function envChecks(env: IntegrationEnv, info: Info | null): Check[] {
   out.push(
     missing.length
       ? { id: 'gadgets', label: '수집 항목', value: `${missing.join(' · ')} 없음`, tone: 'warn', hint: 'GADGETS 설정 확인 필요' }
-      : { id: 'gadgets', label: '수집 항목', value: info?.dnsResolve === 'ok' ? '실행 · 파일 · 통신 · DNS' : '실행 · 파일 · 통신', tone: info?.dnsResolve === 'off' ? 'warn' : 'ok', hint: info?.dnsResolve === 'off' ? 'trace_dns 꺼짐, 도메인 기준 판정은 통과 처리됨' : undefined },
+      : { id: 'gadgets', label: '수집 항목', value: info?.dnsResolve === 'ok' ? '실행 · 파일 · 통신 · DNS' : '실행 · 파일 · 통신', tone: info?.dnsResolve === 'off' ? 'warn' : 'ok', hint: info?.dnsResolve === 'off' ? 'trace_dns 꺼짐, 도메인 기준 탐지는 통과 처리됨' : undefined },
   );
   const d = info?.discovery ?? '';
   out.push(
@@ -54,7 +54,7 @@ export function envChecks(env: IntegrationEnv, info: Info | null): Check[] {
   out.push(
     env.enforceKill
       ? { id: 'enforce', label: '격리', value: '켜짐', tone: 'ok' }
-      : { id: 'enforce', label: '격리', value: '꺼짐(dry-run)', tone: 'warn', hint: 'ENFORCE_KILL=false(격리 정책도 알림만 전송됨)' },
+      : { id: 'enforce', label: '격리', value: '꺼짐(dry-run)', tone: 'warn', hint: 'ENFORCE_KILL=false(격리 정책도 격리하지 않고 경고만 남김)' },
   );
   return out;
 }

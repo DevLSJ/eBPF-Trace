@@ -122,7 +122,7 @@ test.describe('③ 정책 목록 표', () => {
     backend.seedPolicyHistory();
     backend.rules = backend.rules.map((r) => (r.id === 'no-shell-download' ? { ...r, dryRun: true } : r.id === 'pipe-to-shell' ? { ...r, disabled: true } : r));
     await page.goto('/policies');
-    await expect(page.locator('[data-part="screen-copy"]')).toHaveText('컨테이너 행동을 판정하는 정책을 만들고 적용 범위를 관리합니다.');
+    await expect(page.locator('[data-part="screen-copy"]')).toHaveText('컨테이너 행동을 탐지하는 정책을 만들고 적용 범위를 관리합니다.');
     await expect(page.getByRole('button', { name: '정책 생성' })).toHaveClass(/sg-btn-primary/);
     await expect(page.getByRole('button', { name: 'YAML 일괄 적용' })).toHaveClass(/sg-btn-secondary/);
     await expect(row(page, 'sensitive-files')).toBeVisible();

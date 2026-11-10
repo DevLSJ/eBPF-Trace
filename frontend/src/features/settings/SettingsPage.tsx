@@ -155,7 +155,7 @@ function ServerTab() {
   return (
     <div data-view="server">
       <Section title="동작">
-        <Row label="자동 격리" value={i.enforceKill ? '켜짐' : '꺼짐(알림만)'} env="ENFORCE_KILL" desc={i.enforceKill ? '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다' : '모든 정책이 알림만 보냅니다'} />
+        <Row label="자동 격리" value={i.enforceKill ? '켜짐' : '꺼짐(경고만)'} env="ENFORCE_KILL" desc={i.enforceKill ? '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다' : '모든 정책이 격리하지 않고 경고만 남깁니다'} />
         <Row label="감시 범위" value={watch.length ? watch.join(', ') : '모든 컨테이너'} env="WATCH_CONTAINERS" desc="이 범위의 컨테이너만 평가 · 격리합니다" />
         <Row label="제외" value={ignore.length ? ignore.join(', ') : '없음'} env="IGNORE_CONTAINERS" desc="SupplyGuard 자신처럼 보지 않을 컨테이너" />
       </Section>

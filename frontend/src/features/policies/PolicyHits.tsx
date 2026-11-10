@@ -38,7 +38,7 @@ export function PolicyHits({ ruleId }: { ruleId: string }) {
   return (
     <div className="flex min-h-full flex-col" data-testid="policy-hits">
       {!page.items.length ? (
-        <EmptyState what="차단 이력" hint="이 정책이 판정한 위반 기록이 아직 없습니다." />
+        <EmptyState what="차단 이력" hint="이 정책이 탐지한 위반 기록이 아직 없습니다." />
       ) : (
         <TableScroll className="min-w-0 overflow-x-auto">
           <table className="sg-table min-w-[560px]" data-table="policy-hits">

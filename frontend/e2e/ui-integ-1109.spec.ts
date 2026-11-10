@@ -215,11 +215,11 @@ test.describe('칸 이름 — 통일표(lib/fieldNames.ts) 한 곳', () => {
     await page.goto('/report?install=ins-0012');
     const rep = page.getByTestId('report');
     await expect(rep.locator('[data-section="violations"] tbody tr').first()).toBeVisible();
-    expect(await rep.locator('[data-section="violations"] thead th').allTextContents()).toEqual(['시각', '종류', '정책', '상세', '판정']);
+    expect(await rep.locator('[data-section="violations"] thead th').allTextContents()).toEqual(['시각', '종류', '정책', '상세', '탐지 결과']);
     await page.getByRole('button', { name: 'Markdown 복사' }).click();
     await expect(page.locator('[data-toast="report-copy"]')).toContainText('복사');
     const md = await page.evaluate(() => navigator.clipboard.readText());
-    expect(md).toContain('| 시각 | 종류 | 정책 | 상세 | 판정 |');
+    expect(md).toContain('| 시각 | 종류 | 정책 | 상세 | 탐지 결과 |');
     expect(md).not.toContain('| 규칙 |');
   });
 

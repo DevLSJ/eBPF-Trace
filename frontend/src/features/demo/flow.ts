@@ -11,7 +11,9 @@ import { msBetween, SCENARIO, type DemoModel, type Level3, type Outcome, type St
 export type FlowMode = 'idle' | 'live' | 'done';
 
 const STATE: Record<StepState, FlowState> = { done: 'done', active: 'on', todo: 'off', skip: 'skip' };
-const LV_SHORT: Record<Level3, string> = { killed: '격리', held: '격리 대상(dryRun)', alert: '경고' };
+const LV_SHORT: Record<Level3, string> = { killed: '격리', held: '격리 대상(시험 운영)', alert: '경고' };
+// 「정책 탐지」 노드의 요점(11/10 용어 — 자동 결과는 「탐지」, 「판정」은 사람의 결론)
+const LV_POINT: Record<Level3, string> = { killed: '격리됨', held: '격리 대상으로 탐지됨(시험 운영)', alert: '경고로 탐지됨' };
 
 export function idleNodes(k: DemoScenario): FlowNode[] {
   const s = SCENARIO[k];
@@ -19,7 +21,7 @@ export function idleNodes(k: DemoScenario): FlowNode[] {
   return [
     { id: 'start', title: '설치 시작', sub: '감시 컨테이너 sg-install-demo-*', point: '감시 컨테이너에서 패키지 설치 시작됨' },
     { id: 'events', title: '커널 이벤트', sub: s.flow.event, point: `커널(eBPF)에서 ${s.flow.event} 포착됨` },
-    { id: 'match', title: '규칙 판정', sub: s.flow.rule, point: pass ? '[통과] 모든 정책에서 위반 없음 확인됨' : `${s.flow.rule} 에 걸려 격리 판정됨` },
+    { id: 'match', title: '정책 탐지', sub: s.flow.rule, point: pass ? '[통과] 모든 정책에서 위반 없음 확인됨' : `${s.flow.rule} 에 걸려 격리됨` },
     pass
       ? { id: 'evidence', title: '증거 수집', sub: '건너뜀(격리 없음)', skip: true, point: '격리 없어 증거 수집 건너뜀' }
       : { id: 'evidence', title: '증거 수집', sub: '로그 · 파일 변경 · 프로세스', point: 'kill 직전 로그 · 파일 변경 · 프로세스 0.7초 안에 보존됨' },
@@ -52,9 +54,9 @@ export function liveFlow(run: DemoRun, m: DemoModel, steps: Step[]): { nodes: Fl
     : { id: 'events', title: '커널 이벤트', sub: m.running ? '첫 이벤트 기다리는 중' : '이벤트 없음', point: m.running ? '첫 커널 이벤트 기다리는 중' : '커널 이벤트 없음' };
 
   let match: FlowNode;
-  if (m.d && m.lv) match = { id: 'match', title: '규칙 판정', sub: `${m.d.ruleId || '규칙 이름 없음'} · ${LV_SHORT[m.lv]}`, point: `${m.d.ruleId || '규칙'} 에 걸려 ${LV_SHORT[m.lv]} 판정됨` };
-  else if (m.d === null && fin) match = { id: 'match', title: '규칙 판정', sub: '위반 없음', point: '[통과] 모든 정책에서 위반 없음 확인됨' };
-  else match = { id: 'match', title: '규칙 판정', sub: fin ? '정보 없음' : '판정 기다리는 중', point: fin ? '판정 정보 없음' : '규칙 판정 기다리는 중' };
+  if (m.d && m.lv) match = { id: 'match', title: '정책 탐지', sub: `${m.d.ruleId || '규칙 이름 없음'} · ${LV_SHORT[m.lv]}`, point: `${m.d.ruleId || '규칙'} 에 걸려 ${LV_POINT[m.lv]}` };
+  else if (m.d === null && fin) match = { id: 'match', title: '정책 탐지', sub: '위반 없음', point: '[통과] 모든 정책에서 위반 없음 확인됨' };
+  else match = { id: 'match', title: '정책 탐지', sub: fin ? '정보 없음' : '탐지 기다리는 중', point: fin ? '탐지 정보 없음' : '정책 탐지 기다리는 중' };
 
   const evMs = msBetween(m.tl?.evidenceStartedAt, m.tl?.evidenceDoneAt);
   let evidence: FlowNode;
@@ -69,7 +71,7 @@ export function liveFlow(run: DemoRun, m: DemoModel, steps: Step[]): { nodes: Fl
     evidence = { id: 'evidence', title: '증거 수집', sub: '건너뜀', point: m.d ? '격리하지 않아 증거 수집 건너뜀' : '위반 없어 증거 수집 건너뜀' };
   else if (fin) evidence = { id: 'evidence', title: '증거 수집', sub: '정보 없음', point: '증거 수집 정보 없음' };
   else if (st('evidence') === 'active') evidence = { id: 'evidence', title: '증거 수집', sub: '모으는 중', point: 'kill 직전 증거 수집 중' };
-  else evidence = { id: 'evidence', title: '증거 수집', sub: '격리 시 kill 직전 수집', point: '격리 판정 시 kill 직전 증거 수집' };
+  else evidence = { id: 'evidence', title: '증거 수집', sub: '격리 시 kill 직전 수집', point: '격리할 때 kill 직전 증거 수집' };
 
   // 실행 중이라도 격리 판정이 나왔으면 결과는 격리로 보인다
   const oc: Outcome = m.outcome ?? 'running';

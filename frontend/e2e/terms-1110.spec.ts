@@ -44,8 +44,16 @@ test.describe('11/10 용어 — 탐지 · 판정 · 경고', () => {
     await page.locator('[data-part="why-tabs"] [role="tab"][data-tab="flow"]').click();
     const flow = page.locator('[data-part="demo-flow"]');
     await expect(flow.locator('.flow-title')).toHaveText(['설치 시작', '커널 이벤트', '정책 탐지', '증거 수집', '격리']);
-    await expect(flow.locator('[data-node="match"]')).toContainText('에 걸려 격리됨');
+    // 흐름 그림 요점(지금 단계 한 줄) — 대기 중 예상 경로의 「정책 탐지」 요점
+    const idle = await page.evaluate(async (url) => {
+      const m = (await import(/* @vite-ignore */ url)) as { idleNodes: (k: string) => { id: string; point: string }[] };
+      return m.idleNodes('shell').map((n) => `${n.id}:${n.point}`);
+    }, '/src/features/demo/flow.ts');
+    expect(idle).toContain('match:pipe-to-shell 에 걸려 격리됨');
+    expect(idle.join('\n')).not.toContain('판정');
     expect(await allText(demo)).not.toContain('판정');
+    await expect(page.locator('[data-part="demo-flow-tab"]')).toHaveAttribute('data-mode', 'done');
+    await page.waitForTimeout(1500); // 흐름 그림이 결과 단계에서 멈출 때까지(사진용)
     await page.screenshot({ path: `${SHOT}/1440-demo-flow.png` });
   });
 
@@ -57,6 +65,9 @@ test.describe('11/10 용어 — 탐지 · 판정 · 경고', () => {
     const t = await allText(integ);
     expect(t).not.toContain('판정');
     expect(t).not.toContain('알림만');
+    // 사진: 흐름 그림이 ③ SupplyGuard(정책으로 탐지) 단계에 왔을 때
+    await expect(integ.locator('.flow-point-step')).toHaveText('3 / 4', { timeout: 15_000 });
+    await page.waitForTimeout(700);
     await page.screenshot({ path: `${SHOT}/1440-integration-flow.png` });
     backend.info.dnsResolve = 'off';
     backend.integration = { ...backend.integration, env: { ...backend.integration.env, enforceKill: false } };

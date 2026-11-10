@@ -192,13 +192,13 @@ export function scopeOf(d: Draft): Scope {
   const cs = listOf(d, 'containers');
   return !cs.length ? 'all' : cs.every((c) => c === SANDBOX_SCOPE) ? 'sandbox' : 'some';
 }
-export const actionLabel = (r: Pick<Rule, 'action' | 'dryRun'>) => ({ alert: '알림', kill: '격리', dry: '시험' })[actOf({ action: r.action, dryRun: !!r.dryRun })];
+export const actionLabel = (r: Pick<Rule, 'action' | 'dryRun'>) => ({ alert: '경고', kill: '격리', dry: '시험 운영' })[actOf({ action: r.action, dryRun: !!r.dryRun })];
 
 // ── 한 줄 요약 ──
 const fmtConn = (xs: Chip[]) => xs.map((c) => (c.type === 'port' ? `포트 ${c.value}` : c.value)).join(' · ');
 export function summarize(d: Draft): string {
   const scope = { all: '모든 컨테이너에서', sandbox: '설치 검사 컨테이너에서', some: `${listOf(d, 'containers').join(', ')} 컨테이너에서` }[scopeOf(d)];
-  const act = { alert: '알림을 보냅니다', kill: '즉시 격리합니다', dry: '격리 대상으로 표시만 합니다(시험 운영)' }[actOf(d)];
+  const act = { alert: '경고로 남깁니다', kill: '즉시 격리합니다', dry: '격리 대상으로 표시만 합니다(시험 운영)' }[actOf(d)];
   const g = GROUPS[d.kind];
   const block = chipsOf(d, g.block);
   const allow = g.allow ? chipsOf(d, g.allow) : [];
@@ -240,10 +240,10 @@ export const TEMPLATES: Template[] = [
   { key: 'no-downloader', title: '내려받기 도구 실행 차단', desc: 'curl · wget · nc 로 무언가를 받아 오면 격리', rule: { id: 'no-downloader', description: '내려받기 도구 실행 차단', kind: 'exec', action: 'kill', denyComms: ['curl', 'wget', 'nc'] } },
   { key: 'pipe-shell', title: '받은 스크립트 바로 실행 차단', desc: '「| sh」 처럼 받은 내용을 바로 셸로 넘기면 격리', rule: { id: 'no-pipe-shell', description: '받은 스크립트 바로 실행 차단', kind: 'exec', action: 'kill', denyArgs: ['| sh', '| bash'] } },
   { key: 'reverse-shell', title: '리버스 셸 포트 차단', desc: '공격자가 흔히 쓰는 포트로 연결하면 격리', rule: { id: 'block-reverse-shell', description: '리버스 셸 포트 차단', kind: 'connect', action: 'kill', denyPorts: [4444, 1337, 31337] } },
-  { key: 'egress-allow', title: '허용한 곳만 통신', desc: '웹 · DNS 포트와 내부망이 아닌 연결을 알림', rule: { id: 'egress-allow', description: '허용한 곳만 통신', kind: 'connect', action: 'alert', allowPorts: [80, 443, 53], allowCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'] } },
+  { key: 'egress-allow', title: '허용한 곳만 통신', desc: '웹 · DNS 포트와 내부망이 아닌 연결을 경고', rule: { id: 'egress-allow', description: '허용한 곳만 통신', kind: 'connect', action: 'alert', allowPorts: [80, 443, 53], allowCidrs: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'] } },
   { key: 'install-registry', title: '설치 중엔 패키지 저장소만', desc: '설치 검사에서 pypi · npm · crates 밖으로 연결하면 격리', rule: { id: 'install-registry-only', description: '설치 중엔 패키지 저장소만', kind: 'connect', action: 'kill', containers: [SANDBOX_SCOPE], allowHosts: ['pypi.org', 'pythonhosted.org', 'registry.npmjs.org', 'crates.io', 'github.com'] } },
   // 10/30 계약 §1 템플릿 — runtime-dns-exfil 값 그대로
-  { key: 'dns-exfil', title: 'DNS 유출 패턴 차단', desc: '긴 라벨 · 긴 이름 · TXT 질의를 알림', rule: { id: 'runtime-dns-exfil', description: 'DNS 질의로 데이터를 실어 보내는 패턴(긴 라벨 · 긴 이름 · TXT 질의). 런타임은 경고만', kind: 'dns', action: 'alert', maxLabelLength: 40, maxNameLength: 120, denyQtypes: ['TXT'] } },
+  { key: 'dns-exfil', title: 'DNS 유출 패턴 차단', desc: '긴 라벨 · 긴 이름 · TXT 질의를 경고', rule: { id: 'runtime-dns-exfil', description: 'DNS 질의로 데이터를 실어 보내는 패턴(긴 라벨 · 긴 이름 · TXT 질의). 런타임은 경고만', kind: 'dns', action: 'alert', maxLabelLength: 40, maxNameLength: 120, denyQtypes: ['TXT'] } },
   { key: 'blank', title: '빈 정책에서 시작', desc: '무엇을 · 어떤 값을 직접 고릅니다', rule: { id: 'new-policy', description: '', kind: 'open', action: 'alert' } },
 ];
 

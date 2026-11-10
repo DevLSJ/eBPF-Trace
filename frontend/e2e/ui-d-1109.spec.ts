@@ -464,7 +464,7 @@ test.describe('대시보드 — 쉬운 말 · 사진(G38)', () => {
     // 툴팁은 쉬운 문장이 먼저, 설정 이름은 괄호 안 보조로
     const pill = (k: string) => page.locator(`[data-testid="signal-pills"] [data-pill="${k}"]`);
     await expect(pill('notify')).toHaveAttribute('title', '알림 채널이 없습니다. 서버 설정에 웹훅 · Slack 주소를 넣습니다(NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL)');
-    await expect(pill('kill')).toHaveAttribute('title', '「즉시 격리」 정책도 알림만 보냅니다(ENFORCE_KILL=false)');
+    await expect(pill('kill')).toHaveAttribute('title', '「즉시 격리」 정책도 격리하지 않고 경고만 남깁니다(ENFORCE_KILL=false)');
     await expect(pill('gadget')).toHaveAttribute('title', '모의 이벤트로 동작하고 있습니다(mock 소스)');
   });
 

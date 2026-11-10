@@ -128,7 +128,7 @@ function Report({ d, author, at }: { d: ReportData; author: string; at: Date }) 
           <table className="sg-table">
             <thead>
               <tr>
-                {['시각', '종류', FIELD.policy, '상세', '판정'].map((h) => (
+                {['시각', '종류', FIELD.policy, '상세', '탐지 결과'].map((h) => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>

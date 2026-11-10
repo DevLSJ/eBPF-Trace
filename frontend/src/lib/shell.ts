@@ -65,7 +65,7 @@ export function computeNotices(x: NoticeInput): Notice[] {
     out.push({ id: 'dns', sig: 'off', tone: 'warn', title: '도메인 판단 꺼짐', text: '도메인 조회 감시가 뜨지 않아 도메인 기준 규칙과 DNS 질의 규칙이 통과 처리됩니다', to: '/settings' });
   // 11/09 G38: 설정 이름(ENFORCE_KILL)은 설정 화면 보조 글로만 — 여기는 쉬운 말
   if (x.enforceKill === false)
-    out.push({ id: 'dryrun', sig: 'off', tone: 'warn', title: '격리 꺼짐 · 알림만(dry-run)', text: '「즉시 격리」 정책도 알림만 보냅니다(서버 설정 「자동 격리」)', to: '/settings' });
+    out.push({ id: 'dryrun', sig: 'off', tone: 'warn', title: '격리 꺼짐 · 경고만(dry-run)', text: '「즉시 격리」 정책도 격리하지 않고 경고만 남깁니다(서버 설정 「자동 격리」)', to: '/settings' });
   const n = x.info?.notify;
   if (n?.enabled && n.failed > 0)
     out.push({ id: 'webhook', sig: String(n.failed), tone: 'danger', title: `알림 발송 실패 ${n.failed}건`, text: n.lastError || '설정 › 서버 설정 › 알림에서 마지막 오류를 확인하세요', to: '/settings' });

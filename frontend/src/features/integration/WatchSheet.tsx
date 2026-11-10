@@ -225,7 +225,7 @@ function WatchInfo({ id, c, detail }: { id: string; c: IntegrationContainer | un
             ) : (
               <>
                 격리 보류
-                <span className="mt-0.5 block text-xs text-text-3">정책이 격리여도 알림만 보냅니다. 격리하려면 supplyguard.enforce=true 라벨을 붙입니다.</span>
+                <span className="mt-0.5 block text-xs text-text-3">정책이 격리여도 격리하지 않고 경고만 남깁니다. 격리하려면 supplyguard.enforce=true 라벨을 붙입니다.</span>
               </>
             )}
           </Row>
@@ -275,7 +275,7 @@ function WatchViolations({ name }: { name: string }) {
   return (
     <div className="flex min-h-full flex-col" data-testid="watch-violations">
       {!rows.length ? (
-        <EmptyState what="위반 이력" hint="이 컨테이너에서 위반으로 판정된 기록이 없습니다." />
+        <EmptyState what="위반 이력" hint="이 컨테이너에서 위반으로 탐지된 기록이 없습니다." />
       ) : (
         <TableScroll className="min-w-0 overflow-x-auto">
           <table className="sg-table min-w-[560px]" data-table="watch-violations">

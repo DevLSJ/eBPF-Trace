@@ -56,7 +56,7 @@ export const SCENARIO: Record<DemoScenario, { name: string; line: string; expect
     name: 'DNS 없이 공인 IP 접속',
     line: 'connect 203.0.113.7:443 · 도메인 조회 없음',
     expect: 'isolated',
-    long: '도메인 조회 없이 공인 IP 로 바로 붙습니다. trace_dns 가 켜져 있으면 directIp 규칙으로 판정합니다.',
+    long: '도메인 조회 없이 공인 IP 로 바로 붙습니다. trace_dns 가 켜져 있으면 directIp 규칙으로 탐지합니다.',
     brief: {
       what: '도메인 조회 없이 공인 IP 203.0.113.7:443 으로 바로 연결함',
       rule: 'sandbox-egress(directIp: kill, trace_dns 켜짐 기준)',
@@ -117,7 +117,7 @@ export const EXPECT_LABEL: Record<Expect, string> = { isolated: '격리 예상',
 export const STEPS = [
   ['start', '설치 시작'],
   ['events', '커널 이벤트'],
-  ['match', '규칙 판정'],
+  ['match', '정책 탐지'],
   ['evidence', '증거 수집'],
   ['outcome', '결과'],
 ] as const;
@@ -169,7 +169,7 @@ export function markParts(text: string, reason?: string | null): [string, string
 
 export type Level3 = Exclude<Level, 'normal'>;
 export const levelOfDecider = (d: Pick<DemoDecider, 'action' | 'enforced'>): Level3 => (d.action !== 'kill' ? 'alert' : d.enforced ? 'killed' : 'held');
-export const VERDICT_KO: Record<Level3, string> = { killed: '격리', held: '격리 대상(dryRun · 알림만)', alert: '경고' };
+export const VERDICT_KO: Record<Level3, string> = { killed: '격리', held: '격리 대상(시험 운영 · 경고만)', alert: '경고' };
 
 export interface DemoModel {
   // undefined = 아직 모름(판정 기다리는 중 · 정보 없음), null = 위반 없음(통과)

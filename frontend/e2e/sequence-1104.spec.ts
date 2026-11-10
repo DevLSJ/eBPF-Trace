@@ -8,10 +8,10 @@ import { SEQ_PATHS, SEQ_RULE_ID, sequenceRule } from './mock-backend';
 
 const ED = '[data-view="rule-editor"]';
 const YAML_TA = `${ED} textarea[aria-label="정책 YAML"]`;
-const NO_PREVIEW = '연쇄 규칙은 미리보기를 할 수 없습니다. 감사 로그에는 위반만 저장돼 연쇄의 앞 단계(정상 실행 · 연결)가 남아 있지 않습니다. 시험 운영(dryRun)으로 저장해 실제 판정을 지켜본 뒤 격리로 바꾸세요';
+const NO_PREVIEW = '연쇄 규칙은 미리보기를 할 수 없습니다. 감사 로그에는 위반만 저장돼 연쇄의 앞 단계(정상 실행 · 연결)가 남아 있지 않습니다. 시험 운영(dryRun)으로 저장해 실제 탐지를 지켜본 뒤 격리로 바꾸세요';
 const KILL_WARN = '시험 운영(dryRun) 없이 격리(kill)로 저장합니다. 오탐이면 정상 컨테이너가 바로 종료됩니다. 먼저 dryRun: true 로 지켜보기를 권합니다';
 const SEQ_LINE = `규칙 ${SEQ_RULE_ID}: exec wget(0.0초) → connect 203.0.113.7:80(+2.1초) → open /root/.netrc(+2.4초)`;
-const SUMMARY_DRY = '연쇄 3단계 · 10초 안 · 시험(격리 대상)';
+const SUMMARY_DRY = '연쇄 3단계 · 10초 안 · 시험 운영(격리 대상)';
 
 const openSeq = async (page: Page) => {
   await page.goto(`/policies?id=${SEQ_RULE_ID}`);
@@ -52,7 +52,7 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
     for (const want of [`id: ${SEQ_RULE_ID}`, 'kind: sequence', 'action: kill', 'dryRun: true', 'windowSeconds: 10', 'steps:', '  - kind: exec', '    denyComms:', '      - curl', '  - kind: connect', '    allowCidrs:', '  - kind: open', '      - /root/.kube/config'])
       expect(y, want).toContain(want);
     expect(y.some((l) => /^(denyComms|allowCidrs|denyPaths):/.test(l)), '조건이 최상위에 나옴').toBe(false);
-    await expect(ed).toContainText('kill → 알림만 (dry-run)');
+    await expect(ed).toContainText('kill → 경고만(시험 운영)');
     await page.screenshot({ path: `${SHOTS}/1104-seq-yaml.png` });
   });
 
@@ -154,7 +154,7 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
     await expect(item).toContainText('windowSeconds: 20 (지금 값 유지, 기본은 10)');
     await expect(item).not.toContainText('[object Object]');
     await item.locator('[data-action="default-preview"]').click();
-    await expect(saveCheck(page).locator('[data-summary]')).toHaveText('연쇄 3단계 · 20초 안 · 시험(격리 대상)');
+    await expect(saveCheck(page).locator('[data-summary]')).toHaveText('연쇄 3단계 · 20초 안 · 시험 운영(격리 대상)');
     await saveCheck(page).getByRole('button', { name: '저장 후 적용' }).click();
     await expect.poll(() => backend.rules.find((r) => r.id === SEQ_RULE_ID)!.steps![2].denyPaths!.length).toBe(10);
     const s = backend.rules.find((r) => r.id === SEQ_RULE_ID)!;
@@ -171,7 +171,7 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
     await page.locator('[data-action="defaults-toggle"]').click();
     await expect(page.locator(`[data-default="${SEQ_RULE_ID}"]`)).toContainText('steps: 지금 단계 유지 (기본은 exec → connect → open)');
     await page.locator(`[data-default="${SEQ_RULE_ID}"] [data-action="default-preview"]`).click();
-    await expect(saveCheck(page).locator('[data-summary]')).toHaveText('연쇄 2단계 · 20초 안 · 시험(격리 대상)');
+    await expect(saveCheck(page).locator('[data-summary]')).toHaveText('연쇄 2단계 · 20초 안 · 시험 운영(격리 대상)');
   });
 
   test('⑦ 감사 상세: 연쇄가 이긴 행에 「연쇄」 한 줄 · 「이 행동 허용」 없음 / 다른 행에는 연쇄 행 없음', async ({ page, backend }) => {
@@ -197,7 +197,7 @@ test.describe('연쇄 규칙(kind: sequence) — 정책 · 감사 · 이벤트 �
     await page.locator('li[data-key]', { hasText: '/root/.ssh/id_rsa' }).first().click();
     await expect(sheet).toBeVisible();
     expect(await seqRows(page, 'event')).toEqual([
-      `규칙 ${SEQ_RULE_ID}: exec wget(0.0초) → connect 203.0.113.7:80(+2.1초) → open /root/.ssh/id_rsa(+2.4초) · 판정은 sensitive-files`,
+      `규칙 ${SEQ_RULE_ID}: exec wget(0.0초) → connect 203.0.113.7:80(+2.1초) → open /root/.ssh/id_rsa(+2.4초) · 탐지 정책 sensitive-files`,
     ]);
     await expect(sheet.locator('[data-action="allow-this"]')).toContainText('sensitive-files');
     await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다

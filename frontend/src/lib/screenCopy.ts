@@ -7,7 +7,7 @@
 //   <p className="…">{screenCopy('policies')}</p>   ·   <ScreenNote screen="policies" />
 export const SCREEN_COPY: Record<string, string> = {
   // 정책 · 차단 목록 · 변경 이력(11/09 정책 화면 분리)
-  policies: '컨테이너 행동을 판정하는 정책을 만들고 적용 범위를 관리합니다.',
+  policies: '컨테이너 행동을 탐지하는 정책을 만들고 적용 범위를 관리합니다.',
   'policies/blocklist': '악성 판정으로 차단한 대상을 종류별로 확인하고 해제합니다.',
   'policies/changes': '정책과 차단 목록의 변경 기록을 시각순으로 확인합니다.',
   // 정책 밖 목록 · 화면(11/09 P5)

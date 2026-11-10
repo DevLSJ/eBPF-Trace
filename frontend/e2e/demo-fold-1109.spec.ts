@@ -180,7 +180,7 @@ test.describe('11/09 시연 — 상세 탭 · 흐름 그림', () => {
   test('탭: 「판정 근거」(기본 — 기존 「왜」 카드) · 「흐름 그림」 전환, 패널 제목 그대로, 화살표 키로도 전환', async ({ page }) => {
     await goDemo(page);
     const tabs = page.locator('[data-part="why-tabs"] [role="tab"]');
-    expect(await tabs.allTextContents()).toEqual(['판정 근거', '흐름 그림']);
+    expect(await tabs.allTextContents()).toEqual(['탐지 근거', '흐름 그림']);
     await expect(tab(page, 'why')).toHaveAttribute('aria-selected', 'true');
     await expect(tab(page, 'flow')).toHaveAttribute('aria-selected', 'false');
     await expect(page.locator('[data-part="why"]')).toBeVisible();
@@ -212,7 +212,7 @@ test.describe('11/09 시연 — 상세 탭 · 흐름 그림', () => {
     await expect(page.locator(FLOW_TAB)).toHaveAttribute('data-mode', 'idle');
     await expect(flow).toHaveAttribute('data-playing', 'true');
     expect(await flow.locator('[data-node]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.node))).toEqual(NODES);
-    expect(await flow.locator('.flow-title').allTextContents()).toEqual(['설치 시작', '커널 이벤트', '규칙 판정', '증거 수집', '격리']);
+    expect(await flow.locator('.flow-title').allTextContents()).toEqual(['설치 시작', '커널 이벤트', '정책 탐지', '증거 수집', '격리']);
     await expect(flow.locator('[data-node="match"] .flow-sub')).toContainText('pipe-to-shell');
     await expect(flow.locator('[data-node="outcome"]')).toHaveAttribute('data-tone', 'danger');
     // 세로 배치

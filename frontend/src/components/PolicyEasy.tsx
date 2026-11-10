@@ -21,7 +21,7 @@ import type { Kind } from '../lib/types';
 // 11/09: ④ 「어디에」는 적용 컨테이너 카드(features/policies/ContainersCard) — PolicyEditor 가 scope 로 넘긴다.
 //   큰 2단 창에서는 카드가 오른쪽 칸에 있어 ④ 를 그리지 않는다(scope 없음)
 const ACT_TEXT: Record<Act, [string, string]> = {
-  alert: ['알림만 보내기', '컨테이너는 그대로 두고 알립니다'],
+  alert: ['경고만', '컨테이너는 그대로 두고 경고로 남깁니다'],
   kill: ['즉시 격리', '컨테이너를 바로 멈춥니다'],
   dry: ['시험 운영', '격리 대상으로 표시만 하고 멈추지 않습니다(새 정책을 먼저 써 볼 때)'],
 };
@@ -78,7 +78,7 @@ export function PolicyEasy({
           options={Object.entries(ACT_TEXT) as [Act, [string, string]][]}
           onPick={(v) => onChange({ ...d, action: v === 'alert' ? 'alert' : 'kill', dryRun: v === 'dry' })}
         />
-        {!enforceKill && <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">지금 서버의 자동 격리가 꺼져 있어 「즉시 격리」도 알림만 갑니다(서버 설정 참고)</p>}
+        {!enforceKill && <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">지금 서버의 자동 격리가 꺼져 있어 「즉시 격리」도 격리하지 않고 경고만 남습니다(서버 설정 참고)</p>}
       </Step>
       {scope && (
         <Step id="scope" n={4} title="어디에 적용할까요?">

@@ -15,13 +15,13 @@ const ms = (a?: string, b?: string) => (a && b ? Math.max(0, Date.parse(b) - Dat
 // 탐지→판정 = matchedAt − detectedAt · 증거 = 훅 시작→끝 · 격리 = (증거 끝 또는 판정)→kill 응답 · 알림 = kill→큐 투입
 export function segmentsOf(t: Timeline | null | undefined): Segment[] {
   if (!t) return [
-    { key: 'detect', label: '탐지→판정', ms: null },
+    { key: 'detect', label: '수집→탐지', ms: null },
     { key: 'evidence', label: '증거', ms: null },
     { key: 'kill', label: '격리', ms: null },
     { key: 'notify', label: '알림', ms: null },
   ];
   return [
-    { key: 'detect', label: '탐지→판정', ms: ms(t.detectedAt, t.matchedAt) },
+    { key: 'detect', label: '수집→탐지', ms: ms(t.detectedAt, t.matchedAt) },
     { key: 'evidence', label: '증거', ms: ms(t.evidenceStartedAt, t.evidenceDoneAt) },
     { key: 'kill', label: '격리', ms: t.killedAt ? ms(t.evidenceDoneAt ?? t.matchedAt, t.killedAt) : null },
     { key: 'notify', label: '알림', ms: ms(t.killedAt, t.notifiedAt) },

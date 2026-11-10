@@ -98,7 +98,7 @@ export function reportMarkdown(d: ReportData, author: string, at = new Date()): 
   for (const [k, v] of summaryLines(d)) out.push(`- ${k}: ${v}`);
   out.push('', '## 격리 타임라인');
   out.push(`${segs.map((s) => `${s.label} ${fmtMs(s.ms)}`).join(' · ')} · 격리까지 ${total === null ? '' : fmtSec(total)}`);
-  out.push('', '## 위반', `| 시각 | 종류 | ${FIELD.policy} | 상세 | 판정 |`, '|---|---|---|---|---|');
+  out.push('', '## 위반', `| 시각 | 종류 | ${FIELD.policy} | 상세 | 탐지 결과 |`, '|---|---|---|---|---|');
   for (const v of d.violations) out.push(`| ${fmtDateTime(v.event.timestamp)} | ${v.event.kind} | ${v.ruleId ?? ''} | ${detailOf(v.event).replace(/\|/g, '\\|')} | ${LEVEL_LABEL[levelOf(v)]} |`);
   if (!d.violations.length) out.push('|  |  |  | 위반 없음 |  |');
   out.push('', '## 증거');

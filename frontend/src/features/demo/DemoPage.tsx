@@ -301,7 +301,7 @@ function FlowCol({ run, m, steps, now, loadError }: { run: DemoRun | null; m: De
             </>
           );
         if (m.d === null && fin) return <span className="tone-ok">[통과] 설치 중 행동에 위반 사항 없음</span>;
-        return fin ? <None /> : <span className="text-text-3">판정 기다리는 중</span>;
+        return fin ? <None /> : <span className="text-text-3">탐지 기다리는 중</span>;
       case 'evidence': {
         if (s.state === 'skip') return <span className="text-text-3">{m.d ? '[건너뜀] 격리하지 않아 모으지 않음' : '[건너뜀] 위반 없음'}</span>;
         const evMs = msBetween(m.tl?.evidenceStartedAt, m.tl?.evidenceDoneAt);
@@ -388,7 +388,7 @@ function EventsBox({ m }: { m: DemoModel }) {
 
 // ── 오른쪽: 탭(11/09) — 「판정 근거」(기본, 아래 「왜」 카드) · 「흐름 그림」 ──
 const TABS: [Tab, string][] = [
-  ['why', '판정 근거'],
+  ['why', '탐지 근거'],
   ['flow', '흐름 그림'],
 ];
 function WhyTabs({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => void }) {
@@ -461,7 +461,7 @@ function FlowTab({ mode, scenario, run, m, steps, onWhy }: { mode: FlowMode; sce
       {mode === 'done' ? (
         <div className="flow-done">
           <button type="button" className="sg-btn sg-btn-sm sg-btn-secondary" data-action="show-why" onClick={onWhy}>
-            판정 근거 보기
+            탐지 근거 보기
           </button>
         </div>
       ) : null}
@@ -494,9 +494,9 @@ function WhyCol({
   const mark = ev ? markParts(raw, d?.reason) : null;
 
   let whyBody: ReactNode;
-  if (!run) whyBody = <p className="why-muted">실행하면 판정을 만든 규칙과 이벤트가 여기에 나옵니다.</p>;
+  if (!run) whyBody = <p className="why-muted">실행하면 탐지한 정책과 이벤트가 여기에 나옵니다.</p>;
   else if (d === null) whyBody = <p className="why-pass">걸린 규칙 없음. 설치하는 동안 정책에 걸린 행동이 없었습니다(정상 대조군).</p>;
-  else if (d === undefined) whyBody = m.running ? <p className="why-muted">판정 기다리는 중…</p> : <None />;
+  else if (d === undefined) whyBody = m.running ? <p className="why-muted">탐지 기다리는 중…</p> : <None />;
   else
     whyBody = (
       <>

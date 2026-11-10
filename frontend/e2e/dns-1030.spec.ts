@@ -54,7 +54,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     await page.getByRole('button', { name: '정책 생성' }).click(); // 11/09: 큰 2단 창
     const tpl = page.locator('[data-view="templates"] [data-template="dns-exfil"]');
     await expect(tpl).toContainText('DNS 유출 패턴 차단');
-    await expect(tpl).toContainText('긴 라벨 · 긴 이름 · TXT 질의를 알림');
+    await expect(tpl).toContainText('긴 라벨 · 긴 이름 · TXT 질의를 경고');
     await expect(tpl).toContainText('도메인 조회');
     await tpl.click();
     const ed = page.locator(ED);

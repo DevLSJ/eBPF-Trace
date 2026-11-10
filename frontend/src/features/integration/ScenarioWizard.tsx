@@ -631,7 +631,7 @@ function TestStep({ sc, st, set, containers }: { sc: 'single' | 'multi'; st: Sav
           <span className="int-muted">명령 복사 → 실행하면 결과가 여기에 자동 표시됨</span>
         ) : !v || !out ? (
           <span className="int-wait">
-            <Loader2 className="size-4 animate-spin" aria-hidden /> {target} 의 위반 판정 기다리는 중
+            <Loader2 className="size-4 animate-spin" aria-hidden /> {target} 의 위반 탐지 기다리는 중
           </span>
         ) : (
           <>
