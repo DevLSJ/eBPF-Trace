@@ -274,3 +274,17 @@ test.describe('11/10 증거 파일 트리: 등급 A/F · 접힘 · 설치 스크
     await page.screenshot({ path: `${SHOT}/evidence-tree-390.png` });
   });
 });
+
+// 시트 안 트리에 초점이 있을 때 ↑↓ 는 트리 안에서 움직이고, 시트의 「이전 · 다음 행」으로 넘어가지 않는다(메인 11/10 — Sheet 캡처 단계 키 처리)
+test('시트 안 트리: ↑↓ 는 트리 항목 사이 이동, 다른 감사 행으로 넘어가지 않음', async ({ page, backend }) => {
+  const { row } = seed(backend);
+  await page.goto(`/audit?id=${row.id}&tab=evidence`);
+  const first = tree(page).locator('[role="treeitem"]').first();
+  await expect(first).toBeVisible();
+  await first.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(page).toHaveURL(new RegExp(`id=${row.id}(&|$)`));
+  const focused = await page.evaluate(() => (document.activeElement as HTMLElement | null)?.getAttribute('role'));
+  expect(focused).toBe('treeitem');
+  expect(await page.evaluate(() => (document.activeElement as HTMLElement).dataset.path)).not.toBe(await first.getAttribute('data-path'));
+});
