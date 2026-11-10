@@ -44,12 +44,12 @@ func pickScripts(changes []dockerapi.Change) []string {
 			out = append(out, p)
 		}
 	}
+	var dirs []string
 	for _, ch := range changes {
-		if strings.Count(ch.Path, "/") == 2 && strings.HasPrefix(ch.Path, "/pkg/") {
-			for _, n := range []string{"setup.py", "pyproject.toml", "package.json", "build.rs"} {
-				add(ch.Path + "/" + n)
-			}
-		}
+		dirs = append(dirs, ch.Path)
+	}
+	for _, p := range pkgScripts(dirs) {
+		add(p)
 	}
 	type cand struct {
 		path  string
@@ -67,6 +67,19 @@ func pickScripts(changes []dockerapi.Change) []string {
 	sort.SliceStable(cs, func(a, b int) bool { return cs[a].depth < cs[b].depth })
 	for _, c := range cs {
 		add(c.path)
+	}
+	return out
+}
+
+// pkgScripts: 로컬 패키지 폴더(/pkg/<이름>, inspect 의 마운트 또는 diff 의 폴더 줄)에서 볼 설치 스크립트 경로
+func pkgScripts(dirs []string) []string {
+	var out []string
+	for _, d := range dirs {
+		if strings.Count(d, "/") == 2 && strings.HasPrefix(d, "/pkg/") {
+			for _, n := range []string{"setup.py", "pyproject.toml", "package.json", "build.rs"} {
+				out = append(out, d+"/"+n)
+			}
+		}
 	}
 	return out
 }
@@ -136,4 +149,18 @@ func trimPartialRune(b []byte) []byte {
 		b = b[:len(b)-1]
 	}
 	return b
+}
+
+// orderFiles: 읽은 파일을 맡긴 순서(로컬 폴더 먼저 · 얕은 경로 먼저)로 놓고 MaxFiles 개까지
+func orderFiles(files []model.EvidenceFile, order []string) []model.EvidenceFile {
+	rank := make(map[string]int, len(order))
+	for i, p := range order {
+		rank[p] = i
+	}
+	out := append([]model.EvidenceFile(nil), files...)
+	sort.SliceStable(out, func(a, b int) bool { return rank[out[a].Path] < rank[out[b].Path] })
+	if len(out) > MaxFiles {
+		out = out[:MaxFiles]
+	}
+	return out
 }
