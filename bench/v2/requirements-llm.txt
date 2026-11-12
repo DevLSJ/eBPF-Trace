@@ -1,0 +1,20 @@
+# 평가 규칙 v2 LLM 층(bench/v2/llm_layer.py)의 실제 호출에만 필요하다. CI · make test 는 설치하지 않는다(시험은 SDK 없이도 돈다).
+#   python3 -m venv bench/.venv && bench/.venv/bin/python -m pip install -r bench/v2/requirements-llm.txt
+# 파이썬 3.10 이상. 2026-11-12 PyPI 최신 판으로 고정(anthropic 2.x 는 API 판 2026-10-21 을 보낸다).
+anthropic==2.8.0
+# 아래는 anthropic 이 끌어오는 것 — 같은 날 설치된 판 그대로
+annotated-types==0.8.0
+anyio==4.16.0
+docstring_parser==0.18.0
+h11==0.16.0
+httpcore2==2.16.0
+httpx2==2.16.0
+idna==3.20
+jiter==0.19.0
+opentelemetry-api==1.45.2
+pydantic==2.14.3
+pydantic_core==2.50.4
+sniffio==1.3.1
+truststore==0.10.5
+typing-inspection==0.4.5
+typing_extensions==4.16.0
