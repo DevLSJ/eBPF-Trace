@@ -1,0 +1,32 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# node
+node_modules/
+.next/
+dist/
+*.log
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+
+# local data — 외부 평가 데이터는 추적 제외, 안내 문서만 커밋 (data/README.md)
+data/*
+!data/README.md
+*.db
+
+# next
+.next/
+next-env.d.ts
+*.tsbuildinfo

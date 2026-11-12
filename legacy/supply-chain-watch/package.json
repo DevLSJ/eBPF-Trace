@@ -1,0 +1,27 @@
+{
+  "name": "supply-chain-watch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LLM 기반 오픈소스 커밋 실시간 악성 행위 탐지 시스템",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:types": "pnpm --filter @scw/shared-types build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "pnpm -r --if-present lint",
+    "dev": "bash scripts/dev.sh",
+    "dev:gateway": "pnpm --filter @scw/gateway dev",
+    "dev:analyzer": "pnpm --filter @scw/analyzer dev",
+    "dev:web": "pnpm --filter @scw/web dev",
+    "dev:engine": "bash -c 'cd apps/engine && uv run uvicorn app.main:app --reload --port ${ENGINE_PORT:-8000}'",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "migrate": "pnpm --filter @scw/gateway migrate",
+    "tunnel": "bash scripts/tunnel.sh"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

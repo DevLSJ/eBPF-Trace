@@ -1,0 +1,13 @@
+[project]
+name = "img-optimize-demo"
+version = "0.4.1"
+description = "공급망 공격 탐지 시연용 무해 데모 패키지 (docs/13 §8, ADR-019). 실제 PyPI 배포 금지."
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["img_optimize_demo"]

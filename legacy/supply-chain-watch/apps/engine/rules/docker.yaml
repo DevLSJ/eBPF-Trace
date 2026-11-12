@@ -1,0 +1,46 @@
+# Dockerfile 심화 룰 (docs/03 §3.2 DOCKER 표, 5종). Dockerfile 변경은 항상 LLM(ci 프롬프트).
+
+- id: DOCKER_RUN_DL_EXEC
+  category: DOWNLOAD_EXECUTE
+  severity: CRITICAL
+  mode: window
+  window: 5
+  languages: [DOCKER]
+  # RUN curl … | sh 는 한 줄에서 두 패턴이 모두 맞는다. ADD http… 는 5줄 안의 실행과 결합
+  pattern: '^\s*RUN\b[^\n]*\b(?:curl|wget)\b[^\n|]{0,200}\|\s*(?:ba)?sh\b|^\s*ADD\s+https?://\S+'
+  with_pattern: '\|\s*(?:ba)?sh\b|\bchmod\s+\+?[0-7]*x|^\s*RUN\s+(?:ba)?sh\s|^\s*RUN\s+\./'
+  description_ko: "이미지 빌드 중 내려받은 스크립트를 바로 실행"
+  false_positive_hint: "공식 설치 스크립트라도 해시 검증 없이 실행하면 위험 — LLM 판단"
+
+- id: DOCKER_UNOFFICIAL_BASE
+  category: SUPPLY_CHAIN
+  severity: MEDIUM
+  languages: [DOCKER]
+  pattern: '^\s*FROM\s+(?:--platform=\S+\s+)?(?!(?:docker\.io/)?library/|mcr\.microsoft\.com/|gcr\.io/distroless/|public\.ecr\.aws/|ghcr\.io/(?:actions|astral-sh)/|(?:docker\.io/)?bitnami/|cgr\.dev/chainguard/)[\w.-]+/[\w./-]+(?::latest)?(?:\s+(?:AS|as)\s+[\w-]+)?\s*$'
+  description_ko: "공식이 아닌 네임스페이스 이미지를 태그 고정 없이(latest) 기반으로 사용"
+  false_positive_hint: "공식 이미지·다이제스트(@sha256) 고정·버전 태그는 제외"
+
+- id: DOCKER_ENTRYPOINT_CHANGE
+  category: BACKDOOR
+  severity: HIGH
+  languages: [DOCKER]
+  pattern: '^\s*(?:ENTRYPOINT|CMD)\b[^\n]*\b(?:sh|bash)\s+-c\b[^\n]*(?:\bcurl\b|\bwget\b|base64|\bnc\s|/dev/tcp|python3?\s+-c)'
+  description_ko: "컨테이너 시작 명령이 네트워크·디코딩을 포함한 셸 래퍼로 바뀜"
+  false_positive_hint: "헬스체크 대기 스크립트(wait-for)는 LLM 판단"
+
+- id: DOCKER_SECRET_BAKE
+  category: CREDENTIAL_ACCESS
+  severity: HIGH
+  languages: [DOCKER]
+  pattern: '^\s*(?:ENV|ARG)\s+\w*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|ACCESS_KEY|PRIVATE_KEY)\w*\s*[= ]\s*[''"]?[^\s''"$]{6,}|^\s*COPY\s+[^\n]*(?:\s|/)\.env\b|^\s*COPY\s+[^\n]*(?:id_rsa|\.npmrc|\.pypirc|credentials)'
+  exclude_pattern: '\$\{?\w+|changeme|example|placeholder|dummy|<[^>]+>'
+  description_ko: "토큰·비밀번호를 이미지에 그대로 굽거나 .env·자격증명 파일을 복사"
+  false_positive_hint: "빌드 인자 참조($VAR)·예시 값은 제외"
+
+- id: DOCKER_CRON_RC
+  category: PERSISTENCE
+  severity: HIGH
+  languages: [DOCKER]
+  pattern: '^\s*(?:RUN|COPY|ADD)\b[^\n]*(?:/etc/cron|\bcrontab\b|/etc/rc\.local|/etc/systemd/system/|\.bashrc\b|/etc/profile\.d/)'
+  description_ko: "이미지 안에 cron·rc·systemd 자동 실행 설정을 설치"
+  false_positive_hint: "의도된 배치 작업 이미지는 LLM 판단"
