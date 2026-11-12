@@ -16,7 +16,8 @@ jobs:
   ci:
     name: Test backend and build dashboard
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # e2e grew to 739 tests (2 workers on CI, about 20 minutes alone); 20 cancelled the job mid-e2e on PR #12
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
