@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     engine_port: int = 8000
     anthropic_api_key: str | None = None
-    anthropic_base_url: str = "https://ai.cs.kookmin.ac.kr"
+    anthropic_base_url: str = "https://api.anthropic.com"
     llm_model: str = "claude-opus-5"
     llm_model_cheap: str = "claude-haiku-4-5"
     llm_effort: str = "medium"

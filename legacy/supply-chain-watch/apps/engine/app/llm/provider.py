@@ -1,6 +1,6 @@
 """LLM 호출 (docs/03 §5.1~5.2). Provider 교체 지점은 이 파일 1곳.
 
-중계 서버(국민대 new-api → Bedrock) 제약: output_config.format·tool strict·server fallbacks는 400 → JSON은 강제 tool use.
+중계 서버(API 중계 → Bedrock) 제약: output_config.format·tool strict·server fallbacks는 400 → JSON은 강제 tool use.
 Opus 5는 생각(thinking)이 기본으로 켜져 있어 강제 tool use와 함께 쓰려면 effort high 이하에서 thinking을 끈다.
 """
 from __future__ import annotations
