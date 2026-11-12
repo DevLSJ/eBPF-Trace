@@ -16,6 +16,7 @@
 import argparse
 import datetime as dt
 import email.utils
+import gzip
 import hashlib
 import io
 import json
@@ -177,9 +178,11 @@ def _tls():
 TLS = _tls()
 
 
-def http(url, *, data=None, headers=None, max_bytes=None, timeout=120, tries=4):
-    """(본문, 응답 헤더) 또는 (None, None)(404 · 410 · 본문이 max_bytes 초과). 일시적 오류는 다시 하고, 그래도 안 되면 Stop."""
-    req_headers = {"User-Agent": UA, **(headers or {})}
+def http(url, *, data=None, headers=None, max_bytes=None, timeout=120, tries=4, compressed=False):
+    """(본문, 응답 헤더) 또는 (None, None)(404 · 410 · 본문이 max_bytes 초과). 일시적 오류는 다시 하고, 그래도 안 되면 Stop.
+    compressed=True 는 목록 · 메타데이터(JSON)용 — gzip 으로 받아 푼다(순위 서버는 압축 없이는 5배 넘게 느리다).
+    표본 파일은 늘 받은 그대로(compressed=False) 저장한다."""
+    req_headers = {"User-Agent": UA, **({"Accept-Encoding": "gzip"} if compressed else {}), **(headers or {})}
     last = None
     for attempt in range(tries):
         try:
@@ -191,6 +194,8 @@ def http(url, *, data=None, headers=None, max_bytes=None, timeout=120, tries=4):
                 body = r.read(max_bytes + 1) if max_bytes is not None else r.read()
                 if max_bytes is not None and len(body) > max_bytes:
                     return None, None
+                if r.headers.get("Content-Encoding") == "gzip":
+                    body = gzip.decompress(body)
                 return body, r.headers
         except urllib.error.HTTPError as e:
             if e.code in (404, 410):
@@ -203,7 +208,7 @@ def http(url, *, data=None, headers=None, max_bytes=None, timeout=120, tries=4):
 
 
 def http_json(url, **kw):
-    body, _ = http(url, **kw)
+    body, _ = http(url, compressed=True, **kw)
     return json.loads(body) if body is not None else None
 
 
@@ -384,7 +389,7 @@ def n_malicious(eco):
 
 
 def top_pypi():
-    raw = cached("top-pypi.json", lambda: http(TOP_PYPI_URL)[0])
+    raw = cached("top-pypi.json", lambda: http(TOP_PYPI_URL, compressed=True)[0])
     d = json.loads(raw)
     sources({"pypiTop": {"url": TOP_PYPI_URL, "sha256": sample.sha256(raw), "rows": len(d["rows"]), "lastUpdate": d.get("last_update")}})
     return [r["project"] for r in d["rows"]]
@@ -394,7 +399,7 @@ def top_npm(n):
     """월간 다운로드 순서 이름(@types/* 제외)을 n 개 넘게 — 쪽마다 캐시한다(서버가 느리다)."""
     names, page = [], 1
     while len(names) < n and page <= 60:
-        raw = cached(f"top-npm-{page:02d}.json", lambda: http(TOP_NPM_URL.format(page=page), timeout=600)[0])
+        raw = cached(f"top-npm-{page:02d}.json", lambda: http(TOP_NPM_URL.format(page=page), timeout=600, compressed=True)[0])
         rows = json.loads(raw)
         if not rows:
             break
@@ -405,7 +410,7 @@ def top_npm(n):
 
 
 def pypi_names():
-    raw = cached("pypi-names.json", lambda: http(PYPI_NAMES_URL, headers={"Accept": "application/vnd.pypi.simple.v1+json"}, timeout=600)[0])
+    raw = cached("pypi-names.json", lambda: http(PYPI_NAMES_URL, headers={"Accept": "application/vnd.pypi.simple.v1+json"}, timeout=600, compressed=True)[0])
     names = [p["name"] for p in json.loads(raw)["projects"]]
     sources({"pypiNames": {"url": PYPI_NAMES_URL, "sha256": sample.sha256(raw), "count": len(names)}})
     return names
