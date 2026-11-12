@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "status": "complete",
+  "generated_at": "2026-09-22T07:56:21.165466+00:00",
+  "directory": "ml/data/context-v2",
+  "feature_schema_version": 2,
+  "features": [
+    "pkt_rate",
+    "byte_rate",
+    "syn_ratio",
+    "port_entropy",
+    "flow_duration",
+    "avg_pkt_size",
+    "source_pkt_rate",
+    "source_syn_rate",
+    "port_cnt",
+    "destination_pkt_rate",
+    "destination_byte_rate",
+    "destination_syn_rate",
+    "destination_source_count",
+    "service_pkt_rate",
+    "service_byte_rate",
+    "service_syn_rate",
+    "service_source_count",
+    "reverse_pkt_rate",
+    "reverse_byte_rate",
+    "bidirectional_pkt_rate",
+    "bidirectional_byte_rate",
+    "reverse_packet_fraction",
+    "bidirectional_syn_ratio",
+    "source_pkt_rate_10s",
+    "destination_pkt_rate_10s"
+  ],
+  "days": [
+    {
+      "day": "Monday",
+      "capture": {
+        "name": "Monday-WorkingHours.pcap",
+        "bytes": 10822507416,
+        "sha256": "f6eac599358f216b074338813a1cf7be3cc4e91d116e13efc0dc71f2cca11972"
+      },
+      "feature_rows": 2898867,
+      "matched_rows": 2345037,
+      "coverage": 0.808949,
+      "feature_schema_version": 2,
+      "artifacts": {
+        "features": {
+          "bytes": 156079319,
+          "sha256": "afc33b1031daaafe75d275ef45d870ba6804604220f9f3e8a3c153fd400cb0f7"
+        },
+        "intervals": {
+          "bytes": 8461860,
+          "sha256": "56c4c596679ad0b43bf91496dff74ff982d9a6da44bff3f36547feebed840f98"
+        },
+        "aligned": {
+          "bytes": 158174349,
+          "sha256": "62b1e725c69d7f0e0ecd98bb7407de8935e834be1b4d2da315f9ddf2e3d7aadc"
+        }
+      }
+    }
+  ],
+  "failures": [],
+  "totals": {
+    "feature_rows": 2898867,
+    "matched_rows": 2345037,
+    "capture_bytes": 10822507416,
+    "artifact_bytes": 322715528
+  },
+  "limitations": [
+    "Digests bind the derived artifacts only; a removed capture can no longer be re-verified.",
+    "The recorded capture digest is carried from the run that produced these artifacts.",
+    "Changing feature replay code, or relabelling against changed CSVs, still needs the capture."
+  ]
+}

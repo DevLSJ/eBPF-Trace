@@ -1,0 +1,89 @@
+/* v2-A. Loguard 「현행 참고형」 테마를 그대로 이식
+   밀도 높음 · 12px · 셀 테두리 · 박스형 검색 조건 · 어두운 사이드바 */
+:root {
+  --font: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif; --fs: 12px; --fs-sm: 11px; --fs-lg: 16px; --row-h: 30px;
+  --radius: 2px; --radius-lg: 3px; --shadow: none; --sidebar-width: 224px;
+  --color-bg: #EDEFF2; --color-surface-2: #F5F6F8; --color-surface-3: #E9ECF0; --color-border: #C8CDD4; --color-border-strong: #AEB6C2;
+  --color-text: #1F2A3C;
+  --sb-bg: #0A2E6E; --sb-text: #E6ECF7; --sb-muted: #9DB0D6; --sb-hover: rgba(255,255,255,.08); --sb-active: #FFFFFF; --sb-active-text: #0A2E6E; --sb-border: rgba(255,255,255,.12);
+}
+body { line-height: 1.4; }
+:root { --page-pt: 12px; }
+.page { padding: var(--page-pt) 16px 12px; max-width: none; }
+.page-header { align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--color-border); } .page-header + .toolbar, .page-header + .page-body { margin-top: 8px; }
+.page-title { font-size: 16px; padding-left: 10px; border-left: 4px solid var(--color-primary); line-height: 1.2; }
+.crumbs { font-size: 11px; margin-bottom: 3px; } .page-sub { font-size: 11.5px; margin-top: 3px; }
+.toolbar.legacy-actions { background: transparent; border: 0; padding: 0; margin-bottom: 6px; }
+
+/* 사이드바 — 어두운 네이비, 로고 영역 강조 */
+.sb-brand { padding: 12px 12px 8px; border-bottom: 1px solid var(--sb-border); }
+.sb-logo { background: #fff; color: var(--color-primary); border-radius: 4px; } .sb-product { color: #fff; } .lic.ok { color: #7FE0A6; }
+.sb-action { padding: 10px 12px 8px; } .sb-action .btn.primary { background: #F5B800; border-color: #F5B800; color: #1F2A3C; font-weight: 700; } .sb-action .btn.primary:hover { background: #E0A800; }
+.sb-search input { background: rgba(255,255,255,.1); border-color: transparent; color: #fff; } .sb-search input::placeholder { color: var(--sb-muted); } .sb-search > .ic { color: var(--sb-muted); }
+.sb-group-head { font-size: 13px; padding: 7px 10px; } .sb-group-head.static { color: var(--sb-muted); }
+.sb-item { font-size: 12.5px; padding: 6px 10px 6px 34px; color: var(--sb-text); } .sb-item.active { background: var(--sb-active); color: var(--sb-active-text); border-radius: 2px; }
+.sb-group.active > .sb-group-head { color: #fff; } .sb-group.active > .sb-group-head .ic { color: #F5B800; }
+.tag.new { background: #F5B800; color: #1F2A3C; } .sb-badge.warn { background: #F5B800; color: #1F2A3C; }
+.pin-btn.on { color: #F5B800; }
+.sso-btn { color: var(--sb-text); } .sso-btn.add { border-color: rgba(255,255,255,.25); color: var(--sb-muted); }
+.sb-icon-btn { color: var(--sb-text); } .avatar { background: #F5B800; color: #1F2A3C; }
+.sb-user-text .nm { color: #fff; }
+#sidebar.collapsed .sb-group:hover .sb-flyout { color: var(--color-text); }
+
+/* 버튼 — 각진 모서리, 뚜렷한 테두리 */
+.btn { padding: 4px 10px; font-size: 12px; border-color: #98A2B3; background: linear-gradient(#FFFFFF, #EEF1F5); font-weight: 600; } .btn:hover { background: linear-gradient(#F6F8FA, #E2E6EC); }
+.btn.primary { background: var(--color-primary); border-color: #072A62; } .btn.primary:hover { background: var(--color-primary-hover); }
+.btn.subtle { background: transparent; border-color: transparent; } .btn.lg { padding: 7px 14px; font-size: 13px; } .btn.sm { padding: 2px 7px; font-size: 11.5px; }
+input[type=text], input[type=search], input[type=password], input[type=number], input[type=date], select, textarea { min-height: 26px; padding: 3px 6px; font-size: 12px; border-color: #98A2B3; border-radius: 2px; }
+.field > label { font-size: 11.5px; }
+
+/* 검색 조건 박스 — 현행 어드민의 라벨: 입력 배치 */
+.searchbox { border-color: var(--color-border-strong); } .searchbox-title { background: #E4E8EE; font-size: 12px; padding: 5px 10px; }
+.searchbox-grid { padding: 8px 10px; gap: 6px 24px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); } .sb-field > label { font-size: 11.5px; min-width: 96px; }
+.searchbox-actions { padding: 6px 10px; background: #F5F6F8; }
+
+/* 그리드 — 셀 테두리 전부, 줄무늬, 헤더 회색 */
+.grid-wrap { border-color: var(--color-border-strong); margin-bottom: 10px; }
+.grid-toolbar { padding: 4px 8px; background: #F5F6F8; } .grid-count { font-size: 11.5px; } .grid-count strong { font-size: 12.5px; }
+table.grid { font-size: 12px; border-collapse: separate; border-spacing: 0; }
+table.grid th { background: #E4E8EE; border-bottom: 1px solid var(--color-border-strong); border-right: 1px solid #D3D9E1; height: 28px; font-size: 11.5px; color: var(--color-text); text-align: center; padding: 0 8px; }
+table.grid th.al-right, table.grid th.al-center { text-align: center; }
+table.grid td { border-bottom: 1px solid #DCE0E6; border-right: 1px solid #E6EAEF; padding: 0 8px; }
+table.grid th:last-child, table.grid td:last-child { border-right: 0; }
+table.grid tbody tr:nth-child(even) { background: #F8F9FB; } table.grid tbody tr:hover { background: #EEF3FB; } table.grid tr.selected { background: #DCE7F8; }
+table.grid.mini td, table.grid.mini th { height: 26px; font-size: 11.5px; }
+.grid-footer { padding: 4px 8px; font-size: 11.5px; background: #F5F6F8; } .pager .pg { min-width: 24px; height: 24px; font-size: 11.5px; border: 1px solid var(--color-border); background: #fff; margin: 0 1px; } .pager .pg.active { border-color: var(--color-primary); }
+.pagesize select { min-height: 22px; font-size: 11px; }
+.badge { font-size: 10.5px; padding: 1px 5px; border-radius: 2px; }
+
+/* 탭 — 박스형 (현행 느낌) */
+.tabs { border-bottom: 1px solid var(--color-border-strong); gap: 0; margin-bottom: 10px; }
+.tab { border: 1px solid var(--color-border-strong); border-bottom: 0; background: #E9ECF0; margin-right: -1px; margin-bottom: -1px; padding: 6px 14px; font-size: 12.5px; border-radius: 2px 2px 0 0; }
+.tab.active { background: var(--color-surface); color: var(--color-primary); border-bottom: 1px solid var(--color-surface); }
+.tab-badge { font-size: 10.5px; }
+
+/* 패널/KPI — 얇은 테두리, 그림자 없음 */
+.panel { border-color: var(--color-border-strong); margin-bottom: 10px; } .panel-head { padding: 6px 10px; background: #F5F6F8; } .panel-head h3 { font-size: 12.5px; } .panel-body { padding: 10px; }
+.kpi { padding: 8px 10px; border-color: var(--color-border-strong); gap: 3px; } .kpi-value { font-size: 20px; } .kpi-label { font-size: 11.5px; } .kpi-delta { font-size: 11px; }
+.kpi-row { gap: 8px; margin-bottom: 10px; } .dash-charts, .dash-lists { gap: 10px; }
+.banner { padding: 6px 10px; font-size: 12px; margin-bottom: 8px; border-radius: 2px; }
+.modal { border-radius: 3px; } .modal-head { padding: 10px 14px 8px; background: var(--color-primary); color: #fff; border-radius: 3px 3px 0 0; } .modal-head h2 { font-size: 14px; } .modal-head .icon-btn { color: #fff; } .modal-body { padding: 14px; } .modal-foot { padding: 8px 14px 10px; background: #F5F6F8; }
+.form-grid { gap: 10px 14px; }
+.tree-panel { width: 230px; border-color: var(--color-border-strong); font-size: 12px; } .tree-leaf { font-size: 11.5px; }
+.stepper li { font-size: 12px; } .step-n { width: 22px; height: 22px; font-size: 11px; }
+.res-card { padding: 10px 12px; gap: 6px; } .meter { height: 14px; } .meter-label { line-height: 14px; font-size: 10.5px; }
+.tool-card { padding: 8px 10px; }
+.chart .tick { font-size: 10px; } .legend { font-size: 11.5px; }
+.filterbar { display: none; }
+.variant-switch { font-family: var(--font); }
+
+/* ---- 2026-09-28 리뉴얼 추가: 상단바 · 알림 드로어 · 스낵바를 현행형 밀도에 맞춘다 ---- */
+:root { --topbar-h: 48px; }
+#topbar { padding: 0 12px; background: var(--color-surface); }
+.tb-crumbs { font-size: 11.5px; } .flow-rail a { font-size: 11.5px; padding: 4px 8px; border-radius: 3px; } .flow-rail a i { width: 16px; height: 16px; font-size: 10px; }
+.tb-icon-btn { width: 30px; height: 30px; border-radius: 3px; } .tb-avatar { width: 28px; height: 28px; font-size: 11px; } .conn { font-size: 11px; padding: 4px 8px; border-radius: 3px; }
+.notify-drawer { width: min(360px, 100vw); } .notify-item { border-radius: 2px; } .notify-filters > button { border-radius: 3px; }
+.snack, .toast { border-radius: 3px; } .guide-steps a { border-radius: 3px; } .guide-icon, .guide-index { border-radius: 3px; }
+.status-banner, .onboarding, .scenario-entry, .ops-hero, .run-summary, .event-summary { border-radius: 3px; }
+.sb-cap { display: none; } .sb-item .ic { display: none; }
+.page-header .eyebrow { display: none; }

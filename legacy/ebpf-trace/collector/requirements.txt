@@ -1,0 +1,4 @@
+# BCC comes from Ubuntu's python3-bpfcc package, NOT the unrelated PyPI bcc package.
+# Use the distro Python with --system-site-packages for the VM collector.
+redis>=6,<8
+websockets>=15,<17

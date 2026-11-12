@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-17T01:13:07.502025+00:00",
+  "dataset": "CIC-IDS-2017 \u00b7 Thursday + Friday",
+  "status": "below_target",
+  "deployment_approved": false,
+  "scope": "conservatively matched feature windows only",
+  "sources": [
+    {
+      "file": "thursday-aligned.csv.gz",
+      "sha256": "de86bf03f784ed02ccd0ecb07123cb3b48976f3f5703d79c12bedb97e426f98c",
+      "timestamp_uncertainty_seconds": 60
+    },
+    {
+      "file": "friday-aligned.csv.gz",
+      "sha256": "eaa66086b75e9cd7bf35e5c4aab4ed9613aab91d7bb1c8bf25e85f38a3ba37c5",
+      "timestamp_uncertainty_seconds": 60
+    }
+  ],
+  "model": "Isolation Forest",
+  "n_estimators": 100,
+  "contamination": 0.05,
+  "threshold": -0.1,
+  "features": [
+    "pkt_rate",
+    "byte_rate",
+    "syn_ratio",
+    "port_entropy",
+    "flow_duration",
+    "avg_pkt_size",
+    "source_pkt_rate",
+    "source_syn_rate",
+    "port_cnt"
+  ],
+  "performance": {
+    "precision": 0.9212687066529163,
+    "recall": 0.4777910543635359,
+    "f1": 0.6292425226839924,
+    "fpr": 0.04113707972391553,
+    "tn": 699339,
+    "fp": 30003,
+    "fn": 383716,
+    "tp": 351078,
+    "passed": false,
+    "per_label": {
+      "BENIGN": {
+        "rows": 729342,
+        "detected": 30003,
+        "detection_rate": 0.04113707972391553
+      },
+      "DDOS": {
+        "rows": 416239,
+        "detected": 160596,
+        "detection_rate": 0.38582641222951236
+      },
+      "PORTSCAN": {
+        "rows": 318555,
+        "detected": 190482,
+        "detection_rate": 0.5979563968545463
+      }
+    },
+    "deployment_eligible": false
+  },
+  "split": {
+    "rows": 4891978,
+    "benign": 4117797,
+    "attacks": 774181,
+    "training_rows": 3384391,
+    "held_out_rows": 1464136,
+    "held_out_distribution": {
+      "BENIGN": 729342,
+      "DDOS": 416239,
+      "PORTSCAN": 318555
+    },
+    "split_policy": "purged_time_10s_new_flows",
+    "cut_timestamp": 1499448252.5523882,
+    "purged_rows": 4064,
+    "rounded_timestamp_rows": 41684
+  },
+  "six_feature_comparison": {
+    "features": [
+      "pkt_rate",
+      "byte_rate",
+      "syn_ratio",
+      "port_entropy",
+      "flow_duration",
+      "avg_pkt_size"
+    ],
+    "scope": "Same aligned rows, split and hyperparameters",
+    "performance": {
+      "precision": 0.9012795202593651,
+      "recall": 0.3473082251624265,
+      "f1": 0.5014013499720515,
+      "fpr": 0.03832632701805189,
+      "tn": 701389,
+      "fp": 27953,
+      "fn": 479594,
+      "tp": 255200,
+      "passed": false
+    }
+  },
+  "targets": {
+    "f1_min": 0.8,
+    "fpr_max": 0.05
+  },
+  "limitations": [
+    "Only uniquely aligned or conservatively time-covered windows are included; unresolved and conflicting rows remain excluded.",
+    "Scores describe matched held-out feature windows, not all attacks or the full CICIDS2017 benchmark.",
+    "This evaluation does not approve deployment; live detection remains independent."
+  ]
+}

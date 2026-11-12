@@ -1,0 +1,50 @@
+import argparse
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+import joblib
+import numpy as np
+import sklearn
+from sklearn.ensemble import IsolationForest
+
+from ml.artifacts import sha256
+
+
+def train_model(directory, contamination=0.05):
+    directory = Path(directory)
+    data = np.load(directory / "split.npz")
+    model = IsolationForest(n_estimators=100, contamination=contamination, random_state=42)
+    model.fit(data["train"])
+    joblib.dump(model, directory / "isolation_forest.pkl")
+    preprocessing = json.loads((directory / "preprocessing.json").read_text())
+    version = {
+        "trained_at": datetime.now(timezone.utc).isoformat(),
+        "sklearn_version": sklearn.__version__,
+        "features": preprocessing["features"],
+        "n_estimators": 100,
+        "contamination": contamination,
+        "training_rows": len(data["train"]),
+        "score_definition": "clip(decision_function - 0.1, -1, 0)",
+        "performance": None,
+        "validated": False,
+        "deployment_eligible": preprocessing.get("deployment_eligible", False),
+        "split_policy": preprocessing.get("split_policy"),
+        "validation_threshold": -0.1,
+        "sha256": {"model": sha256(directory / "isolation_forest.pkl"),
+                   "scaler": sha256(directory / "scaler.pkl"),
+                   "split": sha256(directory / "split.npz")},
+    }
+    (directory / "model_version.json").write_text(json.dumps(version, indent=2))
+    return version
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--directory", default="ml/models")
+    parser.add_argument(
+        "--contamination", type=float, default=float(os.getenv("IF_CONTAMINATION", ".05"))
+    )
+    args = parser.parse_args()
+    print(json.dumps(train_model(args.directory, args.contamination), indent=2))
