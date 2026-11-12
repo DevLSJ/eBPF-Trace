@@ -22,6 +22,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import tarfile
@@ -162,6 +163,20 @@ def check_disk():
         raise Stop("디스크 여유가 6GB 아래다")
 
 
+def _tls():
+    """인증서 검증용 컨텍스트. python.org 판 macOS 파이썬은 CA 묶음이 비어 있어(검증이 모두 실패) 시스템 묶음을 더한다.
+    검증을 끄지는 않는다."""
+    ctx = ssl.create_default_context()
+    for path in (os.environ.get("SSL_CERT_FILE"), "/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt"):
+        if path and os.path.exists(path):
+            ctx.load_verify_locations(cafile=path)
+            break
+    return ctx
+
+
+TLS = _tls()
+
+
 def http(url, *, data=None, headers=None, max_bytes=None, timeout=120, tries=4):
     """(본문, 응답 헤더) 또는 (None, None)(404 · 410 · 본문이 max_bytes 초과). 일시적 오류는 다시 하고, 그래도 안 되면 Stop."""
     req_headers = {"User-Agent": UA, **(headers or {})}
@@ -169,7 +184,7 @@ def http(url, *, data=None, headers=None, max_bytes=None, timeout=120, tries=4):
     for attempt in range(tries):
         try:
             req = urllib.request.Request(url, data=data, headers=req_headers)
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            with urllib.request.urlopen(req, timeout=timeout, context=TLS) as r:
                 length = r.headers.get("Content-Length")
                 if max_bytes is not None and length and int(length) > max_bytes:
                     return None, None
