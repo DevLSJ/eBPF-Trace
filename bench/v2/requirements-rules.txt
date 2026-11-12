@@ -1,0 +1,11 @@
+# 정적 규칙 층(bench/v2/rules_layer.py)이 이전 프로젝트 엔진(legacy/supply-chain-watch/apps/engine)을 불러오는 데 꼭 필요한 것만.
+#   python3 -m venv bench/.venv && bench/.venv/bin/pip install -r bench/v2/requirements-rules.txt
+# 엔진이 직접 쓰는 것은 둘이다: 규칙 YAML 을 읽는 PyYAML(app/static/rules_loader.py) · 모델 정의의 pydantic(app/models.py).
+# 그 아래 넷은 pydantic 이 끌어오는 것으로, 같은 판이 깔리게 함께 고정한다.
+# 2026-11-12 파이썬 3.14.6 과 3.12 에서 확인. CI 에는 설치하지 않는다(엔진이 필요한 시험은 사유와 함께 건너뛴다).
+PyYAML==6.0.3
+pydantic==2.14.3
+annotated-types==0.8.0
+pydantic_core==2.50.4
+typing-inspection==0.4.5
+typing_extensions==4.16.0
