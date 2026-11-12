@@ -307,7 +307,8 @@ class Run(Corpus):
         self.assertEqual(res[self.m1], {
             "id": self.m1, "status": "ok", "verdict": "malicious", "score": 8.2,
             "rules": ["capability-process-spawn", "threat-setup-network-in-install"], "installThreats": 1, "threats": 1,
-            "capabilities": 1, "vulns": 2, "seconds": 1.5, "engines": {"GuardDog": "2.6.0", "OSV-Scanner": "2.2.2"}})
+            "capabilities": 1, "testFindings": 1, "vulns": 2, "seconds": 1.5,
+            "engines": {"GuardDog": "2.6.0", "OSV-Scanner": "2.2.2"}})
         self.assertEqual(res[self.m2]["verdict"], "suspicious")           # 백엔드 caution
         self.assertEqual(res[self.b4]["verdict"], "vulnerable")
         self.assertEqual({r["status"] for r in res.values()}, {"ok", "skip", "error"})
@@ -547,6 +548,67 @@ class Report(Corpus):
         with open(run_static.results_path(self.data, "train"), "rb") as f:
             self.assertEqual(doc["parts"]["train"]["resultsSha256"], sample.sha256(f.read()))
         self.assertIsNone(doc["parts"]["calibration"]["resultsSha256"])
+
+
+def plain_tar(files):
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tf:
+        for name, data in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+class Integration(Base):
+    """합치며 더한 것(11/12): bz2 · xz tar 는 gzip 으로 다시 압축해 올림 · 시험 코드 탐지 수 기록 · 봉인을 연 뒤의 파일 자리."""
+
+    def test_bz2_and_xz_sdists_go_up_recompressed_as_gzip_with_the_same_tar_inside(self):
+        import bz2
+        import gzip
+        import lzma
+        tar = plain_tar({"pkg-9/setup.py": b"print(9)\n", "pkg-9/pkg/__init__.py": b"x = 1\n"})
+        bz = self.add("train", "pypi", "benign", raw=bz2.compress(tar))
+        xz = self.add("train", "pypi", "benign", raw=lzma.compress(tar + b"\0" * 512))
+        self.save()
+        self.run_ok()
+        for sid, inner in ((bz, tar), (xz, tar + b"\0" * 512)):
+            name, data = self.api.uploads[sid]
+            self.assertEqual(name, f"sgb-{sid}.tar.gz")           # 백엔드는 gzip tar 와 zip 만 푼다
+            self.assertEqual(gzip.decompress(data), inner)        # 안의 tar 는 한 바이트도 바뀌지 않는다
+            self.assertEqual(self.results()[sid]["status"], "ok")
+
+    def test_recompression_refuses_a_bomb_and_a_broken_stream(self):
+        import bz2
+        bomb = self.add("train", "pypi", "benign", raw=bz2.compress(b"\0" * 4096))
+        broken = self.add("train", "pypi", "benign", raw=bz2.compress(plain_tar({"a/setup.py": b"x\n"}))[:-8])
+        self.save()
+        with mock.patch.object(sample, "MAX_EXTRACT", 1024):
+            self.run_ok()
+        res = self.results()
+        self.assertEqual(res[bomb], {"id": bomb, "status": "skip", "why": "풀면 크기 상한 초과"})
+        self.assertEqual(res[broken], {"id": broken, "status": "skip", "why": "압축을 읽지 못함"})
+        self.assertNotIn(bomb, self.api.calls)
+        self.assertNotIn(broken, self.api.calls)
+
+    def test_test_code_findings_are_recorded(self):
+        sid = self.add("train", "pypi", "malicious", answer="malicious")
+        self.save()
+        self.run_ok()
+        self.assertEqual(self.results()[sid]["testFindings"], 1)
+
+    def test_an_unsealed_part_is_read_from_the_sealed_folder(self):
+        sid = self.add("test", "npm", "benign")
+        os.makedirs(os.path.join(self.data, "sealed", "test"))
+        os.replace(os.path.join(self.data, "store", f"{sid}.tgz"), os.path.join(self.data, "sealed", "test", f"{sid}.tgz"))
+        self.save()
+        code, text = self.cli("run", "--parts", "test", "--dry-run")
+        self.assertEqual(code, 1)                                 # 봉인 중에는 거부
+        with open(split.LEDGER, "w", encoding="utf-8") as f:
+            json.dump([{"part": "test"}], f)                      # 연 기록이 있으면
+        self.run_ok("--parts", "test")
+        self.assertEqual(self.results("test")[sid]["status"], "ok")
+        self.assertEqual(self.api.uploads[sid][0], f"sgb-{sid}.tgz")
 
 
 if __name__ == "__main__":
