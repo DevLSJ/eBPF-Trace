@@ -356,5 +356,23 @@ class Metrics(unittest.TestCase):
                          {"2024": {"detected": 1, "rows": 2, "detection": 0.5}, "2026": {"detected": 1, "rows": 1, "detection": 1.0}})
 
 
+class Addenda(unittest.TestCase):
+    """층 부록(bench/v2/addenda/<번호>-<층>.json) — 그 층의 보정 결과를 보기 전에 고정하는 입력 · 후보."""
+
+    def test_each_addendum_names_a_known_layer_the_current_protocol_and_its_candidates(self):
+        folder = os.path.join(HERE, "addenda")
+        names = sorted(n for n in os.listdir(folder) if n.endswith(".json")) if os.path.isdir(folder) else []
+        with open(split.PROTOCOL, encoding="utf-8") as f:
+            revision = json.load(f)["revision"]
+        for name in names:
+            with open(os.path.join(folder, name), encoding="utf-8") as f:
+                a = json.load(f)
+            self.assertEqual(name, f"{a['addendum']}-{a['layer']}.json")
+            self.assertIn(a["layer"], metrics.LAYER_ORDER)
+            self.assertEqual(a["protocolRevision"], revision)
+            self.assertTrue(a["fixedAt"] and a["candidates"] and a["missing"])
+            self.assertIsInstance(a["revisions"], list)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "addendum": 1,
+  "layer": "static",
+  "protocolRevision": 2,
+  "fixedAt": "2026-11-12 — 학습 구간 측정을 시작하기 전. 이 시점까지 v2 표본으로 낸 정적 결과는 측정용 백엔드 확인용 정상 표본 1건뿐이고, 보정 구간 결과는 어느 엔진으로도 계산하지 않았다",
+  "engines": {
+    "guarddog": {
+      "version": "3.2.0",
+      "image": "ghcr.io/datadog/guarddog@sha256:3dbc783f65f508b95222101cb2cd84d1d5f3e3675e42d6f1329bb9b8a99c8998",
+      "note": "백엔드 기본값은 :latest 태그다. 측정하는 동안 이미지를 새로 받지 않고, 결과 줄마다 검사기 판을 남겨 다른 판이 섞이면 보고서가 알린다"
+    },
+    "osv": {
+      "version": "2.7.0",
+      "image": "ghcr.io/google/osv-scanner@sha256:4f3b7e2c64b9d38a5febc5a7e4a3dfef1d1362f726dea7a2ef4762b46469fcd0",
+      "note": "표본을 파일로 올리므로 자기 이름 · 판의 취약점 조회는 일어나지 않는다(악성 · 정상 같음). 취약 판정은 이 층의 후보에 쓰지 않는다"
+    },
+    "backendVerdict": {
+      "code": "backend/internal/scan (verdict.go · service.go)",
+      "commit": "0a53546",
+      "rule": "악성 = GuardDog 점수 5 이상 그리고 설치 시점 규칙 1개 이상 · 주의 = 점수 5 이상인데 런타임 휴리스틱 규칙만. 시험 코드 탐지는 넣지 않는다"
+    },
+    "rules": {
+      "code": "legacy/supply-chain-watch/apps/engine (app/static · rules/*.yaml — 규칙 71개 + 파이썬 AST 흐름 분석)",
+      "engineTree": "413aff588810",
+      "rulesTree": "ac5f41eda938",
+      "input": "패키지 전체를 「새 파일 추가」로 본다(이전 프로젝트 평가와 같은 방식). 파일당 20KB 에서 자르고 전체 상한은 없다. 넣는 파일은 그 평가 스크립트의 기준(_wanted)",
+      "run": "bench/v2/rules_layer.py — 표본을 메모리에서 읽어 엔진을 직접 부른다(제품 연결 전의 측정용)"
+    }
+  },
+  "procedure": {
+    "where": "이 Mac 의 측정용 백엔드(make bench-up · 127.0.0.1:8010 · deploy/docker-compose.bench.yml). 개발 스택과 DB · 작업 볼륨이 따로이고 권한 없이 뜬다",
+    "upload": "악성 = 암호 zip 을 메모리에서 tar.gz 로 다시 묶어 올린다(tools/sg-bench-dataset 의 pack_datadog — v1 과 같다). 정상 = 받은 파일 그대로 올린다",
+    "safety": "표본은 실행하지 않는다. 압축은 측정용 스택의 작업 볼륨 안에서만 풀리고 검사가 끝나면 백엔드가 지운다. 검사기 컨테이너는 읽기 전용 · GuardDog 은 네트워크 없음",
+    "tools": "bench/v2/run_static.py(백엔드 검사 결과) · bench/v2/rules_layer.py(규칙 엔진 결과). 둘 다 split.select_ids 로 표본을 고르므로 봉인 구간은 거부된다",
+    "order": "학습 구간을 먼저 재고 개발한다. 보정 구간은 아래 후보와 엔진 판이 이 부록에 고정된 뒤 한 번 계산한다"
+  },
+  "candidates": {
+    "guarddog": [
+      {"id": "S-malicious", "predict": "백엔드 판정이 malicious"},
+      {"id": "S-suspicious", "predict": "백엔드 판정이 malicious 또는 caution(주의)"}
+    ],
+    "rules": [
+      {"id": "R-strong", "predict": "규칙 엔진에서 LOW 가 아닌 규칙이, 시험 · 문서가 아닌 파일에 하나라도 걸림(이전 프로젝트 평가의 strong)"},
+      {"id": "R-score@<예산>", "predict": "규칙 엔진 점수(0~100) >= 임계값. 임계값은 protocol layers.budgets 대로 보정 구간에서 만든다"}
+    ],
+    "combine": "정적 층의 후보 = guarddog 쪽 후보 하나(또는 없음)와 rules 쪽 후보 하나(또는 없음)를 OR 로 묶은 것(둘 다 없음은 제외). 이름은 「S-malicious+R-strong」 꼴",
+    "order": "selection.rule 의 「후보 순서가 앞인 쪽」은 이 순서다: guarddog 만(S-malicious → S-suspicious) → rules 만(R-strong → R-score 예산이 작은 것부터) → 묶음(guarddog 순서가 먼저, 그 안에서 rules 순서)"
+  },
+  "missing": "묶기 실패 · 50MB 초과 · 검사 오류 · 시간 초과 · 엔진 오류 표본은 그 엔진이 「못 잡음」이다. 분모에서 빼지 않는다(protocol layers.missing)",
+  "changes": "규칙 · 엔진 · 판정 코드를 학습 구간을 보고 고치면, 고친 판의 커밋 · 트리 해시와 사유를 아래 revisions 에 더한 뒤에만 보정 구간을 계산한다. 보정 구간 결과를 본 뒤에는 이 층의 후보 목록과 엔진을 바꾸지 않는다",
+  "revisions": [],
+  "limits": [
+    "GuardDog 과 악성 표본의 출처가 같은 회사다(protocol limits)",
+    "규칙 엔진은 커밋 diff 용으로 만든 것이라 패키지 전체를 넣으면 파일당 20KB 뒤는 보지 못한다",
+    "규칙 엔진의 규칙은 이전 프로젝트가 이미 본 표본 600개(지금은 모두 학습 구간)를 보고 다듬은 것이다. 학습 구간 수치는 그만큼 낙관적일 수 있고, 보정 · 시험 구간에는 그 표본이 없다"
+  ]
+}
