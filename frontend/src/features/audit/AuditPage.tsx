@@ -489,9 +489,12 @@ function AuditSheetLoader({
   onClose: () => void;
   nav?: SheetNav;
 }) {
-  // 목록에 없으면(직접 연 주소) 그 id 바로 앞에서 한 건을 다시 찾는다
-  const cached = rowCache.get(id);
-  const load = useCallback(() => (cached ? Promise.resolve([cached]) : api.audit({ before: id + 1, limit: 1 })), [cached, id]);
+  // 목록에 없으면(직접 연 주소) 그 id 바로 앞에서 한 건을 다시 찾는다.
+  // 캐시는 부를 때 본다 — 의존성에 넣으면 늦게 온 목록이 캐시를 채울 때 함수가 바뀌어 내용이 깜박인다(11/12)
+  const load = useCallback(() => {
+    const cached = rowCache.get(id);
+    return cached ? Promise.resolve([cached]) : api.audit({ before: id + 1, limit: 1 });
+  }, [id]);
   const r = useLoad(load);
   const a = r.data?.find((x) => x.id === id);
   // 증거는 격리(kill) 직전에만 모으므로 탭은 격리된 행에만 — 링크로 증거 탭을 바로 연 경우는 그대로 보인다
