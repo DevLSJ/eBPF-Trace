@@ -271,6 +271,8 @@ def cmd_run(args):
         return rec is not None and not (args.retry_errors and rec["status"] == "error")
 
     pending = [(p, r) for p, r in todo if not recorded(p, r["id"])]
+    if args.reverse:
+        pending.reverse()
     if args.limit:
         pending = pending[:args.limit]
     print("\n".join(plan_lines(args.parts, todo, done, pending)), flush=True)
@@ -286,6 +288,10 @@ def cmd_run(args):
     tally = collections.Counter()
     for n, (part, row) in enumerate(pending, 1):
         t0 = time.time()
+        # --reverse 는 앞에서부터 도는 다른 실행과 함께 쓰는 것 — 표본마다 결과 파일을 다시 보고, 그사이 기록된 것은 건너뛴다
+        if args.reverse and row["id"] in read_results(results_path(data, part)):
+            tally["other"] += 1
+            continue
         upload, why = prepare(row, data)
         rec = {"status": "skip", "why": why} if upload is None else scan(api, *upload, args.timeout)
         del upload
@@ -293,7 +299,8 @@ def cmd_run(args):
         tally[rec["status"]] += 1
         note = f"{rec['verdict']:<10} 점수 {rec['score']} · 설치 시점 {rec['installThreats']}" if rec["status"] == "ok" else reason(rec)
         print(f"[{n}/{len(pending)}] {row['id']} {rec['status']:<5} {note} · {time.time() - t0:.1f}s", flush=True)
-    print(f"이번 실행 {num(len(pending))}건: 검사함 {num(tally['ok'])} · 건너뜀 {num(tally['skip'])} · 오류 {num(tally['error'])}")
+    print(f"이번 실행 {num(len(pending))}건: 검사함 {num(tally['ok'])} · 건너뜀 {num(tally['skip'])} · 오류 {num(tally['error'])}"
+          + (f" · 다른 실행이 기록함 {num(tally['other'])}" if args.reverse else ""))
 
 
 # ── 보고 ──
@@ -449,6 +456,8 @@ def main(argv=None):
     r.add_argument("--limit", type=int, default=0, help="이번 실행에서 새로 검사할 표본 수 상한")
     r.add_argument("--timeout", type=int, default=900, help="검사 한 건 결과 대기 상한(초)")
     r.add_argument("--retry-errors", action="store_true", help="status 가 error 인 표본을 다시 검사한다(마지막 줄이 이긴다)")
+    r.add_argument("--reverse", action="store_true",
+                   help="뒤에서부터 돈다 — 앞에서부터 도는 다른 실행과 함께 쓸 때(백엔드가 검사 두 개를 함께 돌린다). 그사이 기록된 표본은 건너뛴다")
     r.add_argument("--dry-run", action="store_true", help="백엔드에 닿지 않고 구간별 표본 수 · 올림 형식만 보인다")
     r.set_defaults(fn=cmd_run)
     p = sub.add_parser("report", help="결과 → 후보 판정별 지표")
