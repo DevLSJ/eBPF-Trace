@@ -193,5 +193,63 @@ class Rules(unittest.TestCase):
             self.assertEqual(again.kept(), [{"id": "1"}])
 
 
+class Prune(unittest.TestCase):
+    """쓰지 않는 표본 · 사본 정리 — 임시 폴더에서."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        d = self.tmp.name
+        self.saved = {k: getattr(collect, k) for k in ("DATA", "STORE", "SEALED_DIR", "CACHE", "REPO", "INDEX")}
+        self.saved_split = split.SPLIT
+        collect.DATA, collect.STORE, collect.SEALED_DIR = d, os.path.join(d, "store"), os.path.join(d, "sealed")
+        collect.CACHE, collect.REPO, collect.INDEX = os.path.join(d, "cache"), os.path.join(d, "datadog-repo"), os.path.join(d, "index.jsonl")
+        split.SPLIT = os.path.join(d, "split.json")
+        self.addCleanup(self.restore)
+        for sub in ("store", "sealed/test", "cache", "datadog-repo/.git/objects/pack"):
+            os.makedirs(os.path.join(d, sub))
+        self.put("store/aaaa.zip", "store/dupe.zip", "store/half.zip.part", "sealed/test/bbbb.tgz", "cache/names.json",
+                 "datadog-repo/.git/objects/pack/pack-1.pack", "datadog-repo/.git/objects/pack/pack-1.idx",
+                 "datadog-repo/.git/objects/pack/pack-2.pack", "datadog-repo/.git/objects/pack/pack-2.promisor")
+        with open(collect.INDEX, "w") as f:
+            for i, form in (("aaaa", "zip"), ("bbbb", "tarball"), ("dupe", "zip")):
+                f.write(json.dumps({"id": i, "form": form}) + "\n")
+        with open(split.SPLIT, "w") as f:
+            json.dump({"assignments": {"aaaa": "train", "bbbb": "test"}, "sealed": ["test", "reserve"]}, f)
+
+    def restore(self):
+        for k, v in self.saved.items():
+            setattr(collect, k, v)
+        split.SPLIT = self.saved_split
+
+    def put(self, *names):
+        for n in names:
+            with open(os.path.join(self.tmp.name, n), "wb") as f:
+                f.write(b"x" * 10)
+
+    def has(self, name):
+        return os.path.exists(os.path.join(self.tmp.name, name))
+
+    def test_fetched_packs_are_dropped_and_the_rest_of_the_clone_stays(self):
+        self.assertEqual(collect._packs(), {"pack-1", "pack-2"})
+        collect.drop_packs({"pack-2"})
+        self.assertEqual(collect._packs(), {"pack-1"})
+        self.assertFalse(self.has("datadog-repo/.git/objects/pack/pack-2.promisor"))
+        self.assertTrue(self.has("datadog-repo/.git/objects/pack/pack-1.idx"))
+
+    def test_prune_removes_only_what_the_split_does_not_use(self):
+        collect.cmd_prune(None)
+        self.assertTrue(self.has("store/aaaa.zip") and self.has("sealed/test/bbbb.tgz"))   # 분할에 든 표본은 그대로
+        for gone in ("store/dupe.zip", "store/half.zip.part", "cache", "datadog-repo"):
+            self.assertFalse(self.has(gone), gone)
+        self.assertTrue(self.has("index.jsonl"))
+
+    def test_prune_refuses_when_an_assigned_sample_is_missing(self):
+        os.remove(os.path.join(self.tmp.name, "store/aaaa.zip"))
+        with self.assertRaisesRegex(collect.Stop, "아무것도 지우지 않았다"):
+            collect.cmd_prune(None)
+        self.assertTrue(self.has("store/dupe.zip") and self.has("cache/names.json") and self.has("datadog-repo"))
+
+
 if __name__ == "__main__":
     unittest.main()

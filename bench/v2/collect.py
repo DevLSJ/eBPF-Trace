@@ -10,6 +10,7 @@
   python3 bench/v2/collect.py index                         # → index.jsonl
   python3 bench/v2/split.py build --index bench/datasets/v2/index.jsonl --source "$(python3 bench/v2/collect.py source-line)"
   python3 bench/v2/collect.py seal                          # 시험 · 예비 표본 파일을 sealed/ 로
+  python3 bench/v2/collect.py prune                         # 쓰지 않는 표본(지문 중복) · 복제본 · 캐시 삭제
   python3 bench/v2/collect.py status
 """
 import argparse
@@ -267,21 +268,44 @@ def datadog_tree():
                            capture_output=True)
         if r.returncode != 0:
             raise Stop("DataDog 저장소를 받지 못했다: " + r.stderr.decode(errors="replace")[-200:])
-    commit = git("rev-parse", "HEAD").strip()
-    sources({"datadog": {"url": DATADOG_URL, "commit": commit, "committedAt": git("log", "-1", "--format=%cI").strip()}})
+    commit = (sources({}).get("datadog") or {}).get("commit")
+    if commit is None:
+        commit = git("rev-parse", "HEAD").strip()
+        sources({"datadog": {"url": DATADOG_URL, "commit": commit, "committedAt": git("log", "-1", "--format=%cI").strip()}})
+    elif subprocess.run(["git", "-C", REPO, "cat-file", "-e", commit + "^{commit}"], capture_output=True).returncode != 0:
+        git("fetch", "--quiet", "--depth", "1", "--filter=blob:none", "origin", commit)  # 복제본을 다시 받았고 원격이 그새 앞서 갔다
     out = []
-    for line in git("ls-tree", "-r", "HEAD", "--", "samples/pypi", "samples/npm").splitlines():
+    for line in git("ls-tree", "-r", commit, "--", "samples/pypi", "samples/npm").splitlines():
         meta, path = line.split("\t", 1)
         if path.endswith(".zip"):
             out.append((meta.split()[2], path))
     return out
 
 
+def _packs():
+    d = os.path.join(REPO, ".git", "objects", "pack")
+    return {f[:-5] for f in os.listdir(d) if f.endswith(".pack")} if os.path.isdir(d) else set()
+
+
 def fetch_blobs(oids):
-    """빠진 blob 을 한 번에 받는다(부분 복제의 지연 받기와 같은 방식)."""
-    if oids:
-        git("-c", "fetch.negotiationAlgorithm=noop", "fetch", "origin", "--no-tags", "--no-write-fetch-head",
-            "--recurse-submodules=no", "--filter=blob:none", "--stdin", stdin=("\n".join(oids) + "\n").encode())
+    """빠진 blob 을 한 번에 받는다(부분 복제의 지연 받기와 같은 방식). 새로 생긴 pack 이름들을 돌려준다.
+    unpackLimit=1 · gc.auto=0: 받은 것을 늘 pack 하나로 두어, 처리한 뒤 그 pack 만 지울 수 있게 한다."""
+    if not oids:
+        return set()
+    before = _packs()
+    git("-c", "fetch.negotiationAlgorithm=noop", "-c", "fetch.unpackLimit=1", "-c", "gc.auto=0", "fetch", "origin", "--no-tags",
+        "--no-write-fetch-head", "--recurse-submodules=no", "--filter=blob:none", "--stdin", stdin=("\n".join(oids) + "\n").encode())
+    return _packs() - before
+
+
+def drop_packs(names):
+    """처리가 끝난 blob pack 을 지운다. 표본은 store/ 에 이미 있고, 복제본에는 트리만 남긴다."""
+    d = os.path.join(REPO, ".git", "objects", "pack")
+    for name in names:
+        for ext in (".pack", ".idx", ".promisor", ".rev", ".bitmap", ".mtimes"):
+            path = os.path.join(d, name + ext)
+            if os.path.exists(path):
+                os.remove(path)
 
 
 # ── 단계 ──
@@ -309,7 +333,7 @@ def cmd_malicious(args):
         if keep_max is not None:
             batch = batch[:scan_max - scanned]
         check_disk()
-        fetch_blobs([e["oid"] for e in batch if e["path"] not in j])
+        packs = fetch_blobs([e["oid"] for e in batch if e["path"] not in j])
         for e in batch:
             if keep_max is not None and len(ids) >= keep_max:
                 break
@@ -330,6 +354,7 @@ def cmd_malicious(args):
                 if fp:
                     prints.setdefault(fp, row["id"])
                 j.add(e["path"], status="kept", row=row)
+        drop_packs(packs)
         print(f"악성 {eco}: 훑음 {min(start + BATCH, len(targets))}/{len(targets)} · 남김 {len(ids)}", flush=True)
     print(f"악성 {eco} 끝: 남김 {len(ids)} · 기록 {len(j.rows)}")
 
@@ -520,6 +545,38 @@ def cmd_seal(_args):
     print("봉인: " + " · ".join(f"{p} {n}" for p, n in moved.items()))
 
 
+def _size(path):
+    if os.path.isfile(path):
+        return os.path.getsize(path)
+    return sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(path) for f in fs)
+
+
+def cmd_prune(_args):
+    """쓰지 않는 것을 지운다(분할 · 봉인 뒤): 분할에 들지 않은 표본 파일(지문 중복) · 받다 만 파일 · DataDog 복제본 · 목록 캐시.
+    지우기 전에, 분할에 든 표본 파일이 모두 제자리에 있는지 먼저 확인한다. 기록(meta · index · sources)은 남긴다."""
+    with open(split.SPLIT, encoding="utf-8") as f:
+        sp = json.load(f)
+    forms = {r["id"]: r["form"] for r in split.read_jsonl(INDEX)}
+    for i, part in sp["assignments"].items():
+        name = f"{i}.{EXT[forms[i]]}"
+        if not any(os.path.exists(os.path.join(d, name)) for d in (STORE, os.path.join(SEALED_DIR, part))):
+            raise Stop(f"분할에 든 표본 파일이 없다({i}) — 아무것도 지우지 않았다")
+    files = freed = 0
+    for name in sorted(os.listdir(STORE)):
+        if name.endswith(".part") or name.split(".", 1)[0] not in sp["assignments"]:
+            path = os.path.join(STORE, name)
+            freed += os.path.getsize(path)
+            os.remove(path)
+            files += 1
+    dirs = []
+    for d in (REPO, CACHE):
+        if os.path.isdir(d):
+            freed += _size(d)
+            shutil.rmtree(d)
+            dirs.append(os.path.basename(d))
+    print(f"정리: 표본 파일 {files}개 · 폴더 {dirs} 삭제 · {freed / (1 << 20):.0f}MB 비움")
+
+
 def cmd_status(_args):
     for step in STEPS:
         j = journal(step)
@@ -543,7 +600,7 @@ def main():
     b.add_argument("--eco", required=True, choices=split.ECOSYSTEMS)
     b.add_argument("--kind", required=True, choices=("popular", "longTail"))
     b.set_defaults(fn=cmd_benign)
-    for name, fn in (("index", cmd_index), ("source-line", cmd_source_line), ("seal", cmd_seal), ("status", cmd_status)):
+    for name, fn in (("index", cmd_index), ("source-line", cmd_source_line), ("seal", cmd_seal), ("prune", cmd_prune), ("status", cmd_status)):
         sub.add_parser(name).set_defaults(fn=fn)
     args = ap.parse_args()
     try:
