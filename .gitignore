@@ -16,5 +16,7 @@ docs/
 bench/raw/
 bench/datasets/
 bench/.venv/
+# 파이썬 바이트코드(11/12): -B 없이 bench 도구를 돌리면 생긴다 — 남으면 split.py unseal 의 「깨끗한 작업 폴더」 조건에 걸린다
+__pycache__/
 # 로컬 공급망 검사 작업 폴더(make dev, 11/06)
 .scan-work/
