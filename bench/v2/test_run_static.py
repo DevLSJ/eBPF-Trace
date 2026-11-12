@@ -599,6 +599,21 @@ class Integration(Base):
         self.run_ok()
         self.assertEqual(self.results()[sid]["testFindings"], 1)
 
+    def test_reverse_run_goes_from_the_end_and_skips_what_another_run_recorded_meanwhile(self):
+        ids = sorted(self.add("train", "npm", "benign") for _ in range(4))
+        self.save()
+        path = run_static.results_path(self.data, "train")
+
+        def other_run_records(_attempt):   # 이 표본을 올리는 순간, 앞에서부터 도는 다른 실행이 ids[1] 을 기록했다고 친다
+            run_static.append_result(path, {"id": ids[1], "status": "ok", "verdict": "clean"})
+            return "clean"
+
+        self.answers[ids[3]] = other_run_records
+        text = self.run_ok("--reverse")
+        self.assertEqual(list(self.api.uploads), [ids[3], ids[2], ids[0]])   # 뒤에서부터, 그사이 기록된 ids[1] 은 올리지 않는다
+        self.assertIn("다른 실행이 기록함 1", text)
+        self.assertEqual(sorted(self.results()), ids)
+
     def test_an_unsealed_part_is_read_from_the_sealed_folder(self):
         sid = self.add("test", "npm", "benign")
         os.makedirs(os.path.join(self.data, "sealed", "test"))
