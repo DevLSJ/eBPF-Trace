@@ -1,0 +1,23 @@
+# 런타임 축 기본 화이트리스트 (docs/13 §6.1). gateway가 "런타임" 설정 탭에서 동적으로 덮어쓸 수 있다.
+# 여기 맞는 이벤트는 백엔드로 보내지 않는다(1차 필터, 오버헤드 완화).
+
+# 앱 런타임 — 이들이 셸(sh/bash)을 자식으로 스폰하면 PROC_CHAIN_SUSPECT로 본다.
+service_comms: [node, python, python3, uvicorn]
+
+# 셸로 간주할 실행 파일 이름(basename).
+shell_names: [sh, bash, dash, ash, busybox]
+
+# 컨테이너 안에서 공격에 쓰이는 도구(실행 시 TOOL_EXEC_IN_CONTAINER). 헬스체크용 wget은 제외.
+tool_names: [curl, nc, ncat, socat]
+
+# 그 자체로는 양성인 실행 파일 이름 — 단독 실행은 버린다(헬스체크·런타임·DB 등).
+benign_comms: [node, python, python3, uvicorn, nginx, postgres, redis-server, redis-cli, pg_isready, wget, uv, npm, sh]
+
+# 허용 목적지(CIDR). 사내 서비스·루프백은 NET_UNALLOWED_CONNECT에서 제외한다.
+# 10.77.0.0/28 = .0~.15 → edge(.2)·postgres(.10)·pay(.11)·image(.12)·redis(.13) 포함, fake-c2(.66)는 제외.
+allowed_dest_cidrs:
+  - 10.77.0.0/28    # carrot-net 사내 서비스 (fake-c2 .66 제외)
+  - 127.0.0.0/8     # loopback (Docker 임베드 DNS 127.0.0.11 포함)
+
+# 허용 목적지 포트(목적지 IP와 무관하게 허용). DNS 등 보조 트래픽.
+allowed_dest_ports: [53]

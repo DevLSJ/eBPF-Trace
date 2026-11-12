@@ -1,0 +1,17 @@
+{$PUBLIC_HOST} {
+    tls {
+        issuer acme {
+            disable_http_challenge
+        }
+    }
+    header X-Content-Type-Options nosniff
+    header X-Frame-Options DENY
+    header Referrer-Policy strict-origin-when-cross-origin
+    @backend path /api/* /health /ws/*
+    handle @backend {
+        reverse_proxy backend:8000
+    }
+    handle {
+        reverse_proxy frontend:80
+    }
+}

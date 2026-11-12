@@ -1,0 +1,164 @@
+name: CI/CD Pipeline
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore: ['docs/**', 'README.md']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: Test Python and build dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ebpf_test
+          POSTGRES_PASSWORD: ci-test-only
+          POSTGRES_DB: ebpf_test
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://ebpf_test:ci-test-only@127.0.0.1:5432/ebpf_test
+      TEST_REDIS_URL: redis://127.0.0.1:6379/0
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            backend/requirements.txt
+            collector/requirements.txt
+            ml/requirements.txt
+      - name: Install and test
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements-dev.txt
+          .venv/bin/ruff check backend collector ml infra response_agent
+          DATABASE_URL="$TEST_DATABASE_URL" .venv/bin/alembic upgrade head
+          .venv/bin/pytest -q
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build dashboard
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+      - name: Compile eBPF
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y clang libbpf-dev
+          make -C ebpf-agent
+
+  images:
+    name: Build images off the production server
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      REGISTRY: ${{ secrets.DOCKERHUB_USERNAME || secrets.DOCKERHUB }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build and push amd64 release images
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY"
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$REGISTRY" --password-stdin
+          docker build --pull -f backend/Dockerfile -t "$REGISTRY/ebpf-ids-backend:$GITHUB_SHA" .
+          docker build --pull -t "$REGISTRY/ebpf-ids-frontend:$GITHUB_SHA" frontend
+          docker run --rm "$REGISTRY/ebpf-ids-backend:$GITHUB_SHA" python -c 'from backend.main import app; from collector.feature_schema import CONTEXT_FEATURES; assert len(CONTEXT_FEATURES) == 25'
+          docker push "$REGISTRY/ebpf-ids-backend:$GITHUB_SHA"
+          docker push "$REGISTRY/ebpf-ids-frontend:$GITHUB_SHA"
+      - name: Remove registry credentials
+        if: always()
+        run: docker logout
+
+  deploy:
+    name: Deploy verified images on EC2
+    needs: images
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: self-hosted
+    timeout-minutes: 20
+    environment: production
+    env:
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+      EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+      REGISTRY: ${{ secrets.DOCKERHUB_USERNAME || secrets.DOCKERHUB }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Configure pinned SSH host and release archive
+        run: |
+          set -euo pipefail
+          test -n "$REGISTRY" && test -n "$EC2_KNOWN_HOSTS"
+          [[ "$REGISTRY" =~ ^[a-z0-9][a-z0-9_-]+$ ]]
+          mkdir -p "$RUNNER_TEMP/ebpf-ssh"
+          chmod 700 "$RUNNER_TEMP/ebpf-ssh"
+          printf '%s\n' "$EC2_SSH_KEY" > "$RUNNER_TEMP/ebpf-ssh/key"
+          printf '%s\n' "$EC2_KNOWN_HOSTS" > "$RUNNER_TEMP/ebpf-ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/ebpf-ssh/key"
+          git archive --format=tar.gz -o "$RUNNER_TEMP/release.tgz" HEAD
+      - name: Upload verified source
+        run: |
+          set -euo pipefail
+          ssh -i "$RUNNER_TEMP/ebpf-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/ebpf-ssh/known_hosts" -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" "mkdir -p /home/ubuntu/ebpf-releases/$GITHUB_SHA"
+          scp -i "$RUNNER_TEMP/ebpf-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/ebpf-ssh/known_hosts" -o StrictHostKeyChecking=yes "$RUNNER_TEMP/release.tgz" "$EC2_USER@$EC2_HOST:/home/ubuntu/ebpf-releases/$GITHUB_SHA/source.tgz"
+      - name: Registry login on EC2
+        run: |
+          set -euo pipefail
+          printf '%s' "$DOCKERHUB_TOKEN" | ssh -i "$RUNNER_TEMP/ebpf-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/ebpf-ssh/known_hosts" -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" "docker login -u '$REGISTRY' --password-stdin"
+      - name: Pull images and deploy the exact commit
+        run: |
+          set -euo pipefail
+          ssh -i "$RUNNER_TEMP/ebpf-ssh/key" -o UserKnownHostsFile="$RUNNER_TEMP/ebpf-ssh/known_hosts" -o StrictHostKeyChecking=yes "$EC2_USER@$EC2_HOST" bash -s -- "$GITHUB_SHA" "$REGISTRY" <<'REMOTE'
+          set -euo pipefail
+          export IMAGE_TAG="$1" DOCKERHUB_USERNAME="$2"
+          cd "/home/ubuntu/ebpf-releases/$IMAGE_TAG"
+          tar -xzf source.tgz
+          test -s /home/ubuntu/ebpf-project/.env
+          ln -sfn /home/ubuntu/ebpf-project/.env .env
+          mkdir -p ml
+          ln -sfn /home/ubuntu/ebpf-project/ml/models ml/models
+          docker compose -p ebpf-trace-app -f docker-compose.yml -f docker-compose.tunnel.yml config --quiet
+          python3 infra/check_disk.py --minimum-mib 900
+          docker compose -p ebpf-trace-app -f docker-compose.yml -f docker-compose.tunnel.yml pull backend frontend
+          bash infra/deploy.sh </dev/null
+          ln -sfn "/home/ubuntu/ebpf-releases/$IMAGE_TAG" /home/ubuntu/ebpf-current
+          test "$(readlink /home/ubuntu/ebpf-current)" = "/home/ubuntu/ebpf-releases/$IMAGE_TAG"
+          REMOTE
+      - name: Update VM Collector and verify feature schema
+        run: python3 infra/update_collector.py --revision "$GITHUB_SHA"
+      - name: Remove temporary credentials
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/ebpf-ssh/key" "$RUNNER_TEMP/ebpf-ssh/known_hosts"

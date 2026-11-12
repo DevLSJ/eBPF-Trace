@@ -1,0 +1,7 @@
+fastapi==0.115.6
+uvicorn==0.32.1
+python-multipart==0.0.20
+pillow==11.0.0
+redis==5.2.1
+# 오염 데모 패키지(로컬 vendor). R-13에서 git+https://github.com/DevLSJ/img-optimize-demo@<ref> 로 전환.
+img-optimize-demo @ file:///app/vendor/img-optimize-demo

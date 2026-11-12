@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "policy": "unique bidirectional packet counts + duration + minute + direction",
+  "generated_at": "2026-09-17T01:00:40.154457+00:00",
+  "sources": [
+    "Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv",
+    "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv"
+  ],
+  "capture_sha256": "38f8b1bb276849bf1721f7c4de22bebfa7f59a74e52286d4c0a37edbb118fe01",
+  "features_sha256": "169c19a83e0b9f06d60f1aaac81f5f35de689d06807640e589e0cdb52694a17b",
+  "source_sha256": {
+    "Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv": "d74238e054023c8bd4d8056650463cadb25c100fb0e26ebd4272c07b5c022c4b",
+    "Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv": "e3deaff483d18b53b100a441dff9b8919416df8876b4edcc0f0d1e4bf48397d0"
+  },
+  "duration_tolerance_us": 2,
+  "timezone": "America/Halifax",
+  "counts": {
+    "label_rows": 747570,
+    "invalid_label_rows": 15,
+    "empty_label_rows": 288602,
+    "capture_packets": 9322025,
+    "indexed_packets": 9238762,
+    "unique_packet_signature": 446348,
+    "multiple_packet_segments": 11290,
+    "no_packet_segment": 648,
+    "signature_mismatch": 667
+  },
+  "resolved_distribution": {
+    "BENIGN": 444155,
+    "Infiltration": 29,
+    "Web Attack \u2013 Brute Force": 1498,
+    "Web Attack \u2013 XSS": 645,
+    "Web Attack \u2013 Sql Injection": 21
+  },
+  "unresolved_distribution": {
+    "BENIGN": 12582,
+    "Infiltration": 7,
+    "Web Attack \u2013 Brute Force": 9,
+    "Web Attack \u2013 XSS": 7
+  },
+  "intervals_sha256": "bb1cc21e27507d98bbbf5d1b75b7497f1ae373630cb9dc925e240ef230b1366f"
+}

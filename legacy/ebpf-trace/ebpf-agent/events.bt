@@ -1,0 +1,3 @@
+#!/usr/bin/env bpftrace
+kprobe:bpf_ringbuf_submit { @submitted = count(); }
+interval:s:2 { exit(); }

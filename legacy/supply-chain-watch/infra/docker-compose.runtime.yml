@@ -1,0 +1,113 @@
+# 런타임 축 모사 환경 (Phase R-1, docs/13 §8). 공격 시연 전용 — 모든 서비스는 carrot-net 내부에서만 통신하고,
+# 호스트에는 입구 서버(edge)만 노출한다. fake-c2는 받은 요청의 메타데이터만 로그로 남긴다(외부 전송 없음).
+# 실행: docker compose --env-file .env -f infra/docker-compose.runtime.yml [--profile agent] up -d --build
+name: scw-runtime
+
+x-carrot-db: &carrot-db
+  # 내부 전용 데모 DB (호스트 포트 미노출). 로컬 dev DB(infra/docker-compose.yml)와 같은 관례.
+  DATABASE_URL: postgres://carrot:carrot@postgres:5432/carrot
+  REDIS_URL: redis://redis:6379
+
+services:
+  edge:
+    image: nginx:1.27-alpine
+    container_name: carrot-edge
+    volumes:
+      - ../apps/demo-targets/edge/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${RUNTIME_EDGE_PORT:-8088}:80"
+    depends_on:
+      carrot-pay-service: { condition: service_healthy }
+      carrot-image-service: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      carrot-net: { ipv4_address: 10.77.0.2 }
+
+  carrot-pay-service:
+    build:
+      context: ..
+      dockerfile: apps/demo-targets/carrot-pay-service/Dockerfile
+    container_name: carrot-pay-service
+    environment:
+      <<: *carrot-db
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks:
+      carrot-net: { ipv4_address: 10.77.0.11 }
+
+  carrot-image-service:
+    build:
+      context: ..
+      dockerfile: apps/demo-targets/carrot-image-service/Dockerfile
+    container_name: carrot-image-service
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis: { condition: service_healthy }
+    networks:
+      carrot-net: { ipv4_address: 10.77.0.12 }
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: carrot-postgres
+    environment:
+      POSTGRES_USER: carrot
+      POSTGRES_PASSWORD: carrot
+      POSTGRES_DB: carrot
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U carrot -d carrot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      carrot-net: { ipv4_address: 10.77.0.10 }
+
+  redis:
+    image: redis:7-alpine
+    container_name: carrot-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      carrot-net: { ipv4_address: 10.77.0.13 }
+
+  fake-c2:
+    build: ../apps/demo-targets/fake-c2
+    container_name: carrot-fake-c2
+    networks:
+      carrot-net: { ipv4_address: 10.77.0.66 }
+
+  # 관측 에이전트(eBPF). 기본 up에서는 제외되며 `--profile agent`로 켠다.
+  # privileged + pid:host + cgroupfs/docker.sock 필요(docs/13 §3.2, §10).
+  agent:
+    build:
+      context: ..
+      dockerfile: apps/agent/Dockerfile
+    container_name: carrot-agent
+    profiles: ["agent"]
+    privileged: true
+    pid: host
+    environment:
+      AGENT_SMOKE_SECONDS: "${AGENT_SMOKE_SECONDS:-0}"
+      # gateway 업링크(docs/13 §5). 루트 .env의 AGENT_TOKEN을 쓰려면 `--env-file .env`로 기동
+      GATEWAY_WS_URL: "${GATEWAY_WS_URL:-ws://host.docker.internal:4000/agent-ws}"
+      AGENT_TOKEN: "${AGENT_TOKEN:-}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+    networks:
+      carrot-net: { ipv4_address: 10.77.0.100 }
+
+networks:
+  carrot-net:
+    name: carrot-net
+    ipam:
+      config:
+        - subnet: 10.77.0.0/24

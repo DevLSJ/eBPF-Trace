@@ -1,0 +1,5 @@
+# bpf2go 생성물 (Docker 빌드가 clang으로 매번 재생성)
+spy_bpfel.go
+spy_bpfeb.go
+*.o
+/agent
