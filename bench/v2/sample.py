@@ -35,7 +35,7 @@ def safe_path(name):
     return "/".join(parts)
 
 
-def _zip_members(data):
+def _zip_members(data, want):
     out = []
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         infos = [i for i in zf.infolist() if not i.is_dir() and (i.external_attr >> 16) & 0o170000 != 0o120000]
@@ -44,12 +44,12 @@ def _zip_members(data):
         if sum(i.file_size for i in infos) > MAX_EXTRACT:
             raise ValueError("풀면 크기 상한 초과")
         for i in infos:
-            read = wanted(safe_path(i.filename)) and i.file_size <= MAX_CODE_BYTES
+            read = want(safe_path(i.filename)) and i.file_size <= MAX_CODE_BYTES
             out.append((i.filename, zf.read(i, pwd=ZIP_PASSWORD) if read else None))
     return out
 
 
-def _tar_members(data):
+def _tar_members(data, want):
     out, total = [], 0
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as tf:
         for m in tf:
@@ -60,7 +60,7 @@ def _tar_members(data):
                 raise ValueError("파일 수 상한 초과")
             if total > MAX_EXTRACT:
                 raise ValueError("풀면 크기 상한 초과")
-            read = wanted(safe_path(m.name)) and m.size <= MAX_CODE_BYTES
+            read = want(safe_path(m.name)) and m.size <= MAX_CODE_BYTES
             f = tf.extractfile(m) if read else None
             out.append((m.name, f.read() if f else None))
     return out
@@ -71,11 +71,16 @@ def wanted(path):
     return is_code(path) or path.rsplit("/", 1)[-1] == "package.json"
 
 
-def members(data):
+_WANTED = wanted  # members() 의 인자 이름이 위 함수를 가리므로 따로 잡아 둔다
+
+
+def members(data, wanted=None):
     """표본 바이트 → ([(경로, 바이트 또는 None)], None) 또는 (None, 사유). zip(암호 zip · wheel 포함) 또는 tar(gz · bz2 · xz).
-    바이트는 wanted() 인 5MB 이하 파일만 채우고 나머지는 None."""
+    바이트는 wanted() 인 5MB 이하 파일만 채우고 나머지는 None.
+    wanted(경로) 를 주면 내용을 읽을 파일을 그 함수로 고른다(정적 규칙 층은 설정 · 워크플로 파일도 읽는다). 색인은 주지 않는다."""
+    want = wanted or _WANTED
     try:
-        files = _zip_members(data) if data[:2] == b"PK" else _tar_members(data)
+        files = _zip_members(data, want) if data[:2] == b"PK" else _tar_members(data, want)
     except (zipfile.BadZipFile, tarfile.TarError, RuntimeError, NotImplementedError, OSError, EOFError, ValueError) as e:
         return None, (str(e) if isinstance(e, ValueError) and "상한" in str(e) else "압축을 읽지 못함")
     files = [(safe_path(n), d) for n, d in files]
