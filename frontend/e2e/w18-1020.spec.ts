@@ -27,8 +27,9 @@ test.describe('B 확인 대화상자 — 대상 · 함께 일어나는 일 · �
     await page.getByTestId('decision').getByRole('button', { name: '악성 확정' }).click();
     const d = dialog(page);
     await expect(d).toBeVisible();
-    await expect(d.locator('[data-part="confirm-target"]')).toContainText('pip ./reqeusts · 건 case-0004');
-    const fx = d.locator('[data-part="confirm-effects"] li');
+    await expect(d.locator('h3')).toHaveText('pip ./reqeusts 건을 악성으로 확정할까요?'); // 11/09 G19: 대상은 제목 · 본문, 영향 범위 줄
+    await expect(d.locator('[data-part="confirm-body"]')).toContainText('case-0004');
+    const fx = d.locator('[data-part="confirm-impact"] li');
     await expect(fx.first()).toHaveAttribute('data-kind', 'blocklist');
     await expect(fx.first()).toHaveText('차단 목록 +2 (패키지 1 · 도메인 1)');
     await expect(d.locator('li[data-kind="package"]')).toContainText('pip:reqeusts');
@@ -69,7 +70,7 @@ test.describe('B 확인 대화상자 — 대상 · 함께 일어나는 일 · �
     backend.unsupported.add('/cases/case-0004/preview');
     await page.goto('/installs?id=ins-0012');
     await page.getByTestId('decision').getByRole('button', { name: '악성 확정' }).click();
-    await expect(dialog(page).locator('[data-part="confirm-effects"]')).toContainText('영향을 계산하지 못했습니다');
+    await expect(dialog(page).locator('[data-part="confirm-impact"]')).toContainText('영향을 계산하지 못했습니다');
     await dialog(page).locator('[data-confirm="ok"]').click();
     await expect(page.getByTestId('decision').locator('[data-decision="malicious"]')).toBeVisible();
   });
@@ -82,13 +83,14 @@ test.describe('B 확인 대화상자 — 대상 · 함께 일어나는 일 · �
     await expect(detail.getByTestId('preview-summary')).toBeVisible();
     await detail.getByRole('button', { name: '적용', exact: true }).click();
     const d = dialog(page);
-    await expect(d.locator('h3')).toHaveText('제안 적용');
-    await expect(d.locator('[data-part="confirm-effects"]')).toContainText('차단 목록 +2 (패키지 1 · 도메인 1)');
-    await expect(d.locator('[data-part="confirm-effects"]')).toContainText('과거 위반');
+    await expect(d.locator('h3')).toHaveText('pip ./reqeusts 차단 제안을 적용할까요?'); // 11/09 G19
+    await expect(d.locator('[data-part="confirm-impact"]')).toContainText('차단 목록 +2 (패키지 1 · 도메인 1)');
+    await expect(d.locator('[data-part="confirm-impact"]')).toContainText('과거 위반');
     await d.locator('textarea[name="reason"]').fill('C2 도메인 확인');
     await d.locator('[data-confirm="ok"]').click();
     await expect(detail.getByTestId('proposal-state')).toContainText('적용됨');
     expect(bodyOf(reqs(backend, 'POST', /\/apply$/)[0])).toEqual({ reason: 'C2 도메인 확인' });
+    await page.goto('/policies/changes'); // 11/09: 변경 이력 페이지
     await expect(page.getByTestId('changes').locator('[data-change]').first()).toContainText('C2 도메인 확인');
     await page.goto('/audit?view=changes');
     const row = page.locator('[data-history^="chg:"]').first();
@@ -102,12 +104,13 @@ test.describe('B 확인 대화상자 — 대상 · 함께 일어나는 일 · �
     await page.getByRole('button', { name: '제안 보기' }).click();
     await page.getByTestId('proposal').getByRole('button', { name: '버림', exact: true }).click();
     const d = dialog(page);
-    await expect(d.locator('h3')).toHaveText('제안 버림');
-    await expect(d.locator('[data-part="confirm-effects"]')).toContainText('정책 · 차단 목록은 바뀌지 않습니다');
+    await expect(d.locator('h3')).toHaveText('npm tiny-git-dep 예외 제안을 버릴까요?'); // 11/09 G19
+    await expect(d.locator('[data-part="confirm-impact"]')).toContainText('정책 · 차단 목록은 바뀌지 않습니다');
     await d.locator('textarea[name="reason"]').fill('이번엔 그대로 둔다');
     await d.locator('[data-confirm="ok"]').click();
     await expect(page.getByTestId('proposal-state')).toContainText('버림');
     expect(bodyOf(reqs(backend, 'POST', /\/discard$/)[0])).toEqual({ reason: '이번엔 그대로 둔다' });
+    await page.goto('/policies/changes'); // 11/09: 변경 이력 페이지
     const first = page.getByTestId('changes').locator('[data-change]').first();
     await expect(first).toContainText('제안 버림');
     await expect(first).toContainText('이번엔 그대로 둔다');
@@ -116,11 +119,11 @@ test.describe('B 확인 대화상자 — 대상 · 함께 일어나는 일 · �
   });
 
   test('차단 해제: 대화상자(다시 설치 가능) · 사유 → DELETE 본문 {reason}', async ({ page, backend }) => {
-    await page.goto('/policies');
+    await page.goto('/policies/blocklist'); // 11/09: 차단 목록 페이지 · 확인 창은 SPEC-1109 §7 양식(제목 「~할까요?」 · 영향 범위)
     await page.getByTestId('blocklist').locator('[data-block="packages:pip:colourama"]').getByRole('button', { name: '해제' }).click();
     const d = dialog(page);
-    await expect(d.locator('[data-part="confirm-target"]')).toHaveText('패키지 pip:colourama');
-    await expect(d.locator('[data-part="confirm-effects"]')).toContainText('다시 설치할 수 있습니다');
+    await expect(d.locator('h3')).toHaveText('pip:colourama 차단을 해제할까요?');
+    await expect(d.locator('[data-part="confirm-impact"]')).toContainText('다시 설치할 수 있습니다');
     await d.locator('textarea[name="reason"]').fill('오탐 재확인');
     await d.locator('[data-confirm="ok"]').click();
     await expect(page.getByTestId('blocklist').locator('[data-block="packages:pip:colourama"]')).toHaveCount(0);
@@ -134,19 +137,23 @@ test.describe('B 확인 대화상자 — 대상 · 함께 일어나는 일 · �
     await expect(page.getByRole('button', { name: '눌러서 삭제 확정' })).toHaveCount(0);
     await page.locator('[data-view="rule-editor"]').getByRole('button', { name: '삭제' }).click();
     const d = dialog(page);
-    await expect(d.locator('[data-part="confirm-target"]')).toHaveText('egress-allowlist');
+    await expect(d.locator('h3')).toHaveText('egress-allowlist 정책을 삭제할까요?'); // 11/09 G19
     await expect(d.locator('textarea')).toHaveCount(0);
     await d.locator('[data-confirm="ok"]').click();
+    await expect(page.locator('[data-sheet="policy"]')).toHaveCount(0); // 11/09: 지우면 시트가 닫히고 목록에서 빠짐
+    await expect(page.locator('[data-rule="sensitive-files"]')).toBeVisible();
     await expect(page.locator('[data-rule="egress-allowlist"]')).toHaveCount(0);
     expect(reqs(backend, 'DELETE', /^\/policies\/egress-allowlist$/)).toHaveLength(1);
 
+    // 11/09: 「YAML 일괄 적용」 큰 창 · 확인 창은 SPEC-1109 §7 양식(영향 범위 · 확인 체크)
     await page.goto('/policies?id=__yaml__');
-    await page.getByRole('button', { name: '전체 교체 후 적용 ▶' }).click();
-    await expect(d.locator('h3')).toHaveText('전체 정책 교체');
-    await expect(d.locator('[data-part="confirm-effects"]')).toContainText('YAML 에 없는 정책은 지워집니다');
+    await page.locator('dialog[data-part="bulk-yaml"]').getByRole('button', { name: '전체 교체 후 적용' }).click();
+    await expect(d.locator('h3')).toHaveText('정책 전체를 YAML 로 교체할까요?');
+    await expect(d.locator('[data-part="confirm-impact"]')).toContainText('YAML 에 없는 정책은 지워집니다');
     await expect(d.locator('textarea')).toHaveCount(0);
+    await d.getByRole('checkbox').check();
     await d.locator('[data-confirm="ok"]').click();
-    await expect(page.getByText('개 정책을 엔진에 적용함')).toBeVisible();
+    await expect(page.locator('dialog[data-part="bulk-yaml"]')).toContainText('개를 엔진에 적용했습니다.');
     expect(reqs(backend, 'PUT', /^\/policies$/)).toHaveLength(1);
   });
 });
@@ -389,7 +396,9 @@ test.describe('I 증거 · 도메인 조회 없는 IP 직접 연결', () => {
     await expect(ev3.locator('[data-part="evidence-partial"]')).toHaveText('일부만 모음');
     await expect(ev3.locator('[data-part="evidence-error"]')).toContainText('docker top: 컨테이너가 이미 멈춤');
     await expect(ev3.locator('[data-part="evidence-logs"]')).toContainText('Running setup.py');
-    await expect(ev3.locator('[data-part="evidence-changes"] [data-change-kind]')).toHaveText(['C', 'A', 'D']); // R1 11/04: 여러 폴더(/root · /tmp · /var)라 파일 트리 — 폴더 이름순
+    // R1 11/04: 여러 폴더(/root · /tmp · /var)라 파일 트리 — 폴더 이름순. 11/10: 표시는 등급(A 정상 · F 비정상), 종류(C · A · D)는 속성 · 툴팁
+    await expect(ev3.locator('[data-part="evidence-changes"] [data-change-kind]')).toHaveText(['A', 'A', 'A']);
+    expect(await ev3.locator('[data-part="evidence-changes"] [data-change-kind]').evaluateAll((e) => e.map((x) => x.getAttribute('data-change-kind')))).toEqual(['C', 'A', 'D']);
     await expect(groups.first().locator('[data-evidence="ev-2"] [data-part="evidence-procs"]')).toContainText('pip install ./reqeusts');
     await expect(groups.nth(1)).toContainText('older run');
     await noPageOverflow(page);
@@ -411,14 +420,14 @@ test.describe('I 증거 · 도메인 조회 없는 IP 직접 연결', () => {
     await page.locator('[data-sheet="install"]').getByRole('link', { name: '증거 보기' }).click();
     // 컨테이너 필터는 state 로 넘기고 주소에는 tab · id 만(10/21)
     await expect(page).toHaveURL(/\/audit\?tab=evidence&id=\d+$/);
-    await expect(page.getByRole('textbox', { name: '컨테이너' })).toHaveValue(ctr);
+    await expect(page.getByRole('searchbox', { name: '컨테이너 검색' })).toHaveValue(ctr); // 11/09 검색칸
     await expect(page.locator('[data-sheet="audit"] [data-evidence="ev-3"]')).toBeVisible();
 
     await page.goto('/topology?container=pkg-reqeusts&node=c%3Apkg-reqeusts');
     await expect(page).toHaveURL(/\/topology\?node=c%3Apkg-reqeusts$/);
     await page.getByTestId('topology-decision').getByRole('link', { name: '증거 보기' }).click();
     await expect(page).toHaveURL(/\/audit\?tab=evidence/);
-    await expect(page.getByRole('textbox', { name: '컨테이너' })).toHaveValue('pkg-reqeusts');
+    await expect(page.getByRole('searchbox', { name: '컨테이너 검색' })).toHaveValue('pkg-reqeusts'); // 11/09 검색칸
     await expect(page.locator('[data-sheet="audit"] [role="tab"][aria-selected="true"]')).toHaveText('증거');
     await expect(page.locator('[data-sheet="audit"] [data-part="evidence-empty"]')).toBeVisible();
   });
@@ -555,7 +564,7 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
     await expect(page).toHaveURL(/\/events$/);
     await chips.locator('[data-chip="kind"] button').click();
     await expect(chips.locator('[data-chip]')).toHaveCount(2);
-    await expect(page.getByLabel('탐지 결과')).toHaveValue('kill');
+    await expect(page.locator('[data-filter="level"]')).toHaveAttribute('data-value', 'kill'); // 11/09 공통 Select
     await chips.locator('[data-action="clear-filters"]').click();
     await expect(chips).toHaveCount(0);
     await expect(page).toHaveURL(/\/events$/);
@@ -591,8 +600,9 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
 
   test('감사 로그 CSV 내보내기 — 기간 필수, 지금 필터(화면 상태) 그대로, BOM', async ({ page, backend }) => {
     await page.goto('/audit');
-    await page.getByLabel('종류').selectOption('exec');
-    await page.locator('[data-action="export-csv"]').click();
+    await page.locator('[data-filter="kind"]').click(); // 11/09 공통 Select
+    await page.getByRole('option', { name: 'exec', exact: true }).click();
+    await page.locator('[data-table-tools="audit"] [data-action="table-export"]').click(); // 11/09: 내보내기는 표 도구줄 하나
     await expect(page.locator('[data-part="export-error"]')).toContainText('기간');
     // datetime-local 값은 브라우저 시간대(timezoneId Asia/Seoul)로 만든다 — Node(CI 는 UTC)에서 만들면 9시간 어긋나 0건(11/05 CI)
     const [since, until] = await page.evaluate(() => {
@@ -602,15 +612,17 @@ test.describe('D 목록 정리 — 스켈레톤 · 오류 + 다시 시도 · 빈
     await page.getByLabel('기간 시작').fill(since);
     await page.getByLabel('기간 끝').fill(until);
     expect(new URL(page.url()).search).toBe('');
-    const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-action="export-csv"]').click()]);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('[data-table-tools="audit"] [data-action="table-export"]').click()]);
     expect(dl.suggestedFilename()).toMatch(/^supplyguard-audit-\d{8}-\d{8}\.csv$/);
     const text = readFileSync((await dl.path())!, 'utf8');
     expect(text.charCodeAt(0)).toBe(0xfeff);
     const lines = text.slice(1).trim().split('\n');
-    expect(lines[0]).toBe('id,시각,컨테이너,이미지,종류,상세,규칙,탐지 결과,판정,사유');
+    // 11/09 G13: 표에 보이는 칸 · 순서 · 화면 글(이미지 · 사유는 숨긴 칸 — 칸 고르기로 켜면 함께 나간다)
+    expect(lines[0]).toBe('시각,#,컨테이너 · 패키지,종류,상세,정책,탐지 결과,판정'); // 11/09 G44: 감사 로그 「규칙」 → 「정책」
     const want = backend.audit.filter((a) => a.event.kind === 'exec');
     expect(lines).toHaveLength(want.length + 1);
-    expect(lines.slice(1).every((l) => l.split(',')[4] === 'exec')).toBe(true);
+    expect(lines.slice(1).every((l) => l.split(',')[3] === 'exec')).toBe(true);
+    expect(lines[1].split(',')[0]).toMatch(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/);
   });
 
   test('모든 행을 Tab 으로 닿고 Enter · Space 로 연다', async ({ page, backend }) => {
@@ -642,9 +654,11 @@ test.describe('조회자 — 보이는데 못 누르는 버튼 없음', () => {
     await page.goto('/audit?id=200');
     await expect(page.locator('[data-sheet="audit"]')).toBeVisible();
     await expect(page.locator('[data-action="block-this"], [data-action="allow-this"]')).toHaveCount(0);
-    await page.goto('/policies?id=__yaml__');
+    await page.goto('/policies/blocklist'); // 11/09: 차단 목록 페이지
     await expect(page.getByTestId('blocklist').locator('[data-block]').first()).toBeVisible();
     await expect(page.getByTestId('blocklist').getByRole('button', { name: '해제' })).toHaveCount(0);
+    await page.goto('/policies?id=__yaml__');
+    await expect(page.locator('dialog[data-part="bulk-yaml"]')).toContainText('읽기 전용');
     await expect(page.getByRole('button', { name: /전체 교체/ })).toHaveCount(0);
     await page.goto('/policies?id=egress-allowlist');
     await expect(page.locator('[data-view="rule-editor"]').getByRole('button', { name: '삭제' })).toHaveCount(0);

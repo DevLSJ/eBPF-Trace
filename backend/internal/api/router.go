@@ -48,6 +48,10 @@ type Deps struct {
 	AdminToken string
 	// SandboxToken: sg-install CLI 의 세션 보고 · 차단 확인 전용 토큰 (ADMIN 엔드포인트에는 쓸 수 없다)
 	SandboxToken string
+	// SGInstallFile: 「사용 방법」 내려받기용 sg-install 스크립트 경로(SG_INSTALL_FILE, 이미지는 /tools/sg-install). 비거나 없으면 내려받기 없음
+	SGInstallFile string
+	// SGInstallAPI: 「사용 방법」의 SUPPLYGUARD_API(SG_INSTALL_API). 비면 추정 — compose(nginx 80) 는 http://127.0.0.1, mock 은 :8000
+	SGInstallAPI string
 	// AllowAnonymousWrites: EVENT_SOURCE=mock — 비어 있는 토큰의 쓰기를 토큰 없이 허용 (로컬 개발 전용)
 	AllowAnonymousWrites bool
 	// Review: 설치 세션 · 건 · 제안 · 차단 목록 · 변경 이력. nil 이면 해당 엔드포인트를 열지 않는다.
@@ -80,6 +84,8 @@ type Deps struct {
 	Demo *demo.Service
 	// Integration: 연동 화면(11/06) — 환경 점검 · 감시 중 컨테이너 · 연결 테스트. nil 이면 /api/integration 경로 없음
 	Integration *integration.Service
+	// Containers: 감시 중 컨테이너 상세(11/10) 의 Docker inspect(dockerapi.Client). nil 이면(mock) 목록 값만
+	Containers ContainerInspector
 	// EvalReportsDir: 평가 결과 JSON 디렉터리(EVAL_REPORTS_DIR, 11/04) — GET /api/evaluation 이 요청마다 읽는다. 비거나 파일이 없으면 404
 	EvalReportsDir string
 }
@@ -96,8 +102,10 @@ type Info struct {
 	IgnoreContainers []string `json:"ignoreContainers"`
 	// DNSResolve: "ok" = trace_dns 가 돌고 있어 도메인 · 직접 IP 연결을 판정한다 | "off" = 도메인 미확인 연결은 fail-open. 요청 때마다 Deps.DNSTraced 로 채운다
 	DNSResolve string `json:"dnsResolve"`
-	// Chat: AI 도우미 사용 가능(OLLAMA_URL 설정) — 화면이 「AI 도우미」 탭을 보일지 정한다
+	// Chat: AI 도우미 사용 가능(ANTHROPIC_API_KEY 또는 OLLAMA_URL) — 화면이 「AI 도우미」 탭을 보일지 정한다
 	Chat bool `json:"chat"`
+	// ChatEngine: 쓰는 모델(11/09) — 설정 화면이 「밖으로 나가는 데이터」를 provider 로 정해 보인다. 챗봇이 꺼져 있으면 생략
+	ChatEngine *chat.Engine `json:"chatEngine,omitempty"`
 	// Discovery: 실제로 쓰이는 컨테이너 발견 방식 "fanotify" | "docker-events" (mock · 가젯 시작 전은 빈 값). 요청 때마다 Deps.Discovery 로 채운다
 	Discovery string `json:"discovery"`
 	// DiscoveryNote: docker-events 일 때 놓칠 수 있는 구간 안내, 아니면 빈 값
@@ -117,6 +125,10 @@ func Router(d Deps) http.Handler {
 	// 로그인이 켜져 있으면 늘 true (mock 이어도 쓰기는 관리자 계정만)
 	d.Info.AuthRequired = d.Auth != nil || !(d.AllowAnonymousWrites && d.AdminToken == "")
 	d.Info.Chat = d.Chat != nil
+	if d.Chat != nil {
+		e := d.Chat.Engine()
+		d.Info.ChatEngine = &e
+	}
 	d.Info.Demo = d.Demo != nil
 	if d.Info.WatchContainers == nil {
 		d.Info.WatchContainers = []string{}
@@ -136,7 +148,9 @@ func Router(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/audit", h.audit)
 	mux.HandleFunc("GET /api/policies", h.listPolicies)
 	mux.HandleFunc("GET /api/policies/export", h.exportPolicies)
-	mux.HandleFunc("GET /api/evaluation", h.evaluation) // 평가 결과(11/04) — 읽기 전용, 로그인 뒤 모든 역할
+	mux.HandleFunc("GET /api/evaluation", h.evaluation)            // 평가 결과(11/04) — 읽기 전용, 로그인 뒤 모든 역할
+	mux.HandleFunc("GET /api/sginstall/setup", h.sginstallSetup)   // 설치 검사 「사용 방법」(11/09) — 토큰은 관리자에게만
+	mux.HandleFunc("GET /api/tools/sg-install", h.sginstallScript) // sg-install 내려받기(서버와 같은 판)
 	if d.PolicyFile != "" {
 		mux.HandleFunc("GET /api/policies/defaults", h.policyDefaults)
 	}
@@ -169,6 +183,7 @@ func Router(d Deps) http.Handler {
 	}
 	if d.Integration != nil {
 		mux.HandleFunc("GET /api/integration", h.integrationStatus)
+		mux.HandleFunc("GET /api/integration/containers/{id}", h.integrationContainer) // 상세 시트(11/10) — 읽기 전용, 조회자 포함
 		mux.HandleFunc("POST /api/integration/test", h.browserAdmin(msgProbeBrowserOnly, h.integrationTest))
 	}
 	return cors(d.AllowedOrigins, mux)
@@ -326,6 +341,19 @@ func (h *handlers) audit(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "action: alert | kill")
 		return
 	}
+	// 판정(11/10): 대시보드 판정 줄 · 감사 로그 「판정」 선택 상자. 건이 없는 서버(Review nil)면 0건
+	if d := model.Decision(q.Get("decision")); d != "" {
+		switch d {
+		case model.DecisionMalicious, model.DecisionFalsePositive, model.DecisionPending:
+		default:
+			writeErr(w, http.StatusBadRequest, "decision: malicious | false_positive | pending")
+			return
+		}
+		aq.ByCase = true
+		if h.Review != nil {
+			aq.CaseIDs = h.Review.CaseIDsByDecision(d)
+		}
+	}
 	var err error
 	if aq.Since, err = parseTime(q.Get("since")); err != nil {
 		writeErr(w, http.StatusBadRequest, "since: RFC3339")
@@ -382,8 +410,33 @@ func parseTime(s string) (time.Time, error) {
 }
 
 func (h *handlers) listPolicies(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, h.Engine.Rules())
+	writeJSON(w, http.StatusOK, h.policyViews(h.Engine.Rules()))
 }
+
+// policyView: 정책 API 가 내보내는 정책 — Rule 그대로 + 최근 수정(11/09 정책 목록 「최근 수정」 칸).
+// 최근 수정 = 그 정책을 다룬 마지막 변경 기록(ruleIds)의 시각 · 처리자. 기록이 없으면(시드 정책 · Review 없음) 두 키 없음
+type policyView struct {
+	rules.Rule
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+	UpdatedBy string     `json:"updatedBy,omitempty"`
+}
+
+func (h *handlers) policyViews(rs []rules.Rule) []policyView {
+	var meta map[string]review.PolicyMeta
+	if h.Review != nil {
+		meta = h.Review.PolicyMeta()
+	}
+	out := make([]policyView, len(rs))
+	for i, r := range rs {
+		out[i] = policyView{Rule: r}
+		if m, ok := meta[r.ID]; ok {
+			out[i].UpdatedAt, out[i].UpdatedBy = &m.At, m.By
+		}
+	}
+	return out
+}
+
+func (h *handlers) policyOut(r rules.Rule) policyView { return h.policyViews([]rules.Rule{r})[0] }
 
 // exportPolicies: 시스템 규칙(blocklist-hosts)은 빼고 내보낸다 — 내보낸 YAML 을 그대로 다시 적용(PUT)할 수 있게
 func (h *handlers) exportPolicies(w http.ResponseWriter, _ *http.Request) {
@@ -419,7 +472,7 @@ func (h *handlers) savePolicy(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	err := h.policyWrite(r.Context(), model.ChangePolicyEdit, "정책 "+rule.ID+" 저장", func(ctx context.Context) error {
+	err := h.policyWrite(r.Context(), model.ChangePolicyEdit, "정책 "+rule.ID+" 저장", []string{rule.ID}, func(ctx context.Context) error {
 		return h.Policies.UpsertPolicy(ctx, rule)
 	})
 	if err != nil {
@@ -427,7 +480,7 @@ func (h *handlers) savePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("policy saved", "id", rule.ID, "kind", rule.Kind, "action", rule.Action, "dryRun", rule.DryRun)
-	writeJSON(w, http.StatusOK, rule)
+	writeJSON(w, http.StatusOK, h.policyOut(rule))
 }
 
 // replacePolicies: YAML 원클릭 적용 — 본문 전체(rules: [...])로 정책을 교체한다.
@@ -448,7 +501,7 @@ func (h *handlers) replacePolicies(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	err = h.policyWrite(r.Context(), model.ChangePolicyReplace, fmt.Sprintf("YAML 로 정책 %d개 교체", len(rs)), func(ctx context.Context) error {
+	err = h.policyWrite(r.Context(), model.ChangePolicyReplace, fmt.Sprintf("YAML 로 정책 %d개 교체", len(rs)), nil, func(ctx context.Context) error {
 		return h.Policies.ReplacePolicies(ctx, rs)
 	})
 	if err != nil {
@@ -456,13 +509,13 @@ func (h *handlers) replacePolicies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("policies replaced", "count", len(rs))
-	writeJSON(w, http.StatusOK, h.Engine.Rules())
+	writeJSON(w, http.StatusOK, h.policyViews(h.Engine.Rules()))
 }
 
 var errPolicyMissing = errors.New("정책 없음")
 
 // systemRuleMsg: blocklist-hosts 는 차단 목록에서 만들어지므로 정책 API 로 다룰 수 없다
-const systemRuleMsg = "blocklist-hosts 는 차단 목록에서 관리하는 시스템 규칙 — 차단 목록(/api/blocklist)에서 바꾼다"
+const systemRuleMsg = "blocklist-hosts 는 차단 목록에서 관리하는 시스템 규칙, 차단 목록(/api/blocklist)에서 바꾼다"
 
 func (h *handlers) deletePolicy(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -470,7 +523,7 @@ func (h *handlers) deletePolicy(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, systemRuleMsg)
 		return
 	}
-	err := h.policyWrite(r.Context(), model.ChangePolicyEdit, "정책 "+id+" 삭제", func(ctx context.Context) error {
+	err := h.policyWrite(r.Context(), model.ChangePolicyEdit, "정책 "+id+" 삭제", []string{id}, func(ctx context.Context) error {
 		ok, err := h.Policies.DeletePolicy(ctx, id)
 		if err == nil && !ok {
 			return errPolicyMissing
@@ -489,9 +542,10 @@ func (h *handlers) deletePolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 // policyWrite: 정책 저장 → 엔진 리로드 → 변경 이력. Review 가 있으면 제안 적용과 같은 잠금 안에서 한다.
-func (h *handlers) policyWrite(ctx context.Context, kind model.ChangeKind, summary string, write func(context.Context) error) error {
+// ids: 다루는 정책 id(저장 · 삭제), nil 이면 YAML 교체 — 변경 이력의 ruleIds · 변경 전 · 후 값(review.PolicyWrite)
+func (h *handlers) policyWrite(ctx context.Context, kind model.ChangeKind, summary string, ids []string, write func(context.Context) error) error {
 	if h.Review != nil {
-		return h.Review.PolicyWrite(ctx, kind, summary, write)
+		return h.Review.PolicyWrite(ctx, kind, summary, ids, write)
 	}
 	if err := write(ctx); err != nil {
 		return err

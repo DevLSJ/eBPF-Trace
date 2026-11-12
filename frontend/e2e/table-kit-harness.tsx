@@ -1,0 +1,269 @@
+// 11/09 P2 — 공통 부품(표 도구줄 · 칸 고르기/폭/순서 · 필터 Select · 검색칸 · 주소 쿼리 목록 상태 · 시트 탭 · 큰 2단 창 · 미저장 경고)을
+// 앱 화면 위 무대에서 띄워 본다(r1-harness.tsx 와 같은 방식 — 앱을 연 뒤 page.evaluate(() => import('/e2e/table-kit-harness.tsx'))).
+// window.__tk.mount('list' | 'modal' | 'confirm' | 'states', props) → Promise<{ unmount() }>. 무대는 화면 전체를 덮는 고정 상자 [data-tk-stage](z 65 — 도우미 60 위, 펼침 상자 70 아래).
+// 'list' 는 BrowserRouter 로 진짜 주소 쿼리를 쓴다(앱 라우터는 popstate 만 듣기에 서로 건드리지 않는다).
+/* eslint-disable react-refresh/only-export-components */
+import { RotateCcw } from 'lucide-react';
+import { createElement, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
+import { IconAction } from '../src/components/ActionButton';
+import { GridCells, SortHead, StatusPill, TablePager, TableScroll } from '../src/components/DataTable';
+import { EmptyState, ListError, NoPermission, NoResults, Skeleton } from '../src/components/list/ListStates';
+import { ScreenNote } from '../src/components/ScreenNote';
+import { fmtLog } from '../src/components/list/cell-format';
+import { TimeText, TwoLine } from '../src/components/list/cells';
+import { rowState } from '../src/components/list/hooks';
+import { FilterBar, SearchField } from '../src/components/list/SearchField';
+import { downloadCSV } from '../src/components/list/csv';
+import { ConfirmDialog, Modal } from '../src/components/Modal';
+import { Select } from '../src/components/Select';
+import { Sheet } from '../src/components/Sheet';
+import { sheetNav } from '../src/components/sheet-nav';
+import { TableToolbar } from '../src/components/TableToolbar';
+import { useListQuery } from '../src/hooks/useListQuery';
+import { COL_W, useTableKit, type Column } from '../src/hooks/useTableKit';
+import { useUnsaved } from '../src/hooks/useUnsaved';
+
+const K = { GridCells, rowState, SortHead, StatusPill, TablePager, TableScroll, TwoLine, TimeText, FilterBar, SearchField, downloadCSV, Modal, Select, Sheet, sheetNav, TableToolbar, useListQuery, useTableKit, useUnsaved };
+const ready = async () => K;
+
+// ── 목록 무대 ──
+const KINDS = ['exec', 'open', 'connect', 'dns', 'sequence'];
+const ACTIONS = ['allow', 'alert', 'kill'];
+const OWNERS = 'abcdefghijkl'.split('').map((c) => `owner-${c}`);
+interface Row {
+  id: string;
+  name: string;
+  kind: string;
+  action: string;
+  owner: string;
+  hits: number;
+  note: string;
+  seen: string;
+}
+const pad = (n: number) => String(n).padStart(2, '0');
+const ROWS: Row[] = Array.from({ length: 45 }, (_, i) => ({
+  id: `r${pad(i + 1)}`,
+  name: `policy-${pad(i + 1)}`,
+  kind: KINDS[i % 5],
+  action: ACTIONS[i % 3],
+  owner: OWNERS[i % 12],
+  hits: (i * 7) % 23,
+  note: i % 4 === 3 ? '' : `메모 ${pad(i + 1)}`, // 빈 값 → 「—」
+  seen: '2026-11-09T03:04:05Z',
+}));
+
+function columns(picked: Set<string>, toggle: (id: string) => void): Column<Row>[] {
+  return [
+    {
+      key: 'pick',
+      label: '',
+      fixed: true,
+      cell: (r: Row) => <input type="checkbox" aria-label={`${r.name} 고르기`} checked={picked.has(r.id)} onChange={() => toggle(r.id)} onClick={(e) => e.stopPropagation()} />,
+    },
+    { key: 'name', label: '정책', sort: (r: Row) => r.name, cell: (r: Row) => r.name },
+    { key: 'kind', label: '종류', sort: (r: Row) => r.kind, cell: (r: Row) => r.kind },
+    { key: 'action', label: '판정', sort: (r: Row) => r.action, cell: (r: Row) => r.action },
+    { key: 'owner', label: '담당', sort: (r: Row) => r.owner, cell: (r: Row) => r.owner, maxWidth: 240 },
+    { key: 'hits', label: '위반', num: true, sort: (r: Row) => r.hits, cell: (r: Row) => r.hits },
+    { key: 'note', label: '메모', hidden: true, cell: (r: Row) => r.note, csv: (r: Row) => r.note },
+    { key: 'seen', label: '시각', hidden: true, width: COL_W.time, sort: (r: Row) => r.seen, cell: (r: Row) => <TimeText value={r.seen} kind="log" />, csv: (r: Row) => fmtLog(r.seen) },
+    {
+      key: 'act',
+      label: '',
+      fixed: true,
+      stick: 'end',
+      cell: (r: Row) => (
+        <IconAction icon={RotateCcw} label="되돌리기" target={r.id} reason={r.action === 'kill' && '시스템 규칙은 되돌릴 수 없습니다.'} onClick={(e) => e.stopPropagation()} />
+      ),
+    },
+  ];
+}
+const TABS = [
+  { key: 'detail', label: '상세' },
+  { key: 'blocks', label: '차단 이력', count: 3 },
+  { key: 'changes', label: '변경 이력' },
+];
+
+function ListDemo({ grid }: { grid: string }) {
+  const lq = K.useListQuery({
+    filters: { q: '', kind: '', action: '', owner: '' },
+    validate: { kind: (v) => KINDS.includes(v), action: (v) => ACTIONS.includes(v), owner: (v) => OWNERS.includes(v) },
+    sort: { key: 'name', dir: 'asc' as const },
+    sortKeys: ['name', 'kind', 'action', 'owner', 'hits'],
+    tabs: TABS.map((t) => t.key),
+  });
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const cols = useMemo(() => columns(picked, (id) => setPicked((s) => (s.has(id) ? new Set([...s].filter((x) => x !== id)) : new Set([...s, id])))), [picked]);
+  const kit = K.useTableKit({ columns: cols, grid, query: lq.table });
+  const [refreshes, setRefreshes] = useState(0);
+  // 재조회(1.5초) · 시트 안 새 내용 받기(0.5초) 흉내 — 줄 · 시트는 그대로 둔다
+  const [refreshing, setRefreshing] = useState(false);
+  const [sheetLoading, setSheetLoading] = useState(false);
+  const refresh = () => {
+    setRefreshes((n) => n + 1);
+    setRefreshing(true);
+    window.setTimeout(() => setRefreshing(false), 1500);
+  };
+  const go = (id: string) => {
+    lq.open(id);
+    setSheetLoading(true);
+    window.setTimeout(() => setSheetLoading(false), 500);
+  };
+  const f = lq.filters;
+  const list = ROWS.filter((r) => (!f.q || r.name.includes(f.q)) && (!f.kind || r.kind === f.kind) && (!f.action || r.action === f.action) && (!f.owner || r.owner === f.owner));
+  const view = kit.view(list);
+  const cur = lq.id ? ROWS.find((r) => r.id === lq.id) : undefined;
+  const ids = view.rows.map((r) => r.id);
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-3 p-4" data-tk-refreshes={refreshes}>
+      <K.FilterBar name="demo" active={lq.active} onClear={lq.clearFilters}>
+        <K.SearchField label="정책 검색" placeholder="정책 이름" value={f.q} onApply={(q) => lq.setFilters({ q })} />
+        <K.Select name="kind" label="종류" value={f.kind} options={KINDS.map((v) => ({ value: v, label: v }))} onChange={(kind) => lq.setFilters({ kind })} />
+        <K.Select name="action" label="판정" value={f.action} options={ACTIONS.map((v) => ({ value: v, label: v }))} onChange={(action) => lq.setFilters({ action })} />
+        <K.Select name="owner" label="담당" value={f.owner} options={OWNERS.map((v) => ({ value: v, label: v }))} onChange={(owner) => lq.setFilters({ owner })} />
+      </K.FilterBar>
+      <div className="sg-card flex min-h-0 flex-1 flex-col overflow-hidden">
+        <K.TableToolbar name="demo" total={list.length} kit={kit} onRefresh={refresh} refreshing={refreshing} onExport={() => K.downloadCSV('tk-demo.csv', kit.csv(list))} />
+        <K.TableScroll className="min-h-0 flex-1 overflow-auto" testId="tk-scroll">
+          <table className="sg-table" data-table="demo">
+            <K.SortHead kit={kit} />
+            <tbody>
+              {view.rows.map((r) => (
+                <tr key={r.id} data-row={r.id} tabIndex={0} {...K.rowState({ open: r.id === lq.id, checked: picked.has(r.id) })} onClick={() => lq.open(r.id)} className="cursor-pointer">
+                  <K.GridCells kit={kit} row={r} bar={r.action === 'kill' ? 'danger' : null} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </K.TableScroll>
+        <K.TablePager name="demo" total={view.total} from={view.from} to={view.to} page={view.page} size={kit.size} onPage={kit.setPage} onSize={kit.setSize} />
+      </div>
+      <ScreenNote text={NOTE} />
+      {cur && (
+        <K.Sheet
+          kind="demo"
+          title={cur.name}
+          subtitle={cur.id}
+          badges={<K.StatusPill tone={cur.action === 'kill' ? 'danger' : 'neutral'}>{cur.action}</K.StatusPill>}
+          tabs={TABS}
+          tab={lq.tab}
+          onTab={lq.setTab}
+          nav={K.sheetNav(ids, cur.id, go)}
+          onClose={lq.close}
+          loading={sheetLoading}
+        >
+          <div data-part="tab-body" data-tab-body={lq.tab}>
+            <p>{lq.tab} 내용</p>
+            <K.TwoLine data-testid="two" top={cur.name} sub={cur.id} />
+            <p>
+              <K.TimeText data-testid="t-log" value={cur.seen} kind="log" /> · <K.TimeText data-testid="t-status" value={cur.seen} kind="status" /> ·{' '}
+              <K.TimeText data-testid="t-day" value={cur.seen} kind="day" />
+            </p>
+            <button type="button" data-testid="inside-1">안쪽 단추 1</button>
+            <input aria-label="안쪽 칸" />
+            <button type="button" data-testid="inside-2">안쪽 단추 2</button>
+          </div>
+        </K.Sheet>
+      )}
+    </div>
+  );
+}
+
+const NOTE = '되돌리기는 정책 상세의 변경 이력에서 합니다. 시스템 규칙은 지우거나 되돌릴 수 없고 시험 운영으로만 바꿀 수 있으며 바꾼 내용은 저장하는 즉시 모든 감시 컨테이너에 적용됩니다.'.repeat(2);
+
+// ── 확인 창 무대(props 그대로) · 화면 상태 무대 ──
+function Stamp({ k, n }: { k: string; n: number }) {
+  return <div {...{ [`data-tk-${k}`]: n }} />;
+}
+function StatesDemo() {
+  const [cleared, setCleared] = useState(0);
+  const box = (k: string, el: ReactNode) => (
+    <div key={k} data-state={k} className="sg-card min-h-0" style={{ height: 200, overflow: 'hidden' }}>
+      {el}
+    </div>
+  );
+  return (
+    <div className="grid grid-cols-3 gap-3 p-4">
+      {box('empty', <EmptyState what="정책" hint="정책 생성으로 첫 정책을 만드세요." actions={<button type="button" className="sg-btn sg-btn-primary">정책 생성</button>} />)}
+      {box('empty-log', <EmptyState what="감사 로그" />)}
+      {box('empty-default', <EmptyState />)}
+      {box('no-results', <NoResults onClear={() => setCleared((n) => n + 1)} />)}
+      {box('error', <ListError error={new Error('연결이 끊겼습니다')} what="정책" onRetry={() => {}} />)}
+      {box('denied', <NoPermission />)}
+      {box('loading', <Skeleton rows={3} />)}
+      {cleared > 0 && <Stamp k="cleared" n={cleared} />}
+    </div>
+  );
+}
+
+// ── 큰 2단 창 무대 ──
+const tall = (n: number, what: string): ReactNode => Array.from({ length: n }, (_, i) => <p key={i} className="py-2">{`${what} 줄 ${i + 1}`}</p>);
+function ModalDemo({ onClosed }: { onClosed: () => void }) {
+  const [v, setV] = useState({ name: 'policy-01', note: '' });
+  const unsaved = K.useUnsaved(v);
+  return (
+    <K.Modal
+      size="xl"
+      kind="tk-form"
+      title="정책 생성"
+      guard={() => unsaved.dirty}
+      onClose={onClosed}
+      side={<div data-testid="side-content">{tall(40, '오른쪽')}</div>}
+      foot={(close) => (
+        <>
+          <button type="button" className="sg-btn sg-btn-secondary" data-action="form-cancel" onClick={close}>
+            취소
+          </button>
+          <button type="button" className="sg-btn sg-btn-primary" data-action="form-save" onClick={onClosed}>
+            저장
+          </button>
+        </>
+      )}
+    >
+      <label className="grid gap-1">
+        <span>이름</span>
+        <input name="name" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} />
+      </label>
+      <div data-testid="main-content">{tall(40, '왼쪽')}</div>
+    </K.Modal>
+  );
+}
+
+function Closed({ n }: { n: number }) {
+  return <div data-tk-closed={n} />;
+}
+
+async function mount(kind: string, props: { grid?: string } & Record<string, unknown> = {}) {
+  await ready();
+  const host = document.createElement('div');
+  Object.assign(host.style, { position: 'fixed', inset: '0', zIndex: '65', background: 'var(--bg)', display: 'flex', flexDirection: 'column' });
+  host.dataset.tkStage = kind;
+  document.body.append(host);
+  const root = createRoot(host);
+  if (kind === 'list') root.render(createElement(BrowserRouter, null, createElement(ListDemo, { grid: props.grid ?? 'tk-demo' })));
+  else if (kind === 'states') root.render(createElement(StatesDemo));
+  else if (kind === 'confirm') {
+    let done = 0;
+    const draw = () =>
+      root.render(
+        done
+          ? createElement(Stamp, { k: 'confirmed', n: done })
+          : createElement(ConfirmDialog, { ...(props as unknown as ComponentProps<typeof ConfirmDialog>), onConfirm: () => ((done += 1), draw()), onCancel: () => {} }),
+      );
+    draw();
+  } else {
+    let closed = 0;
+    const draw = () => root.render(closed ? createElement(Closed, { n: closed }) : createElement(ModalDemo, { onClosed: () => ((closed += 1), draw()) }));
+    draw();
+  }
+  return {
+    unmount: () => {
+      root.unmount();
+      host.remove();
+    },
+  };
+}
+
+(window as unknown as { __tk: unknown }).__tk = { mount };

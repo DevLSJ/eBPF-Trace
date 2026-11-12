@@ -1,12 +1,6 @@
+import { fmtLog } from '../components/list/cell-format';
+
 const timeFmt = new Intl.DateTimeFormat('ko-KR', {
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hour12: false,
-});
-const dateTimeFmt = new Intl.DateTimeFormat('ko-KR', {
-  month: '2-digit',
-  day: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
   second: '2-digit',
@@ -15,7 +9,8 @@ const dateTimeFmt = new Intl.DateTimeFormat('ko-KR', {
 const numFmt = new Intl.NumberFormat('ko-KR');
 
 export const fmtTime = (iso: string) => timeFmt.format(new Date(iso));
-export const fmtDateTime = (iso: string) => dateTimeFmt.format(new Date(iso));
+// 시각 한 줄(시트 · 보고서 · 도우미 · 계정, 11/09 G41): YYYY-MM-DD HH:mm:ss — 표 칸 TimeText 'log' 와 같은 모양(cell-format fmtLog 한 곳)
+export const fmtDateTime = (iso: string) => fmtLog(iso);
 export const fmtNum = (n: number) => numFmt.format(n);
 export const shortId = (id: string) => id.slice(0, 12);
 

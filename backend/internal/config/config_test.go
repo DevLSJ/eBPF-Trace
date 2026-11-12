@@ -162,3 +162,26 @@ func TestGadgetsDNSNotAllowed(t *testing.T) {
 		t.Fatalf("%+v %v", c.Gadgets, err)
 	}
 }
+
+// Tier 1 — LOCAL_DEV(11/09 사용자 결정): 개발자 PC(Docker Desktop)에서 실제 가젯 + admin/admin 로그인을 함께 쓸 때만 켜는 두 번째 스위치.
+// AUTH_DEV_MODE=true 와 함께일 때만 가젯 소스를 허용하고, 혼자서는 아무것도 바꾸지 않는다(서버 .env 에는 넣지 않는다)
+func TestLocalDevAllowsDevModeWithGadget(t *testing.T) {
+	t.Setenv("EVENT_SOURCE", "gadget")
+	t.Setenv("AUTH_DEV_MODE", "true")
+	if _, err := Load(); err == nil {
+		t.Fatal("LOCAL_DEV 없이 gadget + AUTH_DEV_MODE 는 거부")
+	}
+	t.Setenv("LOCAL_DEV", "true")
+	c, err := Load()
+	if err != nil || !c.AuthDevMode || !c.LocalDev {
+		t.Fatalf("LOCAL_DEV=true + gadget + AUTH_DEV_MODE: dev=%v local=%v err=%v", c.AuthDevMode, c.LocalDev, err)
+	}
+	t.Setenv("AUTH_DEV_MODE", "false")
+	if c, err := Load(); err != nil || c.AuthDevMode || !c.LocalDev {
+		t.Fatalf("LOCAL_DEV 혼자: dev=%v err=%v", c.AuthDevMode, err)
+	}
+	t.Setenv("LOCAL_DEV", "maybe")
+	if _, err := Load(); err == nil {
+		t.Fatal("LOCAL_DEV 잘못된 값은 거부")
+	}
+}

@@ -40,16 +40,20 @@ test.describe('패키지 표기 — 화면은 친 그대로, 차단 목록 · �
     await expect(detail.getByTestId('proposal-changes')).toContainText('패키지 차단 pip:reqeusts');
     await detail.getByRole('button', { name: '적용' }).click();
     await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
+    await expect(detail.getByTestId('proposal-state')).toContainText('적용됨');
+    await page.goto('/policies/blocklist'); // 11/09: 차단 목록 페이지
     await expect(page.getByTestId('blocklist').locator('[data-block="packages:pip:reqeusts"]')).toContainText('pip:reqeusts');
   });
 });
 
 test.describe('계약 추가 (10/15)', () => {
   test('변경 이력 kind blocklist_remove → 「차단 해제」 (정책 · 감사 로그)', async ({ page, backend }) => {
-    await page.goto('/policies');
+    await page.goto('/policies/blocklist'); // 11/09: 차단 목록 · 변경 이력은 각자 페이지
     const entry = page.getByTestId('blocklist').locator('[data-block="packages:pip:colourama"]');
     await entry.getByRole('button', { name: '해제' }).click();
     await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
+    await expect(entry).toHaveCount(0);
+    await page.goto('/policies/changes');
     await expect(page.getByTestId('changes').locator('[data-change]').first()).toContainText('차단 해제');
     expect(backend.changes[0].kind).toBe('blocklist_remove');
     await page.goto('/audit?view=changes');

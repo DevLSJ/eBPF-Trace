@@ -9,7 +9,8 @@ test.describe('셸', () => {
     await expect(nav.locator('[data-nav-group]')).toHaveCount(4);
     for (const g of ['설치 검사', '런타임 감시', '설정 · 기록']) await expect(nav.locator(`[data-nav-group="${g}"]`)).toBeVisible();
     await expect(nav.locator('[data-nav-group="런타임 감시"] a')).toHaveText(['이벤트', '토폴로지']);
-    await expect(nav.locator('[data-nav-group="설정 · 기록"] a')).toHaveText(['정책', '감사 로그', '설정']); // W16: 「설정」 화면
+    // 11/09: 「정책」은 하위 메뉴 묶음(정책 · 차단 목록 · 변경 이력) — W16: 「설정」 화면
+    await expect(nav.locator('[data-nav-group="설정 · 기록"] a')).toHaveText(['정책', '차단 목록', '변경 이력', '감사 로그', '설정']);
     for (const [label, title] of [
       ['설치 검사', '설치 검사'],
       ['이벤트', '이벤트'],
@@ -19,12 +20,13 @@ test.describe('셸', () => {
       ['설정', '설정'],
       ['대시보드', '대시보드'],
     ]) {
+      if (label === '정책') await nav.locator('[data-nav-sub="policies"] [data-part="subnav-toggle"]').click(); // 11/09 밤: 하위 메뉴 묶음은 처음엔 접힘
       await nav.getByRole('link', { name: label, exact: false }).first().click();
       await expect(page.getByTestId('page-title')).toHaveText(title);
     }
   });
 
-  test('토스트: 같은 대상끼리 묶음(×N), 8초 뒤 닫힘', async ({ page, backend }) => {
+  test('토스트: 같은 대상끼리 묶음(×N), 9초 뒤 닫힘(단추 있음 — 11/09 G20)', async ({ page, backend }) => {
     await page.goto('/events');
     await expect(page.getByText('실시간 연결됨')).toBeVisible();
     for (let i = 0; i < 3; i++) backend.send({ type: 'verdict', data: killedVerdict('api-gw') });
@@ -38,7 +40,7 @@ test.describe('셸', () => {
     await page.locator('[data-part="bell"]').click();
     await expect(page.locator('[data-notice="violations"]')).toContainText(/새 위반 \d+건/);
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(8_400);
+    await page.waitForTimeout(9_400);
     await expect(page.locator('[data-toast]')).toHaveCount(0);
   });
 

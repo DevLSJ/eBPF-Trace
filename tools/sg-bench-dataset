@@ -46,7 +46,7 @@ DATASETS = {
                         source="https://pypi.org (top-pypi-packages 30일, 2026-10-12)", sourceCommit=None),
     # 보조 세트: 같은 300개를 이름 · 버전으로 패키지 검사(백엔드가 PyPI 에서 sdist 우선으로 받는다 — sg-install 자동 검사와 같은 길).
     # wheel 에는 setup.py 가 없어 설치 시점 규칙이 걸릴 수 없으므로, 악성(대부분 sdist)과 같은 조건의 오탐률을 보려고 둔다. 지표(metrics)에는 넣지 않는다
-    "benign-pypi-sdist": dict(label="인기 PyPI 300 — 레지스트리 sdist (정상, 보조)", kind="benign", ecosystem="pypi", fmt="registry",
+    "benign-pypi-sdist": dict(label="인기 PyPI 300 · 레지스트리 sdist (정상, 보조)", kind="benign", ecosystem="pypi", fmt="registry",
                               source="https://pypi.org (benign-pypi 와 같은 이름 · 버전, 검사 시점에 받음)", sourceCommit=None, primary=False),
     # npm 정상(11/04): 월간 다운로드 상위(@types 제외) — 목록 · 버전은 npm-list 로 고정(bench/lists/benign-npm-300.tsv), 검사는 레지스트리 tarball
     "benign-npm": dict(label="인기 npm 300 (정상)", kind="benign", ecosystem="npm", fmt="npm-list",

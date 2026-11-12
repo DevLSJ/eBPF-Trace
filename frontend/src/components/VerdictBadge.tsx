@@ -24,8 +24,8 @@ export function VerdictBadge({ v }: { v: Verdict }) {
       ? v.enforceError
         ? `격리 실패: ${v.enforceError}`
         : v.enforceSkip === 'label'
-          ? '격리 보류 — 격리 라벨(supplyguard.enforce=true) 없음'
-          : 'dry-run — 알림만 보냄'
+          ? '[격리 보류] 격리 라벨(supplyguard.enforce=true) 없음'
+          : '[dry-run] 격리하지 않고 경고만 남김'
       : undefined;
   return <LevelBadge level={level} title={title} />;
 }

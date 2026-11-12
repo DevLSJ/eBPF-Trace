@@ -12,8 +12,8 @@ import (
 	"strings"
 )
 
-// errModelDown: Ollama 에 닿지 못했거나(꺼짐 · 주소 틀림) 모델이 없음(404) — 화면에는 MsgModelDown
-var errModelDown = errors.New("ollama unavailable")
+// errModelDown: 모델에 닿지 못함 — Ollama 꺼짐 · 주소 틀림 · 모델 없음(404), Claude 키 · 한도 · 서버 오류(claudeErr). 화면에는 MsgModelDown
+var errModelDown = errors.New("model unavailable")
 
 // ollama: POST {base}/api/chat 클라이언트(Ollama 의 NDJSON 스트리밍 · 도구 호출)
 type ollama struct {

@@ -1,10 +1,12 @@
 # 빌드 컨텍스트 = backend/  (docker build -f deploy/Dockerfile.backend backend)
 # 평가 결과(GET /api/evaluation, 11/04): bench/reports 는 컨텍스트 밖이라 이름 붙은 추가 컨텍스트로 받는다.
-#   compose: additional_contexts eval-reports=./bench/reports (deploy/docker-compose.yml)
-#   직접:    docker build -f deploy/Dockerfile.backend --build-context eval-reports=bench/reports backend
+#   compose: additional_contexts eval-reports=./bench/reports · sg-tools=./tools (deploy/docker-compose.yml)
+#   직접:    docker build -f deploy/Dockerfile.backend --build-context eval-reports=bench/reports --build-context sg-tools=tools backend
 # 추가 컨텍스트 없이 빌드하면(CI 등) 아래 대체 단계(최상위에 *.json 이 없는 런타임 기반 이미지)가 쓰여 결과 없이 만들어진다
 # → API 는 404 「평가 결과 없음」. scratch 로 두면 BuildKit 캐시가 직전 빌드의 결과 층을 다시 써서(11/04 실측) 내용이 있는 이미지를 쓴다
 FROM gcr.io/distroless/static-debian12 AS eval-reports
+# sg-install(11/09, 설치 검사 「사용 방법」 내려받기): tools/ 도 컨텍스트 밖 — 추가 컨텍스트 sg-tools=./tools. 없으면 이 대체 단계(파일 없음 → 내려받기 숨김)
+FROM gcr.io/distroless/static-debian12 AS sg-tools
 
 FROM golang:1.26-alpine AS build
 WORKDIR /src
@@ -17,6 +19,9 @@ RUN go build -trimpath -ldflags='-s -w' -o /out/server ./cmd/server \
 # 결과 JSON(*.json)만 고른다 — static-items.jsonl(패키지별 원시 줄) · static.md 는 넣지 않는다
 COPY --from=eval-reports / /reports-in/
 RUN mkdir -p /out/reports && find /reports-in -maxdepth 1 -type f -name '*.json' -exec cp {} /out/reports/ \;
+# sg-install 하나만 고른다(sg-bench* 는 넣지 않는다)
+COPY --from=sg-tools / /tools-in/
+RUN mkdir -p /out/tools && if [ -f /tools-in/sg-install ]; then cp /tools-in/sg-install /out/tools/sg-install; fi
 
 # 정적 바이너리 + CA 인증서(가젯 이미지 pull) + tzdata 만 있는 최소 이미지. 셸 없음.
 # eBPF 로드·파일시스템 마운트에 root 가 필요해 root 로 실행한다 (컨테이너는 privileged 로 뜬다)
@@ -25,7 +30,8 @@ COPY --from=build /out/server /server
 COPY --from=build /out/healthcheck /healthcheck
 COPY policies/default.yaml /policies/default.yaml
 COPY --from=build /out/reports/ /bench/reports/
-ENV BACKEND_PORT=8000 POLICY_FILE=/policies/default.yaml EVAL_REPORTS_DIR=/bench/reports
+COPY --from=build /out/tools/ /tools/
+ENV BACKEND_PORT=8000 POLICY_FILE=/policies/default.yaml EVAL_REPORTS_DIR=/bench/reports SG_INSTALL_FILE=/tools/sg-install
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=40s --retries=6 CMD ["/healthcheck"]
 ENTRYPOINT ["/server"]

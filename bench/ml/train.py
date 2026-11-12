@@ -290,24 +290,32 @@ def run(rows, protocol, on_selection=None, scope="pypi"):
     return selection, report
 
 
+# protocol.json 은 결과를 보기 전에 고정한 기록(해시로 묶임)이라 고치지 않고, 화면 「결과의 한계」로 나갈 때만 문장을 바꾼다
+# (11/09 저녁 사용자 — 화면에 「—」 금지. bench/reports/*.json 과 같은 글자)
+SCREEN_LIMITS = {
+    "files · bytes(파일 수 · 크기)와 testFindings 는 입력에서 뺐다 — sdist 행에 값이 없거나 포장 형식 단서라서(프로토콜 2판, 결과를 보기 전 수정).":
+    "files · bytes(파일 수 · 크기)와 testFindings 는 sdist 행에 값이 없거나 포장 형식 단서라서 입력에서 뺐다(프로토콜 2판, 결과를 보기 전 수정).",
+}
+
+
 def limits(report, protocol):
     t, scope = report["parts"]["test"], report["scope"]
     out = [
-        f"표본이 작다 — 시험 구간은 악성 {t['malicious']}행 · 정상 {t['benign']}행(그룹 {report['groups']['test']}개)뿐이라 "
+        f"표본이 작다. 시험 구간은 악성 {t['malicious']}행 · 정상 {t['benign']}행(그룹 {report['groups']['test']}개)뿐이라 "
         "후보 간 F1 차이 몇 %p 는 우연 범위 안일 수 있다.",
-        "악성 데이터셋(malicious-software-packages-dataset)과 입력을 만든 GuardDog 이 모두 DataDog 제작이다 — "
+        "악성 데이터셋(malicious-software-packages-dataset)과 입력을 만든 GuardDog 이 모두 DataDog 제작이다. "
         "GuardDog 규칙이 이 표본에 맞춰져 있을 수 있어 규칙 · 모델 모두 낙관적이다.",
-        ("정상 표본은 인기 PyPI 300개(wheel + 같은 패키지 sdist)뿐이다 — 덜 알려진 정상 패키지 · npm 정상에서의 오탐률은 재지 않았다."
+        ("정상 표본은 인기 PyPI 300개(wheel + 같은 패키지 sdist)뿐이다. 덜 알려진 정상 패키지 · npm 정상에서의 오탐률은 재지 않았다."
          if scope == "pypi" else
-         "정상 표본은 인기 패키지(PyPI wheel + sdist · npm)뿐이다 — 덜 알려진 정상 패키지에서의 오탐률은 재지 않았다."),
-        "모델은 운영에 적용하지 않는다(deploymentApproved=false) — 서버 판정 · kill 은 그대로 scan/verdict.go 규칙이다.",
-        "입력이 GuardDog 결과(점수 · 규칙 · 개수)라 GuardDog 이 못 보는 악성은 모델도 못 본다 — 모델은 GuardDog 신호의 재가중일 뿐이다.",
-        "같은 정상 패키지의 wheel · sdist 는 같은 구간에 묶었다 — 정상 행 수는 패키지 수의 약 2배라 정상 쪽 표본이 서로 독립이 아니다.",
+         "정상 표본은 인기 패키지(PyPI wheel + sdist · npm)뿐이다. 덜 알려진 정상 패키지에서의 오탐률은 재지 않았다."),
+        "모델은 운영에 적용하지 않는다(deploymentApproved=false). 서버 판정 · kill 은 그대로 scan/verdict.go 규칙이다.",
+        "입력이 GuardDog 결과(점수 · 규칙 · 개수)라 GuardDog 이 못 보는 악성은 모델도 못 본다. 모델은 GuardDog 신호의 재가중일 뿐이다.",
+        "같은 정상 패키지의 wheel · sdist 는 같은 구간에 묶었다. 정상 행 수는 패키지 수의 약 2배라 정상 쪽 표본이 서로 독립이 아니다.",
     ]
     if scope == "pypi":
-        out.append(f"npm 은 정상 표본이 없어 학습에서 뺐다 — npmReference 는 PyPI 모델을 그대로 적용한 재현율(악성 {report['refRows']}행)이고, "
+        out.append(f"npm 은 정상 표본이 없어 학습에서 뺐다. npmReference 는 PyPI 모델을 그대로 적용한 재현율(악성 {report['refRows']}행)이고, "
                    "npm 전용 규칙은 PyPI 학습 어휘에 없어 모델 입력에서 빠진다.")
-    out += protocol["features"].get("limits", [])
+    out += [SCREEN_LIMITS.get(x, x) for x in protocol["features"].get("limits", [])]
     return out
 
 
@@ -320,9 +328,9 @@ def build(data_bytes, protocol_bytes, now=None, on_selection=None, scope="pypi")
         used[f"{e}Malicious"], used[f"{e}Benign"] = c["malicious"], c["benign"]
     if scope == "pypi":
         used["npmMalicious"] = rep["refRows"]
-        npm_ref = {"note": "정상 표본 없음 — 재현율만", "rows": rep["refRows"], "recall": rep["refRecall"]}
+        npm_ref = {"note": "정상 표본 없음, 재현율만", "rows": rep["refRows"], "recall": rep["refRecall"]}
     else:
-        npm_ref = {"note": "all 범위 — npm 은 주 실험에 들어 있다. 아래는 시험 구간 npm 재현율(byEcosystem.npm 참고)",
+        npm_ref = {"note": "all 범위, npm 은 주 실험에 들어 있다. 아래는 시험 구간 npm 재현율(byEcosystem.npm 참고)",
                    "rows": rep["byEcosystem"]["npm"]["test"]["malicious"],
                    "recall": {cid: v["test"]["recall"] for cid, v in rep["byEcosystem"]["npm"]["candidates"].items()}}
     model = {

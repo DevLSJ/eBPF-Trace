@@ -33,7 +33,7 @@ test.describe('대시보드 — 지금 처리할 일이 있나?', () => {
     backend.cases = backend.cases.filter((c) => c.state === 'closed');
     await page.goto('/');
     await expect(page.getByTestId('pending-count')).toHaveText('0');
-    await expect(page.getByTestId('nothing-to-do')).toContainText('처리할 일 없음');
+    await expect(page.getByTestId('nothing-to-do')).toContainText('처리할 판정 대기 건이 없습니다.');
   });
 
   // 10/16: 오늘 요약 · 감시 중 분당 막대 → 「eBPF 수집 종합」(overview-1016.spec.ts)

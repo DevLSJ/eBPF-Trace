@@ -316,7 +316,7 @@ test.describe("C KPI 증감 줄(previous)", () => {
     expect(await delta(page, "installs")).toEqual({
       dir: "flat",
       tone: "neutral",
-      text: "— 변화 없음 지난 24시간 대비",
+      text: "변화 없음 지난 24시간 대비",
     });
     expect(await delta(page, "decided")).toEqual({
       dir: "down",
@@ -330,7 +330,7 @@ test.describe("C KPI 증감 줄(previous)", () => {
         .evaluate((e) => getComputedStyle(e).color);
     const danger = await page.evaluate(() => {
       const e = document.createElement("i");
-      e.style.color = "var(--danger)";
+      e.style.color = "var(--danger-text)"; // 11/10: 작은 증감 글자는 위험 글자색(4.5:1 이상)
       document.body.append(e);
       const v = getComputedStyle(e).color;
       e.remove();
@@ -586,7 +586,7 @@ test.describe("G 다크", () => {
       `${DASH} [data-card="top-rules"] > .sg-panel`,
       `${DASH} [data-card="pending"] > .sg-panel`,
     ])
-      expect(await bg(sel), sel).toBe(rgb("#1B1E28"));
+      expect(await bg(sel), sel).toBe(rgb("#15202B")); // 11/09 밤 남색: 카드 = 바탕 하나
     expect(await scrollAudit(page)).toMatchObject({
       doc: 0,
       main: 0,

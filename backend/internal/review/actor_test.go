@@ -65,7 +65,7 @@ func TestActorFromRequest(t *testing.T) {
 	}
 
 	// 4. PolicyWrite
-	if err := e.svc.PolicyWrite(as(ctx, "김조회"), model.ChangePolicyEdit, "정책 x 저장", func(context.Context) error { return nil }); err != nil {
+	if err := e.svc.PolicyWrite(as(ctx, "김조회"), model.ChangePolicyEdit, "정책 x 저장", []string{"x"}, func(context.Context) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if ch := e.svc.ListChanges(1)[0]; ch.By != "김조회" {

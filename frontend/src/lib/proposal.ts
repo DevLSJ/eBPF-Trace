@@ -20,9 +20,9 @@ export function applyEffects(p: Proposal, pv: Preview | null): string[] {
     out.push(`차단 목록 +${blocks.length} (${parts.join(' · ')})`);
   }
   for (const b of blocks.filter((x) => x.list === 'packages')) out.push(`다음 sg-install 부터 ${b.value} 는 설치 전 거부(컨테이너를 띄우지 않음)`);
-  for (const b of blocks.filter((x) => x.list === 'images')) out.push(`이미지 ${b.value} — 이 이미지로 시작하는 컨테이너는 다음 시작 때 격리(지금 실행은 그대로)`);
+  for (const b of blocks.filter((x) => x.list === 'images')) out.push(`이미지 ${b.value}, 이 이미지로 시작하는 컨테이너는 다음 시작 때 격리(지금 실행은 그대로)`);
   if (blocks.some((x) => x.list === 'hosts')) out.push('도메인 차단은 시스템 규칙 blocklist-hosts 로 바로 집행(런타임 · 설치 모두)');
-  if (ex.length) out.push(`규칙 예외 +${ex.length} (${[...new Set(ex.map((x) => x.ruleId))].join(', ')}) — 엔진에 바로 반영`);
+  if (ex.length) out.push(`규칙 예외 +${ex.length} (${[...new Set(ex.map((x) => x.ruleId))].join(', ')}), 엔진에 바로 반영`);
   if (pv) out.push(`과거 위반 ${pv.changed.length}건의 탐지 결과가 바뀜 (통과로 ${pv.counts.toNormal} · 차단으로 ${pv.counts.toBlocked})`);
   out.push(`건 ${p.caseId} 종결 · 변경 이력에 남음`);
   return out;

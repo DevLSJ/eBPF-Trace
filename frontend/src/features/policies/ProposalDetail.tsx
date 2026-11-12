@@ -1,14 +1,17 @@
 import { Eye } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ActionButton } from '../../components/ActionButton';
 import { DecisionBadge } from '../../components/Badges';
 import { ConfirmDialog } from '../../components/Modal';
 import { Empty, LoadError, Panel } from '../../components/Panel';
 import { useCases } from '../../hooks/cases-context';
 import { useToast } from '../../hooks/toast-context';
-import { api, errorText } from '../../lib/api';
+import { api, failText } from '../../lib/api';
+import { FIELD } from '../../lib/fieldNames';
 import { fmtDateTime, fmtNum } from '../../lib/format';
 import { scanHref, SOURCE_LABEL } from '../../lib/guide';
+import { josa } from '../../lib/layout';
 import { installDest } from '../../lib/nav';
 import { applyEffects, changeText, LIST_LABEL } from '../../lib/proposal';
 import { caseLabel, LEVEL_LABEL, type Level, type Preview, type Proposal } from '../../lib/types';
@@ -17,18 +20,23 @@ const levelText = (v: string) => LEVEL_LABEL[v as Level] ?? (v === 'kill' ? '격
 
 // 제안 상세: 근거(판정) → 변경 내용 → 미리보기(과거 위반 중 결과가 바뀌는 건) → 적용 / 버림
 // 초안을 열면 미리보기를 바로 한 번 계산한다(결정 2026-10-15) — 다시 계산은 「미리보기」 버튼
+// 11/09 G16 · G19 · G20: 「적용」은 미리보기 전엔 aria-disabled + 사유, 확인 창 제목 「[대상] 차단 · 예외 제안을 ~할까요?」 + 영향 범위,
+//   실패 알림 「제안을 ~하지 못했습니다. 사유.」 + 할 일(11/09 INTEG: 사유는 괄호 없이 한 문장)
 export function ProposalDetail({
   proposal: p,
   loading,
   error,
   canWrite,
   onDone,
+  bare,
 }: {
   proposal: Proposal | undefined;
   loading: boolean;
   error: unknown;
   canWrite: boolean;
   onDone: () => void;
+  // 11/09: 시트 안(제목은 시트 머리) — 테두리 있는 칸 없이
+  bare?: boolean;
 }) {
   const { cases } = useCases();
   const toast = useToast();
@@ -61,9 +69,14 @@ export function ProposalDetail({
   }, [id, draft, runPreview]);
 
   if (!p) {
-    return (
+    const body = error ? <LoadError error={error} what="제안" /> : <Empty>{loading ? '불러오는 중…' : '제안을 찾을 수 없습니다'}</Empty>;
+    return bare ? (
+      <div data-testid="proposal" className="h-full">
+        {body}
+      </div>
+    ) : (
       <Panel title="제안" testId="proposal">
-        {error ? <LoadError error={error} what="제안" /> : <Empty>{loading ? '불러오는 중…' : '제안을 찾을 수 없습니다'}</Empty>}
+        {body}
       </Panel>
     );
   }
@@ -77,29 +90,20 @@ export function ProposalDetail({
     try {
       if (kind === 'apply') await api.applyProposal(p.id, reason);
       else await api.discardProposal(p.id, reason);
-      toast(kind === 'apply' ? `제안 적용 — ${target} 건 종결, 변경 이력에 기록` : `제안 버림 — ${target} 건 종결(변경 없음)`, {
+      toast(kind === 'apply' ? `제안을 적용하고 ${target} 건을 종결했습니다. 변경 이력에 남았습니다.` : `제안을 버리고 ${target} 건을 종결했습니다(변경 없음).`, {
         key: `proposal:${p.id}`,
         tone: 'ok',
       });
       onDone();
     } catch (e) {
-      toast(`${kind === 'apply' ? '적용' : '버림'} 실패: ${errorText(e)}`, { key: `proposal:${p.id}`, tone: 'danger' });
+      toast(failText(`제안을 ${kind === 'apply' ? '적용하지' : '버리지'} 못했습니다.`, e, '잠시 뒤 다시 시도하세요.'), { key: `proposal:${p.id}`, tone: 'danger' });
     } finally {
       setBusy(false);
     }
   };
 
-  return (
-    <Panel
-      className="min-h-0"
-      testId="proposal"
-      title={
-        <span className="flex items-center gap-2">
-          제안 · <DecisionBadge decision={p.decision} /> <span className="font-mono">{target}</span>
-        </span>
-      }
-      actions={<span className="text-xs text-slate-400">{p.state === 'draft' ? '초안' : p.state === 'applied' ? '적용됨' : '버림'}</span>}
-    >
+  const inner = (
+    <>
       <div className="flex h-full flex-col">
         <div data-fill="" className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-sm">
           <section className="mb-4">
@@ -129,7 +133,7 @@ export function ProposalDetail({
           <section className="mb-4">
             <h3 className="mb-1.5 text-xs font-semibold text-slate-700">변경 내용 {p.changes.length}</h3>
             {p.changes.length === 0 ? (
-              <p className="text-xs text-slate-500">자동으로 만들 변경이 없습니다 — 실행 규칙은 정책을 직접 수정하세요.</p>
+              <p className="text-xs text-slate-500">자동으로 만들 변경이 없습니다. 실행 규칙은 정책을 직접 수정하세요.</p>
             ) : (
               <ul className="grid gap-1" data-testid="proposal-changes">
                 {p.changes.map((x, i) => (
@@ -161,7 +165,7 @@ export function ProposalDetail({
             ) : (
               <div className="grid gap-2">
                 <p data-testid="preview-summary">
-                  감사 로그 <b className="num">{fmtNum(preview.evaluated)}</b>건 재평가 — 통과로 바뀜{' '}
+                  감사 로그 <b className="num">{fmtNum(preview.evaluated)}</b>건 재평가 결과, 통과로 바뀜{' '}
                   <b className="num text-emerald-700" data-to-normal={preview.counts.toNormal}>
                     {fmtNum(preview.counts.toNormal)}
                   </b>{' '}
@@ -176,7 +180,7 @@ export function ProposalDetail({
                       <tr>
                         <th className="tk-short">#</th>
                         <th>컨테이너</th>
-                        <th>규칙</th>
+                        <th>{FIELD.policy}</th>
                         <th>탐지 결과</th>
                       </tr>
                     </thead>
@@ -196,7 +200,7 @@ export function ProposalDetail({
                 )}
                 {nextOnly.length > 0 && (
                   <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="next-only">
-                    <p className="mb-1 font-medium">다음 설치 · 기동부터 적용 — 과거 이벤트는 바뀌지 않습니다</p>
+                    <p className="mb-1 font-medium">다음 설치 · 기동부터 적용(과거 이벤트는 바뀌지 않음)</p>
                     <ul className="grid gap-0.5 font-mono">
                       {nextOnly.map((x) => (
                         <li key={`${x.list}:${x.value}`}>
@@ -232,20 +236,16 @@ export function ProposalDetail({
                   버림
                 </button>
               )}
-              {canWrite && <button
-                type="button"
-                onClick={() => setAsk('apply')}
-                disabled={busy || !preview}
-                title={preview ? undefined : '먼저 미리보기로 무엇이 바뀌는지 확인하세요'}
-                className="sg-btn sg-btn-primary"
-              >
-                적용
-              </button>}
+              {canWrite && (
+                <ActionButton onClick={() => setAsk('apply')} reason={!preview ? '미리보기를 계산한 뒤 쓸 수 있습니다' : busy && '처리 중입니다'} className="sg-btn sg-btn-primary">
+                  적용
+                </ActionButton>
+              )}
               {!canWrite && <span className="ml-auto text-xs text-slate-500">적용 · 버림은 관리자만 합니다</span>}
             </>
           ) : (
             <span className="text-xs text-slate-500" data-testid="proposal-state">
-              {p.state === 'applied' ? `적용됨 · ${p.appliedBy ?? '—'} · ${p.appliedAt ? fmtDateTime(p.appliedAt) : ''}` : '버림 — 변경 없이 건 종결'}
+              {p.state === 'applied' ? ['적용됨', p.appliedBy, p.appliedAt && fmtDateTime(p.appliedAt)].filter(Boolean).join(' · ') : '버림(변경 없이 건 종결)'}
             </span>
           )}
         </div>
@@ -253,22 +253,26 @@ export function ProposalDetail({
       {ask && (
         <ConfirmDialog
           key={ask}
-          title={ask === 'apply' ? '제안 적용' : '제안 버림'}
-          target={`${target} · 제안 ${p.id}`}
-          tone={ask === 'apply' ? 'primary' : 'danger'}
-          okLabel={ask === 'apply' ? '적용' : '버림'}
+          title={`${target} ${p.decision === 'malicious' ? '차단' : '예외'} 제안을 ${ask === 'apply' ? '적용할까요?' : '버릴까요?'}`}
+          body={
+            ask === 'apply'
+              ? `제안 ${p.id}의 변경 ${p.changes.length}개를 정책에 반영하고 이 건을 종결합니다.`
+              : `정책은 그대로 두고 제안 ${p.id}만 버린 뒤 이 건을 종결합니다.`
+          }
+          danger={ask !== 'apply'}
+          confirmLabel={ask === 'apply' ? '적용' : '버림'}
           reason
-          effects={
+          impact={
             ask === 'apply'
               ? applyEffects(p, preview)
-              : ['정책 · 차단 목록은 바뀌지 않습니다', `건 ${p.caseId} 은 판정(${p.decision === 'malicious' ? '악성' : '오탐'})만 남기고 종결`, '판정 · 변경 이력에 「제안 버림」으로 남습니다']
+              : ['정책 · 차단 목록은 바뀌지 않습니다', `건 ${p.caseId}${josa(p.caseId, ['은', '는'])} 판정(${p.decision === 'malicious' ? '악성' : '오탐'})만 남기고 종결`, '판정 · 변경 이력에 「제안 버림」으로 남습니다']
           }
           undo={
             ask === 'apply'
               ? p.decision === 'malicious'
                 ? '정책 › 차단 목록에서 「해제」하면 다음 설치 · 기동부터 풀립니다'
                 : '정책 편집에서 더한 예외 값을 지우고 저장하면 됩니다'
-              : '버린 제안은 되살리지 않습니다 — 같은 대상이 다시 걸리면 새 건으로 판정합니다'
+              : '버린 제안은 되살리지 않습니다. 같은 대상이 다시 걸리면 새 건으로 판정합니다'
           }
           onCancel={() => setAsk(null)}
           onConfirm={(reason) => {
@@ -278,6 +282,32 @@ export function ProposalDetail({
           }}
         />
       )}
+    </>
+  );
+  if (bare)
+    return (
+      <div data-testid="proposal" className="flex h-full min-h-0 flex-col">
+        <header className="flex shrink-0 items-center gap-2 border-b border-border px-5 py-2.5 text-sm">
+          <DecisionBadge decision={p.decision} /> <span className="min-w-0 truncate font-mono text-text">{target}</span>
+          <span className="ml-auto shrink-0 text-xs text-text-3" data-part="proposal-badge">
+            {p.state === 'draft' ? '적용 대기' : p.state === 'applied' ? '적용됨' : '버림'}
+          </span>
+        </header>
+        {inner}
+      </div>
+    );
+  return (
+    <Panel
+      className="min-h-0"
+      testId="proposal"
+      title={
+        <span className="flex items-center gap-2">
+          제안 · <DecisionBadge decision={p.decision} /> <span className="font-mono">{target}</span>
+        </span>
+      }
+      actions={<span className="text-xs text-slate-400">{p.state === 'draft' ? '초안' : p.state === 'applied' ? '적용됨' : '버림'}</span>}
+    >
+      {inner}
     </Panel>
   );
 }

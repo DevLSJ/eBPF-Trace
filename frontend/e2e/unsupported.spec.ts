@@ -15,10 +15,13 @@ test.describe('백엔드 미지원', () => {
     await expect(page.getByTestId('installs').locator('[data-unsupported]')).toContainText('백엔드 미지원');
     await page.goto('/policies');
     await expect(page.getByTestId('proposals').locator('[data-unsupported]')).toBeVisible();
+    // 정책 목록은 그대로(11/09 — 시트는 저절로 열지 않음)
+    await expect(page.locator('[data-rule="sensitive-files"]')).toBeVisible();
+    // 11/09: 차단 목록 · 변경 이력은 「정책」 아래 각자 페이지
+    await page.goto('/policies/blocklist');
     await expect(page.getByTestId('blocklist').locator('[data-unsupported]')).toBeVisible();
+    await page.goto('/policies/changes');
     await expect(page.getByTestId('changes').locator('[data-unsupported]')).toBeVisible();
-    // 정책은 첫 정책 자동 선택으로 그대로 편집 가능
-    await expect(page).toHaveURL(/\?id=sensitive-files/);
   });
 
   test('기존 동작: WS 피드 · 정책 저장 · 감사 조회', async ({ page, backend }) => {
@@ -36,6 +39,6 @@ test.describe('백엔드 미지원', () => {
 
     await page.goto('/audit?kind=exec');
     await expect(page.locator('tr[data-audit]')).toHaveCount(backend.audit.filter((a) => a.event.kind === 'exec').length);
-    await expect(page.locator('tr[data-audit] [data-col="decision"]').first()).toHaveText('—');
+    await expect(page.locator('tr[data-audit] [data-col="decision"]').first()).toHaveText('');
   });
 });

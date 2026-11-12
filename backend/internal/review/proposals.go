@@ -250,7 +250,7 @@ func (s *Service) Apply(ctx context.Context, id, reason string) (model.Proposal,
 		case "except":
 			i := slices.IndexFunc(nextPols, func(r rules.Rule) bool { return r.ID == ch.RuleID })
 			if i < 0 || rules.IsSystemRule(ch.RuleID) {
-				return model.Proposal{}, model.Case{}, conflict("규칙 %s 이 없어 적용할 수 없음 — 제안을 버리고 다시 판정하세요", ch.RuleID)
+				return model.Proposal{}, model.Case{}, conflict("규칙 %s 이 없어 적용할 수 없음, 제안을 버리고 다시 판정하세요", ch.RuleID)
 			}
 			nextPols[i] = withValue(nextPols[i], ch.Field, ch.Value)
 			changed[ch.RuleID] = true
@@ -272,7 +272,10 @@ func (s *Service) Apply(ctx context.Context, id, reason string) (model.Proposal,
 	c := caseRec.Clone()
 	c.Case.State, c.Case.ClosedAt = model.CaseClosed, &now
 	chg := model.Change{ID: s.nextID("chg"), At: now, By: by, Kind: model.ChangeProposalApplied,
-		CaseID: ptr(cur.CaseID), ProposalID: ptr(cur.ID), Summary: summarize(cur.Changes), Reason: reason}
+		CaseID: ptr(cur.CaseID), ProposalID: ptr(cur.ID), Summary: summarize(cur.Changes), Reason: reason,
+		RuleIDs: appliedRuleIDs(changed, adds)}
+	// 예외를 더한 규칙의 변경 전 · 후 값(11/09). blocklist-hosts 는 저장된 정책이 아니라 키가 없다
+	chg.Before, chg.After = recordValues(policyMap(pols), policyMap(nextPols), chg.RuleIDs)
 
 	// 2. 커밋 하나
 	commit := store.ReviewCommit{Cases: []model.CaseRecord{c}, Proposals: []model.Proposal{p},
@@ -290,6 +293,18 @@ func (s *Service) Apply(ctx context.Context, id, reason string) (model.Proposal,
 	s.o.Engine.Replace(s.engineRules(nextPols, s.hostsLocked(nextBlock)))
 	s.broadcastCase(&c)
 	return p.Clone(), c.Clone().Case, nil
+}
+
+// appliedRuleIDs: 제안 적용 기록의 정책 id — 예외를 더한 규칙 + 도메인을 새로 막았으면 시스템 규칙 blocklist-hosts(정렬)
+func appliedRuleIDs(excepted map[string]bool, adds []model.BlockEntry) []string {
+	var ids []string
+	for id := range excepted {
+		ids = append(ids, id)
+	}
+	if slices.ContainsFunc(adds, func(b model.BlockEntry) bool { return b.List == model.ListHosts }) {
+		ids = append(ids, rules.SystemBlocklistHosts)
+	}
+	return sortedIDs(ids)
 }
 
 // Discard: 제안을 버리고 건을 변경 없이 닫는다. 사유를 남기려고 변경 이력(proposal_discarded)도 같은 커밋에 쓴다(W15).
@@ -311,7 +326,7 @@ func (s *Service) Discard(ctx context.Context, id, reason string) (model.Proposa
 	p := cur.Clone()
 	p.State = model.ProposalDiscarded
 	chg := model.Change{ID: s.nextID("chg"), At: now, By: s.actor(ctx), Kind: model.ChangeProposalDiscarded,
-		CaseID: ptr(p.CaseID), ProposalID: ptr(p.ID), Summary: "제안 버림 — 변경 없이 건 종결", Reason: reason}
+		CaseID: ptr(p.CaseID), ProposalID: ptr(p.ID), Summary: "제안 버림(변경 없이 건 종결)", Reason: reason}
 	var commit store.ReviewCommit
 	commit.Proposals = []model.Proposal{p}
 	commit.Changes = []model.Change{chg}
@@ -364,7 +379,7 @@ func summarize(changes []model.ProposalChange) string {
 		parts = append(parts, fmt.Sprintf("예외 %d개 추가(%s)", len(exc), strings.Join(slices.Compact(exc), ", ")))
 	}
 	if len(parts) == 0 {
-		return "변경 없음 — 건 종결"
+		return "변경 없음(건 종결)"
 	}
 	return strings.Join(parts, " · ")
 }

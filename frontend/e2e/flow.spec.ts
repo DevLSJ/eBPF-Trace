@@ -33,7 +33,10 @@ test('판정 흐름 한 바퀴 (설치 격리 → 악성 확정 → 미리보기
   await expect(detail.getByTestId('proposal-state')).toContainText('적용됨');
 
   // 4) 변경 이력 1건 · 차단 목록에 패키지
+  // 11/09: 변경 이력 · 차단 목록은 「정책」 아래 각자 페이지
+  await page.goto('/policies/changes');
   await expect(page.getByTestId('changes').locator('[data-change]')).toHaveCount(changesBefore + 1);
+  await page.goto('/policies/blocklist');
   await expect(page.getByTestId('blocklist').locator('[data-block="packages:pip:reqeusts"]')).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/flow-3-applied.png` });
 

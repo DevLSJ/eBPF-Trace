@@ -91,6 +91,10 @@ func (s *Service) RemoveBlock(ctx context.Context, list, value, reason string) e
 	label := map[string]string{model.ListPackages: "패키지", model.ListImages: "이미지", model.ListHosts: "도메인"}[list]
 	chg := model.Change{ID: s.nextID("chg"), At: s.o.Now(), By: s.actor(ctx), Kind: model.ChangeBlocklistRemove,
 		CaseID: entry.CaseID, Summary: label + " " + value + " 차단 해제", Reason: reason}
+	if list == model.ListHosts {
+		// 도메인은 시스템 규칙 blocklist-hosts 의 조건이다 — 그 정책의 변경 이력에 보인다(값은 차단 목록이 기준이라 남기지 않음)
+		chg.RuleIDs = []string{rules.SystemBlocklistHosts}
+	}
 	if err := s.commitLocked(ctx, store.ReviewCommit{BlockRemove: []model.BlockRef{{List: list, Value: value}}, Changes: []model.Change{chg}}); err != nil {
 		s.releaseID("chg")
 		return err
@@ -103,18 +107,9 @@ func (s *Service) RemoveBlock(ctx context.Context, list, value, reason string) e
 	return nil
 }
 
-// ListChanges: 최신순, 기본 50 · 상한 500
+// ListChanges: 최신순, 기본 50 · 상한 500 (거르기 · 쪽은 QueryChanges)
 func (s *Service) ListChanges(limit int) []model.Change {
-	if limit <= 0 {
-		limit = 50
-	}
-	limit = min(limit, 500)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := []model.Change{}
-	for i := len(s.changes) - 1; i >= 0 && len(out) < limit; i-- {
-		out = append(out, s.changes[i])
-	}
+	out, _ := s.QueryChanges(ChangeQuery{Limit: limit})
 	return out
 }
 
@@ -150,9 +145,15 @@ func (s *Service) RecordChange(ctx context.Context, kind model.ChangeKind, summa
 }
 
 // PolicyWrite: 정책 API 의 쓰기(write)를 제안 적용과 같은 잠금 안에서 하고, 엔진 리로드 후 변경 이력을 남긴다.
-func (s *Service) PolicyWrite(ctx context.Context, kind model.ChangeKind, summary string, write func(context.Context) error) error {
+// ids: 이 쓰기가 다루는 정책 id(저장 · 삭제 = [id]) — 값이 같아도 그 정책의 기록이 된다. nil 이면(YAML 교체) 앞뒤를 비교해 실제로 바뀐 정책만.
+// 기록에는 그 정책들의 변경 전 · 후 값(before · after)을 함께 남긴다(11/09 되돌리기).
+func (s *Service) PolicyWrite(ctx context.Context, kind model.ChangeKind, summary string, ids []string, write func(context.Context) error) error {
 	unlock := s.lockWrite()
 	defer unlock()
+	prev, err := s.o.Policies.ListPolicies(ctx)
+	if err != nil {
+		return err
+	}
 	if err := write(ctx); err != nil {
 		return err
 	}
@@ -161,7 +162,12 @@ func (s *Service) PolicyWrite(ctx context.Context, kind model.ChangeKind, summar
 		return err
 	}
 	s.o.Engine.Replace(s.engineRules(pols, s.hostsLocked(s.blocklist)))
-	chg := model.Change{ID: s.nextID("chg"), At: s.o.Now(), By: s.actor(ctx), Kind: kind, Summary: summary}
+	before, after := policyMap(prev), policyMap(pols)
+	if ids = sortedIDs(ids); ids == nil {
+		ids = changedIDs(before, after)
+	}
+	chg := model.Change{ID: s.nextID("chg"), At: s.o.Now(), By: s.actor(ctx), Kind: kind, Summary: summary, RuleIDs: ids}
+	chg.Before, chg.After = recordValues(before, after, ids)
 	if err := s.commitLocked(ctx, store.ReviewCommit{Changes: []model.Change{chg}}); err != nil {
 		// 정책은 이미 저장 · 적용됐다 — 이력만 못 남긴 것이므로 요청은 성공으로 둔다
 		s.releaseID("chg")

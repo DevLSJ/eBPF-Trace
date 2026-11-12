@@ -67,7 +67,7 @@ test.describe('시연 패널', () => {
     await expect(page.locator('[data-sheet="install"]')).toHaveCount(0);
     for (const k of ['start', 'events', 'match', 'evidence', 'outcome']) await expect(step(page, k)).toHaveAttribute('data-state', 'done');
     // R3 11/04: 결과 한 줄 「격리됨 — 규칙 · 탐지→kill N ms」, 타임라인 막대 대신 「왜」 카드의 증거 수집 ms · 탐지→kill ms
-    await expect(result(page)).toContainText('격리됨 — pipe-to-shell · 탐지→kill 420 ms');
+    await expect(result(page)).toContainText('[격리] pipe-to-shell 위반 · 탐지→kill 420 ms');
     await expect(page.locator(`${DEMO} [data-part="kill-ms"]`)).toContainText('420 ms');
     await expect(page.locator(`${DEMO} [data-part="evidence-ms"]`)).toContainText('295 ms');
     await expect(page.locator(DEMO).getByRole('button', { name: '시연 시작' })).toBeEnabled();
@@ -106,7 +106,7 @@ test.describe('시연 패널', () => {
     // R3 11/04: 띠의 「다시 시도」 → 시작 단추(잠기지 않음)를 다시 누른다
     await page.locator(DEMO).getByRole('button', { name: '시연 시작' }).click();
     await expect(err).toHaveCount(0);
-    await expect(result(page)).toContainText('거부됨(차단 목록)');
+    await expect(result(page)).toContainText('[거부] 차단 목록에 있어 설치 전 거부됨');
     await expect(result(page)).toContainText('차단 해제 후 다시');
   });
 });
@@ -121,7 +121,7 @@ test.describe('격리 타임라인 · 종합 격리 지연', () => {
     await expect(bar.locator('[data-seg="detect"]')).toContainText('12 ms');
     await expect(bar.locator('[data-seg="evidence"]')).toContainText('295 ms');
     await expect(bar.locator('[data-seg="kill"]')).toContainText('110 ms');
-    await expect(bar.locator('[data-seg="notify"]')).toContainText('—'); // 설치 쪽은 알림 시각 없음
+    await expect(bar.locator('[data-seg="notify"]')).not.toContainText('ms'); // 설치 쪽은 알림 시각 없음(값 칸은 빈 값)
     await expect(bar.locator('[data-part="timeline-total"]')).toHaveText('격리까지 0.42초');
     await page.goto('/topology?node=c%3Apkg-reqeusts');
     const tb = page.getByTestId('topology-decision').locator('[data-testid="timeline-bar"]');
@@ -129,10 +129,10 @@ test.describe('격리 타임라인 · 종합 격리 지연', () => {
     await expect(tb.locator('[data-seg="notify"]')).toContainText('10 ms');
   });
 
-  test('대시보드 종합 「격리 지연 중앙값 N ms」 — count 0 이면 「—」', async ({ page, backend }) => {
+  test('대시보드 종합 「격리 지연 중앙값 N ms」 — count 0 이면 빈 칸(11/09 「—」 없앰)', async ({ page, backend }) => {
     await page.goto('/');
     const v = page.locator('[data-section="overview"] [data-kpi="isolation"] [data-value]');
-    await expect(v).toHaveText('—');
+    await expect(v).toHaveText('');
     await expect(page.locator('[data-section="overview"] [data-kpi="isolation"]')).toContainText('격리 지연 중앙값');
     backend.enableIsolation();
     await page.reload();
@@ -170,7 +170,7 @@ test.describe('상태 신호등', () => {
     await expect(tone('dns')).toHaveAttribute('data-tone', 'warn');
     await expect(tone('dns')).toContainText('통과 처리');
     await expect(tone('kill')).toHaveAttribute('data-tone', 'warn');
-    await expect(tone('kill')).toContainText('알림만');
+    await expect(tone('kill')).toContainText('경고만');
     await expect(tone('notify')).toHaveAttribute('data-tone', 'danger');
     await expect(tone('license')).toHaveAttribute('data-tone', 'warn');
 
@@ -226,7 +226,7 @@ test.describe('건 보고서 1장', () => {
     await expect(rep.locator('[data-section="timeline"] [data-part="timeline-total"]')).toHaveText('격리까지 0.42초');
     const rows = rep.locator('[data-section="violations"] tbody tr');
     await expect(rows).toHaveCount(6);
-    expect(await rep.locator('[data-section="violations"] thead th').allTextContents()).toEqual(['시각', '종류', '규칙', '상세', '판정']);
+    expect(await rep.locator('[data-section="violations"] thead th').allTextContents()).toEqual(['시각', '종류', '정책', '상세', '탐지 결과']); // 11/09 G44: 「규칙」 칸 → 「정책」
     await expect(rows.first().locator('[data-kind-badge]')).toBeVisible();
     const ev = rep.locator('[data-section="evidence"]');
     await expect(ev).toContainText('로그 3줄');
@@ -254,7 +254,7 @@ test.describe('건 보고서 1장', () => {
     await expect(rep.locator('[data-section="decision"]')).toContainText('타이포스쿼팅');
     await expect(rep.locator('[data-section="changes"]')).toContainText('pip:colourama');
     await expect(rep.locator('[data-section="changes"]')).toContainText('cdn.colourama.test');
-    await expect(rep.locator('[data-section="timeline"]')).toContainText('—'); // 타임라인 없는 옛 건
+    await expect(rep.locator('[data-section="timeline"]')).toContainText('타임라인 기록 없음(격리되지 않았거나 기록이 생기기 전의 건)'); // 타임라인 없는 옛 건
   });
 
   test('진입 3곳(설치 시트 · 토폴로지 판정 카드 · 대시보드 판정 대기 행) · 인쇄 · Markdown 복사', async ({ page, backend, context }) => {
@@ -288,7 +288,7 @@ test.describe('건 보고서 1장', () => {
     expect(md.startsWith('# ')).toBe(true);
     for (const h of ['## 요약', '## 격리 타임라인', '## 위반', '## 증거', '## 판정', '## 정책 변경 · 차단 목록']) expect(md).toContain(h);
     expect(md).toContain('pipe-to-shell');
-    expect(md).toContain('| 시각 | 종류 | 규칙 | 상세 | 판정 |');
+    expect(md).toContain('| 시각 | 종류 | 정책 | 상세 | 탐지 결과 |');
     // 사이드바 · 머리는 인쇄에서 숨긴다
     await page.emulateMedia({ media: 'print' });
     await expect(page.locator('aside[data-part="sidebar"]')).toBeHidden();

@@ -121,6 +121,19 @@ export type RuleStep = Omit<Rule, 'id' | 'description' | 'kind' | 'action' | 'dr
 
 export type DirectIp = 'allow' | 'alert' | 'kill';
 
+// 정책 API 가 내보내는 정책(11/09, backend api.policyView) — Rule + 마지막 수정(그 정책을 다룬 마지막 변경 기록의 시각 · 처리자).
+// 기록이 없으면(시드 정책) 두 키 없음. 저장(POST /api/policies)은 모르는 칸을 거절하므로 보낼 때는 stripView 로 뺀다
+export interface PolicyView extends Rule {
+  updatedAt?: string;
+  updatedBy?: string;
+}
+export function stripView<R extends Rule>(r: R): Rule {
+  const { updatedAt: _a, updatedBy: _b, ...rule } = r as R & PolicyView;
+  void _a;
+  void _b;
+  return rule;
+}
+
 export interface TrendPoint {
   t: string;
   exec: number;
@@ -161,8 +174,10 @@ export interface Info {
   dnsResolve?: 'ok' | 'off';
   // 10/20: 외부 알림 채널 상태(호스트만). 알림 서비스가 없는 백엔드는 생략
   notify?: NotifyStatus;
-  // 10/20: AI 도우미(POST /api/chat) 사용 가능(OLLAMA_URL 설정) — true 일 때만 도우미 패널에 「AI 도우미」 탭. 옛 백엔드는 없음
+  // 10/20: AI 도우미(POST /api/chat) 사용 가능(ANTHROPIC_API_KEY 또는 OLLAMA_URL) — false 면 탭 안에서 켜는 법을 안내. 옛 백엔드는 없음
   chat?: boolean;
+  // 11/09: 쓰는 모델 — claude 면 질문 · 조회한 사실이 Anthropic API 로 나간다(설정 화면 「AI 도우미」 절). 챗봇이 꺼져 있거나 옛 백엔드면 없음
+  chatEngine?: ChatEngine;
   // 10/20: 실제로 쓰이는 컨테이너 발견 방식 fanotify | docker-events(mock · 가젯 시작 전은 빈 값) · docker-events 일 때 놓칠 수 있는 구간 안내
   discovery?: string;
   discoveryNote?: string;
@@ -464,12 +479,25 @@ export interface Change {
   id: string;
   at: string;
   by: string;
-  kind: 'proposal_applied' | 'proposal_discarded' | 'policy_edit' | 'policy_replace' | 'blocklist_remove' | string;
+  kind: 'proposal_applied' | 'proposal_discarded' | 'policy_edit' | 'policy_replace' | 'blocklist_remove' | 'policy_revert' | 'demo_run' | 'integration_test' | string;
   caseId?: string | null;
   proposalId?: string | null;
   summary: string;
-  // 확인 대화상자의 사유(W15 · W18) — 적용 · 버림 · 차단 해제. 옛 백엔드는 없음
+  // 확인 대화상자의 사유(W15 · W18) — 적용 · 버림 · 차단 해제 · 되돌리기(필수). 옛 백엔드는 없음
   reason?: string;
+  // 11/09(backend model.Change): 이 변경이 다룬 정책 id · 정책 id → 변경 전 · 후 정책 전체(키가 없으면 그때 그 정책이 없었음 — 만듦 · 지움) ·
+  // 되돌리기가 되돌린 변경 id. 옛 백엔드 · 정책과 무관한 변경은 없음
+  ruleIds?: string[];
+  before?: Record<string, Rule>;
+  after?: Record<string, Rule>;
+  revertOf?: string;
+}
+// GET /api/changes?offset=… 응답(11/09, backend api.ChangesPage) — total 은 거른 뒤 전체 수. rule 로 거르면 before · after 도 그 정책 값만
+export interface ChangesPage {
+  items: Change[];
+  total: number;
+  offset: number;
+  limit: number;
 }
 
 // 변경 이력 종류 이름 — 정책 화면 · 감사 화면이 같이 쓴다
@@ -479,6 +507,9 @@ export const CHANGE_KIND_LABEL: Record<string, string> = {
   policy_edit: '정책 편집',
   policy_replace: 'YAML 교체',
   blocklist_remove: '차단 해제',
+  policy_revert: '정책 되돌림',
+  demo_run: '시연 실행',
+  integration_test: '연결 테스트',
 };
 
 // 판정 미리보기(W15) — POST /api/cases/{id}/preview → 확인 대화상자의 「함께 일어나는 일」(서버 계산 그대로)
@@ -514,6 +545,15 @@ export interface Evidence {
   partial: boolean;
   durationMs: number;
   error?: string;
+  // 11/10 — 격리 직전에 저장한 설치 스크립트(setup.py · pyproject.toml · package.json · build.rs · *.sh, 최대 6개 · 파일당 64KB). 옛 증거에는 없다
+  files?: EvidenceFile[];
+}
+
+export interface EvidenceFile {
+  path: string;
+  size: number;
+  truncated: boolean;
+  content: string;
 }
 
 export interface OsvResult {
@@ -794,6 +834,22 @@ export interface IntegrationContainer {
   enforce: boolean;
   enforceBy?: 'all' | 'name' | 'label' | 'sandbox' | 'demo';
 }
+// 11/10 감시 중 컨테이너 상세(GET /api/integration/containers/{id}) — 읽기 전용 Docker inspect 일부. 환경 변수는 서버가 보내지 않는다
+export interface ContainerPort {
+  port: string; // "8080/tcp"
+  hostIp?: string;
+  hostPort?: string;
+}
+export interface IntegrationContainerDetail extends IntegrationContainer {
+  imageId?: string;
+  state: string; // running · created · exited · paused · restarting · removing · dead
+  startedAt?: string;
+  restartCount: number;
+  ports: ContainerPort[];
+  labels: Record<string, string>;
+  // Docker 에서 못 읽어 목록 값만 왔을 때 서버 문장
+  detailError?: string;
+}
 export interface IntegrationTest {
   id: string;
   container: string;
@@ -808,4 +864,20 @@ export interface IntegrationStatus {
   containers: IntegrationContainer[];
   listError?: string;
   test: IntegrationTest | null;
+}
+
+// 11/09: AI 도우미가 쓰는 모델(키는 담지 않음). backup = 기본 모델이 닿지 않거나 거절할 때 쓰는 예비
+export interface ChatEngine {
+  provider: 'claude' | 'ollama';
+  model: string;
+  backup?: 'ollama';
+}
+
+// 11/09 설치 검사 「사용 방법」(GET /api/sginstall/setup). token 은 관리자에게만 — 조회자는 tokenRequired 만
+export interface SGInstallSetup {
+  download?: string; // 서버에 스크립트가 있을 때 내려받기 경로(/api/tools/sg-install)
+  api: string; // 서버 안에서 실행할 때 SUPPLYGUARD_API
+  tokenRequired: boolean;
+  token?: string;
+  reporting: boolean; // false 면 백엔드가 설치 보고를 받지 않음(SANDBOX_TOKEN 없음)
 }

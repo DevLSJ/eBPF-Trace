@@ -3,34 +3,27 @@ import { useState, type ReactNode } from 'react';
 import {
   actOf,
   chipsOf,
-  CONTAINERS_GROUP,
   GROUPS,
   ID_PATTERN,
   KIND_TEXT,
   listOf,
   NUM_FIELDS,
-  SANDBOX_SCOPE,
-  scopeOf,
   TYPE_LABEL,
   withList,
   type Act,
   type ChipGroupDef,
   type Draft,
   type ListField,
-  type Scope,
 } from '../lib/policyEasy';
 import type { Kind } from '../lib/types';
 
 // 정책 「쉬운 설정」(10/16): ① 무엇을 ② 어떤 값(칩, 바로 형식 검사) ③ 걸리면 ④ 어디에 ⑤ 이름. 요약 문장은 PolicyEditor 가 아래에 붙인다
+// 11/09: ④ 「어디에」는 적용 컨테이너 카드(features/policies/ContainersCard) — PolicyEditor 가 scope 로 넘긴다.
+//   큰 2단 창에서는 카드가 오른쪽 칸에 있어 ④ 를 그리지 않는다(scope 없음)
 const ACT_TEXT: Record<Act, [string, string]> = {
-  alert: ['알림만 보내기', '컨테이너는 그대로 두고 알립니다'],
+  alert: ['경고만', '컨테이너는 그대로 두고 경고로 남깁니다'],
   kill: ['즉시 격리', '컨테이너를 바로 멈춥니다'],
-  dry: ['시험 운영', '격리 대상으로 표시만 하고 멈추지 않습니다 — 새 정책을 먼저 써 볼 때'],
-};
-const SCOPE_TEXT: Record<Scope, [string, string]> = {
-  all: ['모든 컨테이너', '운영 중인 컨테이너와 설치 검사 모두'],
-  sandbox: ['설치 검사에서만', '패키지를 시험 설치하는 감시 컨테이너'],
-  some: ['지정한 컨테이너만', '이름이나 이미지 패턴으로 고릅니다'],
+  dry: ['시험 운영', '격리 대상으로 표시만 하고 멈추지 않습니다(새 정책을 먼저 써 볼 때)'],
 };
 
 export function PolicyEasy({
@@ -39,22 +32,18 @@ export function PolicyEasy({
   isNew,
   enforceKill,
   fresh,
+  scope,
 }: {
   draft: Draft;
   onChange: (d: Draft) => void;
   isNew: boolean;
   enforceKill: boolean;
   fresh: { field: ListField; value: string } | null;
+  // ④ 「어디에」 칸(적용 컨테이너 카드). 없으면 ④ 를 그리지 않는다(큰 창 오른쪽 칸에 있을 때)
+  scope?: ReactNode;
 }) {
-  const [someScope, setSomeScope] = useState(scopeOf(d) === 'some');
   const g = GROUPS[d.kind];
-  const scope: Scope = someScope ? 'some' : scopeOf(d);
   const idOk = ID_PATTERN.test(d.id);
-
-  const pickScope = (v: Scope) => {
-    setSomeScope(v === 'some');
-    onChange(withList(d, 'containers', v === 'all' ? [] : v === 'sandbox' ? [SANDBOX_SCOPE] : listOf(d, 'containers').filter((c) => c !== SANDBOX_SCOPE)));
-  };
 
   return (
     <div className="grid max-w-3xl gap-5 text-sm">
@@ -66,7 +55,7 @@ export function PolicyEasy({
         {g.allow ? (
           <ChipGroup groupKey="allow" def={g.allow} draft={d} onChange={onChange} fresh={fresh} />
         ) : (
-          <p className="text-xs text-slate-500">실행 정책에는 예외 목록이 없습니다 — 예외가 필요하면 ④ 에서 적용할 컨테이너를 좁히세요.</p>
+          <p className="text-xs text-slate-500">실행 정책에는 예외 목록이 없습니다. 예외가 필요하면 ④ 에서 적용할 컨테이너를 좁히세요.</p>
         )}
         {d.kind === 'dns' && (
           // 10/30: 유출 의심 길이 상한 2개(계약 §1 「숫자 칸」)
@@ -89,13 +78,14 @@ export function PolicyEasy({
           options={Object.entries(ACT_TEXT) as [Act, [string, string]][]}
           onPick={(v) => onChange({ ...d, action: v === 'alert' ? 'alert' : 'kill', dryRun: v === 'dry' })}
         />
-        {!enforceKill && <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">지금 서버의 자동 격리가 꺼져 있어 「즉시 격리」도 알림만 갑니다 — 서버 설정 참고</p>}
+        {!enforceKill && <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">지금 서버의 자동 격리가 꺼져 있어 「즉시 격리」도 격리하지 않고 경고만 남습니다(서버 설정 참고)</p>}
       </Step>
-      <Step id="scope" n={4} title="어디에 적용할까요?">
-        <Radios name="easy-scope" value={scope} options={Object.entries(SCOPE_TEXT) as [Scope, [string, string]][]} onPick={pickScope} />
-        {scope === 'some' && <ChipGroup groupKey="containers" def={CONTAINERS_GROUP} draft={d} onChange={onChange} fresh={null} />}
-      </Step>
-      <Step id="name" n={5} title="이름을 붙여 주세요">
+      {scope && (
+        <Step id="scope" n={4} title="어디에 적용할까요?">
+          {scope}
+        </Step>
+      )}
+      <Step id="name" n={scope ? 5 : 4} title="이름을 붙여 주세요">
         <label className="grid gap-1">
           <span className="font-medium text-slate-700">
             설명 <span className="text-xs font-normal text-slate-400">목록에 보이는 한 줄</span>
@@ -104,9 +94,13 @@ export function PolicyEasy({
         </label>
         <label className="grid gap-1">
           <span className="font-medium text-slate-700">
-            정책 이름(영문) <span className="text-xs font-normal text-slate-400">{isNew ? '만든 뒤에는 바꿀 수 없습니다' : '바꿀 수 없음'}</span>
+            정책 이름(영문){' '}
+            <span data-required="" aria-hidden className="text-danger-text">
+              *
+            </span>{' '}
+            <span className="text-xs font-normal text-slate-400">{isNew ? '만든 뒤에는 바꿀 수 없습니다' : '바꿀 수 없음'}</span>
           </span>
-          <input className={`${inputCls} font-mono`} data-field="id" aria-label="정책 이름(영문)" value={d.id} disabled={!isNew} onChange={(e) => onChange({ ...d, id: e.target.value.trim() })} />
+          <input className={`${inputCls} font-mono`} data-field="id" aria-label="정책 이름(영문)" aria-required="true" value={d.id} disabled={!isNew} onChange={(e) => onChange({ ...d, id: e.target.value.trim() })} />
         </label>
         {!idOk && <p className="text-xs text-red-600">영문 소문자 · 숫자 · 하이픈(-)만 쓸 수 있습니다</p>}
         <label className="flex items-center gap-2">
@@ -117,13 +111,13 @@ export function PolicyEasy({
   );
 }
 
-const inputCls = 'w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500';
+const inputCls = 'w-full rounded-[var(--r-md)] border border-slate-300 bg-field px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500';
 
 function Step({ id, n, title, children }: { id: string; n: number; title: string; children: ReactNode }) {
   return (
     <section className="grid gap-2" data-step={id}>
       <h3 className="flex items-center gap-2 font-semibold text-slate-800">
-        <span className="grid size-5.5 place-items-center rounded-full bg-indigo-50 text-xs text-indigo-700">{n}</span>
+        <span className="grid size-5.5 place-items-center rounded-full bg-indigo-50 text-xs text-accent-text">{n}</span>
         {title}
       </h3>
       {children}
@@ -168,7 +162,7 @@ function ChipGroup({
     if (!v) return;
     const c = def.classify(v);
     if (!c.type) {
-      setErr(`「${v}」 — ${c.error}`);
+      setErr(`「${v}」: ${c.error}`);
       return;
     }
     const f = def.fields[c.type]!;
@@ -184,7 +178,7 @@ function ChipGroup({
       <div>
         <b className="font-medium text-slate-700">{def.label}</b> <small className="text-xs text-slate-400">{def.hint}</small>
       </div>
-      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border border-slate-300 bg-white p-1.5">
+      <div className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-[var(--r-md)] border border-slate-300 bg-field p-1.5">
         {chips.map((c) => (
           <span
             key={`${c.field}:${c.value}`}
@@ -198,7 +192,8 @@ function ChipGroup({
             <span className="font-mono">{c.value}</span>
             <button
               type="button"
-              aria-label={`${c.value} 빼기`}
+              aria-label={`빼기(${c.value})`}
+              title={`빼기(${c.value})`}
               className="rounded-full p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
               onClick={() => onChange(withList(d, c.field, listOf(d, c.field).filter((x) => x !== c.value)))}
             >
@@ -207,7 +202,7 @@ function ChipGroup({
           </span>
         ))}
         <input
-          className="h-7 min-w-40 flex-1 px-1 text-sm focus:outline-none"
+          className="h-7 min-w-40 flex-1 bg-transparent px-1 text-sm focus:outline-none"
           placeholder="입력 후 Enter"
           aria-label={def.label}
           value={text}

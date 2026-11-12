@@ -103,7 +103,7 @@ test.describe('상세 패널 — 본문 위에 오른쪽에서(11/05)', () => {
     await expect(page).toHaveURL(new RegExp(`id=${ids[1]}`));
   });
 
-  test('④ 닫기: Esc · 어두운 곳 · ✕ — 미끄러져 나가고 ?id 비움 · 패널 안 클릭은 그대로 · 열린 동안 뒤 표는 가려진다', async ({ page, backend }) => {
+  test('④ 닫기: Esc · 어두운 곳 · ✕ — 효과 없이 바로 닫히고(11/09) ?id 비움 · 패널 안 클릭은 그대로 · 열린 동안 뒤 표는 가려진다', async ({ page, backend }) => {
     void backend;
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/installs?status=all');
@@ -129,8 +129,9 @@ test.describe('상세 패널 — 본문 위에 오른쪽에서(11/05)', () => {
       if (how === 'esc') await page.keyboard.press('Escape');
       if (how === 'scrim') await page.mouse.click(400, 500);
       if (how === 'x') await page.locator(`${S('install')} [data-action="sheet-close"]`).click();
-      await expect(page.locator('.sg-sheet-layer.closing')).toHaveCount(1);
-      await expect(layer).toHaveCount(0);
+      // 11/09 SPEC-1109 §2(참고 제품 답변 B1): 닫힘은 효과 없이 바로 — 미끄러져 나가는 단계(.closing)가 없다
+      await expect(layer).toHaveCount(0, { timeout: 150 });
+      await expect(page.locator('.sg-sheet-layer.closing')).toHaveCount(0);
       expect(new URL(page.url()).searchParams.get('id')).toBeNull();
     }
   });

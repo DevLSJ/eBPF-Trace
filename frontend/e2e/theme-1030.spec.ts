@@ -24,10 +24,10 @@ const contrast = (a: string, b: string) => {
 };
 const token = (page: Page, name: string) => page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
 const themeOf = (page: Page) => page.evaluate(() => document.documentElement.dataset.theme);
-async function pickTheme(page: Page, t: 'system' | 'light' | 'dark') {
-  const btn = page.locator('[data-part="account"]');
-  if ((await btn.getAttribute('aria-expanded')) !== 'true') await btn.click();
-  await page.locator(`[data-part="account-menu"] [data-theme-pick="${t}"]`).click();
+async function pickTheme(page: Page, t: 'light' | 'dark') {
+  // 11/09 G01: 테마는 상단 해/달 단추 하나 — 지금과 다르면 누르고, 색 전환(450ms)이 끝날 때까지 기다린다
+  if ((await page.evaluate(() => document.documentElement.dataset.theme)) !== t) await page.locator('[data-part="theme-toggle"]').click();
+  await page.waitForFunction(() => !document.documentElement.classList.contains('sg-theme-anim'));
 }
 // 공급망 검사 목록 API 는 가짜 백엔드에 없다(scans.spec 처럼 화면 스텁) — 빈 목록
 const stubScans = (page: Page) => page.route(/\/api\/scans(\/|$|\?)/, (route) => route.fulfill({ contentType: 'application/json', body: '[]' }));
@@ -56,35 +56,35 @@ test.describe('F6 디자인 토큰 · 부품 · 모션', () => {
     await page.goto('/policies?id=egress-allowlist');
     await expect(page.getByTestId('editor')).toBeVisible();
     for (const [k, v] of [
-      // 11/05: 참고 대시보드 값으로 교체(10/30 계약 §7 값 대체)
-      ['--bg', '#F6F7FB'], ['--surface', '#FFFFFF'], ['--surface-2', '#EEF0F4'], ['--border', '#ECEEF4'], ['--text', '#202534'], ['--text-2', '#7A8090'], ['--text-3', '#7A8090'],
+      // 11/09 밤(참고 사이트처럼 깔끔하게): 바탕 하나 흰색 · 글자 #0F1419 · 흐림 #536471 · 구분 선 #EFF3F4
+      ['--bg', '#FFFFFF'], ['--surface', '#FFFFFF'], ['--surface-2', '#F7F9F9'], ['--border', '#EFF3F4'], ['--text', '#0F1419'], ['--text-2', '#536471'], ['--text-3', '#536471'],
       ['--accent', '#1769E8'], ['--accent-soft', '#DCE9FF'], ['--danger', '#E4516F'], ['--warn', '#F5A623'], ['--warn-soft', '#FFF5DF'], ['--ok', '#25B884'], ['--info', '#0288D1'],
       ['--r-lg', '8px'], ['--t-base', '200ms'], ['--sidebar-w', '240px'], ['--header-h', '56px'],
     ]) expect(await token(page, k), k).toBe(v);
-    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#F6F7FB'));
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#FFFFFF'));
     expect(await page.getByTestId('rules').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#FFFFFF'));
-    // 표 머리(11/05 참고 대시보드): 12/600 · 보조색 · 회색 바탕
+    // 표 머리: 12/600 · 흐림 · 바탕 없음(11/09 밤 — 본문 면 + 아래 선)
     await page.goto('/audit');
     const th = page.locator('[data-testid="audit"] thead th').first();
     await expect(th).toBeVisible();
     const thStyle = await th.evaluate((e) => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight, getComputedStyle(e).color]);
-    expect(thStyle).toEqual(['12px', '600', rgb('#7A8090')]);
-    expect(await th.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#EEF0F4'));
-    // 버튼(11/05): 패딩 6/16 · 14.4/1.5 → 높이 33.6 · 반경 6 · 700, 시트
+    expect(thStyle).toEqual(['12px', '600', rgb('#536471')]);
+    expect(await th.evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#FFFFFF'));
+    // 버튼: 패딩 6/16 · 14.4/1.5 → 높이 33.6 · 700(11/05) · 알약 9999(11/09 밤), 시트
     await page.goto('/policies?id=egress-allowlist');
     const btn = page.locator('[data-view="rule-editor"]').getByRole('button', { name: '저장 전 확인' });
     expect((await btn.boundingBox())!.height).toBeCloseTo(33.6, 0);
     expect(await btn.evaluate((e) => getComputedStyle(e).fontWeight)).toBe('700');
-    expect(await btn.evaluate((e) => getComputedStyle(e).borderRadius)).toBe('6px');
+    expect(await btn.evaluate((e) => getComputedStyle(e).borderRadius)).toBe('9999px');
     await page.goto('/installs?id=ins-0012');
     await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
     expect((await page.locator('[data-sheet="install"]').boundingBox())!.width).toBeCloseTo(840, 0); // 11/05: 설치 검사 패널 = 본문 70%(1440 → 840), 옛 계약 480 은 바뀜
     expect(await page.locator('[data-sheet="install"]').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#FFFFFF'));
     // dns 배지는 warn 토큰
     await page.goto('/policies');
-    await page.getByRole('button', { name: '새 정책' }).click();
+    await page.getByRole('button', { name: '정책 생성' }).click(); // 11/09: 큰 2단 창 · 바닥 줄 단추
     await page.locator('[data-template="dns-exfil"]').click();
-    await page.locator('[data-view="rule-editor"]').getByRole('button', { name: '저장 전 확인' }).click();
+    await page.locator('dialog[data-part="policy-create"] [data-part="modal-foot"]').getByRole('button', { name: '저장 전 확인' }).click();
     await page.locator('[data-part="save-check"]').getByRole('button', { name: '저장 후 적용' }).click();
     const badge = page.locator('[data-rule^="runtime-dns-exfil"] [data-kind-badge="dns"]').first();
     expect(await badge.evaluate((e) => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color])).toEqual([rgb('#FFF5DF'), rgb('#946000')]);
@@ -95,7 +95,7 @@ test.describe('F6 디자인 토큰 · 부품 · 모션', () => {
     const screen = page.locator('main [data-part="screen"]');
     await expect(screen).toBeVisible();
     expect(await screen.evaluate((e) => getComputedStyle(e).animationName)).toBe('sg-enter');
-    expect(await screen.evaluate((e) => getComputedStyle(e).animationDuration)).toBe('0.2s');
+    expect(await screen.evaluate((e) => getComputedStyle(e).animationDuration)).toBe('0.18s'); // 11/09 SPEC --dur-base
     await expect(page.locator('li[data-key]').first()).toBeVisible();
     backend.send({ type: 'verdict', data: killedVerdict('api-gw') });
     const fresh = page.locator('li[data-key]').first();
@@ -130,23 +130,18 @@ test.describe('F7 다크 모드', () => {
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe('light');
   });
 
-  test('계정 메뉴 「테마」(시스템 · 라이트 · 다크) → localStorage 저장 · 새로고침 뒤에도 · 토큰이 다크 값', async ({ page, backend }) => {
+  test('상단 해/달 단추(11/09 G01 — 계정 메뉴 「테마」 3단 칸을 옮김) → localStorage 저장 · 새로고침 뒤에도 · 토큰이 다크 값', async ({ page, backend }) => {
     void backend;
     await page.goto('/');
     await expect(page.getByTestId('pending')).toBeVisible();
-    await page.locator('[data-part="account"]').click();
-    const picks = page.locator('[data-part="account-menu"] [data-theme-pick]');
-    expect(await picks.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.themePick))).toEqual(['system', 'light', 'dark']);
-    await expect(page.locator('[data-part="account-menu"]')).toContainText('테마');
-    await expect(picks.nth(0)).toHaveAttribute('aria-checked', 'true');
-    await picks.nth(2).click();
+    await pickTheme(page, 'dark');
     expect(await themeOf(page)).toBe('dark');
     expect(await page.evaluate((k) => localStorage.getItem(k), THEME_KEY)).toBe('dark');
-    for (const [k, v] of [['--bg', '#11131A'], ['--surface', '#1B1E28'], ['--text', '#F2F3F7'], ['--accent', '#1769E8'], ['--danger', '#E4516F'], ['--warn', '#F5A623'], ['--warn-soft', '#423627']])
+    for (const [k, v] of [['--bg', '#15202B'], ['--surface', '#15202B'], ['--text', '#F7F9F9'], ['--accent', '#1B70EE'], ['--danger', '#E4516F'], ['--warn', '#F5A623'], ['--warn-soft', '#423627']])
       expect(await token(page, k), k).toBe(v);
-    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#11131A'));
-    expect(await page.getByTestId('pending').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#1B1E28'));
-    expect(await page.getByTestId('page-title').evaluate((e) => getComputedStyle(e).color)).toBe(rgb('#F2F3F7'));
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb('#15202B'));
+    expect(await page.getByTestId('pending').evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(rgb('#15202B'));
+    expect(await page.getByTestId('page-title').evaluate((e) => getComputedStyle(e).color)).toBe(rgb('#F7F9F9'));
     await page.reload();
     expect(await themeOf(page)).toBe('dark');
     await expect(page.getByTestId('pending')).toBeVisible();
@@ -156,9 +151,6 @@ test.describe('F7 다크 모드', () => {
     await pickTheme(page, 'light');
     expect(await themeOf(page)).toBe('light');
     expect(await page.evaluate((k) => localStorage.getItem(k), THEME_KEY)).toBe('light');
-    await pickTheme(page, 'system');
-    expect(await themeOf(page)).toBe('dark');
-    expect(await page.evaluate((k) => localStorage.getItem(k), THEME_KEY)).toBe('system');
   });
 
   test('다크에서 본문 대비 AA(text · text-2 · text-3 on surface) · 차트 · 토폴로지 색이 토큰', async ({ page, backend }) => {
@@ -184,14 +176,14 @@ test.describe('F7 다크 모드', () => {
 test.describe('F8 768px 미만 · 뷰포트별 넘침 0', () => {
   test.describe('390 서랍 사이드바', () => {
     test.use({ viewport: { width: 390, height: 844 } });
-    test('사이드바는 서랍(메뉴 버튼 · dim · Esc) · 머리 56px · 시트 전체 화면 · 표 가로 스크롤', async ({ page, backend }) => {
+    test('사이드바는 서랍(메뉴 버튼 · dim · Esc) · 제목 줄 53px · 시트 전체 화면 · 표 가로 스크롤', async ({ page, backend }) => {
       void backend;
       await stubScans(page);
       await page.goto('/');
       await expect(page.getByTestId('pending')).toBeVisible();
       const side = page.locator('aside[data-part="sidebar"]');
       await expect(side).toBeHidden();
-      expect((await page.locator('header[data-part="header"]').boundingBox())!.height).toBe(56);
+      expect((await page.locator('header[data-part="header"]').boundingBox())!.height).toBe(53); // 11/10 셸 배치: 제목 줄 53
       const menu = page.getByRole('button', { name: '메뉴' });
       await menu.click();
       await expect(side).toBeVisible();

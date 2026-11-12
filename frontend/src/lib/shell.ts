@@ -1,5 +1,5 @@
 import { licenseText, licenseTone } from './auth';
-import { dest, installDest, type Dest } from './nav';
+import { dest, FRESH, installDest, type Dest } from './nav';
 import type { Blocklist, Case, Info, InstallSession, License, Proposal, Rule, Scan, Verdict } from './types';
 import { caseLabel, INSTALL_STATUS_LABEL } from './types';
 
@@ -60,11 +60,12 @@ export function computeNotices(x: NoticeInput): Notice[] {
   const drafts = (x.proposals ?? []).filter((p) => p.state === 'draft');
   if (drafts.length)
     out.push({ id: 'proposals', sig: drafts.map((p) => p.id).join(','), tone: 'warn', title: `적용하지 않은 제안 ${drafts.length}건`, text: '정책에서 미리보기 후 적용하거나 버리세요', to: `/policies?proposal=${encodeURIComponent(drafts[0].id)}` });
-  if (x.down) out.push({ id: 'conn', sig: 'down', tone: 'danger', title: '실시간 연결 끊김', text: '다시 연결하는 중 — 끊긴 동안의 이벤트는 다시 붙으면 채웁니다', to: '/events' });
+  if (x.down) out.push({ id: 'conn', sig: 'down', tone: 'danger', title: '실시간 연결 끊김', text: '다시 연결하는 중, 끊긴 동안의 이벤트는 다시 붙으면 채웁니다', to: '/events' });
   if (x.info?.dnsResolve === 'off')
-    out.push({ id: 'dns', sig: 'off', tone: 'warn', title: '도메인 판단 꺼짐', text: 'trace_dns 가 뜨지 않아 도메인 기준 규칙과 DNS 질의 규칙(kind: dns)이 통과 처리됩니다', to: '/settings' });
+    out.push({ id: 'dns', sig: 'off', tone: 'warn', title: '도메인 판단 꺼짐', text: '도메인 조회 감시가 뜨지 않아 도메인 기준 규칙과 DNS 질의 규칙이 통과 처리됩니다', to: '/settings' });
+  // 11/09 G38: 설정 이름(ENFORCE_KILL)은 설정 화면 보조 글로만 — 여기는 쉬운 말
   if (x.enforceKill === false)
-    out.push({ id: 'dryrun', sig: 'off', tone: 'warn', title: '격리 꺼짐 (dry-run)', text: '「즉시 격리」 정책도 알림만 보냅니다 — 서버 설정 ENFORCE_KILL', to: '/settings' });
+    out.push({ id: 'dryrun', sig: 'off', tone: 'warn', title: '격리 꺼짐 · 경고만(dry-run)', text: '「즉시 격리」 정책도 격리하지 않고 경고만 남깁니다(서버 설정 「자동 격리」)', to: '/settings' });
   const n = x.info?.notify;
   if (n?.enabled && n.failed > 0)
     out.push({ id: 'webhook', sig: String(n.failed), tone: 'danger', title: `알림 발송 실패 ${n.failed}건`, text: n.lastError || '설정 › 서버 설정 › 알림에서 마지막 오류를 확인하세요', to: '/settings' });
@@ -85,9 +86,42 @@ export function computeNotices(x: NoticeInput): Notice[] {
   return out;
 }
 
-// ── E. 통합 검색 — 패키지 · 컨테이너 · 규칙 id · 도메인 · 검사(화면이 이미 쓰는 목록 API 로 클라이언트 검색) ──
-export type SearchType = 'package' | 'container' | 'rule' | 'domain' | 'scan';
-export const SEARCH_TYPE_KO: Record<SearchType, string> = { package: '패키지', container: '컨테이너', rule: '규칙', domain: '도메인', scan: '검사' };
+// ── 화면 이름(11/09) — 머리 제목 · 하위 화면 위치(G17 「정책 ›」 · 11/09 밤 「연동 ›」) · 통합 검색 「화면」(G07)이 같은 표를 쓴다. 이름은 사이드바와 같다 ──
+// where = 사이드바 묶음, parent = 하위 화면의 상위, search: false = 검색에 넣지 않음(건 보고서는 건을 골라 연다), demo = 관리자 + 시연 켜짐일 때만
+export interface ScreenInfo {
+  to: string;
+  label: string;
+  where?: string;
+  parent?: string;
+  search?: false;
+  demo?: true;
+}
+export const SCREENS: ScreenInfo[] = [
+  { to: '/', label: '대시보드' },
+  { to: '/integration', label: '연동' },
+  { to: '/integration/env', label: '환경 점검', parent: '/integration' },
+  { to: '/integration/watch', label: '감시 중 컨테이너', parent: '/integration' },
+  { to: '/demo', label: '시연', demo: true },
+  { to: '/installs', label: '설치 검사', where: '설치 검사' },
+  { to: '/scans', label: '공급망 검사', where: '설치 검사' },
+  { to: '/evaluation', label: '평가', where: '설치 검사' },
+  { to: '/events', label: '이벤트', where: '런타임 감시' },
+  { to: '/topology', label: '토폴로지', where: '런타임 감시' },
+  { to: '/policies', label: '정책', where: '설정 · 기록' },
+  { to: '/policies/blocklist', label: '차단 목록', where: '설정 · 기록', parent: '/policies' },
+  { to: '/policies/changes', label: '변경 이력', where: '설정 · 기록', parent: '/policies' },
+  { to: '/audit', label: '감사 로그', where: '설정 · 기록' },
+  { to: '/settings', label: '설정', where: '설정 · 기록' },
+  { to: '/report', label: '건 보고서', search: false },
+];
+export const screenOf = (path: string) => SCREENS.find((x) => x.to === path);
+// 검색 결과 보조 줄 = 사이드바 위치(묶음 › 상위)
+const screenWhere = (x: ScreenInfo) => [x.where, x.parent && screenOf(x.parent)?.label].filter(Boolean).join(' › ');
+
+// ── E. 통합 검색 — 화면 · 패키지 · 컨테이너 · 규칙 id · 도메인 · 검사(화면이 이미 쓰는 목록 API 로 클라이언트 검색) ──
+// 종류 순서 = 결과 순서 — 화면 이름이 맨 앞(11/09 G07)
+export type SearchType = 'screen' | 'package' | 'container' | 'rule' | 'domain' | 'scan';
+export const SEARCH_TYPE_KO: Record<SearchType, string> = { screen: '화면', package: '패키지', container: '컨테이너', rule: '규칙', domain: '도메인', scan: '검사' };
 // to · state(그 화면의 초기 필터 — 주소에 남기지 않는다, 10/21)
 export interface SearchItem extends Dest {
   type: SearchType;
@@ -95,6 +129,7 @@ export interface SearchItem extends Dest {
   sub: string;
 }
 export interface SearchSources {
+  screens?: ScreenInfo[]; // 보여 줄 화면(권한 · 시연 켜짐은 부르는 쪽이 거른다)
   installs?: InstallSession[] | null;
   scans?: Scan[] | null;
   rules?: Rule[] | null;
@@ -114,13 +149,14 @@ export function buildIndex(s: SearchSources): SearchItem[] {
     seen.add(k);
     out.push({ type, label, sub, ...x });
   };
+  for (const sc of s.screens ?? []) if (sc.search !== false) add('screen', sc.label, screenWhere(sc), { to: sc.to, state: FRESH });
   for (const i of s.installs ?? []) for (const p of i.packages) add('package', `${i.manager} ${p}`, `설치 검사 ${i.id} · ${INSTALL_STATUS_LABEL[i.status] ?? i.status}`, installDest(i.id));
-  for (const b of s.blocklist?.packages ?? []) add('package', b.value, '차단 목록', '/policies');
+  for (const b of s.blocklist?.packages ?? []) add('package', b.value, '차단 목록', '/policies/blocklist');
   for (const sc of s.scans ?? []) if (sc.target.name) add('package', `${sc.target.manager ?? ''} ${sc.target.name}`.trim(), `공급망 검사 ${sc.id}`, `/scans?id=${enc(sc.id)}`);
   for (const c of s.containers ?? []) add('container', c, '런타임 · 토폴로지', dest('/topology', { container: c }));
   for (const i of s.installs ?? []) if (i.container) add('container', i.container, `설치 검사 · ${i.manager} ${i.packages.join(' ')}`, installDest(i.id));
   for (const r of s.rules ?? []) add('rule', r.id, r.description ?? '', `/policies?id=${enc(r.id)}`);
-  for (const b of s.blocklist?.hosts ?? []) add('domain', b.value, '차단 목록', '/policies');
+  for (const b of s.blocklist?.hosts ?? []) add('domain', b.value, '차단 목록', '/policies/blocklist');
   for (const r of s.rules ?? [])
     for (const [f, ko] of [['allowHosts', '허용'], ['denyHosts', '금지']] as const) for (const d of r[f] ?? []) add('domain', d, `${r.id} · ${ko} 도메인`, `/policies?id=${enc(r.id)}`);
   for (const v of s.verdicts ?? []) if (v.event.dstHost) add('domain', v.event.dstHost, `이벤트 · ${v.event.containerName}`, dest('/events', { container: v.event.containerName }));

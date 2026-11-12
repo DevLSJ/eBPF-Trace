@@ -187,7 +187,7 @@ const SCREENS: [string, string, (p: Page) => Promise<void>][] = [
 
 // ── A 설치 검사 ──
 test.describe('A 설치 검사 표', () => {
-  test('머리 sticky 12/600 · 정렬 aria-sort(오름 → 내림 · 키보드) · 행 44~48 · 숫자 오른쪽 · 배지 12.5/750 + 테두리 · 막대는 판정 대기 · 격리만', async ({ page, backend }) => {
+  test('머리 sticky 12/600 · 정렬 aria-sort(오름 → 내림 · 키보드) · 행 44~48 · 숫자 오른쪽 · 배지 12.5/700 + 글자색 테두리 · 막대는 판정 대기 · 격리만', async ({ page, backend }) => {
     void backend;
     await page.goto('/installs');
     await page.locator('[data-chip="all"]').click();
@@ -224,7 +224,7 @@ test.describe('A 설치 검사 표', () => {
         .evaluate((e) => e.classList.contains('tk-fill')),
     ).toBe(true);
     expect(await page.locator(`table[data-table="${T}"] th[data-col="started"]`).evaluate((e) => e.classList.contains('tk-short'))).toBe(true);
-    expect(await pillStyle(page, `table[data-table="${T}"] tbody [data-status]`)).toEqual({ fs: '12.5px', fw: '750', line: true, radius: true });
+    expect(await pillStyle(page, `table[data-table="${T}"] tbody [data-status]`)).toEqual({ fs: '12.5px', fw: '700', line: true, radius: true });
     // 막대: 격리(위험) · 판정 대기 경고(경고)만, 통과 없음
     await page.locator(`table[data-table="${T}"] th[data-col="started"] button`).click();
     const danger = await tokRgb(page, '--danger');
@@ -320,7 +320,7 @@ test.describe('B 공급망 검사 표', () => {
         .first()
         .evaluate((e) => getComputedStyle(e).textAlign),
     ).toBe('right');
-    expect(await pillStyle(page, `table[data-table="${T}"] tbody td[data-col="verdict"] > span`)).toEqual({ fs: '12.5px', fw: '750', line: true, radius: true });
+    expect(await pillStyle(page, `table[data-table="${T}"] tbody td[data-col="verdict"] > span`)).toEqual({ fs: '12.5px', fw: '700', line: true, radius: true });
     const danger = await tokRgb(page, '--danger');
     const bars = await barOf(page, `table[data-table="${T}"] tbody tr`);
     expect(bars[0]).toBe(danger); // 악성(점수 8.2 — 내림 정렬 첫 행)
@@ -388,7 +388,7 @@ test.describe('C 감사 로그 쪽 번호', () => {
         .first()
         .evaluate((e) => getComputedStyle(e).textAlign),
     ).toBe('right');
-    expect(await pillStyle(page, `table[data-table="${T}"] tbody td[data-col="level"] > span`)).toMatchObject({ fs: '12.5px', fw: '750', line: true });
+    expect(await pillStyle(page, `table[data-table="${T}"] tbody td[data-col="level"] > span`)).toMatchObject({ fs: '12.5px', fw: '700', line: true });
     await page.screenshot({ path: `${SCRATCH}/r4-audit.png` });
   });
 
@@ -446,7 +446,8 @@ test.describe('C 감사 로그 쪽 번호', () => {
     await expect(page.locator('[data-table-foot="audit"] [data-part="range"]')).toHaveText(/ 2\/\d+ 페이지$/);
     const busy = page.locator('[data-testid="audit"] [data-part="busy"]');
     await expect(busy).toBeHidden();
-    await page.getByRole('combobox', { name: /^대응/ }).selectOption('kill');
+    await page.locator('[data-filter="action"]').click(); // 11/09 공통 Select
+    await page.getByRole('option', { name: '격리 (kill)' }).click();
     await expect(busy).toBeVisible();
     await expect(page.locator('table[data-table="audit"] tbody tr')).toHaveCount(20); // 이전 행 유지
     await expect(busy).toBeHidden({ timeout: 3000 });
@@ -510,23 +511,25 @@ test.describe('D 다른 표 — 변경 이력 · 설정 · 이벤트', () => {
 });
 
 // ── E 평가 ──
-test.describe('E 평가 — 머리 · 지표 6칸 고정, 몸통만 스크롤', () => {
+// 11/09 저녁: 머리(요점) · 지표 6칸 → 위 3칸, 몸통 = 접는 목록 한 장(eval-accordion-1109). 고정 · 스크롤 규칙은 그대로 — 목록을 모두 펼쳐 스크롤을 만든다
+test.describe('E 평가 — 위 3칸 고정, 몸통(목록)만 스크롤', () => {
   test.use({ viewport: { width: 1280, height: 720 } });
-  test('몸통(eval-body)만 data-fill 로 스크롤 · 스크롤해도 지표 제자리 · 길게 눌러 옮기기 그대로', async ({ page, backend }) => {
+  test('몸통(eval-body)만 data-fill 로 스크롤 · 스크롤해도 위 3칸 제자리 · 길게 눌러 옮기기 그대로', async ({ page, backend }) => {
     void backend;
     await evalApi(page);
     await page.goto('/evaluation');
     await expect(page.locator('[data-part="evaluation"][data-state="ready"]')).toBeVisible();
+    await page.locator('[data-action="toggle-all"]').click();
+    await page.waitForTimeout(300);
     const body = page.locator('[data-part="eval-body"]');
     const r = await page.evaluate(() => {
       const b = document.querySelector('[data-part="eval-body"]')!;
-      const k = document.querySelector('[data-part="kpis"]')!;
-      const head = document.querySelector('[data-part="eval-head"]')!;
+      const k = document.querySelector('[data-part="eval-top"]')!;
       return {
         fill: b.hasAttribute('data-fill'),
         scrolls: b.scrollHeight > b.clientHeight,
         kpiAbove: k.getBoundingClientRect().bottom <= b.getBoundingClientRect().top,
-        headOut: !b.contains(head) && !b.contains(k),
+        headOut: !b.contains(k),
       };
     });
     expect(r).toEqual({
@@ -535,12 +538,12 @@ test.describe('E 평가 — 머리 · 지표 6칸 고정, 몸통만 스크롤', 
       kpiAbove: true,
       headOut: true,
     });
-    const top0 = await page.locator('[data-part="kpis"]').evaluate((e) => e.getBoundingClientRect().top);
+    const top0 = await page.locator('[data-part="eval-top"]').evaluate((e) => e.getBoundingClientRect().top);
     await body.evaluate((e) => (e.scrollTop = 400));
     await page.waitForTimeout(100);
     expect(await body.evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
-    expect(await page.locator('[data-part="kpis"]').evaluate((e) => e.getBoundingClientRect().top)).toBeCloseTo(top0, 0);
-    expect(await page.locator('[data-part="kpis"] [data-sort-id]').count()).toBe(6);
+    expect(await page.locator('[data-part="eval-top"]').evaluate((e) => e.getBoundingClientRect().top)).toBeCloseTo(top0, 0);
+    expect(await page.locator('[data-part="eval-top"] [data-sort-id]').count()).toBe(3);
     const sa = await scrollAudit(page);
     expect(sa).toMatchObject({ doc: 0, main: 0, bad: [] });
     await page.screenshot({ path: `${SCRATCH}/r4-evaluation.png` });
@@ -617,16 +620,16 @@ test.describe('H 다크', () => {
       .locator('table[data-table="installs"] th')
       .first()
       .evaluate((e) => getComputedStyle(e).backgroundColor);
-    expect(th).toBe('rgb(40, 45, 56)'); // --surface-2 다크(11/05 표 머리 회색 바탕)
+    expect(th).toBe('rgb(21, 32, 43)'); // 표 머리 바탕 = 본문 면(11/09 밤 남색 #15202B — 회색 바탕 없음)
     const line = await page
       .locator('table[data-table="installs"] tbody td')
       .first()
       .evaluate((e) => getComputedStyle(e).borderBottomColor);
-    expect(line).toBe('rgb(48, 52, 66)'); // --line-soft 다크
+    expect(line).toBe('rgb(56, 68, 77)'); // --line-soft 다크(11/09 밤 #38444D)
     const bars = await barOf(page, 'table[data-table="installs"] tbody tr[data-install="ins-0012"]');
     expect(bars[0]).toBe('rgb(228, 81, 111)'); // --danger 다크
     const foot = await page.locator('[data-table-foot="installs"]').evaluate((e) => getComputedStyle(e).backgroundColor);
-    expect(foot).toBe('rgb(27, 30, 40)');
+    expect(foot).toBe('rgb(21, 32, 43)');
     await page.screenshot({ path: `${SCRATCH}/r4-installs-dark.png` });
     await page.goto('/audit');
     await expect(page.locator('table[data-table="audit"] tbody tr').first()).toBeVisible();

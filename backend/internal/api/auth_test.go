@@ -58,6 +58,7 @@ var adminCalls = []struct{ method, path, body string }{
 	{"POST", "/api/proposals/prop-0001/discard", ""},
 	{"DELETE", "/api/blocklist/hosts/x.test", ""},
 	{"POST", "/api/policies", rule},
+	{"POST", "/api/policies/x/revert", `{"changeId":"chg-0001","reason":"r"}`}, // 되돌리기(11/09)
 }
 
 func authPassed(code int) bool {

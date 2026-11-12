@@ -8,7 +8,7 @@ import {
 import { KpiCard } from "../../components/KpiCard";
 import { Empty, LoadError, Panel } from "../../components/Panel";
 import { useSortable } from "../../hooks/useSortable";
-import { fmtNum } from "../../lib/format";
+import { fmtDateTime, fmtNum } from "../../lib/format";
 import {
   kpiDelta,
   type DeltaTone,
@@ -30,7 +30,7 @@ export function RangeChips({
   onPick: (r: SummaryRange) => void;
 }) {
   return (
-    <div className="flex gap-1.5" role="group" aria-label="기간">
+    <div className="sg-range-chips flex gap-1.5" role="group" aria-label="기간">
       {RANGES.map(([r, ko]) => (
         <button
           key={r}
@@ -59,7 +59,11 @@ interface KpiDef {
   tone?: "danger";
   delta: KpiDelta;
   sub: string;
+  // 보조 줄 툴팁(정확한 값) — 없으면 sub 그대로
+  subTitle?: string;
   to: Dest;
+  // 카드 툴팁 — 무엇을 세는지 한 줄(11/09 G33)
+  hint: string;
 }
 const KPI_IDS = [
   "collected",
@@ -69,6 +73,11 @@ const KPI_IDS = [
   "decided",
   "isolation",
 ];
+
+const ISO_HINT = "탐지부터 격리까지 걸린 시간의 중앙값";
+// 보조 줄 숫자(11/09 G34 · G36): 100만 이상은 만 단위(「235만」) — 한 칸에 숫자 3~4개가 들어가는 줄이라 값(1천만)보다 일찍 줄인다. 정확한 값은 툴팁
+const subNum = (n: number) =>
+  Math.abs(n) >= 1_000_000 ? `${fmtNum(Math.round(n / 10_000))}만` : fmtNum(n);
 
 function kpiDefs(s: Summary, range: string): KpiDef[] {
   const P = s.previous ?? null;
@@ -82,6 +91,15 @@ function kpiDefs(s: Summary, range: string): KpiDef[] {
   const k = s.collected.byKind;
   const iso = s.isolation;
   const decided = s.decisions.malicious + s.decisions.falsePositive;
+  // 10/30: byKind.dns 는 선택(옛 백엔드 없음) — 있을 때만 「조회 N」
+  const kinds = (f: (n: number) => string) =>
+    `실행 ${f(k.exec)} · 파일 ${f(k.open)} · 통신 ${f(k.connect)}${k.dns !== undefined ? ` · 조회 ${f(k.dns)}` : ""}`;
+  const vio = (f: (n: number) => string) =>
+    `격리 ${f(s.violations.killed + s.violations.held)} · 경고 ${f(s.violations.alert)}`;
+  const ins = (f: (n: number) => string) =>
+    `통과 ${f(s.installs.passed)} · 격리 ${f(s.installs.isolated)} · 거부 ${f(s.installs.refused)}`;
+  const dec = (f: (n: number) => string) =>
+    `악성 ${f(s.decisions.malicious)} · 오탐 ${f(s.decisions.falsePositive)} · 대기 ${f(s.decisions.pending)}`;
   return [
     {
       k: "collected",
@@ -90,9 +108,10 @@ function kpiDefs(s: Summary, range: string): KpiDef[] {
       stripe: "info",
       value: s.collected.total,
       delta: D(s.collected.total, P?.collected, { down: "warn" }), // 수집 감소 = 감시 끊김 의심(11/04 사용자 — 목업과 같게)
-      // 10/30: byKind.dns 는 선택(옛 백엔드 없음) — 있을 때만 「조회 N」
-      sub: `실행 ${fmtNum(k.exec)} · 파일 ${fmtNum(k.open)} · 통신 ${fmtNum(k.connect)}${k.dns !== undefined ? ` · 조회 ${fmtNum(k.dns)}` : ""}`,
+      sub: kinds(subNum),
+      subTitle: kinds(fmtNum),
       to: dest("/events", { normal: "1" }),
+      hint: "이 기간에 커널에서 수집한 실행 · 파일 · 통신 · 조회 이벤트 수(같은 1분 안 같은 동작 반복은 1건)",
     },
     {
       k: "violations",
@@ -102,8 +121,10 @@ function kpiDefs(s: Summary, range: string): KpiDef[] {
       tone: "danger",
       value: s.violations.total,
       delta: D(s.violations.total, P?.violations, { up: "danger" }),
-      sub: `격리 ${fmtNum(s.violations.killed + s.violations.held)} · 경고 ${fmtNum(s.violations.alert)}`,
+      sub: vio(subNum),
+      subTitle: vio(fmtNum),
       to: { to: "/audit" },
+      hint: "이 기간에 정책에 걸린 이벤트 수(격리 · 경고)",
     },
     {
       k: "isolated",
@@ -115,6 +136,7 @@ function kpiDefs(s: Summary, range: string): KpiDef[] {
       delta: D(s.isolatedContainers, P?.isolatedContainers, { up: "danger" }),
       sub: "설치 검사 포함",
       to: dest("/audit", { action: "kill" }),
+      hint: "이 기간에 격리한 컨테이너 수(설치 검사 컨테이너 포함)",
     },
     {
       k: "installs",
@@ -123,8 +145,10 @@ function kpiDefs(s: Summary, range: string): KpiDef[] {
       stripe: "accent",
       value: s.installs.total,
       delta: D(s.installs.total, P?.installs),
-      sub: `통과 ${s.installs.passed} · 격리 ${s.installs.isolated} · 거부 ${s.installs.refused}`,
+      sub: ins(subNum),
+      subTitle: ins(fmtNum),
       to: dest("/installs", { status: "all" }),
+      hint: "이 기간에 시작한 설치 검사 수",
     },
     {
       k: "decided",
@@ -133,8 +157,10 @@ function kpiDefs(s: Summary, range: string): KpiDef[] {
       stripe: "ok",
       value: decided,
       delta: D(decided, P?.decided),
-      sub: `악성 ${s.decisions.malicious} · 오탐 ${s.decisions.falsePositive} · 대기 ${s.decisions.pending}`,
+      sub: dec(subNum),
+      subTitle: dec(fmtNum),
       to: { to: "/audit?view=changes" },
+      hint: "이 기간에 악성 · 오탐 판정을 마친 건 수",
     },
     // 격리 지연(10/30 계약 §3): killedAt − detectedAt 의 중앙값. 기록이 없으면(count 0 · 옛 백엔드) 「—」
     iso?.count
@@ -150,6 +176,7 @@ function kpiDefs(s: Summary, range: string): KpiDef[] {
             : kpiDelta(null, null),
           sub: `p95 ${fmtNum(iso.p95Ms ?? 0)} ms · 최대 ${fmtNum(iso.maxMs ?? 0)} ms · 격리 ${fmtNum(iso.count)}건`,
           to: dest("/audit", { action: "kill" }),
+          hint: ISO_HINT,
         }
       : {
           k: "isolation",
@@ -157,12 +184,13 @@ function kpiDefs(s: Summary, range: string): KpiDef[] {
           icon: "◷",
           stripe: "warn",
           value: null,
-          text: "—",
+          text: "",
           delta: P
             ? { dir: "none", note: "비교할 격리 없음" }
             : kpiDelta(null, null),
-          sub: "이 기간에 격리 없음 (탐지→kill)",
+          sub: "이 기간에 격리 없음",
           to: dest("/audit", { action: "kill" }),
+          hint: ISO_HINT,
         },
   ];
 }
@@ -177,6 +205,8 @@ export function KpiRow({
   error: unknown;
 }) {
   const defs = s ? kpiDefs(s, range) : [];
+  // 실제 집계 범위(11/10 사용자) — 기간은 칸 경계(1시간 = 분 · 24시간 = 시 · 7일 = 6시간)부터라 이름보다 조금 짧을 수 있다. 계산은 그대로, 툴팁 끝 줄에 적는다
+  const span = s ? `\n집계 범위 ${fmtDateTime(s.from)} ~ 지금` : "";
   const by = new Map(defs.map((x) => [x.k, x]));
   const { ref, order, containerClass, itemProps, pickedClass } =
     useSortable<HTMLDivElement>({
@@ -215,8 +245,9 @@ export function KpiRow({
               tone={x.tone}
               delta={x.delta}
               sub={x.sub}
-              subTitle={x.sub}
+              subTitle={x.subTitle ?? x.sub}
               to={x.to}
+              hint={`${x.hint}${span}`}
               className={pickedClass(id)}
               attrs={itemProps(id)}
             />
@@ -254,7 +285,7 @@ export function ChartRow({ s }: { s: Summary | null }) {
       ? ([["dns", "조회", "--k-dns"]] as [string, string, string][])
       : []),
   ];
-  const none = <Empty>{s ? "" : "—"}</Empty>;
+  const none = <Empty>{null}</Empty>;
   return (
     <div data-part="charts" className="sg-dash-charts">
       <Card id="collected" title="수집량 추이" sub="종류별 커널 이벤트">
@@ -336,10 +367,35 @@ function Results({ s }: { s: Summary }) {
           ))}
         </ul>
         {/* 판정 · 차단 목록은 한 줄씩(카드 높이를 차트와 맞춘다) — 차단 목록 종류별 수는 툴팁 */}
+        {/* 판정 줄(11/10 사용자): 하나씩 누르면 감사 로그가 그 판정으로 걸러져 열린다(기간은 걸지 않음 · 필터는 화면 상태) */}
         <span className="sg-res-line" data-part="res-decisions">
-          <span className="text-text-3">판정</span> 악성{" "}
-          <b className={D.malicious ? "tone-danger" : ""}>{D.malicious}</b> ·
-          오탐 <b>{D.falsePositive}</b> · 대기 <b>{D.pending}</b>
+          <span className="text-text-3">판정</span>{" "}
+          <Link
+            {...dest("/audit", { decision: "malicious" })}
+            data-decision="malicious"
+            className="sg-res-dec"
+            title="악성으로 판정한 건의 감사 기록 보기"
+          >
+            악성 <b className={D.malicious ? "tone-danger" : ""}>{D.malicious}</b>
+          </Link>{" "}
+          ·{" "}
+          <Link
+            {...dest("/audit", { decision: "false_positive" })}
+            data-decision="false_positive"
+            className="sg-res-dec"
+            title="오탐으로 판정한 건의 감사 기록 보기"
+          >
+            오탐 <b>{D.falsePositive}</b>
+          </Link>{" "}
+          ·{" "}
+          <Link
+            {...dest("/audit", { decision: "pending" })}
+            data-decision="pending"
+            className="sg-res-dec"
+            title="판정 대기 건의 감사 기록 보기"
+          >
+            대기 <b>{D.pending}</b>
+          </Link>
         </span>
         <Link
           to="/policies"
@@ -385,7 +441,7 @@ export function TopPanel({
       >
         <div data-fill="" className="sg-dash-fill">
           {!rows ? (
-            <p className="sg-top-empty">—</p>
+            <p className="sg-top-empty">{"\u00a0"}</p>
           ) : (
             <TopList
               testId={kind}

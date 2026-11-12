@@ -1,14 +1,18 @@
 import { expect, test } from './fixtures';
 
 test.describe('정책 — 이 변경을 적용하면 무엇이 달라지나?', () => {
-  test('제안이 없으면 첫 정책을 자동 선택, 적용 범위 칩 · 시스템 규칙 잠금', async ({ page, backend }) => {
+  test('목록은 시트를 저절로 열지 않음(11/09 표 목록), 적용 범위 칩 · 시스템 규칙 잠금', async ({ page, backend }) => {
     void backend;
     await page.goto('/policies');
-    await expect(page).toHaveURL(/\?id=sensitive-files/);
-    await expect(page.getByTestId('editor')).toContainText('정책 편집 · sensitive-files');
-    await expect(page.locator('[data-rule="sandbox-egress"] [data-scope="sandbox"]')).toHaveText('설치 검사 전용');
-    await expect(page.locator('[data-rule="sensitive-files"] [data-scope]')).toHaveCount(0); // 전체(기본)는 칩 없음
+    await expect(page.locator('[data-rule="sensitive-files"]')).toBeVisible();
+    await expect(page).toHaveURL(/\/policies$/);
+    await expect(page.locator('[data-sheet="policy"]')).toHaveCount(0);
+    await expect(page.locator('[data-rule="sandbox-egress"] [data-scope="sandbox"]')).toHaveText('설치 검사');
+    await expect(page.locator('[data-rule="sensitive-files"] [data-scope]')).toHaveCount(0); // 전체(기본)는 칩 없음(「모든 컨테이너」 글)
     await expect(page.locator('[data-rule="blocklist-hosts"] [data-system]')).toBeVisible();
+    await page.locator('[data-rule="sensitive-files"]').click();
+    await expect(page.locator('[data-sheet="policy"] h2')).toHaveText('sensitive-files');
+    await page.goto('/policies');
     await page.locator('[data-rule="blocklist-hosts"]').click();
     await expect(page.getByTestId('system-rule')).toContainText('직접 편집할 수 없습니다');
     await expect(page.getByRole('button', { name: '저장 전 확인' })).toBeDisabled(); // 10/16: 저장은 「저장 전 확인」을 거친다
@@ -24,7 +28,7 @@ test.describe('정책 — 이 변경을 적용하면 무엇이 달라지나?', (
     // 왼쪽 열 맨 위
     const [pBox, rBox] = await Promise.all([proposals.boundingBox(), page.getByTestId('rules').boundingBox()]);
     expect(pBox!.y).toBeLessThan(rBox!.y);
-    await expect(proposals.locator('[data-proposal]')).toHaveCount(1);
+    await expect(proposals.locator('[data-proposal]')).toHaveCount(1); // 목록 위 띠(11/09)
     const detail = page.getByTestId('proposal');
     await expect(detail.getByTestId('proposal-changes')).toContainText('egress-allowlist 허용 대역 += 140.82.112.3/32'); // allowHosts 없던 규칙 → IP/32 (3차 결정 3)
     await expect(detail.getByTestId('preview-summary')).toBeVisible(); // 열면 자동 미리보기(10/15 3차) — 버튼은 다시 계산
@@ -48,10 +52,13 @@ test.describe('정책 — 이 변경을 적용하면 무엇이 달라지나?', (
     await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
     await expect(detail.getByTestId('proposal-state')).toContainText('적용됨 · 보안 담당자');
     await expect(page.getByTestId('proposals').locator('[data-proposal]')).toHaveCount(0);
+    // 11/09: 변경 이력 · 차단 목록은 「정책」 아래 각자 페이지
+    await page.goto('/policies/changes');
     const changes = page.getByTestId('changes');
     await expect(changes.locator('[data-change]').first()).toContainText('제안 적용');
     await expect(changes.locator('[data-change]').first()).toContainText('pip:reqeusts');
     await expect(changes.locator('[data-change]').first()).toContainText('보안 담당자');
+    await page.goto('/policies/blocklist');
     await expect(page.getByTestId('blocklist').locator('[data-block="packages:pip:reqeusts"]')).toBeVisible();
     await expect(page.getByTestId('blocklist').locator('[data-block="hosts:cdn.reqeusts-update.test"]')).toBeVisible();
     expect(backend.case('case-0004').state).toBe('closed');
@@ -82,7 +89,8 @@ test.describe('정책 — 이 변경을 적용하면 무엇이 달라지나?', (
     const w = backend.writes().find((r) => r.path === '/policies' && r.method === 'POST')!;
     expect(w.auth).toBeNull();
     expect(JSON.parse(w.body!).description).toBe('허용 목적지 외 통신 (수정)');
-    await expect(page.getByTestId('changes').locator('[data-change]').first()).toContainText('정책 편집');
+    await page.goto('/policies/changes');
+    await expect(page.getByTestId('changes').locator('[data-change]').first()).toContainText('정책 수정'); // 11/09 동작 태그 = 끝말(저장 전후 값 → 수정)
   });
 
   test('조회자에게는 판정 버튼이 없고 안내 한 줄만 (W16)', async ({ page, backend }) => {

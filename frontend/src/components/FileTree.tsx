@@ -5,35 +5,40 @@ import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'r
 //   펼침/접힘: 자리에서 aria-expanded 만 바꾸고 CSS(grid-template-rows 0fr ↔ 1fr, --t-slow)가 움직인다. 접힌 그룹은 끝난 뒤 visibility hidden
 //   선택이 바뀌면(딥링크 포함) 그 파일의 부모를 펼친다 — 같은 선택으로 다시 그릴 때는 사용자가 접은 그대로
 //   키보드(roving tabindex): ↑↓ 보이는 항목 · → 펼침/첫 자식 · ← 접힘/부모 · Home/End · Enter/Space 폴더 토글 · 파일 선택
+//   rank(선택, 11/10 증거): 큰 값이 같은 층에서 먼저 — 폴더는 안에 든 항목의 가장 큰 값. 없으면 0(예전 순서 그대로)
 export interface TreeItem {
   path: string;
   badge?: { text: string; cls?: string; title?: string; attrs?: Record<string, string> };
   diff?: string;
+  rank?: number;
 }
 interface Node {
   name: string;
   path: string;
   kids: Map<string, Node>;
   item: TreeItem | null;
+  rank: number;
 }
 
 function build(items: TreeItem[]): Node {
-  const root: Node = { name: '', path: '', kids: new Map(), item: null };
+  const root: Node = { name: '', path: '', kids: new Map(), item: null, rank: 0 };
   for (const it of items) {
     const abs = it.path.startsWith('/');
     const segs = it.path.replace(/^\/+/, '').split('/').filter(Boolean);
+    const rank = it.rank ?? 0;
     let node = root;
     let acc = '';
     segs.forEach((seg, i) => {
       acc = abs ? `${acc}/${seg}` : acc ? `${acc}/${seg}` : seg;
-      if (!node.kids.has(seg)) node.kids.set(seg, { name: i === 0 && abs ? `/${seg}` : seg, path: acc, kids: new Map(), item: null });
+      if (!node.kids.has(seg)) node.kids.set(seg, { name: i === 0 && abs ? `/${seg}` : seg, path: acc, kids: new Map(), item: null, rank: 0 });
       node = node.kids.get(seg)!;
+      node.rank = Math.max(node.rank, rank);
     });
     node.item = it;
   }
   return root;
 }
-const sorted = (m: Map<string, Node>) => [...m.values()].sort((a, b) => Number(b.kids.size > 0) - Number(a.kids.size > 0) || a.name.localeCompare(b.name, 'en'));
+const sorted = (m: Map<string, Node>) => [...m.values()].sort((a, b) => b.rank - a.rank || Number(b.kids.size > 0) - Number(a.kids.size > 0) || a.name.localeCompare(b.name, 'en'));
 const parents = (p: string) => {
   const out: string[] = [];
   let x = p;

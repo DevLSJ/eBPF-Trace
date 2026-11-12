@@ -113,7 +113,7 @@ test.describe('도우미 · AI 도우미 탭 (10/20 W13)', () => {
     // 칩은 답 위
     const [cb, bb] = await Promise.all([chip.boundingBox(), last(page).locator('[data-part="chat-bubble"]').boundingBox()]);
     expect(cb!.y).toBeLessThan(bb!.y);
-    await expect(last(page).locator('[data-part="chat-links"] a')).toHaveText(['감사 로그 — 판정 · 변경 이력 →']);
+    await expect(last(page).locator('[data-part="chat-links"] a')).toHaveText(['감사 로그(판정 · 변경 이력) →']);
     await expect(chat(page).locator('[data-part="chat-sugg"]')).toBeHidden();
   });
 

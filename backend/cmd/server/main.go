@@ -102,11 +102,14 @@ func run() error {
 	}
 	authSvc := auth.New(auth.Options{
 		Store: authStore, OTPRequired: cfg.AuthOTPRequired, SecretKey: cfg.AuthSecretKey, CookieSecure: cfg.AuthCookieSecure,
-		DevMode:    cfg.AuthDevMode, // config.Load 가 mock 소스에서만 허용한다
+		DevMode:    cfg.AuthDevMode, // config.Load 가 mock 소스(또는 LOCAL_DEV=true — 개발자 PC)에서만 허용한다
 		TrustProxy: true,            // compose 에서 backend 포트는 바깥에 없다 — nginx 가 넘기는 X-Real-IP 로 IP 실패 횟수를 센다
 	})
 	if cfg.AuthDevMode {
 		slog.Warn("AUTH_DEV_MODE=true: 개발 전용 로그인 — 실제 서버에서 쓰지 말 것 (초기 관리자 아이디=비밀번호 허용 · 비밀번호 변경 · 라이선스 단계 건너뜀)")
+		if cfg.EventSource != "mock" {
+			slog.Warn("LOCAL_DEV=true: 실제 가젯 소스에서 개발 전용 로그인을 씀 — 개발자 PC(make dev)만, 서버 .env 에 넣지 말 것", "source", cfg.EventSource)
+		}
 	}
 	// 계정이 하나도 없을 때만 ADMIN_USER / ADMIN_INITIAL_PASSWORD 로 관리자 1명 (비밀번호가 비었거나 5자 미만이면 시작 오류)
 	if created, err := authSvc.SeedAdmin(ctx, cfg.AdminUser, cfg.AdminInitialPassword); err != nil {
@@ -249,6 +252,8 @@ func run() error {
 	pipe.SetNotifier(ntf)
 
 	// 연동(11/06): 환경 점검 · 감시 중 컨테이너(파이프라인과 같은 판정) · 연결 테스트(시험 컨테이너 sg-probe-*)
+	// 감시 중 컨테이너 상세(11/10): 실제 Docker 일 때만 — 성공했을 때만 넣어 nil 인터페이스가 되지 않게
+	var inspector api.ContainerInspector
 	intOpt := integration.Options{Scoper: pipe, Recorder: rv, Source: cfg.EventSource, EnforceKill: cfg.EnforceKill,
 		EnforceNames: cfg.EnforceContainers, HostRoot: os.Getenv("HOST_ROOT")}
 	if m, ok := source.(*ingestion.Mock); ok {
@@ -256,6 +261,7 @@ func run() error {
 	} else if dc, err := dockerapi.New(cfg.DockerHost); err == nil {
 		d := integration.Docker{API: dc}
 		intOpt.Lister, intOpt.Prober = d, d
+		inspector = dc
 	}
 	intSvc := integration.New(intOpt)
 	pipe.SetObserver(intSvc.Observe)
@@ -295,11 +301,12 @@ func run() error {
 		}
 	}()
 
-	// AI 도우미(10/20): 읽기 전용 조회 → 한국어 사실 문장 → 로컬 Ollama. 판정 상태 · 링크는 서버가 붙인다
+	// AI 도우미(10/20 · 11/09): 읽기 전용 조회 → 한국어 사실 문장 → Claude(기본) · Ollama(예비). 판정 상태 · 링크는 서버가 붙인다
 	sum := summary.New(audit, collected, reviewView{rv})
 	var chatSvc *chat.Service
-	if cfg.OllamaURL != "" {
-		o := chat.Options{OllamaURL: cfg.OllamaURL, Model: cfg.OllamaModel, KeepAlive: cfg.OllamaKeepAlive,
+	if cfg.AnthropicKey != "" || cfg.OllamaURL != "" {
+		o := chat.Options{Provider: cfg.ChatProvider, AnthropicKey: cfg.AnthropicKey, ClaudeModel: cfg.ClaudeModel, ClaudeEffort: cfg.ClaudeEffort,
+			OllamaURL: cfg.OllamaURL, Model: cfg.OllamaModel, KeepAlive: cfg.OllamaKeepAlive,
 			Review: reviewView{rv}, Audit: audit, Summary: sum, Policies: policies}
 		if scans != nil {
 			o.Scans = scans // typed nil 을 인터페이스에 넣지 않는다
@@ -307,6 +314,8 @@ func run() error {
 		if chatSvc, err = chat.New(o); err != nil {
 			return fmt.Errorf("chat: %w", err)
 		}
+		e := chatSvc.Engine() // 키는 남기지 않는다
+		slog.Info("chat", "provider", e.Provider, "model", e.Model, "backup", e.Backup)
 	}
 
 	mux := http.NewServeMux()
@@ -316,6 +325,8 @@ func run() error {
 		Stats: snapshot, Checks: checks,
 		AdminToken:           cfg.AdminToken,
 		SandboxToken:         cfg.SandboxToken,
+		SGInstallFile:        cfg.SGInstallFile,
+		SGInstallAPI:         cfg.SGInstallAPI,
 		AllowAnonymousWrites: cfg.EventSource == "mock", // 비어 있는 토큰만 익명 허용 (정한 토큰은 mock 이어도 검사)
 		Review:               rv,
 		Summary:              sum,
@@ -332,6 +343,7 @@ func run() error {
 		Auth:                 authSvc,
 		Demo:                 demoSvc,
 		Integration:          intSvc,
+		Containers:           inspector,
 		Info: api.Info{Source: cfg.EventSource, Gadgets: cfg.Gadgets, EnforceKill: cfg.EnforceKill,
 			GadgetVersion: ingestion.GadgetVersion, WatchContainers: cfg.WatchContainers, IgnoreContainers: cfg.IgnoreContainers},
 	}))

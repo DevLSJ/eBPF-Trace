@@ -1,48 +1,65 @@
-import { Copy, PackageSearch, SearchX } from 'lucide-react';
+import { Copy } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DecisionBadge, StatusBadge } from '../../components/Badges';
-import { BusyBar, SortHead, TablePager } from '../../components/DataTable';
+import { GridCells, SortHead, TablePager, TableScroll } from '../../components/DataTable';
 import { FilterChips } from '../../components/FilterChips';
 import { PageActions } from '../../components/PageActions';
 import { Panel } from '../../components/Panel';
-import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, PagerSlot, Skeleton } from '../../components/list/ListStates';
-import { barStyle, rowKeys, useAutoRetry, useBusy } from '../../components/list/hooks';
+import { AppliedFilters, ClearFiltersButton, EmptyState, ListError, NoResults, PagerSlot, Skeleton } from '../../components/list/ListStates';
+import { TimeText } from '../../components/list/cells';
+import { fmtStatus } from '../../components/list/cell-format';
+import { downloadCSV } from '../../components/list/csv';
+import { rowKeys, rowState, useAutoRetry, useBusy } from '../../components/list/hooks';
+import { ScreenNote } from '../../components/ScreenNote';
+import { TableToolbar } from '../../components/TableToolbar';
 import { useCases } from '../../hooks/cases-context';
 import { useFilters } from '../../hooks/useFilters';
 import { useCopyCommand } from '../../hooks/useCopyCommand';
-import { useInterval, useLoad, useNow } from '../../hooks/useLoad';
-import { useTableKit, type Column } from '../../hooks/useTableKit';
+import { useInterval, useLoad } from '../../hooks/useLoad';
+import { useTableKit, type Column, type TableKit } from '../../hooks/useTableKit';
 import { api } from '../../lib/api';
-import { fmtDateTime, fmtNum, fmtTime, isToday } from '../../lib/format';
+import { ScreenHead } from '../../components/ScreenHead';
+import { FIELD } from '../../lib/fieldNames';
+import { fmtNum } from '../../lib/format';
 import { duration, EXAMPLE_COMMAND, sessionLabel, violationTotal } from '../../lib/pkg';
-import { INSTALL_STATUS_LABEL, INSTALL_STATUSES, MANAGERS, type Case, type InstallSession } from '../../lib/types';
+import { DECISION_LABEL, INSTALL_STATUS_LABEL, INSTALL_STATUSES, MANAGERS, SCAN_VERDICT_LABEL, type InstallSession } from '../../lib/types';
 import { InstallSheet } from './InstallSheet';
+import { UsageGuide } from './UsageGuide';
 import { sheetNav } from '../../components/sheet-nav';
 import { StaticBadge } from './StaticBadge';
 import { isDangerRow } from './staticScan';
 
-// 표 칸(R4 11/04 — 목업 11/04e U.tableKit): 머리 클릭 정렬 · 기본은 시작 내림(목록 순서 그대로). 설치 결과는 위험한 것부터
+// 표 칸(R4 11/04 — 목업 11/04e U.tableKit): 머리 클릭 정렬 · 기본은 시작 내림(목록 순서 그대로). 설치 결과는 위험한 것부터.
+// 11/09 SPEC §4: 현황 표 — 상태(설치 결과 · 바로 뒤 정적 검사, 11/04 종합 판정)가 맨 앞, 시작은 MM-DD HH:mm + 전체 시각 툴팁
 const STATUS_RANK: Record<string, number> = { isolated: 0, warned: 1, refused: 2, running: 3, failed: 4, unknown: 5, passed: 6 };
 const durSec = (s: InstallSession) => {
   const end = s.finishedAt ?? s.containerExitedAt;
   return s.status === 'refused' || !end ? null : (Date.parse(end) - Date.parse(s.startedAt)) / 1000;
 };
 
+// 정적 검사 칸의 화면 글(CSV — 「화면 글 그대로」, 11/09 G13): StaticBadge 와 같은 말
+const staticText = (s: InstallSession) => {
+  const sc = s.scan;
+  if (!sc || sc.status === 'skipped') return null;
+  return sc.status === 'running' ? '검사 중…' : sc.status === 'failed' ? '실패' : SCAN_VERDICT_LABEL[sc.verdict ?? 'clean'];
+};
+const durText = (s: InstallSession) => (s.status === 'running' ? '진행 중' : s.status === 'refused' ? null : duration(s.startedAt, s.finishedAt ?? s.containerExitedAt));
+
 // 결과 칩: 기본 「판정 대기」(목표 문서 완료 기준 ①), 그다음 전체 · 설치 결과별
 type StatusFilter = 'pending' | 'all' | (typeof INSTALL_STATUSES)[number];
 
 // 설치 검사 — 질문 하나: 「이 패키지는 무엇을 하려 했고, 악성인가?」
 export function InstallsPage() {
-  // 필터(결과 · 매니저)는 화면 상태로만, 열린 세션(id)만 주소에(10/21)
+  // 필터(결과 · 패키지 관리자)는 화면 상태로만, 열린 세션(id)만 주소에(10/21)
   const [params, setParams] = useSearchParams();
   const [filters, setFilters] = useFilters('/installs');
   const status = (filters.status as StatusFilter) || 'pending';
   const manager = filters.manager;
   const id = params.get('id');
   const { cases } = useCases();
+  const [guide, setGuide] = useState(false); // 「사용 방법」(11/09)
   const copy = useCopyCommand();
-  const now = useNow();
 
   const load = useCallback(() => api.installs({ limit: 500 }), []);
   const list = useLoad(load);
@@ -56,20 +73,54 @@ export function InstallsPage() {
   useAutoRetry(failing, list.error, reload);
 
   const caseOf = useMemo(() => new Map((cases ?? []).map((c) => [c.id, c])), [cases]);
+  // 11/09 표 도구: 칸 보이기 · 폭 · 순서는 이 브라우저에(supplyguard.grid.installs.v1), CSV = 보이는 칸 · 화면 글.
+  // 11/04 결정: 시트가 열려 있으면 「걸린 시간」 칸을 뺀다(상세에 같은 값)
   const columns = useMemo<Column<InstallSession>[]>(
     () => [
-      { key: 'started', label: '시작', sort: (s) => Date.parse(s.startedAt), short: true },
-      { key: 'manager', label: '매니저', sort: (s) => s.manager, short: true },
-      { key: 'package', label: '패키지', sort: (s) => sessionLabel(s) },
-      { key: 'status', label: '설치 결과', sort: (s) => STATUS_RANK[s.status], short: true },
-      { key: 'static', label: '정적 검사', sort: (s) => (s.scan ? (s.scan.verdict ?? s.scan.status) : null), short: true },
-      { key: 'decision', label: '판정', sort: (s) => (s.caseId ? (caseOf.get(s.caseId)?.decision ?? null) : null), short: true },
-      { key: 'violations', label: '위반', num: true, sort: (s) => violationTotal(s) ?? null, short: true },
-      { key: 'duration', label: '걸린 시간', num: true, sort: durSec, short: true },
+      { key: 'status', label: '설치 결과', sort: (s) => STATUS_RANK[s.status], short: true, cell: (s) => <StatusBadge status={s.status} />, csv: (s) => INSTALL_STATUS_LABEL[s.status] },
+      { key: 'static', label: '정적 검사', sort: (s) => (s.scan ? (s.scan.verdict ?? s.scan.status) : null), short: true, cell: (s) => <StaticBadge s={s} />, csv: staticText },
+      { key: 'started', label: '시작', sort: (s) => Date.parse(s.startedAt), short: true, cellClass: 'text-slate-600', cell: (s) => <TimeText value={s.startedAt} kind="status" />, csv: (s) => fmtStatus(s.startedAt) },
+      {
+        key: 'manager',
+        label: FIELD.manager,
+        sort: (s) => s.manager,
+        short: true,
+        cell: (s) => <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-600">{s.manager}</span>,
+        csv: (s) => s.manager,
+      },
+      { key: 'package', label: '패키지', sort: (s) => sessionLabel(s), fill: true, cellClass: 'font-mono text-slate-800', cell: (s) => <span title={sessionLabel(s)}>{sessionLabel(s)}</span>, csv: sessionLabel },
+      {
+        key: 'decision',
+        label: '판정',
+        sort: (s) => (s.caseId ? (caseOf.get(s.caseId)?.decision ?? null) : null),
+        short: true,
+        cell: (s) => {
+          const c = s.caseId ? caseOf.get(s.caseId) : undefined;
+          return c ? <DecisionBadge decision={c.decision} /> : null;
+        },
+        csv: (s) => {
+          const c = s.caseId ? caseOf.get(s.caseId) : undefined;
+          return c ? DECISION_LABEL[c.decision] : null;
+        },
+      },
+      {
+        key: 'violations',
+        label: '위반',
+        num: true,
+        sort: (s) => violationTotal(s) ?? null,
+        short: true,
+        cellClass: 'num',
+        cell: (s) => {
+          const n = violationTotal(s);
+          return n === undefined ? null : <span className={n ? 'font-semibold text-red-600' : 'text-slate-400'}>{fmtNum(n)}</span>;
+        },
+        csv: (s) => violationTotal(s) ?? null,
+      },
+      ...(id ? [] : [{ key: 'duration', label: '걸린 시간', num: true, sort: durSec, short: true, cellClass: 'num text-xs text-slate-500', cell: durText, csv: durText } satisfies Column<InstallSession>]),
     ],
-    [caseOf],
+    [caseOf, id],
   );
-  const kit = useTableKit({ columns, sort: { key: 'started', dir: 'desc' } });
+  const kit = useTableKit({ columns, sort: { key: 'started', dir: 'desc' }, grid: 'installs' });
   const busy = useBusy(list.loading && !!list.data);
 
   const set = (k: 'id' | 'status' | 'manager', v: string | null) => {
@@ -107,8 +158,6 @@ export function InstallsPage() {
     kit.reveal(rows, (s) => s.id === id);
   }
   const view = kit.view(rows);
-  // 11/04 결정: 시트가 열려 있으면 「걸린 시간」 열을 숨긴다(상세에 같은 값)
-  const shown = id ? columns.filter((c) => c.key !== 'duration') : columns;
 
   const managerOptions = [
     { value: '', label: '전체', count: sessions.length },
@@ -116,8 +165,13 @@ export function InstallsPage() {
   ];
 
   return (
-    <div className="flex h-full min-h-0 gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <ScreenHead screen="installs" />
+      <div className="flex min-h-0 flex-1 gap-4">
       <PageActions>
+        <button type="button" onClick={() => setGuide(true)} className="sg-btn sg-btn-sm sg-btn-secondary">
+          사용 방법
+        </button>
         <button
           type="button"
           onClick={() => copy(EXAMPLE_COMMAND)}
@@ -126,27 +180,23 @@ export function InstallsPage() {
         >
           <Copy className="size-3.5" aria-hidden /> 명령 복사
         </button>
-        <span className="truncate text-xs text-slate-400">설치는 CLI(sg-install)로만 실행합니다</span>
       </PageActions>
 
       <Panel
         className="min-w-0 flex-1"
         testId="installs"
-        title={
-          <span>
-            설치 세션 <span className="num ml-1 font-normal text-slate-400">{fmtNum(rows.length)}건</span>
-          </span>
-        }
+        title="설치 세션"
       >
         <div className="flex h-full flex-col">
-          <div className="grid shrink-0 gap-2 border-b border-slate-100 px-4 py-2.5">
+          {/* 거르기 이름 칸: 「패키지 관리자」(11/09 G44)가 한 줄에 들어가게 두 줄 모두 같은 폭(88) — 칩 시작 위치를 맞춘다 */}
+          <div className="grid shrink-0 gap-2 border-b border-slate-100 px-4 py-2.5 [&>[role=group]>span:first-child]:w-22 [&>[role=group]>span:first-child]:whitespace-nowrap">
             <FilterChips label="결과" options={statusOptions} value={status} onChange={(v) => set('status', v === 'pending' ? null : v)} />
-            <FilterChips label="매니저" options={managerOptions} value={manager} onChange={(v) => set('manager', v || null)} />
+            <FilterChips label={FIELD.manager} options={managerOptions} value={manager} onChange={(v) => set('manager', v || null)} />
           </div>
           <AppliedFilters
             items={[
               status !== 'pending' && { key: 'status', label: `결과: ${status === 'all' ? '전체' : (INSTALL_STATUS_LABEL[status] ?? status)}`, clear: () => set('status', null) },
-              !!manager && { key: 'manager', label: `매니저: ${manager}`, clear: () => set('manager', null) },
+              !!manager && { key: 'manager', label: `${FIELD.manager}: ${manager}`, clear: () => set('manager', null) },
             ]}
             onClearAll={clearFilters}
           />
@@ -155,26 +205,26 @@ export function InstallsPage() {
           ) : !list.data ? (
             <Skeleton rows={6} />
           ) : sessions.length === 0 ? (
-            <FirstUse onCopy={() => copy(EXAMPLE_COMMAND)} />
+            <FirstUse onCopy={() => copy(EXAMPLE_COMMAND)} onGuide={() => setGuide(true)} />
           ) : rows.length === 0 ? (
             status === 'pending' && !manager ? (
-              <EmptyState icon={PackageSearch} title="판정 대기인 설치가 없습니다" hint="「전체」에서 지난 검사를 볼 수 있습니다" actions={<ClearFiltersButton onClick={() => set('status', 'all')}>전체 보기</ClearFiltersButton>} />
+              <EmptyState what="판정 대기인 설치 검사" hint="지난 검사는 「전체」에서 볼 수 있습니다." actions={<ClearFiltersButton onClick={() => set('status', 'all')}>전체 보기</ClearFiltersButton>} />
             ) : (
-              <EmptyState icon={SearchX} title="조건에 맞는 세션 없음" actions={<ClearFiltersButton onClick={clearFilters} />} />
+              <NoResults onClear={clearFilters} />
             )
           ) : (
             <>
-              <BusyBar on={busy} />
-              <div data-fill="" className="min-h-0 flex-1 overflow-auto">
+              <TableToolbar name="installs" total={rows.length} kit={kit} onRefresh={list.reload} refreshing={busy} onExport={() => downloadCSV('supplyguard-installs.csv', kit.csv(rows))} />
+              <TableScroll data-fill="" className="min-h-0 flex-1 overflow-auto">
                 <table className="sg-table" data-table="installs">
-                  <SortHead columns={shown} sort={kit.sort} onSort={kit.sortBy} />
+                  <SortHead kit={kit} />
                   <tbody>
                     {view.rows.map((s) => (
-                      <Row key={s.id} s={s} now={now} c={s.caseId ? caseOf.get(s.caseId) : undefined} pending={isPending(s)} selected={s.id === id} showDuration={!id} onOpen={() => set('id', s.id)} />
+                      <Row key={s.id} s={s} kit={kit} pending={isPending(s)} selected={s.id === id} onOpen={() => set('id', s.id)} />
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScroll>
               <PagerSlot edge={!id}>
                 <TablePager name="installs" total={view.total} from={view.from} to={view.to} page={view.page} size={kit.size} onPage={kit.setPage} onSize={kit.setSize} />
               </PagerSlot>
@@ -182,30 +232,16 @@ export function InstallsPage() {
           )}
         </div>
       </Panel>
+      </div>
+      <ScreenNote screen="installs" />
 
       {id && <InstallSheet id={id} onClose={() => set('id', null)} onChanged={list.reload} nav={sheetNav(view.rows.map((s) => s.id), id, (x) => set('id', x))} />}
+      {guide && <UsageGuide onClose={() => setGuide(false)} />}
     </div>
   );
 }
 
-function Row({
-  s,
-  c,
-  now,
-  pending,
-  selected,
-  showDuration,
-  onOpen,
-}: {
-  s: InstallSession;
-  c: Case | undefined;
-  now: number;
-  pending: boolean;
-  selected: boolean;
-  showDuration: boolean;
-  onOpen: () => void;
-}) {
-  const n = violationTotal(s);
+function Row({ s, kit, pending, selected, onOpen }: { s: InstallSession; kit: TableKit<InstallSession>; pending: boolean; selected: boolean; onOpen: () => void }) {
   const danger = isDangerRow(s); // 11/04: 런타임 격리 · 경고 또는 정적 악성
   // 11/04e 막대: 판정 대기 · 격리 · 경고 · 정적 악성 행만 — 격리 · 정적 악성은 위험색, 나머지(판정 대기 · 경고)는 경고색
   const bar = s.status === 'isolated' || s.scan?.verdict === 'malicious' ? 'danger' : pending || danger ? 'warn' : null;
@@ -215,53 +251,32 @@ function Row({
       data-install={s.id}
       data-danger={danger || undefined}
       data-bar={bar ?? undefined}
-      aria-selected={selected}
+      {...rowState({ open: selected })}
       onClick={onOpen}
-      className={`cursor-pointer hover:bg-[var(--row-hover)] focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-500 ${selected ? 'bg-indigo-50' : ''}`}
+      className="cursor-pointer"
     >
-      <td data-col="started" className="num tk-short font-mono text-xs text-slate-600" title={fmtDateTime(s.startedAt)} style={barStyle(bar)}>
-        {isToday(s.startedAt, now) ? fmtTime(s.startedAt) : fmtDateTime(s.startedAt)}
-      </td>
-      <td data-col="manager" className="tk-short">
-        <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-600">{s.manager}</span>
-      </td>
-      <td data-col="package" className="tk-fill font-mono text-slate-800" title={sessionLabel(s)}>
-        {sessionLabel(s)}
-      </td>
-      <td data-col="status" className="tk-short">
-        <StatusBadge status={s.status} />
-      </td>
-      <td data-col="static" className="tk-short">
-        <StaticBadge s={s} />
-      </td>
-      <td data-col="decision" className="tk-short">
-        {c ? <DecisionBadge decision={c.decision} /> : <span className="text-xs text-slate-300">—</span>}
-      </td>
-      <td data-col="violations" className={`num num-col tk-short ${n ? 'font-semibold text-red-600' : 'text-slate-400'}`}>
-        {n === undefined ? '—' : fmtNum(n)}
-      </td>
-      {showDuration && (
-        <td className="num num-col tk-short text-xs text-slate-500" data-col="duration">
-          {s.status === 'running' ? '진행 중' : s.status === 'refused' ? '—' : duration(s.startedAt, s.finishedAt ?? s.containerExitedAt)}
-        </td>
-      )}
+      <GridCells kit={kit} row={s} bar={bar} />
     </tr>
   );
 }
 
 // 설치 검사가 하나도 없을 때 — 첫 명령 안내
-function FirstUse({ onCopy }: { onCopy: () => void }) {
+function FirstUse({ onCopy, onGuide }: { onCopy: () => void; onGuide: () => void }) {
   return (
     <EmptyState
       testId="installs-empty"
-      icon={PackageSearch}
-      title="아직 설치 검사가 없습니다"
-      hint="개발자가 패키지를 설치할 때 감시 컨테이너에서 실행합니다. 위반이면 설치가 끝나기 전에 격리됩니다."
+      what="설치 검사"
+      hint="sg-install 명령으로 패키지를 설치하면 감시 컨테이너에서 검사가 시작됩니다."
       actions={
-        <div className="sg-code flex items-center gap-2 px-3 py-2 font-mono text-xs">
-          {EXAMPLE_COMMAND}
-          <button type="button" onClick={onCopy} className="rounded p-1 text-text-3 hover:bg-surface-2 hover:text-text" aria-label="명령 복사">
-            <Copy className="size-3.5" />
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <div className="sg-code flex items-center gap-2 px-3 py-2 font-mono text-xs">
+            {EXAMPLE_COMMAND}
+            <button type="button" onClick={onCopy} className="rounded p-1 text-text-3 hover:bg-surface-2 hover:text-text" aria-label="명령 복사" title="명령 복사">
+              <Copy className="size-3.5" aria-hidden />
+            </button>
+          </div>
+          <button type="button" onClick={onGuide} className="sg-btn sg-btn-sm sg-btn-secondary">
+            사용 방법
           </button>
         </div>
       }

@@ -2,19 +2,28 @@ import { KeyRound, Plus, Send } from 'lucide-react';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { KeyBoxes } from '../../components/KeyBoxes';
-import { AppliedFilters } from '../../components/list/ListStates';
+import { AppliedFilters, EmptyState, NoResults } from '../../components/list/ListStates';
+import { TimeText } from '../../components/list/cells';
+import { ActionButton } from '../../components/ActionButton';
 import { ConfirmDialog, Modal } from '../../components/Modal';
 import { Empty, LoadError } from '../../components/Panel';
-import { SortHead } from '../../components/DataTable';
-import { useTableKit, type Column } from '../../hooks/useTableKit';
+import { GridCells, SortHead, TableScroll } from '../../components/DataTable';
+import { COL_W, useTableKit, type Column } from '../../hooks/useTableKit';
+import { downloadCSV } from '../../components/list/csv';
+import { fmtDay, fmtLog, fmtStatus } from '../../components/list/cell-format';
+import { rowState } from '../../components/list/hooks';
+import { Select } from '../../components/Select';
+import { TableToolbar } from '../../components/TableToolbar';
+import { ScreenHead } from '../../components/ScreenHead';
 import { useAuth } from '../../hooks/auth-context';
 import { useToast } from '../../hooks/toast-context';
 import { PageActions } from '../../components/PageActions';
 import { resetLayout } from '../../lib/layout';
 import { useLoad } from '../../hooks/useLoad';
-import { api, ApiError, authApi, errorText } from '../../lib/api';
+import { api, ApiError, authApi, failText } from '../../lib/api';
+import { engineName, LOCAL_ONLY, NOT_SENT_ITEMS, SENT_ITEMS } from '../../lib/chatEngine';
 import { AUTH_MSG, daysLeft, licenseText, ROLE_KO } from '../../lib/auth';
-import { fmtDateTime, fmtNum } from '../../lib/format';
+import { fmtNum } from '../../lib/format';
 import type { AuthAuditEntry, Info, Role, UserView } from '../../lib/types';
 
 // 설정(W16, 10/20 확정) — 서버 설정(보기 · 알림 테스트) · 계정 · 라이선스 · 인증 감사. 조회자는 계정 · 인증 감사 탭이 없다
@@ -33,16 +42,18 @@ export function SettingsPage() {
   const tab = tabs.find((t) => t.key === params.get('tab'))?.key ?? 'server';
   const toast = useToast();
   return (
-    <div className="sg-card flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+    <ScreenHead screen="settings" />
+    <div className="sg-card flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* 화면 머리 오른쪽 「화면 배치 기본 순서로」(11/04d, R1 11/04) — 확인 없이 즉시 · 토스트 · 조회자도(이 브라우저에만 저장된 값). 열린 사이드바는 바로 기본 순서 */}
       <PageActions>
         <button
           type="button"
           data-action="layout-reset"
-          title="길게 눌러 바꾼 순서(사이드바 · 대시보드 숫자 칸 · 평가 지표)를 처음대로 — 이 브라우저에만 저장된 값"
+          title="길게 눌러 바꾼 순서(사이드바 · 대시보드 숫자 칸 · 평가 지표)를 처음대로 되돌림(이 브라우저에만 저장된 값)"
           onClick={() => {
             resetLayout();
-            toast('화면 배치를 기본 순서로 되돌렸습니다 — 사이드바 · 대시보드 숫자 칸 · 평가 지표', { tone: 'ok', key: 'layout-reset' });
+            toast('화면 배치를 기본 순서로 되돌렸습니다. 사이드바 · 대시보드 숫자 칸 · 평가 지표 순서가 처음대로 돌아갑니다.', { tone: 'ok', key: 'layout-reset' });
           }}
           className="ml-auto shrink-0 rounded-md px-2.5 py-1 text-xs whitespace-nowrap text-text-2 hover:bg-surface-2 hover:text-text"
         >
@@ -70,6 +81,7 @@ export function SettingsPage() {
         {tab === 'auth-audit' && <AuthAuditTab />}
       </div>
     </div>
+    </div>
   );
 }
 
@@ -84,20 +96,36 @@ function Section({ title, part, children, actions }: { title: string; part?: str
     </section>
   );
 }
-function Row({ label, value, env, desc }: { label: string; value: ReactNode; env: string; desc: string }) {
+// 11/09 G38: 화면 문장은 쉬운 말. 설정 이름(ENFORCE_KILL · NOTIFY_* · OLLAMA_URL …)은 값 아래 보조 글(data-part="setting-name") · 툴팁으로만
+function Row({ label, value, env, desc, hint }: { label: string; value: ReactNode; env: string; desc: string; hint?: string }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-slate-100 pt-2 first:border-t-0 first:pt-0">
       <div>
         <b className="text-sm font-medium text-slate-800">{label}</b>
-        <div className="text-xs text-slate-500">{desc}</div>
+        <div className="text-xs text-slate-500" title={hint}>
+          {desc}
+        </div>
       </div>
       <div className="grid justify-items-end gap-0.5">
         <span className="text-sm font-semibold text-slate-800">{value}</span>
-        <code className="text-xs text-slate-500">{env}</code>
+        <code data-part="setting-name" className="text-xs text-slate-500">
+          {env}
+        </code>
       </div>
     </div>
   );
 }
+// 보조 글 한 줄(문장 아래 설정 이름)
+function SettingNames({ names }: { names: string }) {
+  return (
+    <span className="mt-0.5 block">
+      <code data-part="setting-name" className="text-xs text-text-3">
+        {names}
+      </code>
+    </span>
+  );
+}
+const DISCOVERY_KO: Record<string, string> = { fanotify: '커널 알림(fanotify)', 'docker-events': 'Docker 이벤트(docker-events)' };
 
 // 서버 설정 — 보기만. 바꾸는 방법은 서버 .env + 재시작 (10/16 확정: 범위를 잘못 넓히면 다른 컨테이너가 격리된다)
 function ServerTab() {
@@ -114,20 +142,20 @@ function ServerTab() {
     setSending(true);
     try {
       await authApi.notifyTest();
-      toast('테스트 알림을 보냈습니다 — 잠시 뒤 결과를 다시 읽습니다', { key: 'notify-test', tone: 'ok' });
+      toast('테스트 알림을 보냈습니다. 잠시 뒤 결과를 다시 읽습니다.', { key: 'notify-test', tone: 'ok' });
       window.setTimeout(() => {
         info.reload();
         setSending(false);
       }, 1500);
     } catch (e) {
-      toast(`테스트 발송 실패: ${errorText(e)}`, { key: 'notify-test', tone: 'danger' });
+      toast(failText('테스트 알림을 보내지 못했습니다.', e), { key: 'notify-test', tone: 'danger' });
       setSending(false);
     }
   };
   return (
     <div data-view="server">
       <Section title="동작">
-        <Row label="자동 격리" value={i.enforceKill ? '켜짐' : '꺼짐 (알림만)'} env="ENFORCE_KILL" desc={i.enforceKill ? '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다' : '모든 정책이 알림만 보냅니다'} />
+        <Row label="자동 격리" value={i.enforceKill ? '켜짐' : '꺼짐(경고만)'} env="ENFORCE_KILL" desc={i.enforceKill ? '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다' : '모든 정책이 격리하지 않고 경고만 남깁니다'} />
         <Row label="감시 범위" value={watch.length ? watch.join(', ') : '모든 컨테이너'} env="WATCH_CONTAINERS" desc="이 범위의 컨테이너만 평가 · 격리합니다" />
         <Row label="제외" value={ignore.length ? ignore.join(', ') : '없음'} env="IGNORE_CONTAINERS" desc="SupplyGuard 자신처럼 보지 않을 컨테이너" />
       </Section>
@@ -136,9 +164,9 @@ function ServerTab() {
         part="notify"
         actions={
           isAdmin && n?.channels.length ? (
-            <button type="button" disabled={sending} onClick={() => void test()} className="sg-btn sg-btn-sm sg-btn-secondary flex items-center gap-1.5">
+            <ActionButton reason={sending && '테스트 알림을 보내는 중입니다'} onClick={() => void test()} className="sg-btn sg-btn-sm sg-btn-secondary flex items-center gap-1.5">
               <Send className="size-3.5" aria-hidden /> 테스트 발송
-            </button>
+            </ActionButton>
           ) : null
         }
       >
@@ -146,7 +174,8 @@ function ServerTab() {
           <p className="text-xs text-slate-500">이 백엔드는 알림 상태를 알려 주지 않습니다.</p>
         ) : !n.channels.length ? (
           <p className="text-xs text-slate-500">
-            알림 채널이 없습니다 — 서버 .env 에 <code>NOTIFY_WEBHOOK_URL</code> · <code>NOTIFY_SLACK_URL</code> 을 넣고 다시 시작하세요.
+            알림 채널이 없습니다. 서버 설정에 웹훅 · Slack 주소를 넣고 다시 시작하세요.
+            <SettingNames names="NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL" />
           </p>
         ) : (
           <>
@@ -164,15 +193,17 @@ function ServerTab() {
               <tbody>
                 {n.channels.map((c) => (
                   <tr key={c.name} data-channel={c.name}>
-                    <td className="tk-short">{c.name}</td>
-                    <td className="tk-short font-mono text-xs">{c.host}</td>
-                    <td className="num num-col tk-short" data-sent="">
+                    <td data-col="name" className="tk-short">{c.name}</td>
+                    <td data-col="host" className="tk-short font-mono text-xs">{c.host}</td>
+                    <td data-col="sent" className="num num-col tk-short" data-sent="">
                       {fmtNum(c.sent)}
                     </td>
-                    <td className={`num num-col tk-short ${c.failed ? 'text-red-600' : ''}`}>{fmtNum(c.failed)}</td>
-                    <td className="num tk-short text-xs text-slate-500">{c.lastAt ? fmtDateTime(c.lastAt) : '—'}</td>
-                    <td className="tk-fill text-xs text-red-600" title={c.lastError}>
-                      {c.lastError || '—'}
+                    <td data-col="failed" className={`num num-col tk-short ${c.failed ? 'text-red-600' : ''}`}>{fmtNum(c.failed)}</td>
+                    <td data-col="last" className="tk-short text-slate-500">
+                      <TimeText value={c.lastAt} kind="status" />
+                    </td>
+                    <td data-col="error" className="tk-fill text-xs text-red-600" title={c.lastError}>
+                      {c.lastError || ''}
                     </td>
                   </tr>
                 ))}
@@ -181,7 +212,8 @@ function ServerTab() {
             </div>
             <p className="text-xs text-slate-500">
               합계 보냄 {fmtNum(n.sent)} · 실패 {fmtNum(n.failed)}
-              {n.suppressed ? ` · 같은 알림 묶음 ${fmtNum(n.suppressed)}` : ''} — 채널은 <code>NOTIFY_WEBHOOK_URL</code> · <code>NOTIFY_SLACK_URL</code>
+              {n.suppressed ? ` · 같은 알림 묶음 ${fmtNum(n.suppressed)}` : ''}. 채널은 서버 설정의 웹훅 · Slack 주소로 정합니다.
+              <SettingNames names="NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL" />
             </p>
           </>
         )}
@@ -189,23 +221,67 @@ function ServerTab() {
       <Section title="컨테이너 발견 방식" part="discovery">
         <Row
           label="발견 방식"
-          value={i.discovery || (i.source === 'mock' ? 'mock (해당 없음)' : '시작 전')}
+          value={i.discovery ? (DISCOVERY_KO[i.discovery] ?? i.discovery) : i.source === 'mock' ? '해당 없음(모의 재생)' : '시작 전'}
           env="CONTAINER_DISCOVERY"
           desc={i.discoveryNote || (i.discovery === 'fanotify' ? '컨테이너가 시작되는 순간부터 관찰합니다' : '새 컨테이너를 어떻게 찾아 감시에 붙이는지')}
         />
       </Section>
+      <AiSection info={i} />
       <Section title="도메인 판단" part="dns">
         <Row
-          label="trace_dns"
-          value={i.dnsResolve === 'off' ? '꺼짐' : i.dnsResolve === 'ok' ? '켜짐' : '—'}
-          env="dnsResolve"
-          desc={i.dnsResolve === 'off' ? '도메인 기준 규칙(allowHosts · denyHosts · 차단 도메인)과 DNS 질의 규칙(kind: dns)이 통과 처리됩니다. IP · 포트 규칙만 동작합니다' : '연결 대상 IP 를 DNS 응답으로 도메인에 맞춰 판단하고, DNS 질의 규칙(kind: dns)을 평가합니다'}
+          label="도메인 조회 감시"
+          value={i.dnsResolve === 'off' ? '꺼짐' : i.dnsResolve === 'ok' ? '켜짐' : ''}
+          env="trace_dns"
+          hint="allowHosts · denyHosts · 차단 목록 도메인 · kind: dns 규칙"
+          desc={i.dnsResolve === 'off' ? '도메인 기준 규칙(허용 · 금지 · 차단 도메인)과 DNS 질의 규칙이 통과 처리됩니다. IP · 포트 규칙만 동작합니다' : '연결 대상 IP 를 DNS 응답으로 도메인에 맞춰 판단하고, DNS 질의 규칙을 평가합니다'}
         />
       </Section>
       <p className="px-5 py-4 text-xs text-slate-500">
-        바꾸는 방법: 서버의 .env 에서 위 값을 고친 뒤 백엔드를 다시 시작하세요. 화면에서는 바꾸지 않습니다 — 범위를 잘못 넓히면 다른 컨테이너가 격리될 수 있습니다.
+        바꾸는 방법: 서버 설정 파일(.env)에서 위 값을 고친 뒤 백엔드를 다시 시작하세요. 화면에서는 바꾸지 않습니다. 범위를 잘못 넓히면 다른 컨테이너가 격리될 수 있습니다.
       </p>
     </div>
+  );
+}
+
+// AI 도우미(11/09) — 쓰는 모델 · 예비 · 밖으로 나가는 데이터 범위. 보기만(바꾸는 것은 서버 .env)
+function AiSection({ info }: { info: Info }) {
+  const e = info.chatEngine;
+  const on = info.chat === true;
+  const claude = on && e?.provider === 'claude';
+  return (
+    <Section title="AI 도우미" part="ai">
+      <Row
+        label="모델"
+        value={on ? engineName(e) : '꺼짐'}
+        env={on ? 'CHAT_PROVIDER · CLAUDE_MODEL' : 'ANTHROPIC_API_KEY · OLLAMA_URL'}
+        desc={!on ? 'Claude API 키나 로컬 Ollama 주소가 있으면 켜짐' : claude ? '질문과 조회한 사실을 Anthropic API 로 보내 답을 받음' : LOCAL_ONLY}
+      />
+      {on && <Row label="예비" value={e?.backup ? '로컬 Ollama' : '없음'} env="OLLAMA_URL" desc="기본 모델에 닿지 않거나 답을 거절할 때 같은 질문을 넘김" />}
+      {claude && (
+        <div data-part="ai-scope" className="grid gap-3 border-t border-slate-100 pt-2 text-xs text-slate-600 sm:grid-cols-2">
+          <div>
+            <b className="text-sm font-medium text-slate-800">밖으로 나가는 데이터</b>
+            <ul data-part="ai-sent" className="mt-1 grid list-disc gap-0.5 pl-4">
+              {SENT_ITEMS.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <b className="text-sm font-medium text-slate-800">보내지 않는 데이터</b>
+            <ul data-part="ai-not-sent" className="mt-1 grid list-disc gap-0.5 pl-4">
+              {NOT_SENT_ITEMS.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+            <p className="mt-2">
+              서버 밖으로 보내지 않으려면 로컬 Ollama 만 쓰도록 서버 설정을 바꿈
+              <SettingNames names="CHAT_PROVIDER=ollama" />
+            </p>
+          </div>
+        </div>
+      )}
+    </Section>
   );
 }
 
@@ -223,20 +299,90 @@ function AccountsTab() {
   const status = (u: UserView): [string, string] =>
     u.disabled ? ['비활성', 'text-slate-400'] : u.locked ? ['잠김(5분)', 'text-amber-700'] : u.mustChangePassword ? ['첫 로그인 대기', 'text-indigo-700'] : ['활성', 'text-emerald-700'];
   const who = (u: UserView) => `${u.username} (${u.displayName})`;
-  // 계정 표 칸(R4 11/04) — 머리 클릭 정렬, 기본은 받은 순서(정렬 없음). 버튼 칸은 정렬하지 않는다
+  // 계정 표 칸(R4 11/04) — 머리 클릭 정렬, 기본은 받은 순서(정렬 없음). 버튼 칸은 정렬하지 않는다.
+  // 11/09 SPEC §4: 현황 표 — 상태가 맨 앞, 마지막 로그인은 MM-DD HH:mm + 전체 시각 툴팁
+  // 11/09 표 도구: 칸 보이기 · 폭 · 순서 = supplyguard.grid.settings-users.v1, CSV = 보이는 칸 · 화면 글. 행 동작 칸은 이름이 없어 늘 보이고 고정
   const userCols = useMemo<Column<UserView>[]>(
     () => [
-      { key: 'username', label: '아이디', sort: (u) => u.username, short: true },
-      { key: 'name', label: '이름', sort: (u) => u.displayName },
-      { key: 'role', label: '역할', sort: (u) => ROLE_KO[u.role], short: true },
-      { key: 'status', label: '상태', sort: (u) => (u.disabled ? 3 : u.locked ? 0 : u.mustChangePassword ? 1 : 2), short: true },
-      { key: 'otp', label: 'OTP', sort: (u) => (u.otpEnabled ? 1 : 0), short: true },
-      { key: 'last', label: '마지막 로그인', sort: (u) => (u.lastLoginAt ? Date.parse(u.lastLoginAt) : null), short: true },
-      { key: 'actions', label: '', short: true },
+      {
+        key: 'status',
+        label: '상태',
+        sort: (u) => (u.disabled ? 3 : u.locked ? 0 : u.mustChangePassword ? 1 : 2),
+        short: true,
+        cellClass: 'text-xs',
+        cell: (u) => {
+          const [st, tone] = status(u);
+          return <span className={tone}>{st}</span>;
+        },
+        csv: (u) => status(u)[0],
+      },
+      {
+        key: 'username',
+        label: '아이디',
+        sort: (u) => u.username,
+        short: true,
+        cellClass: 'font-mono',
+        cell: (u) => (
+          <>
+            {u.username}
+            {u.id === me?.user.id && <span className="text-xs text-slate-400"> (나)</span>}
+          </>
+        ),
+        csv: (u) => u.username,
+      },
+      { key: 'name', label: '이름', sort: (u) => u.displayName, cell: (u) => u.displayName },
+      {
+        key: 'role',
+        label: '역할',
+        sort: (u) => ROLE_KO[u.role],
+        short: true,
+        cell: (u) => (
+          <>
+            <span className={`rounded px-1.5 py-0.5 text-xs ${u.role === 'admin' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>{ROLE_KO[u.role]}</span>
+            {u.role === 'admin' && !u.disabled && admins === 1 && (
+              <span className="text-xs text-slate-400" title={AUTH_MSG.lastAdmin}>
+                {' '}
+                · 마지막 관리자
+              </span>
+            )}
+          </>
+        ),
+        csv: (u) => ROLE_KO[u.role],
+      },
+      { key: 'otp', label: 'OTP', sort: (u) => (u.otpEnabled ? 1 : 0), short: true, cellClass: 'text-xs', cell: (u) => (u.otpEnabled ? '등록됨' : '미등록') },
+      {
+        key: 'last',
+        label: '마지막 로그인',
+        sort: (u) => (u.lastLoginAt ? Date.parse(u.lastLoginAt) : null),
+        short: true,
+        cellClass: 'text-slate-500',
+        cell: (u) => (u.lastLoginAt ? <TimeText value={u.lastLoginAt} kind="status" /> : null),
+        csv: (u) => (u.lastLoginAt ? fmtStatus(u.lastLoginAt) : null),
+      },
+      {
+        key: 'actions',
+        label: '',
+        short: true,
+        fixed: true,
+        cell: (u) => {
+          const last = u.role === 'admin' && !u.disabled && admins === 1;
+          const self = u.id === me?.user.id;
+          return (
+            <>
+              {/* 마지막 관리자 · 자기 자신은 강등 · 비활성 버튼을 그리지 않는다(누를 수 없는 버튼 금지) */}
+              {!last && (u.role === 'admin' ? act('조회자로', () => roleChange(u, 'viewer')) : act('관리자로', () => roleChange(u, 'admin')))}
+              {!last && !self && act(u.disabled ? '활성화' : '비활성', () => toggleDisabled(u), !u.disabled)}
+              {act('비밀번호 초기화', () => resetPw(u))}
+              {u.otpEnabled && act('OTP 초기화', () => resetOtp(u))}
+            </>
+          );
+        },
+      },
     ],
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 행 동작(act · roleChange …)은 렌더마다 새로 만들지만 같은 일을 한다
+    [admins, me?.user.id],
   );
-  const userKit = useTableKit({ columns: userCols });
+  const userKit = useTableKit({ columns: userCols, grid: 'settings-users' });
   const act = (label: string, onClick: () => void, danger = false) => (
     <button type="button" onClick={onClick} className={`rounded px-1.5 py-0.5 text-xs hover:bg-slate-100 ${danger ? 'text-red-600' : 'text-slate-600'}`}>
       {label}
@@ -255,7 +401,7 @@ function AccountsTab() {
   };
   const roleChange = (u: UserView, role: Role) =>
     setConfirm({
-      title: role === 'admin' ? '관리자로 올리기' : '조회자로 내리기',
+      title: role === 'admin' ? `${u.username}을(를) 관리자로 올릴까요?` : `${u.username}을(를) 조회자로 내릴까요?`,
       target: who(u),
       tone: 'primary',
       okLabel: '바꾸기',
@@ -265,7 +411,7 @@ function AccountsTab() {
     });
   const toggleDisabled = (u: UserView) =>
     setConfirm({
-      title: u.disabled ? '계정 활성화' : '계정 비활성',
+      title: u.disabled ? `계정 ${u.username}을(를) 활성화할까요?` : `계정 ${u.username}을(를) 비활성으로 바꿀까요?`,
       target: who(u),
       okLabel: u.disabled ? '활성화' : '비활성',
       effects: u.disabled ? ['다시 로그인할 수 있습니다'] : ['지금 세션이 끊기고 로그인할 수 없습니다', '판정 · 변경 이력의 처리자 기록은 남습니다'],
@@ -274,21 +420,21 @@ function AccountsTab() {
     });
   const resetPw = (u: UserView) =>
     setConfirm({
-      title: '비밀번호 초기화',
+      title: `${u.username}의 비밀번호를 초기화할까요?`,
       target: who(u),
       okLabel: '초기화',
       effects: ['새 임시 비밀번호를 만들어 한 번 보여 줍니다', '첫 로그인에서 비밀번호를 바꿔야 합니다', '5분 잠금도 풀립니다'],
-      undo: '되돌릴 수 없습니다 — 새 임시 비밀번호를 전달하세요',
+      undo: '되돌릴 수 없습니다. 새 임시 비밀번호를 전달하세요',
       run: () => authApi.resetPassword(u.id),
       temp: u.username,
     });
   const resetOtp = (u: UserView) =>
     setConfirm({
-      title: 'OTP 초기화',
+      title: `${u.username}의 OTP를 초기화할까요?`,
       target: who(u),
       okLabel: '초기화',
       effects: ['등록된 인증 앱과 남은 복구 코드가 지워집니다', '다음 로그인에서 OTP 를 다시 등록합니다'],
-      undo: '되돌릴 수 없습니다 — 다시 등록하게 안내하세요',
+      undo: '되돌릴 수 없습니다. 다시 등록하게 안내하세요',
       run: () => authApi.resetOtp(u.id),
     });
 
@@ -296,7 +442,7 @@ function AccountsTab() {
     <div data-view="accounts" className="flex flex-col">
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
         <p className="text-xs text-slate-500">관리자는 모든 쓰기, 조회자는 보기만 합니다. 새 계정 · 비밀번호 초기화의 임시 비밀번호는 한 번만 보입니다.</p>
-        <button type="button" onClick={() => setAdding(true)} className="flex shrink-0 items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700">
+        <button type="button" onClick={() => setAdding(true)} className="flex shrink-0 items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-medium text-primary-fg hover:bg-primary-hover">
           <Plus className="size-3.5" aria-hidden /> 계정 추가
         </button>
       </div>
@@ -309,48 +455,21 @@ function AccountsTab() {
         users.error ? <LoadError error={users.error} what="계정" /> : <Empty>불러오는 중…</Empty>
       ) : (
         <>
-          <div className="max-md:overflow-x-auto">
+          <TableToolbar name="users" total={users.data.length} kit={userKit} onRefresh={users.reload} refreshing={users.loading} onExport={() => downloadCSV('supplyguard-accounts.csv', userKit.csv(users.data!))} />
+          <TableScroll className="max-md:overflow-x-auto">
           <table className="sg-table" data-table="users">
-            <SortHead columns={userCols} sort={userKit.sort} onSort={userKit.sortBy} />
+            <SortHead kit={userKit} />
             <tbody>
-              {userKit.sorted(users.data).map((u) => {
-                const last = u.role === 'admin' && !u.disabled && admins === 1;
-                const self = u.id === me?.user.id;
-                const [st, tone] = status(u);
-                return (
-                  <tr key={u.id} data-user={u.username}>
-                    <td data-col="username" className="tk-short font-mono">
-                      {u.username}
-                      {self && <span className="text-xs text-slate-400"> (나)</span>}
-                    </td>
-                    <td data-col="name">{u.displayName}</td>
-                    <td data-col="role" className="tk-short">
-                      <span className={`rounded px-1.5 py-0.5 text-xs ${u.role === 'admin' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>{ROLE_KO[u.role]}</span>
-                      {last && (
-                        <span className="text-xs text-slate-400" title={AUTH_MSG.lastAdmin}>
-                          {' '}
-                          · 마지막 관리자
-                        </span>
-                      )}
-                    </td>
-                    <td data-col="status" className={`tk-short text-xs ${tone}`}>{st}</td>
-                    <td data-col="otp" className="tk-short text-xs">{u.otpEnabled ? '등록됨' : '미등록'}</td>
-                    <td data-col="last" className="num tk-short text-xs text-slate-500">{u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : '—'}</td>
-                    <td data-col="actions" className="tk-short">
-                      {/* 마지막 관리자 · 자기 자신은 강등 · 비활성 버튼을 그리지 않는다(누를 수 없는 버튼 금지) */}
-                      {!last && (u.role === 'admin' ? act('조회자로', () => roleChange(u, 'viewer')) : act('관리자로', () => roleChange(u, 'admin')))}
-                      {!last && !self && act(u.disabled ? '활성화' : '비활성', () => toggleDisabled(u), !u.disabled)}
-                      {act('비밀번호 초기화', () => resetPw(u))}
-                      {u.otpEnabled && act('OTP 초기화', () => resetOtp(u))}
-                    </td>
-                  </tr>
-                );
-              })}
+              {userKit.sorted(users.data).map((u) => (
+                <tr key={u.id} data-user={u.username} {...rowState({})}>
+                  <GridCells kit={userKit} row={u} />
+                </tr>
+              ))}
             </tbody>
           </table>
-          </div>
+          </TableScroll>
           <p className="px-5 py-3 text-xs text-slate-500" data-part="last-admin">
-            관리자는 지금 {admins}명입니다. {AUTH_MSG.lastAdmin} — 다른 계정을 먼저 관리자로 올리세요.
+            관리자는 지금 {admins}명입니다. {AUTH_MSG.lastAdmin}. 다른 계정을 먼저 관리자로 올리세요.
           </p>
         </>
       )}
@@ -401,7 +520,8 @@ function AddUser({ onClose, onCreated }: { onClose: () => void; onCreated: (user
       setBusy(false);
     }
   };
-  const cls = 'h-9 rounded-md border border-slate-300 px-2.5 text-sm focus:border-indigo-500 focus:outline-none';
+  // 입력 글자 13.5 · 포커스 링은 전역 규칙 하나(11/09 SPEC §1)
+  const cls = 'h-9 rounded-md border border-slate-300 px-2.5';
   return (
     <Modal
       title="계정 추가"
@@ -413,9 +533,9 @@ function AddUser({ onClose, onCreated }: { onClose: () => void; onCreated: (user
           <button type="button" onClick={onClose} className="rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
             취소
           </button>
-          <button type="button" disabled={busy} onClick={() => void create()} className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
-            만들기
-          </button>
+          <ActionButton reason={busy && '계정을 만드는 중입니다'} onClick={() => void create()} className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover aria-disabled:opacity-50">
+            {busy ? '만드는 중…' : '만들기'}
+          </ActionButton>
         </>
       }
     >
@@ -431,8 +551,8 @@ function AddUser({ onClose, onCreated }: { onClose: () => void; onCreated: (user
         <label className="grid gap-1">
           <b className="font-medium">역할</b>
           <select className={cls} value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            <option value="viewer">조회자 — 보기만</option>
-            <option value="admin">관리자 — 모든 쓰기</option>
+            <option value="viewer">조회자(보기만)</option>
+            <option value="admin">관리자(모든 쓰기)</option>
           </select>
         </label>
         {msg && (
@@ -471,7 +591,7 @@ function LicenseTab() {
       setPhase('closed');
       lic.reload();
       void refresh(); // 상단 칩은 /api/auth/me 의 license 로 그린다
-      toast(`라이선스를 바꿨습니다 — ${fmtDateTime(l.expiresAt)}까지`, { key: 'license-renew', tone: 'ok' });
+      toast(`라이선스를 바꿨습니다. ${fmtDay(l.expiresAt)}까지 쓸 수 있습니다.`, { key: 'license-renew', tone: 'ok' });
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -494,9 +614,9 @@ function LicenseTab() {
               <button type="button" onClick={() => setPhase('closed')} className="rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
                 취소
               </button>
-              <button type="button" disabled={busy} onClick={() => setPhase('confirm')} className="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+              <ActionButton reason={busy && '라이선스를 등록하는 중입니다'} onClick={() => setPhase('confirm')} className="rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover aria-disabled:opacity-50">
                 등록
-              </button>
+              </ActionButton>
             </>
           }
         >
@@ -511,16 +631,16 @@ function LicenseTab() {
       )}
       {phase === 'confirm' && (
         <ConfirmDialog
-          title="라이선스 바꾸기"
+          title="라이선스를 바꿀까요?"
           target={`새 키 ****-****-****-${last4}`}
           tone="primary"
           okLabel="바꾸기"
           effects={[
-            `지금 라이선스를 바꿉니다${lic.data ? ` — 지금 키 ${lic.data.keyMasked} 는 더 쓰지 않습니다` : ''}`,
+            `지금 라이선스를 바꿉니다${lic.data ? `(지금 키 ${lic.data.keyMasked} 는 더 쓰지 않음)` : ''}`,
             '만료일을 오늘부터 1년으로 새로 계산합니다',
             '인증 감사에 「라이선스 갱신」이 남습니다(키는 가린 값만)',
           ]}
-          undo="되돌릴 수 없습니다 — 다른 키를 다시 등록하면 그날부터 1년입니다"
+          undo="되돌릴 수 없습니다. 다른 키를 다시 등록하면 그날부터 1년입니다"
           onConfirm={() => void save()}
           onCancel={() => setPhase('input')}
         />
@@ -528,7 +648,7 @@ function LicenseTab() {
     </>
   );
   const button = isAdmin && (
-    <button type="button" onClick={open} className="flex shrink-0 items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700">
+    <button type="button" onClick={open} className="flex shrink-0 items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-medium text-primary-fg hover:bg-primary-hover">
       <KeyRound className="size-3.5" aria-hidden /> 새 키 등록
     </button>
   );
@@ -536,7 +656,7 @@ function LicenseTab() {
   if (noLicense)
     return (
       <div data-view="license">
-        <Empty>등록된 라이선스가 없습니다 — {isAdmin ? '「새 키 등록」으로 넣거나 ' : '관리자가 '}다음 로그인 때 등록합니다.</Empty>
+        <Empty>등록된 라이선스가 없습니다. {isAdmin ? '「새 키 등록」으로 넣거나 ' : '관리자가 '}다음 로그인 때 등록합니다.</Empty>
         {button && <div className="flex justify-center pb-6">{button}</div>}
         {renew}
       </div>
@@ -547,9 +667,12 @@ function LicenseTab() {
     ['상태', `${licenseText(l)}`],
     ['종류', l.kind === 'trial' ? '평가판 (1년)' : l.kind],
     ['키', <span className="font-mono">{l.keyMasked}</span>],
-    ['시작', fmtDateTime(l.issuedAt)],
-    ['만료', `${fmtDateTime(l.expiresAt)}${l.expired ? '' : ` (${daysLeft(l)}일 남음)`}`],
-    ['등록한 계정', l.registeredBy || '—'],
+    ['시작', <TimeText value={l.issuedAt} kind="day" />],
+    ['만료', <>
+      <TimeText value={l.expiresAt} kind="day" />
+      {l.expired ? '' : ` (${daysLeft(l)}일 남음)`}
+    </>],
+    ['등록한 계정', l.registeredBy || ''],
   ];
   return (
     <div data-view="license" className="px-5 py-4">
@@ -566,7 +689,7 @@ function LicenseTab() {
       </div>
       <p className="mt-4 text-xs text-slate-500">
         키 원문은 서버에 저장하지 않습니다(가린 값만).{' '}
-        {isAdmin ? '「새 키 등록」으로 언제든 바꿀 수 있습니다 — 만료일은 등록한 날부터 1년으로 새로 계산합니다.' : '만료되면 관리자가 새 키를 등록합니다.'}
+        {isAdmin ? '「새 키 등록」으로 언제든 바꿀 수 있습니다. 만료일은 등록한 날부터 1년으로 새로 계산합니다.' : '만료되면 관리자가 새 키를 등록합니다.'}
       </p>
       {renew}
     </div>
@@ -597,7 +720,7 @@ const ACTION_KO: Record<string, string> = {
 const AUDIT_ACTIONS = ['login', 'login_lock', 'logout', 'password_change', 'license_register', 'license_renew', 'otp_enroll', 'otp_verify', 'otp_recovery',
   'user_create', 'user_update', 'user_reset_password', 'user_reset_otp'];
 const AUDIT_PAGE = 200;
-const ctl = 'h-8 rounded-md border border-slate-300 bg-white px-2 text-sm focus:border-indigo-500 focus:outline-none';
+const AUDIT_ACTION_OPTIONS = AUDIT_ACTIONS.map((a) => ({ value: a, label: ACTION_KO[a] ?? a }));
 
 // 필터(한 일 · 실패만)는 서버가 거른다 — GET /api/auth/audit?action=&failed=1, 「더 보기」는 마지막 행 id 를 before 로
 function AuthAuditTab() {
@@ -610,17 +733,7 @@ function AuthAuditTab() {
   return (
     <div data-view="auth-audit">
       <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-2.5 text-sm" data-part="auth-audit-filters">
-        <label className="flex items-center gap-1.5 text-slate-500">
-          한 일
-          <select className={ctl} data-field="action" value={action} onChange={(e) => setAction(e.target.value)}>
-            <option value="">전체</option>
-            {AUDIT_ACTIONS.map((a) => (
-              <option key={a} value={a}>
-                {ACTION_KO[a] ?? a}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select name="action" label="한 일" value={action} options={AUDIT_ACTION_OPTIONS} onChange={setAction} />
         <label className="flex cursor-pointer items-center gap-2 text-slate-600 select-none">
           <input type="checkbox" className="accent-indigo-600" data-field="failed" checked={failed} onChange={(e) => setFailed(e.target.checked)} />
           실패만
@@ -634,24 +747,34 @@ function AuthAuditTab() {
         }}
       />
       {/* 필터가 바뀌면 처음부터 — 더 불러온 행 · 끝 표시를 버린다 */}
-      <AuthAuditRows key={`${action}|${failed}`} action={action} failed={failed} />
+      <AuthAuditRows
+        key={`${action}|${failed}`}
+        action={action}
+        failed={failed}
+        onClear={() => {
+          setAction('');
+          setFailed(false);
+        }}
+      />
     </div>
   );
 }
 
-// 인증 감사 표 칸(R4 11/04) — 머리 클릭 정렬(불러온 행 안), 기본은 시각 내림(받은 순서 그대로). 「더 보기」(커서)는 그대로
+// 인증 감사 표 칸(R4 11/04) — 머리 클릭 정렬(불러온 행 안), 기본은 시각 내림(받은 순서 그대로). 「더 보기」(커서)는 그대로.
+// 11/09 SPEC §4: 기록류 — 시각이 맨 앞(YYYY-MM-DD HH:mm:ss 고정폭)
+// 표 도구: 칸 보이기 · 폭 · 순서 = supplyguard.grid.settings-auth-audit.v1, CSV = 보이는 칸 · 화면 글(불러온 행)
 const AUTH_AUDIT_COLS: Column<AuthAuditEntry>[] = [
-  { key: 'at', label: '시각', sort: (a) => Date.parse(a.at), short: true },
-  { key: 'actor', label: '계정', sort: (a) => a.actor, short: true },
-  { key: 'action', label: '동작', sort: (a) => ACTION_KO[a.action] ?? a.action, short: true },
-  { key: 'target', label: '대상', sort: (a) => a.target, short: true },
-  { key: 'ip', label: 'IP', sort: (a) => a.ip, short: true },
-  { key: 'ok', label: '결과', sort: (a) => (a.ok ? 1 : 0), short: true },
-  { key: 'detail', label: '내용', sort: (a) => a.detail },
+  { key: 'at', label: '시각', sort: (a) => Date.parse(a.at), short: true, width: COL_W.log, cell: (a) => <TimeText value={a.at} kind="log" />, csv: (a) => fmtLog(a.at) },
+  { key: 'actor', label: '계정', sort: (a) => a.actor, short: true, width: COL_W.user, cellClass: 'font-mono text-xs', cell: (a) => a.actor },
+  { key: 'action', label: '동작', sort: (a) => ACTION_KO[a.action] ?? a.action, short: true, cell: (a) => ACTION_KO[a.action] ?? a.action },
+  { key: 'target', label: '대상', sort: (a) => a.target, short: true, cellClass: 'font-mono text-xs', cell: (a) => a.target },
+  { key: 'ip', label: 'IP', sort: (a) => a.ip, short: true, cellClass: 'font-mono text-xs text-slate-500', cell: (a) => a.ip },
+  { key: 'ok', label: '결과', sort: (a) => (a.ok ? 1 : 0), short: true, cellClass: 'text-xs', cell: (a) => <span className={a.ok ? 'text-emerald-700' : 'text-red-600'}>{a.ok ? '성공' : '실패'}</span>, csv: (a) => (a.ok ? '성공' : '실패') },
+  { key: 'detail', label: '내용', sort: (a) => a.detail, fill: true, cellClass: 'text-xs text-slate-600', cell: (a) => <span title={a.detail}>{a.detail}</span>, csv: (a) => a.detail },
 ];
 
-function AuthAuditRows({ action, failed }: { action: string; failed: boolean }) {
-  const kit = useTableKit({ columns: AUTH_AUDIT_COLS, sort: { key: 'at', dir: 'desc' } });
+function AuthAuditRows({ action, failed, onClear }: { action: string; failed: boolean; onClear: () => void }) {
+  const kit = useTableKit({ columns: AUTH_AUDIT_COLS, sort: { key: 'at', dir: 'desc' }, grid: 'settings-auth-audit' });
   const load = useCallback(() => authApi.audit({ limit: AUDIT_PAGE, action, failed }), [action, failed]);
   const rows = useLoad(load);
   const [extra, setExtra] = useState<AuthAuditEntry[]>([]);
@@ -674,38 +797,33 @@ function AuthAuditRows({ action, failed }: { action: string; failed: boolean }) 
       setMoreBusy(false);
     }
   };
-  if (all.length === 0) return <Empty>{action || failed ? '조건에 맞는 기록 없음' : '기록 없음'}</Empty>;
+  if (all.length === 0) return action || failed ? <NoResults onClear={onClear} /> : <EmptyState what="인증 감사 기록" hint="로그인 · 비밀번호 · OTP · 계정 · 라이선스 변경이 여기에 남습니다." />;
   return (
     <>
-      <div className="max-md:overflow-x-auto">
+      <TableToolbar name="auth-audit" total={all.length} kit={kit} onRefresh={rows.reload} refreshing={rows.loading} onExport={() => downloadCSV('supplyguard-auth-audit.csv', kit.csv(all))} />
+      <TableScroll className="max-md:overflow-x-auto">
       <table className="sg-table" data-table="auth-audit">
-        <SortHead columns={AUTH_AUDIT_COLS} sort={kit.sort} onSort={kit.sortBy} />
+        <SortHead kit={kit} />
         <tbody>
           {kit.sorted(all).map((a) => (
-            <tr key={a.id} data-audit={a.id}>
-              <td data-col="at" className="num tk-short text-xs">{fmtDateTime(a.at)}</td>
-              <td data-col="actor" className="tk-short font-mono text-xs">{a.actor || '—'}</td>
-              <td data-col="action" className="tk-short">{ACTION_KO[a.action] ?? a.action}</td>
-              <td data-col="target" className="tk-short font-mono text-xs">{a.target || '—'}</td>
-              <td data-col="ip" className="tk-short font-mono text-xs text-slate-500">{a.ip || '—'}</td>
-              <td data-col="ok" className={`tk-short text-xs ${a.ok ? 'text-emerald-700' : 'text-red-600'}`}>{a.ok ? '성공' : '실패'}</td>
-              <td data-col="detail" className="tk-fill text-xs text-slate-600" title={a.detail}>{a.detail}</td>
+            <tr key={a.id} data-audit={a.id} {...rowState({})}>
+              <GridCells kit={kit} row={a} />
             </tr>
           ))}
         </tbody>
       </table>
-      </div>
+      </TableScroll>
       {(hasMore || moreErr != null) && (
         <div className="flex flex-col items-center gap-1 border-t border-slate-100 py-3 text-xs">
           {moreErr != null && (
             <span className="text-red-600" role="alert">
-              더 불러오지 못했습니다 — {errorText(moreErr)}
+              {failText('더 불러오지 못했습니다.', moreErr)}
             </span>
           )}
           {hasMore && (
-            <button type="button" data-action="more" disabled={moreBusy} onClick={() => void more()} className="sg-btn sg-btn-sm sg-btn-secondary">
+            <ActionButton data-action="more" reason={moreBusy && '불러오는 중입니다'} onClick={() => void more()} className="sg-btn sg-btn-sm sg-btn-secondary">
               {moreBusy ? '불러오는 중…' : '더 보기'}
-            </button>
+            </ActionButton>
           )}
         </div>
       )}

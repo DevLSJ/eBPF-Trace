@@ -38,28 +38,29 @@ export function SignalPills() {
       tone: source === 'gadget' ? 'ok' : source === 'mock' ? 'warn' : 'muted',
       text: source === 'gadget' ? '가젯 · 커널 감시 중' : source === 'mock' ? '가젯 · 모의 이벤트' : '가젯 · 미확인',
       to: '/settings',
-      title: source === 'gadget' ? 'Inspektor Gadget 이 커널 이벤트를 수집합니다' : source === 'mock' ? 'MOCK 소스 — 모의 이벤트로 돌고 있습니다' : '수집 소스를 아직 모릅니다',
+      // 11/09 G38: 쉬운 문장이 먼저, 설정 · 도구 이름은 괄호 안 보조로
+      title: source === 'gadget' ? '커널 이벤트를 수집하고 있습니다(Inspektor Gadget)' : source === 'mock' ? '모의 이벤트로 동작하고 있습니다(mock 소스)' : '수집 방식을 아직 확인하지 못했습니다',
     },
     {
       key: 'dns',
       tone: info?.dnsResolve === 'ok' ? 'ok' : info?.dnsResolve === 'off' ? 'warn' : 'muted',
       text: info?.dnsResolve === 'ok' ? '도메인 판단 켜짐' : info?.dnsResolve === 'off' ? '도메인 판단 · 통과 처리' : '도메인 판단 · 미확인',
       to: '/settings',
-      title: info?.dnsResolve === 'off' ? 'trace_dns 가 뜨지 않아 도메인 기준 규칙과 DNS 질의 규칙이 통과 처리됩니다' : 'trace_dns 로 연결 대상 도메인을 판단합니다',
+      title: info?.dnsResolve === 'off' ? '도메인 조회 감시가 꺼져 있어 도메인 기준 규칙과 DNS 질의 규칙을 통과 처리합니다(trace_dns)' : '연결 대상의 도메인을 확인해 판단합니다(trace_dns)',
     },
     {
       key: 'kill',
       tone: enforce === true ? 'ok' : enforce === false ? 'warn' : 'muted',
-      text: enforce === true ? '자동 격리 켜짐' : enforce === false ? '자동 격리 · 알림만' : '자동 격리 · 미확인',
+      text: enforce === true ? '자동 격리 켜짐' : enforce === false ? '자동 격리 · 경고만' : '자동 격리 · 미확인',
       to: '/settings',
-      title: enforce === false ? 'ENFORCE_KILL=false — kill 정책도 알림만 보냅니다' : '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다',
+      title: enforce === false ? '「즉시 격리」 정책도 격리하지 않고 경고만 남깁니다(ENFORCE_KILL=false)' : '「즉시 격리」 정책에 걸리면 컨테이너를 멈춥니다',
     },
     {
       key: 'notify',
       tone: !n ? 'muted' : n.failed > 0 && n.lastError ? 'danger' : !n.enabled || n.channels.length === 0 ? 'warn' : 'ok',
       text: !n ? '알림 · 미확인' : n.failed > 0 && n.lastError ? `알림 · 실패 ${fmtNum(n.failed)}건` : !n.enabled || n.channels.length === 0 ? '알림 · 미설정' : `알림 · 채널 ${n.channels.length}`,
       to: '/settings',
-      title: !n ? '이 백엔드는 알림 상태를 알려 주지 않습니다' : n.lastError ? n.lastError : n.channels.length ? n.channels.map((c) => `${c.name} ${c.host}`).join(', ') : 'NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL 을 설정하세요',
+      title: !n ? '이 서버는 알림 상태를 알려 주지 않습니다' : n.lastError ? n.lastError : n.channels.length ? n.channels.map((c) => `${c.name} ${c.host}`).join(', ') : '알림 채널이 없습니다. 서버 설정에 웹훅 · Slack 주소를 넣습니다(NOTIFY_WEBHOOK_URL · NOTIFY_SLACK_URL)',
     },
     {
       key: 'license',
@@ -70,7 +71,7 @@ export function SignalPills() {
     },
   ];
   return (
-    <nav aria-label="상태" data-testid="signal-pills" className="flex flex-wrap items-center gap-1.5">
+    <nav aria-label="상태" data-testid="signal-pills" className="sg-pills flex flex-wrap items-center gap-1.5">
       {pills.map((p) => (
         <Link
           key={p.key}

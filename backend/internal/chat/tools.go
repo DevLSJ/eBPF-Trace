@@ -251,7 +251,7 @@ func (s *Service) searchAudit(ctx context.Context, f *Facts, container, rule str
 		}
 		seen[a.RuleID] = true
 		k++
-		s := fmt.Sprintf("예시 %d: %s %s %s — 정책 %s", k, a.Event.Timestamp.Format("2006-01-02 15:04:05"), kindText[a.Event.Kind], quote(a.Event.Detail(), clipDetail), a.RuleID)
+		s := fmt.Sprintf("예시 %d: %s %s %s, 정책 %s", k, a.Event.Timestamp.Format("2006-01-02 15:04:05"), kindText[a.Event.Kind], quote(a.Event.Detail(), clipDetail), a.RuleID)
 		if a.Reason != "" {
 			s += ", 사유 " + quote(a.Reason, 80)
 		}
@@ -412,7 +412,7 @@ func (s *Service) scan(f *Facts, id string) []Link {
 				continue
 			}
 			k++
-			s := fmt.Sprintf("위협 %d: %s — %s:%d", k, x.Rule, x.File, x.Line)
+			s := fmt.Sprintf("위협 %d: %s(%s:%d)", k, x.Rule, x.File, x.Line)
 			if x.Message != "" {
 				s += " " + quote(x.Message, 100)
 			}
@@ -451,7 +451,7 @@ func (s *Service) blocklist(f *Facts) []Link {
 	f.Sentences = append(f.Sentences,
 		"차단 목록에는 "+part("패키지", bl.Packages)+", "+part("이미지", bl.Images)+", "+part("도메인", bl.Hosts)+"가 있습니다.",
 		"패키지는 다시 설치하면 컨테이너 없이 설치 전에 거부되고, 이미지는 기동 즉시 격리되며, 도메인은 시스템 규칙 blocklist-hosts 로 막습니다.")
-	return []Link{{"차단 목록(정책 화면)", "/policies"}}
+	return []Link{{"차단 목록", "/policies/blocklist"}} // 11/09 정책 화면 분리 — 차단 목록은 정책 아래 자기 화면
 }
 
 // --- policy(id) ---

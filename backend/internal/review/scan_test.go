@@ -67,6 +67,10 @@ func TestFromScanSelectedPackages(t *testing.T) {
 	if !strings.Contains(c.Note, "urllib3@1.26.4") || !strings.Contains(c.Note, "lodash@4.17.20") {
 		t.Fatalf("note should list the chosen packages with versions: %q", c.Note)
 	}
+	// 판정 메모(11/09 「— 표기 없앰」): 검사 id 뒤 괄호에 위험 점수 · 선택 패키지
+	if want := "공급망 검사 scan-0002(선택 패키지 pip:urllib3@1.26.4, npm:lodash@4.17.20)"; c.Note != want {
+		t.Fatalf("note %q, want %q", c.Note, want)
+	}
 	// 같은 선택(순서 다름) → 같은 건 · 제안
 	c2, p2, err := e.svc.FromScan(ctx, sc, []model.ScanPackage{{Manager: "npm", Name: "lodash"}, {Manager: "pip", Name: "urllib3"}}, "")
 	if err != nil || c2.ID != c.ID || p2.ID != p.ID {
@@ -112,7 +116,7 @@ func TestFromScanReason(t *testing.T) {
 	if c.ID != "case-0001" {
 		t.Fatalf("a rejected reason must not open a case first: %s", c.ID)
 	}
-	if !strings.HasPrefix(c.Note, "공급망 검사 scan-0003 — 위험 점수 8.0") || !strings.HasSuffix(c.Note, " — 사유: 타이포스쿼팅 확인") {
+	if c.Note != "공급망 검사 scan-0003(위험 점수 8.0), 사유: 타이포스쿼팅 확인" {
 		t.Fatalf("note %q", c.Note)
 	}
 	// 사유가 없으면 예전 메모 그대로

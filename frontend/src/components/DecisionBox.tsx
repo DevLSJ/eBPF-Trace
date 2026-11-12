@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { useCases } from '../hooks/cases-context';
 import { useToast } from '../hooks/toast-context';
 import { useAuth } from '../hooks/auth-context';
-import { api, ApiError, errorText } from '../lib/api';
+import { api, ApiError, errorText, failText, sentence } from '../lib/api';
+import { FIELD } from '../lib/fieldNames';
 import { fmtDateTime } from '../lib/format';
 import { caseLabel, type Case, type Decision } from '../lib/types';
 import { DecisionBadge } from './Badges';
@@ -13,7 +14,8 @@ const STATE_LABEL: Record<Case['state'], string> = { open: '판정 대기', deci
 
 // 판정 — 설치 검사 시트와 토폴로지가 같은 부품을 쓴다.
 // 악성 확정 → 차단 제안(설치: 패키지 · 도메인 / 런타임: 이미지 · 도메인), 오탐 → 걸린 규칙에 예외 제안.
-// 10/20 B: 두 버튼은 확인 대화상자를 연다 — 「함께 일어나는 일」은 서버 판정 미리보기(POST /api/cases/{id}/preview)의 effects 그대로, 사유 = 판정 메모(note)
+// 10/20 B: 두 버튼은 확인 대화상자를 연다 — 영향 범위는 서버 판정 미리보기(POST /api/cases/{id}/preview)의 effects 그대로, 사유 = 판정 메모(note)
+// 11/09 G19 · G20: 확인 창 제목 「[대상] 건을 ~할까요?」 + 본문 + 영향 범위 줄, 실패 알림 「판정하지 못했습니다. 사유.」 + 할 일(11/09 INTEG: 사유는 괄호 없이 한 문장)
 export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
   const { cases, error, upsert, reload } = useCases();
   const { isAdmin } = useAuth();
@@ -24,7 +26,7 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
   if (!caseId) return <p className="text-xs text-slate-500">판정할 건이 없습니다 (격리 · 경고가 아님).</p>;
   const c = cases?.find((x) => x.id === caseId);
   if (!c) {
-    if (error) return <p className="text-xs text-slate-500">건 정보를 불러오지 못했습니다{' '}<span className="text-slate-400">({errorText(error)})</span></p>;
+    if (error) return <p className="text-xs text-slate-500">건 정보를 불러오지 못했습니다.{' '}<span className="text-slate-400">{sentence(errorText(error))}</span></p>;
     return <p className="text-xs text-slate-400">건 정보를 불러오는 중…</p>;
   }
 
@@ -36,7 +38,7 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
       const r = await api.decide(c.id, d, note);
       upsert(r.case);
       toast(
-        d === 'malicious' ? `${what} 악성 확정 — 차단 제안을 만들었습니다` : `${what} 오탐 — 예외 제안을 만들었습니다`,
+        d === 'malicious' ? `${what} 악성 확정, 차단 제안을 만들었습니다.` : `${what} 오탐, 예외 제안을 만들었습니다.`,
         {
           key: `decide:${c.id}`,
           tone: 'ok',
@@ -44,8 +46,10 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
         },
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) reload();
-      toast(`판정 실패: ${errorText(e)}`, { key: `decide:${c.id}`, tone: 'danger' });
+      const conflict = e instanceof ApiError && e.status === 409;
+      if (conflict) reload();
+      // 409 는 건을 다시 불러왔다는 안내를 늘 붙이고, 그 밖은 이유에 할 일이 없을 때만 「잠시 뒤 다시 시도하세요.」
+      toast(conflict ? `${failText('판정하지 못했습니다.', e)} 건 상태를 다시 불러왔으니 판정 결과를 확인하세요.` : failText('판정하지 못했습니다.', e, '잠시 뒤 다시 시도하세요.'), { key: `decide:${c.id}`, tone: 'danger' });
     } finally {
       setBusy(false);
     }
@@ -60,7 +64,7 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
         </div>
       )}
       {c.decision === 'pending' && !canWrite ? (
-        <p className="text-xs text-slate-500">판정 대기 — 판정은 관리자가 합니다 (지금 계정은 조회자).</p>
+        <p className="text-xs text-slate-500">[판정 대기] 판정은 관리자가 합니다(지금 계정은 조회자).</p>
       ) : c.decision === 'pending' ? (
         <>
           <div className="flex gap-2">
@@ -87,11 +91,15 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
           {ask && (
             <ConfirmDialog
               key={ask}
-              title={ask === 'malicious' ? '악성 확정' : '오탐으로 판정'}
-              target={`${what} · 건 ${c.id}`}
+              title={`${what} 건을 ${ask === 'malicious' ? '악성으로 확정' : '오탐으로 판정'}할까요?`}
+              body={
+                ask === 'malicious'
+                  ? `건 ${c.id}에 「악성」 판정을 남기고 ${c.source === 'install' ? '패키지' : '이미지'} · 도메인 차단 제안을 만듭니다.`
+                  : `건 ${c.id}에 「오탐」 판정을 남기고 걸린 규칙에 예외 제안을 만듭니다.`
+              }
               loadEffects={() => api.previewDecision(c.id, ask).then((r) => r.effects ?? [])}
-              tone={ask === 'malicious' ? 'danger' : 'primary'}
-              okLabel={ask === 'malicious' ? '악성 확정' : '오탐으로 판정'}
+              danger={ask === 'malicious'}
+              confirmLabel={ask === 'malicious' ? '악성 확정' : '오탐으로 판정'}
               reason
               undo={
                 ask === 'malicious'
@@ -109,10 +117,10 @@ export function DecisionBox({ caseId }: { caseId: string | null | undefined }) {
         </>
       ) : (
         <dl className="grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-1 text-xs">
-          <dt className="text-slate-500">처리자</dt>
-          <dd data-testid="decided-by">{c.decidedBy ?? '—'}</dd>
+          <dt className="text-slate-500">{FIELD.by}</dt>
+          <dd data-testid="decided-by">{c.decidedBy ?? ''}</dd>
           <dt className="text-slate-500">시각</dt>
-          <dd className="num">{c.decidedAt ? fmtDateTime(c.decidedAt) : '—'}</dd>
+          <dd className="num">{c.decidedAt ? fmtDateTime(c.decidedAt) : ''}</dd>
           {c.note && (
             <>
               <dt className="text-slate-500">메모</dt>

@@ -218,7 +218,8 @@ test.describe('인증 — 앱 안에서', () => {
     await expect(page.getByTestId('page-title')).toHaveText('감사 로그'); // 다시 로그인하면 보던 화면으로
     backend.auth.session = null; // 세션 만료
     // 화면의 주기 요청(5초 갱신 등)이 클릭보다 먼저 401 을 받아 로그인 화면으로 갈 수 있다 — 어느 쪽이 먼저든 결과는 같아야 한다(10/20 간헐 실패 원인)
-    await page.getByRole('link', { name: '정책' }).click({ timeout: 2000 }).catch(() => {});
+    // 11/09 밤: 「정책」은 접힌 묶음 안(지금 화면이 아니면 처음엔 접힘)이라 늘 보이는 사이드바 링크를 누른다
+    await page.getByRole('navigation', { name: '화면' }).getByRole('link', { name: '설치 검사', exact: true }).click({ timeout: 2000 }).catch(() => {});
     await expect(step(page)).toHaveAttribute('data-step', 'login');
     await expect(page.locator(ERR)).toHaveText(MSG.login);
   });
@@ -261,9 +262,11 @@ test.describe('인증 — 앱 안에서', () => {
     await page.goto(`/policies?proposal=${draft.id}`);
     await expect(page.getByTestId('proposal').getByRole('button', { name: '미리보기' })).toBeVisible(); // 바꾸지 않는 POST 는 조회자도
     await expect(page.getByTestId('proposal').getByRole('button', { name: /^(적용|버림)$/ })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '새 정책' })).toHaveCount(0);
-    await expect(page.getByTestId('blocklist').getByRole('button', { name: '해제' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '정책 생성' })).toHaveCount(0); // 11/09 「새 정책」 → 「정책 생성」
     await expect(page.getByLabel('관리자 토큰')).toHaveCount(0);
+    await page.goto('/policies/blocklist'); // 11/09: 차단 목록 페이지
+    await expect(page.getByTestId('blocklist').locator('[data-block]').first()).toBeVisible();
+    await expect(page.getByTestId('blocklist').getByRole('button', { name: '해제' })).toHaveCount(0);
     await page.goto('/policies?id=egress-allowlist');
     await expect(page.locator('[data-view="rule-editor"]').getByRole('button', { name: '삭제' })).toHaveCount(0);
 

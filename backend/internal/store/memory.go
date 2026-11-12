@@ -115,7 +115,7 @@ func (m *Memory) CountAudit(_ context.Context, q AuditQuery) (int, error) {
 	return n, nil
 }
 
-// matches: 필터(kind · action · rule · container · since · until) — 커서 · 쪽은 보지 않는다
+// matches: 필터(kind · action · rule · container · since · until · 판정 건) — 커서 · 쪽은 보지 않는다
 func (q AuditQuery) matches(a model.AuditEntry) bool {
 	switch {
 	case q.Kind != "" && a.Event.Kind != q.Kind,
@@ -123,7 +123,8 @@ func (q AuditQuery) matches(a model.AuditEntry) bool {
 		q.RuleID != "" && a.RuleID != q.RuleID,
 		q.Container != "" && !strings.Contains(a.Event.ContainerName, q.Container),
 		!q.Since.IsZero() && a.Event.Timestamp.Before(q.Since),
-		!q.Until.IsZero() && a.Event.Timestamp.After(q.Until):
+		!q.Until.IsZero() && a.Event.Timestamp.After(q.Until),
+		q.ByCase && (a.CaseID == nil || !slices.Contains(q.CaseIDs, *a.CaseID)):
 		return false
 	}
 	return true

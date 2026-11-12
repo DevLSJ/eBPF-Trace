@@ -16,7 +16,8 @@ jobs:
   ci:
     name: Test backend and build dashboard
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # e2e grew to 739 tests (2 workers on CI, about 20 minutes alone); 20 cancelled the job mid-e2e on PR #12
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
@@ -91,7 +92,7 @@ jobs:
           PUSH=1
           if [ -z "$REGISTRY" ] || [ -z "$DOCKERHUB_TOKEN" ]; then PUSH=0; REGISTRY=local; echo "::notice::DOCKERHUB_USERNAME/DOCKERHUB_TOKEN 없음 — 이미지 빌드 · 기동 확인만, push 생략"; fi
           [ "$PUSH" = 1 ] && printf '%s' "$DOCKERHUB_TOKEN" | docker login -u "$REGISTRY" --password-stdin
-          docker build --pull -f deploy/Dockerfile.backend --build-context eval-reports=bench/reports -t "$REGISTRY/supplyguard-backend:$GITHUB_SHA" backend
+          docker build --pull -f deploy/Dockerfile.backend --build-context eval-reports=bench/reports --build-context sg-tools=tools -t "$REGISTRY/supplyguard-backend:$GITHUB_SHA" backend
           docker build --pull -f deploy/Dockerfile.frontend -t "$REGISTRY/supplyguard-frontend:$GITHUB_SHA" frontend
           # 이미지가 실제로 기동하는지: mock 소스로 띄워 /health 확인
           cid=$(docker run -d -e EVENT_SOURCE=mock -e ADMIN_INITIAL_PASSWORD=ci-only-pass-1 "$REGISTRY/supplyguard-backend:$GITHUB_SHA")

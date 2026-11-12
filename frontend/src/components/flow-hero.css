@@ -37,7 +37,8 @@
 .flow-hero.compact .flow-node {
   padding: 9px 11px;
 }
-.flow-dot {
+/* 점은 흐름 그림 안에서만(시연 화면 「실시간 단계」의 .flow-dot 과 섞이지 않게, 11/09) */
+.flow-hero .flow-dot {
   grid-row: span 2;
   display: grid;
   place-items: center;
@@ -134,6 +135,55 @@
   animation: flow-particle var(--t-slow) var(--ease) forwards;
   z-index: 2;
 }
+/* 건너뛴 단계(11/09 시연 — 대조군의 증거 수집 등): 점선 테두리 · 흐린 글자, 점은 빈 원 */
+.flow-node.skip {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  background: var(--surface);
+  box-shadow: none;
+}
+.flow-node.skip .flow-dot {
+  color: var(--text-3);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.flow-node.skip .flow-title {
+  color: var(--text-3);
+}
+/* 세로 배치(11/09 시연 — 좁은 열): 노드가 위에서 아래로, 선은 점 아래에서 다음 노드 점까지 */
+.flow-hero.vertical {
+  --flow-gap: 14px;
+}
+.flow-hero.vertical .flow-track {
+  grid-auto-flow: row;
+  grid-auto-columns: auto;
+}
+.flow-hero.vertical .flow-link {
+  top: 100%;
+  right: auto;
+  left: 28px; /* 노드 왼쪽 여백 14 + 점 반지름 15 - 선 반폭 1 */
+  width: 2px;
+  height: var(--flow-gap);
+}
+.flow-hero.vertical.compact .flow-link {
+  left: 25px;
+}
+.flow-hero.vertical .flow-link::after {
+  transform: scaleY(0);
+  transform-origin: top;
+}
+.flow-hero.vertical .flow-link.lit::after {
+  transform: scaleY(1);
+}
+.flow-hero.vertical .flow-dash {
+  background: repeating-linear-gradient(180deg, var(--text-3) 0 3px, transparent 3px 7px);
+  animation-name: flow-dash-v;
+}
+.flow-hero.vertical .flow-particle {
+  top: -4px;
+  left: -3px;
+  animation-name: flow-particle-v;
+}
 /* 요점 한 줄 — 단계마다 아래에서 올라온다 */
 .flow-point {
   display: flex;
@@ -177,6 +227,14 @@
   20% { opacity: 1; }
   to { left: calc(100% - 4px); opacity: 0; }
 }
+@keyframes flow-dash-v {
+  to { background-position: 0 14px; }
+}
+@keyframes flow-particle-v {
+  from { top: -4px; opacity: 0; }
+  20% { opacity: 1; }
+  to { top: calc(100% - 4px); opacity: 0; }
+}
 @keyframes flow-point {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
@@ -186,7 +244,7 @@
     grid-auto-flow: row;
     grid-auto-columns: auto;
   }
-  .flow-link {
+  .flow-hero:not(.vertical) .flow-link {
     display: none;
   }
 }
@@ -194,7 +252,8 @@
   .flow-node,
   .flow-point,
   .flow-node.on .flow-dot,
-  .flow-dash {
+  .flow-dash,
+  .flow-particle {
     animation: none !important;
     opacity: 1;
     transform: none;

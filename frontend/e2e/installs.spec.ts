@@ -16,7 +16,7 @@ test.describe('설치 검사 — 이 패키지는 무엇을 하려 했고, 악�
     await page.locator('[data-chip="isolated"]').click();
     await expect(page.locator('tr[data-install]')).toHaveCount(2); // reqeusts · colourama
     await page.locator('[data-chip="npm"]').click(); // npm 격리 0
-    await expect(page.getByText('조건에 맞는 세션 없음')).toBeVisible();
+    await expect(page.getByText('조건에 맞는 데이터가 없습니다')).toBeVisible(); // 11/09 §7 검색 결과 없음 문구
   });
 
   test('② 상세: 결과 · 명령 · 공격 체인 3단계 · 활동 요약 · 정적 분석 비교(버전 무관)', async ({ page, backend }) => {

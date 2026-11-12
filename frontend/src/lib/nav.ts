@@ -16,7 +16,7 @@ export const FILTER_DEFAULTS = {
   '/': { range: '24h' },
   '/installs': { status: 'pending', manager: '' },
   '/events': { kind: '', level: '', normal: '', container: '' },
-  '/audit': { kind: '', action: '', rule: '', container: '', since: '', until: '' },
+  '/audit': { kind: '', action: '', decision: '', rule: '', container: '', since: '', until: '' },
   '/scans': { verdict: '' },
   // node 는 컨테이너 노드(c:)만 링크로 주소에 남고, 파일 · 도메인 · IP · 프로세스 노드는 화면 상태로만
   '/topology': { container: '', node: '' },

@@ -30,7 +30,7 @@ var (
 	ghPathSeg = regexp.MustCompile(`^[\w.@+~-]+$`) // 하위 경로 한 조각
 )
 
-const ghHint = "https://github.com/<소유자>/<저장소> 형식으로 써 주세요 — 브랜치 · 폴더는 …/tree/<브랜치>/<폴더>, 커밋은 …/commit/<sha>, 릴리스는 …/releases/tag/<태그>"
+const ghHint = "https://github.com/<소유자>/<저장소> 형식으로 써 주세요(브랜치 · 폴더는 …/tree/<브랜치>/<폴더>, 커밋은 …/commit/<sha>, 릴리스는 …/releases/tag/<태그>)"
 
 func ParseGitHubURL(raw string) (RepoRef, error) {
 	s := strings.TrimSpace(raw)
@@ -73,7 +73,7 @@ func ParseGitHubURL(raw string) (RepoRef, error) {
 		}
 		r.Ref = tail[2]
 	case "blob", "raw":
-		return RepoRef{}, bad("파일 하나는 「파일 올리기」로 검사하세요 — 저장소 주소는 …/tree/<브랜치>/<폴더> 까지입니다")
+		return RepoRef{}, bad("파일 하나는 「파일 올리기」로 검사하세요. 저장소 주소는 …/tree/<브랜치>/<폴더> 까지입니다")
 	default:
 		return RepoRef{}, bad("%s", ghHint)
 	}
@@ -82,7 +82,7 @@ func ParseGitHubURL(raw string) (RepoRef, error) {
 	}
 	for _, seg := range sub {
 		if !ghPathSeg.MatchString(seg) || strings.Trim(seg, ".") == "" {
-			return RepoRef{}, bad("하위 경로 %q 을(를) 읽을 수 없습니다 — 폴더 이름만 / 로 이어 주세요(. · .. 조각 불가)", strings.Join(sub, "/"))
+			return RepoRef{}, bad("하위 경로 %q 을(를) 읽을 수 없습니다. 폴더 이름만 / 로 이어 주세요(. · .. 조각 불가)", strings.Join(sub, "/"))
 		}
 	}
 	r.Subpath = strings.Join(sub, "/")

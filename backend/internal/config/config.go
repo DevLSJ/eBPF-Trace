@@ -52,6 +52,10 @@ type Config struct {
 	PolicyFile  string
 	// EvalReportsDir: 평가 결과 JSON(bench/reports) 디렉터리 — GET /api/evaluation 이 읽는다(11/04). 기본은 배포 이미지 안 경로
 	EvalReportsDir string
+	// SGInstallFile: 설치 검사 「사용 방법」이 내려주는 sg-install 스크립트(11/09). 기본은 배포 이미지 안 경로, make dev 는 저장소 tools/sg-install
+	SGInstallFile string
+	// SGInstallAPI: 「사용 방법」에 보일 SUPPLYGUARD_API(SG_INSTALL_API, 11/09). 비면 화면이 추정(compose = nginx 80, mock = :8000)
+	SGInstallAPI string
 
 	AdminToken string
 	// SandboxToken: sg-install CLI 의 세션 보고 · 차단 확인 전용 (ADMIN_TOKEN 과 달라야 한다)
@@ -67,11 +71,18 @@ type Config struct {
 	AuthCookieSecure     bool
 	AuthSecretKey        string
 	// AuthDevMode: AUTH_DEV_MODE (기본 false, 11/04). 로컬 개발 전용 — 시드 관리자 admin/admin 허용 · 첫 로그인 단계(비밀번호 변경 · 라이선스) 건너뜀.
-	// EVENT_SOURCE=mock 일 때만 켤 수 있다(가젯 소스면 Load 가 오류)
+	// EVENT_SOURCE=mock 일 때만 켤 수 있다(가젯 소스면 Load 가 오류) — 단 LOCAL_DEV=true 를 함께 켜면 가젯 소스도 허용(11/09)
 	AuthDevMode bool
+	// LocalDev: LOCAL_DEV (기본 false, 11/09). 개발자 PC(Docker Desktop)에서 실제 가젯과 개발 전용 로그인을 함께 쓰는 make dev 만 켠다.
+	// 혼자서는 아무것도 바꾸지 않고, AUTH_DEV_MODE 의 「mock 전용」 검사만 풀어 준다. 서버 .env 에는 넣지 않는다
+	LocalDev bool
 	// 외부 알림(10/20): 둘 다 비면 비활성. PublicURL 은 알림의 대시보드 링크 앞에 붙는다
 	NotifyWebhookURL, NotifySlackURL, PublicURL string
-	// AI 도우미(10/20): OLLAMA_URL 이 비면 챗봇 비활성(라우트 없음). 모델은 로컬 Ollama — 데이터가 서버 밖으로 나가지 않는다
+	// AI 도우미(10/20 · 11/09): ANTHROPIC_API_KEY 가 있으면 Claude 가 기본(질문 · 조회한 사실 문장이 Anthropic API 로 나간다),
+	// OLLAMA_URL 이 있으면 예비(또는 키가 없을 때 기본 — 데이터가 서버 밖으로 나가지 않음). 둘 다 비면 챗봇 비활성(라우트 없음).
+	// CHAT_PROVIDER=auto|claude|ollama 로 하나만 쓰게 할 수 있다
+	ChatProvider                            string
+	AnthropicKey, ClaudeModel, ClaudeEffort string
 	OllamaURL, OllamaModel, OllamaKeepAlive string
 
 	// 시연 실행(10/30): DEMO_ENABLED=true 면 /api/demo 가 열린다(시연 전용 — 운영은 끈다). DemoImage 는 시연 컨테이너 이미지(SG_PIP_IMAGE, sg-install 과 같은 변수)
@@ -102,12 +113,18 @@ func Load() (Config, error) {
 		RedisURL:           env("REDIS_URL", ""),
 		PolicyFile:         env("POLICY_FILE", "policies/default.yaml"),
 		EvalReportsDir:     env("EVAL_REPORTS_DIR", "/bench/reports"),
+		SGInstallFile:      env("SG_INSTALL_FILE", "/tools/sg-install"),
+		SGInstallAPI:       env("SG_INSTALL_API", ""),
 		AdminToken:         env("ADMIN_TOKEN", ""),
 		SandboxToken:       env("SANDBOX_TOKEN", ""),
 		ActorName:          env("ACTOR_NAME", "보안 담당자"),
 		NotifyWebhookURL:   env("NOTIFY_WEBHOOK_URL", ""),
 		NotifySlackURL:     env("NOTIFY_SLACK_URL", ""),
 		PublicURL:          env("PUBLIC_URL", ""),
+		ChatProvider:       env("CHAT_PROVIDER", "auto"),
+		AnthropicKey:       env("ANTHROPIC_API_KEY", ""),
+		ClaudeModel:        env("CLAUDE_MODEL", "claude-opus-5-5"),
+		ClaudeEffort:       env("CLAUDE_EFFORT", "low"),
 		OllamaURL:          env("OLLAMA_URL", ""),
 		OllamaModel:        env("OLLAMA_MODEL", "qwen2.5:3b"),
 		OllamaKeepAlive:    env("OLLAMA_KEEP_ALIVE", "30m"),
@@ -126,6 +143,9 @@ func Load() (Config, error) {
 		return c, err
 	}
 	if c.AuthCookieSecure, err = boolEnv("AUTH_COOKIE_SECURE", false); err != nil {
+		return c, err
+	}
+	if c.LocalDev, err = boolEnv("LOCAL_DEV", false); err != nil {
 		return c, err
 	}
 	if c.AuthDevMode, err = boolEnv("AUTH_DEV_MODE", false); err != nil {
@@ -196,7 +216,8 @@ func Load() (Config, error) {
 		return c, fmt.Errorf("EVENT_SOURCE: %q (gadget | mock)", c.EventSource)
 	}
 	// 개발 전용 로그인(admin/admin · 첫 로그인 단계 없음)이 실제 서버에서 켜지지 않게 — mock 이 아니면 시작하지 않는다
-	if c.AuthDevMode && c.EventSource != "mock" {
+	// 예외: LOCAL_DEV=true(make dev — 개발자 PC 의 Docker Desktop, 127.0.0.1 로만 연다)
+	if c.AuthDevMode && c.EventSource != "mock" && !c.LocalDev {
 		return c, fmt.Errorf("AUTH_DEV_MODE=true 는 EVENT_SOURCE=mock(로컬 개발)에서만 쓸 수 있음 — 실제 서버(%s)는 AUTH_DEV_MODE 를 지우거나 false 로", c.EventSource)
 	}
 	// 같은 값이면 CLI 토큰으로 관리자 쓰기가 열린다 — 두 토큰의 분리가 무너지므로 시작하지 않는다

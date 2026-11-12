@@ -153,7 +153,7 @@ func fetchRepo(ctx context.Context, base string, ref RepoRef, dst string) error 
 	res, err := get(ctx, ref.Tarball(base))
 	if err != nil {
 		if errors.Is(err, errNotFound) {
-			msg := ref.Label() + " 을(를) 찾을 수 없습니다 — 공개 저장소 · 브랜치/태그를 확인하세요"
+			msg := ref.Label() + " 을(를) 찾을 수 없습니다. 공개 저장소 · 브랜치/태그를 확인하세요"
 			if ref.Subpath != "" {
 				msg += "(브랜치 이름에 / 가 있으면 지원하지 않습니다)"
 			}
@@ -178,7 +178,7 @@ func fetchRepo(ctx context.Context, base string, ref RepoRef, dst string) error 
 		return err
 	}
 	if n == 0 && ref.Subpath != "" {
-		return fmt.Errorf("내려받은 압축본에 %s 폴더가 없습니다 — 경로 · 브랜치를 확인하세요. 브랜치 이름에 / 가 있으면 지원하지 않고, 저장소의 .gitattributes 가 export-ignore 로 뺀 폴더(흔히 tests/)는 GitHub 압축본에 들어 있지 않습니다", ref.Subpath)
+		return fmt.Errorf("내려받은 압축본에 %s 폴더가 없습니다. 경로 · 브랜치를 확인하세요. 브랜치 이름에 / 가 있으면 지원하지 않고, 저장소의 .gitattributes 가 export-ignore 로 뺀 폴더(흔히 tests/)는 GitHub 압축본에 들어 있지 않습니다", ref.Subpath)
 	}
 	return nil
 }

@@ -43,3 +43,13 @@ export function useBusy(reloading: boolean, ms = 300) {
 // 첫 칸에 둔다(목업 tr.needs-action td:first-child 와 같은 자리)
 export type RowBar = 'danger' | 'warn' | null | undefined | false;
 export const barStyle = (bar: RowBar) => (bar ? { boxShadow: `inset 3px 0 0 var(--${bar})` } : undefined);
+
+// 행 상태(11/09 SPEC-1109 §3 — 참고 제품 C3): 고른 줄(checked) · 열린 줄(open) = 같은 연한 강조 바탕, 열린 줄만 첫 칸 왼쪽 3px 주 색.
+// hover = 표 hover 회색 · 전환 시간 없음 · 행을 흐리게 하지 않음(꺼짐은 배지 글자로). 모양은 components/table-kit.css
+//   <tr {...rowState({ open: id === cur, checked: picked.has(id) })} {...rowKeys(open)}>
+export const rowState = ({ open, checked }: { open?: boolean; checked?: boolean }) => ({
+  'data-kit-row': '',
+  'data-open': open ? '' : undefined,
+  'data-checked': checked ? '' : undefined,
+  'aria-selected': open || checked ? true : undefined,
+});

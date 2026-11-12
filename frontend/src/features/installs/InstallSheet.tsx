@@ -117,7 +117,7 @@ function Summary({ s }: { s: InstallSession }) {
         <>
           <dt className="text-slate-500">거부 이유</dt>
           <dd className="text-xs" data-testid="refused-by">
-            차단 목록의 {LIST_LABEL[s.refusedBy.list] ?? s.refusedBy.list} <code className="font-mono">{s.refusedBy.value}</code> — 컨테이너를 띄우기 전에 거부
+            차단 목록의 {LIST_LABEL[s.refusedBy.list] ?? s.refusedBy.list} <code className="font-mono">{s.refusedBy.value}</code>, 컨테이너를 띄우기 전에 거부
           </dd>
         </>
       )}
@@ -191,7 +191,7 @@ function StaticCell({ s, sc }: { s: InstallSession; sc: InstallScan }) {
         {sc.reused && ' · 24시간 안 검사 결과 재사용'}
       </div>
       {sc.id && (
-        <Link to={`/scans?id=${encodeURIComponent(sc.id)}`} className="justify-self-start text-xs text-indigo-700 hover:underline" data-action="scan-link">
+        <Link to={`/scans?id=${encodeURIComponent(sc.id)}`} className="justify-self-start text-xs text-accent-text hover:underline" data-action="scan-link">
           공급망 검사에서 보기 →
         </Link>
       )}

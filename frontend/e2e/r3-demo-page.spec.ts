@@ -57,11 +57,12 @@ test.describe('R3 시연 페이지 — 메뉴 · 자리', () => {
     const link = page.locator(`${NAV} a[href="/demo"]`);
     await expect(link).toBeVisible();
     await expect(link).toContainText('시연');
-    // 대시보드 아래 고정 줄(묶음 제목 없는 home) — 11/06 부터 대시보드 → 연동 → 시연, 정렬 대상 표시 없음
-    const home = page.locator(`${NAV} [data-nav-group="home"] > a`);
-    expect(await home.evaluateAll((els) => els.map((e) => e.getAttribute('href')))).toEqual(['/', '/integration', '/demo']);
+    // 대시보드 아래 고정 줄(묶음 제목 없는 home) — 11/06 부터 대시보드 → 연동 → 시연, 정렬 대상 표시 없음(11/09 밤: 연동은 하위 메뉴 묶음)
+    const home = page.locator(`${NAV} [data-nav-group="home"]`);
+    const homeOrder = () => home.evaluate((g) => [...g.children].map((e) => e.getAttribute('href') ?? `sub:${e.getAttribute('data-nav-sub')}`));
+    expect(await homeOrder()).toEqual(['/', 'sub:integration', '/demo']);
     await expect(link).not.toHaveAttribute('data-sort-scope', /.+/);
-    const [d, l] = await Promise.all([page.locator(`${NAV} a[href="/integration"]`).boundingBox(), link.boundingBox()]);
+    const [d, l] = await Promise.all([page.locator(`${NAV} [data-nav-sub="integration"]`).boundingBox(), link.boundingBox()]);
     expect(l!.y).toBeGreaterThan(d!.y);
     expect(l!.y - d!.y).toBeLessThan(d!.height + 8);
     // 길게 눌러도 집히지 않고(0.4초 넘게) 저장 키에 들어가지 않는다
@@ -83,7 +84,7 @@ test.describe('R3 시연 페이지 — 메뉴 · 자리', () => {
     await page.evaluate(() => localStorage.setItem('supplyguard.layout', JSON.stringify({ v: 1, sidebar: { install: ['evaluation', 'scans', 'installs'] } })));
     await page.reload();
     await expect(page.locator(`${NAV} a[href="/demo"]`)).toBeVisible();
-    expect(await page.locator(`${NAV} [data-nav-group="home"] > a`).evaluateAll((els) => els.map((e) => e.getAttribute('href')))).toEqual(['/', '/integration', '/demo']);
+    expect(await homeOrder()).toEqual(['/', 'sub:integration', '/demo']);
   });
 });
 
@@ -134,7 +135,7 @@ test.describe('R3 시연 페이지 — 시나리오 · 흐름 · 「왜」', () 
     await waitDone(page);
     expect(await stepStates(page)).toEqual(STEPS.map((k) => [k, 'done']));
     await expect(outcome(page)).toHaveAttribute('data-outcome', 'isolated');
-    await expect(outcome(page)).toContainText('격리됨 — pipe-to-shell');
+    await expect(outcome(page)).toContainText('[격리] pipe-to-shell 위반');
     await expect(outcome(page)).toContainText(/탐지→kill [\d,]+ ms/);
     const times = await page
       .locator('[data-part="demo-steps"] > li[data-step]')
@@ -163,8 +164,9 @@ test.describe('R3 시연 페이지 — 시나리오 · 흐름 · 「왜」', () 
     await expect(page.locator('[data-part="event-lines"] li.hit')).toContainText('wget');
     await expect(page.locator('[data-part="event-lines"] li').first()).toContainText('pip install');
     await expect(page.locator('[data-step="match"]')).toContainText('pipe-to-shell');
-    await expect(page.locator('[data-step="evidence"]')).toContainText(/로그 · 파일 변경 · 프로세스 — [\d,]+ ms/);
-    await expect(page.locator('[data-step="outcome"]')).toContainText('격리(kill) — 종료 코드 137');
+    await expect(page.locator('[data-step="evidence"]')).toContainText(/로그 · 파일 변경 · 프로세스 보존됨\([\d,]+ ms\)/);
+    await expect(page.locator('[data-step="outcome"]')).toContainText('[격리] 컨테이너 kill(종료 코드 137)');
+    expect(await page.locator(PAGE).innerText(), '11/09 「—」 없음').not.toContain('—');
     await page.screenshot({ path: `${SCRATCH}/r3-isolated-1920.png` });
   });
 
@@ -226,11 +228,12 @@ test.describe('R3 시연 페이지 — 시나리오 · 흐름 · 「왜」', () 
     await expect(outcome(page)).toHaveAttribute('data-outcome', 'passed');
     await expect(outcome(page)).toContainText('통과');
     expect(Object.fromEntries(await stepStates(page))).toEqual({ start: 'done', events: 'done', match: 'done', evidence: 'skip', outcome: 'done' });
-    await expect(page.locator('[data-step="match"]')).toContainText('위반 없음');
+    await expect(page.locator('[data-step="match"]')).toContainText('[통과] 설치 중 행동에 위반 사항 없음');
     await expect(page.locator('[data-step="evidence"]')).toContainText('건너뜀');
     await expect(page.locator('[data-col="why"] h2')).toHaveText('왜 통과했나');
     await expect(page.locator(W)).toContainText('걸린 규칙 없음');
     await expect(page.locator(`${W} [data-part="why-evidence"]`)).toContainText('격리하지 않아 증거를 모으지 않았습니다');
+    expect(await page.locator(PAGE).innerText(), '11/09 「—」 없음').not.toContain('—');
     await expect(page.locator(`${W} [data-action="open-policy"]`)).toHaveCount(0);
     await expect(page.locator(`${W} [data-action="open-report"]`)).toHaveAttribute('href', `/report?install=${backend.demo.last!.installId}`);
     await page.screenshot({ path: `${SCRATCH}/r3-passed-1920.png` });
@@ -246,7 +249,7 @@ test.describe('R3 시연 페이지 — 시나리오 · 흐름 · 「왜」', () 
     await runScenario(page, 'chain');
     await waitDone(page);
     await expect(outcome(page)).toHaveAttribute('data-outcome', 'isolated');
-    await expect(outcome(page)).toContainText('격리됨 — no-shell-download');
+    await expect(outcome(page)).toContainText('[격리] no-shell-download 위반');
     await expect(page.locator('[data-part="seq-line"]')).toHaveText('기본 정책이 1단계에서 먼저 막음 · 연쇄 진행 1/3(dryRun 연쇄 규칙 chain-download-secrets)');
     await expect(page.locator(`${W} [data-part="why-rule"]`)).toHaveText('no-shell-download');
     const steps = await page
@@ -269,7 +272,7 @@ test.describe('R3 시연 페이지 — 시나리오 · 흐름 · 「왜」', () 
     await expect(page.locator('[data-action="demo-run"]')).toBeDisabled();
     await expect(page.locator('[data-action="demo-run"]')).toContainText('실행 중…');
     await expect(page.locator('[data-scenario="shell"]')).toBeDisabled();
-    await expect(page.locator('[data-part="run-note"]')).toContainText(/실행 중 — 동시 1개 · 최대 90초\(\d+초 경과\)/);
+    await expect(page.locator('[data-part="run-note"]')).toContainText(/실행 중입니다\(동시 1개 · 최대 90초, \d+초 경과\)\. 끝나면 다시 시작할 수 있습니다\./);
     await waitDone(page);
     await expect(page.locator('[data-action="demo-run"]')).toBeEnabled();
     await expect(page.locator('[data-action="demo-run"]')).toContainText('시연 시작');

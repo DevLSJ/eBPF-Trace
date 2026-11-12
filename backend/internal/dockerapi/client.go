@@ -56,6 +56,8 @@ type Container struct {
 	Pid     int
 	Running bool
 	Labels  map[string]string // 11/06: 감시 · 격리 범위(supplyguard.watch · supplyguard.enforce). 없으면 빈 맵
+	// MountDests: 마운트의 컨테이너 안 경로만(Inspect, 11/10 증거 코드 보기). 호스트 경로는 담지 않는다
+	MountDests []string
 }
 
 // List: 실행 중인 컨테이너 목록 (PID 는 없음 — Inspect 로 얻는다)
@@ -94,11 +96,18 @@ func (c *Client) Inspect(ctx context.Context, id string) (Container, error) {
 			Pid     int  `json:"Pid"`
 			Running bool `json:"Running"`
 		} `json:"State"`
+		Mounts []struct {
+			Destination string `json:"Destination"`
+		} `json:"Mounts"`
 	}
 	if err := c.getJSON(ctx, "/containers/"+url.PathEscape(id)+"/json", &raw); err != nil {
 		return Container{}, err
 	}
-	return Container{ID: raw.ID, Name: strings.TrimPrefix(raw.Name, "/"), Image: raw.Config.Image, Pid: raw.State.Pid, Running: raw.State.Running, Labels: orEmpty(raw.Config.Labels)}, nil
+	var dests []string
+	for _, m := range raw.Mounts {
+		dests = append(dests, m.Destination)
+	}
+	return Container{ID: raw.ID, Name: strings.TrimPrefix(raw.Name, "/"), Image: raw.Config.Image, Pid: raw.State.Pid, Running: raw.State.Running, Labels: orEmpty(raw.Config.Labels), MountDests: dests}, nil
 }
 
 // Labels: 컨테이너 라벨(파이프라인 감시 · 격리 범위, pipeline.Labeler)
@@ -173,7 +182,11 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
-		return fmt.Errorf("docker %s: %s: %s", path, res.Status, strings.TrimSpace(string(b)))
+		err := fmt.Errorf("docker %s: %s: %s", path, res.Status, strings.TrimSpace(string(b)))
+		if res.StatusCode == http.StatusNotFound {
+			return notFound{err}
+		}
+		return err
 	}
 	return json.NewDecoder(res.Body).Decode(out)
 }

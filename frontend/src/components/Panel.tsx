@@ -2,7 +2,8 @@ import { CircleSlash, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { Dest } from '../lib/nav';
-import { errorText, isUnsupported } from '../lib/api';
+import { errorText, isUnsupported, sentence } from '../lib/api';
+import { josa } from '../lib/layout';
 
 // 패널(참고 대시보드 섹션 카드, 11/05) — 반경 8 · 1px 선 · hover 파란 선 · 머리 56 = 제목 17.9/700 + 부제(sub) + 오른쪽 actions · 「더 보기 ›」(more) · 바닥줄(foot, 채움 칸 밖)
 export function Panel({
@@ -66,12 +67,17 @@ export function LoadError({ error, what, compact }: { error: unknown; what: stri
       <span>
         {unsupported ? (
           <>
-            <b>백엔드 미지원</b> — {what} API가 아직 백엔드에 없습니다.
+            <b>백엔드 미지원</b>, {what} API가 아직 백엔드에 없습니다.
           </>
         ) : (
-          <>
-            {what} 불러오기 실패: {errorText(error)}
-          </>
+          // 11/09 INTEG: 「[무엇]을(를) 불러오지 못했습니다.」(받침 조사 — 끝 괄호 설명은 빼고 셈) + 다음 줄에 이유(서버 문장 · 고정 문장)
+          <span className="grid gap-0.5">
+            <span data-part="load-error-head">
+              {what}
+              {josa(what.replace(/\s*\([^)]*\)$/, ''), ['을', '를'])} 불러오지 못했습니다.
+            </span>
+            <span data-part="load-error-text">{sentence(errorText(error))}</span>
+          </span>
         )}
       </span>
     </div>

@@ -29,6 +29,9 @@ type AuditQuery struct {
 	Limit     int
 	// Offset: 쪽 번호(11/04) — 최신순에서 이만큼 건너뛴다(0 = 첫 쪽). 커서(BeforeID)와 함께 쓰지 않는다(API 가 막는다)
 	Offset int
+	// ByCase · CaseIDs: 판정 필터(11/10) — ByCase 면 caseId 가 CaseIDs 안에 있는 행만(비어 있으면 0건). 건 id 는 API 가 review 에서 고른다
+	ByCase  bool
+	CaseIDs []string
 }
 
 type AuditStore interface {

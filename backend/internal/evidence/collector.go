@@ -80,8 +80,13 @@ type parts struct {
 	logs    []byte
 	changes []dockerapi.Change
 	procs   []dockerapi.Proc
-	done    map[string]bool
-	errs    map[string]error
+	files   []model.EvidenceFile
+	// fileTasks · asked: 시작한 스크립트 읽기(이름 files.pkg · files.diff)와 이미 맡긴 경로 — 시작한 것만 빠진 부분으로 센다
+	fileTasks []string
+	asked     map[string]bool
+	order     []string // 맡긴 순서(로컬 폴더 먼저) — 저장 순서 · 상한에 쓴다
+	done      map[string]bool
+	errs      map[string]error
 }
 
 // Collect: 네 가지(inspect · logs · diff · top)를 동시에 모으고 Budget 안에 끝난 것만으로 증거를 만들어 저장한다.
@@ -95,7 +100,7 @@ func (c *Collector) Collect(ctx context.Context, containerID string) (model.Evid
 	cctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 
-	p := &parts{done: map[string]bool{}, errs: map[string]error{}}
+	p := &parts{done: map[string]bool{}, errs: map[string]error{}, asked: map[string]bool{}}
 	var wg sync.WaitGroup
 	run := func(name string, fn func() error) {
 		wg.Add(1)
@@ -111,12 +116,44 @@ func (c *Collector) Collect(ctx context.Context, containerID string) (model.Evid
 			p.done[name] = true
 		}()
 	}
+	// readFiles(11/10): 설치 스크립트 읽기를 같은 예산 안에서 시작한다. 부르는 고루틴이 끝나기 전에 Add 하므로 Wait 와 안전
+	fr, canRead := c.Docker.(FileReader)
+	readFiles := func(name string, paths []string) {
+		if !canRead {
+			return
+		}
+		p.mu.Lock()
+		var todo []string
+		for _, x := range paths {
+			if !p.asked[x] {
+				p.asked[x] = true
+				p.order = append(p.order, x)
+				todo = append(todo, x)
+			}
+		}
+		if len(todo) > 0 {
+			p.fileTasks = append(p.fileTasks, name)
+		}
+		p.mu.Unlock()
+		if len(todo) == 0 {
+			return
+		}
+		run(name, func() error {
+			fs, err := readScripts(cctx, fr, containerID, todo)
+			p.mu.Lock()
+			p.files = append(p.files, fs...)
+			p.mu.Unlock()
+			return err
+		})
+	}
 	run("inspect", func() error {
 		ct, err := c.Docker.Inspect(cctx, containerID)
 		if err == nil {
 			p.mu.Lock()
 			p.inspect = &ct
 			p.mu.Unlock()
+			// 로컬 패키지 폴더는 마운트로 바로 안다 — diff 가 늦어도 읽는다
+			readFiles("files.pkg", pkgScripts(ct.MountDests))
 		}
 		return err
 	})
@@ -135,6 +172,8 @@ func (c *Collector) Collect(ctx context.Context, containerID string) (model.Evid
 			p.mu.Lock()
 			p.changes = ch
 			p.mu.Unlock()
+			// 11/10: diff 를 받은 뒤 diff 에 나온 설치 스크립트도 읽는다(마운트로 이미 맡긴 경로는 건너뜀)
+			readFiles("files.diff", pickScripts(ch))
 		}
 		return err
 	})
@@ -170,6 +209,7 @@ func (c *Collector) Collect(ctx context.Context, containerID string) (model.Evid
 	for _, pr := range p.procs {
 		ev.Processes = append(ev.Processes, model.Proc{PID: pr.PID, User: pr.User, Cmd: pr.Cmd})
 	}
+	ev.Files = orderFiles(p.files, p.order)
 	var missing []string
 	for _, name := range []string{"inspect", "logs", "diff", "top"} {
 		switch {
@@ -178,6 +218,12 @@ func (c *Collector) Collect(ctx context.Context, containerID string) (model.Evid
 			missing = append(missing, name+": "+p.errs[name].Error())
 		default:
 			missing = append(missing, name+": timeout")
+		}
+	}
+	for _, name := range p.fileTasks {
+		if !p.done[name] {
+			missing = append(missing, "files: timeout")
+			break
 		}
 	}
 	p.mu.Unlock()

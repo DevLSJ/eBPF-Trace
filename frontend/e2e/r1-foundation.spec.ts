@@ -207,7 +207,7 @@ test.describe('C KPI 카드', () => {
     expect(m).toMatchObject({ stripe: '4px', radius: '8px', size: '28px', weight: '700', icon: '⚠', icoW: 32, deltaTone: 'danger' });
     expect(m.stripeColor).toBe(await rgbOf(page, '--danger'));
     expect(m.valColor).toBe(await rgbOf(page, '--danger'));
-    expect(m.deltaColor).toBe(await rgbOf(page, '--danger'));
+    expect(m.deltaColor).toBe(await rgbOf(page, '--danger-text')); // 11/10: 작은 증감 글자는 위험 글자색(4.5:1 이상)
     // 값이 바뀌면 카운트업(중간 값을 지나) + 짧은 링
     await restage(page, { ...base, value: 2234, delta: { dir: 'up', text: '5', tone: 'danger', note: '지난 24시간 대비' } });
     await expect(card).toHaveClass(/kpi-ring/);
@@ -226,9 +226,9 @@ test.describe('C KPI 카드', () => {
     await expect(iso.locator('[data-value]')).toHaveText('312ms');
     expect(await iso.locator('.kpi-unit').evaluate((e) => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight])).toEqual(['13px', '500']);
     expect(await iso.locator('.kpi-delta b').evaluate((e) => getComputedStyle(e).color)).not.toBe(await rgbOf(page, '--danger'));
-    // 글자 값(평가 지표처럼 「—」 · 퍼센트)도 같은 모양
-    await stage(page, 'kpi', { k: 'f1', label: '모델 시험 F1', icon: '◔', stripe: 'ok', value: null, text: '—', sub: '모델 결과 없음', box: { w: 260, h: 140 } });
-    await expect(page.locator(`${STAGE} [data-kpi="f1"] [data-value]`)).toHaveText('—');
+    // 글자 값(평가 지표처럼 빈 값 · 퍼센트)도 같은 모양 — 빈 값은 빈 칸(11/09)
+    await stage(page, 'kpi', { k: 'f1', label: '모델 시험 F1', icon: '◔', stripe: 'ok', value: null, text: '', sub: '모델 결과 없음', box: { w: 260, h: 140 } });
+    await expect(page.locator(`${STAGE} [data-kpi="f1"] [data-value]`)).toHaveText('');
     await expect(page.locator(`${STAGE} [data-kpi="f1"]`)).toHaveClass(/is-zero/);
   });
 
@@ -244,13 +244,14 @@ test.describe('C KPI 카드', () => {
     expect(await page.locator(`${STAGE} [data-kpi="collected"]`).evaluate((e) => getComputedStyle(e).animationName)).toBe('none');
   });
 
-  test('평가 지표 6칸 = KPI 카드 모양(띠 · 아이콘 칩 · 28/700)', async ({ page, backend }) => {
+  // 11/09 저녁: 평가 지표 6칸 → 위 3칸(나머지 3칸은 목록 줄 요약, eval-accordion-1109) — 모양 규칙은 그대로
+  test('평가 위 3칸 = KPI 카드 모양(띠 · 아이콘 칩 · 28/700)', async ({ page, backend }) => {
     void backend;
     await evalApi(page);
     await page.goto('/evaluation');
     await expect(page.locator('[data-part="evaluation"][data-state="ready"]')).toBeVisible();
-    const cards = page.locator('[data-part="kpis"] [data-kpi]');
-    await expect(cards).toHaveCount(6);
+    const cards = page.locator('[data-part="eval-top"] [data-kpi]');
+    await expect(cards).toHaveCount(3);
     const m = await cards.evaluateAll((els) => els.map((e) => [e.classList.contains('kpi-card'), getComputedStyle(e).borderLeftWidth, !!e.querySelector('.kpi-ico[data-icon]'), getComputedStyle(e.querySelector('.kpi-val')!).fontSize, getComputedStyle(e.querySelector('.kpi-val')!).fontWeight]));
     for (const x of m) expect(x).toEqual([true, '4px', true, '28px', '700']);
   });
@@ -374,10 +375,13 @@ test.describe('D 코드 창(macOS 창 모양)', () => {
     await expect(ev3.locator('[data-part="evidence-logs"]')).toContainText('Running setup.py');
     const tree = ev3.locator('[data-part="evidence-changes"]');
     await expect(tree.locator('[role="tree"]')).toHaveCount(1);
-    await expect(tree.locator('[data-change-kind]')).toHaveText(['C', 'A', 'D']); // 폴더 이름순(/root · /tmp · /var)
-    await expect(tree.locator('[role="treeitem"][data-kind="file"]')).toHaveCount(3);
+    // 폴더 이름순(/root · /tmp · /var). 11/10: 표시는 등급(A · F), 종류는 속성 · 툴팁 · 위반 대상 /etc/shadow · /root/.ssh/id_rsa(읽기만 함)가 F 새 줄로 맨 위
+    await expect(tree.locator('[data-change-kind]')).toHaveText(['A', 'A', 'A']);
+    expect(await tree.locator('[data-change-kind]').evaluateAll((e) => e.map((x) => x.getAttribute('data-change-kind')))).toEqual(['C', 'A', 'D']);
+    await expect(tree.locator('[role="treeitem"][data-kind="file"]')).toHaveCount(5);
     await expect(tree.locator('[role="treeitem"][aria-selected]')).toHaveCount(0); // 선택 없음
-    expect(await tree.locator('[role="treeitem"][data-kind="dir"]').evaluateAll((e) => e.map((x) => x.getAttribute('aria-expanded')))).not.toContain('false'); // 모두 펼침
+    // 11/10: 처음 접힘, 비정상(F)이 든 폴더만 펼침
+    expect(await tree.locator('[role="treeitem"][data-kind="dir"]').evaluateAll((e) => e.map((x) => `${x.getAttribute('data-path')}:${x.getAttribute('aria-expanded')}`))).toEqual(['/etc:true', '/root:true', '/root/.ssh:true', '/tmp:false', '/var:false', '/var/log:false']);
     // 한 폴더(/tmp)뿐이면 표 그대로
     await expect(page.locator('[data-evidence="ev-2"] table[data-part="evidence-changes"] [data-change-kind]')).toHaveText(['A', 'A']);
   });
@@ -394,9 +398,12 @@ test.describe('D 코드 창(macOS 창 모양)', () => {
     const ta = page.locator(`${sel} textarea[aria-label="정책 YAML"]`);
     await expect(ta).toHaveAttribute('wrap', 'off');
     await expect(ta).toHaveValue(/egress-allowlist/);
-    await page.getByTitle('전체 정책을 YAML로 보기·일괄 적용').click();
-    await expect(page.locator(`${sel} textarea[aria-label="전체 정책 YAML"]`)).toBeVisible();
-    expect(await codeWinOf(page, sel)).toMatchObject({ name: 'policies.yaml', lang: 'YAML', bodyTag: 'textarea' });
+    // 11/09: 전체 YAML 은 머리 「YAML 일괄 적용」 큰 창
+    await page.goto('/policies');
+    await page.getByRole('button', { name: 'YAML 일괄 적용' }).click();
+    const all = `dialog[data-part="bulk-yaml"] ${CW}`;
+    await expect(page.locator(`${all} textarea[aria-label="전체 정책 YAML"]`)).toBeVisible();
+    expect(await codeWinOf(page, all)).toMatchObject({ name: 'policies.yaml', lang: 'YAML', bodyTag: 'textarea' });
   });
 
   test('⑥ AI 도우미 답 속 코드 블록(```json event.json) → 코드 창, 흘려보내는 중 안 닫힌 블록도 창', async ({ page, backend }) => {
@@ -554,9 +561,9 @@ test.describe('F AI 도우미 채팅 화면', () => {
     const rows = page.locator('[data-part="chat"] [data-part="chat-msg"]');
     await expect(rows).toHaveCount(2);
     await expect(rows.last()).toContainText('판정 대기 건이');
-    // 새 줄만 등장 애니메이션(chat-in 0.2s)
+    // 새 줄만 등장 애니메이션(chat-in 0.18s — 11/09 SPEC --dur-base)
     const anims = await rows.evaluateAll((els) => els.map((e) => [e.classList.contains('is-new'), getComputedStyle(e).animationName, getComputedStyle(e).animationDuration]));
-    expect(anims).toEqual([[true, 'chat-in', '0.2s'], [true, 'chat-in', '0.2s']]);
+    expect(anims).toEqual([[true, 'chat-in', '0.18s'], [true, 'chat-in', '0.18s']]);
     await inp.fill('두 번째');
     await inp.press('Enter');
     await expect(rows).toHaveCount(4);
@@ -716,28 +723,31 @@ test.describe('G 길게 눌러 옮기기', () => {
     await page.evaluate(() => localStorage.setItem('supplyguard.layout', JSON.stringify({ v: 1, sidebar: { install: ['zzz', 'evaluation', 'installs', 7, 'evaluation'], records: 'x' } })));
     await page.reload();
     await expect(groupLinks(page, '설치 검사')).toHaveText(['평가', '설치 검사', '공급망 검사']);
-    await expect(groupLinks(page, '설정 · 기록')).toHaveText(['정책', '감사 로그', '설정']);
+    await expect(groupLinks(page, '설정 · 기록')).toHaveText(['정책', '차단 목록', '변경 이력', '감사 로그', '설정']); // 11/09 정책 하위 메뉴
   });
 
-  test('평가 지표 6칸: Alt+←/→ · 길게 눌러 끌기(그리드) · 저장 evaluationKpi · 칸은 tabindex 0', async ({ page, backend }) => {
+  // 11/09 저녁: 지표 6칸 → 위 3칸(같은 저장 키 evaluationKpi) — 옮기기 동작은 그대로
+  test('평가 위 3칸: Alt+←/→ · 길게 눌러 끌기(그리드) · 저장 evaluationKpi · 칸은 tabindex 0', async ({ page, backend }) => {
     void backend;
     await evalApi(page);
     await page.goto('/evaluation');
     await expect(page.locator('[data-part="evaluation"][data-state="ready"]')).toBeVisible();
-    const ids = () => page.locator('[data-part="kpis"] [data-kpi]').evaluateAll((e) => e.map((x) => (x as HTMLElement).dataset.kpi));
-    const DEF = ['static-detection', 'static-fpr', 'runtime-detection', 'runtime-fpr', 'latency', 'model-f1'];
+    const ids = () => page.locator('[data-part="eval-top"] [data-kpi]').evaluateAll((e) => e.map((x) => (x as HTMLElement).dataset.kpi));
+    const DEF = ['static-detection', 'static-fpr', 'runtime-detection'];
     expect(await ids()).toEqual(DEF);
     await expect(page.locator('[data-kpi="static-detection"]')).toHaveAttribute('tabindex', '0');
     await page.locator('[data-kpi="static-detection"]').focus();
     await page.keyboard.press('Alt+ArrowRight');
     expect(await ids()).toEqual(['static-fpr', 'static-detection', ...DEF.slice(2)]);
     await expect(page.locator('#sg-sort-live')).toHaveText('정적 악성 탐지율을 2번째로 옮김');
-    await longPressDrag(page, '[data-kpi="model-f1"]', '[data-kpi="static-fpr"]', { below: false, xFrac: 0.2 }); // 같은 줄 왼쪽 절반 = 그 칸 앞
-    await expect.poll(ids).toEqual(['model-f1', 'static-fpr', 'static-detection', 'runtime-detection', 'runtime-fpr', 'latency']);
-    expect(JSON.parse((await layout(page))!).evaluationKpi).toEqual(['model-f1', 'static-fpr', 'static-detection', 'runtime-detection', 'runtime-fpr', 'latency']);
+    // Alt+→ 뒤 미끄러짐(FLIP)이 끝난 자리에서 잰다 — 3칸은 폭이 넓어 움직이는 중에 재면 왼쪽 절반을 벗어난다
+    await expect.poll(() => page.locator('[data-part="eval-top"] [data-kpi]').evaluateAll((els) => els.every((e) => getComputedStyle(e).transform === 'none'))).toBe(true);
+    await longPressDrag(page, '[data-kpi="runtime-detection"]', '[data-kpi="static-fpr"]', { below: false, xFrac: 0.2 }); // 같은 줄 왼쪽 절반 = 그 칸 앞
+    await expect.poll(ids).toEqual(['runtime-detection', 'static-fpr', 'static-detection']);
+    expect(JSON.parse((await layout(page))!).evaluationKpi).toEqual(['runtime-detection', 'static-fpr', 'static-detection']);
     await page.reload();
     await expect(page.locator('[data-part="evaluation"][data-state="ready"]')).toBeVisible();
-    expect((await ids())[0]).toBe('model-f1');
+    expect((await ids())[0]).toBe('runtime-detection');
   });
 
   test('설정 머리 오른쪽 「화면 배치 기본 순서로」: 즉시 · 토스트 · 사이드바 바로 기본 순서 · 조회자도', async ({ page, backend }) => {
@@ -798,7 +808,7 @@ test.describe('H 다크 모드', () => {
     await expect(page.locator(sel)).toBeVisible();
     expect(await tok(page, '--code-bg')).toBe('#0A0C11');
     expect(await tok(page, '--win-close')).toBe('#B8746E');
-    expect(await tok(page, '--line-soft')).toBe('#303442');
+    expect(await tok(page, '--line-soft')).toBe('#38444D'); // 11/09 밤 남색 선
     expect((await codeWinOf(page, sel)).bodyBg).toBe('rgb(10, 12, 17)');
     expect(await page.locator(`${sel} .cw-dot`).first().evaluate((e) => getComputedStyle(e).backgroundColor)).toBe('rgb(184, 116, 110)');
     await page.screenshot({ path: `${SCRATCH}/r1-dark.png` });

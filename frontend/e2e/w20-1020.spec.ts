@@ -26,7 +26,7 @@ test.describe('W20 도메인 조회 줄 — dnsTraced false · 없음 · true', 
 
     await page.locator('li[data-key]', { hasText: '198.51.100.21' }).click();
     await expect(dd).toHaveAttribute('data-dns', 'off');
-    await expect(dd).toHaveText('판단 불가 — trace_dns 꺼짐(도메인 기준 규칙은 통과 처리)');
+    await expect(dd).toHaveText('판단 불가(trace_dns 꺼짐, 도메인 기준 규칙은 통과 처리)');
 
     await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
     await page.locator('li[data-key]', { hasText: '198.51.100.22' }).click();
@@ -36,7 +36,7 @@ test.describe('W20 도메인 조회 줄 — dnsTraced false · 없음 · true', 
     await closeSheet(page); // 11/05 슬라이드 패널: 열린 동안 뒤 화면은 어두운 배경에 가려 눌리지 않는다 — 먼저 닫는다
     await page.locator('li[data-key]', { hasText: '198.51.100.23' }).click();
     await expect(dd).toHaveAttribute('data-dns', 'traced');
-    await expect(dd).toHaveText('trace_dns 로 확인 — files.example.test');
+    await expect(dd).toHaveText('files.example.test(trace_dns 로 확인)');
   });
 
   test('가짜 백엔드의 connect 이벤트도 dnsTraced 를 명시한다(백엔드 계약)', async ({ page, backend }) => {
@@ -90,7 +90,7 @@ test.describe('W20 768px 넘침 0', () => {
         await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running')); // 11/05: 패널이 다 들어온 뒤
         await noPageOverflow(page);
         // 목록(11/05 부터 패널이 겹쳐 목록 폭은 그대로): 필터 이름이 글자 단위로 꺾이지 않고, 행의 탐지 결과가 패널 안에 보인다
-        const lbl = page.getByTestId('events').locator('label', { hasText: '컨테이너' });
+        const lbl = page.getByTestId('events').locator('[data-part="search"]'); // 11/09 검색칸(라벨 없음)
         expect((await lbl.boundingBox())!.height).toBeLessThanOrEqual(36);
         const panel = (await page.getByTestId('events').boundingBox())!;
         const badge = (await page.locator('li[data-key]').first().locator('span').last().boundingBox())!;
@@ -111,7 +111,7 @@ test.describe('W20 768px 넘침 0', () => {
       void backend;
       await settle(page, '/events', 'events');
       await expect(page.getByText('이미지', { exact: true })).toBeVisible();
-      await expect(page.getByText('규칙', { exact: true })).toBeVisible();
+      await expect(page.locator('[data-part="feed-head"]').getByText('정책', { exact: true })).toBeVisible(); // 11/09 G44: 「규칙」 칸 → 「정책」(사이드바 「정책」과 겹치지 않게 머리 줄 안에서)
     });
   });
 });
@@ -146,7 +146,7 @@ test.describe('W20 이벤트 첫 로드 — 중복 호출 · 오류 1곳 · 다�
     await page.goto('/events');
     const err = page.locator('[data-part="error"]');
     await expect(err).toBeVisible();
-    await expect(err).toContainText('503');
+    await expect(err).toContainText('모의 오류(서버가 응답하지 않습니다)'); // 11/09 G14: 상태 코드 없이 서버 문장만
     await page.waitForTimeout(300);
     await expect(page.locator('[data-banner="load"]')).toHaveCount(0);
     await expect(page.locator('[role="alert"]')).toHaveCount(1);

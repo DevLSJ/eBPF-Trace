@@ -160,6 +160,19 @@ class TestReproducible(Base):
         self.assertEqual(json.dumps(a, ensure_ascii=False), json.dumps(b, ensure_ascii=False))
         self.assertEqual(sa, sb)
 
+    def test_screen_text_has_no_em_dash(self):
+        # 11/09 저녁 사용자: 화면에 「—」 금지 — 평가 화면 「결과의 한계」 · npm 메모는 이 출력이 그대로 나간다.
+        # protocol.json 은 결과를 보기 전에 고정한 기록(해시로 묶임)이라 그대로 두고, 출력할 때만 화면 문장으로 바꾼다
+        fake = [dict(r, ecosystem="npm", set="benign-npm", packageGroup="n" + r["packageGroup"][1:], id="n" + r["id"])
+                for r in self.rows if r["set"] == "benign-pypi"]  # all 범위는 가짜 npm 정상으로 모양만(위 시험과 같은 방법)
+        for scope, data in (("pypi", self.data), ("all", self.data + b"".join(json.dumps(r).encode() + b"\n" for r in fake))):
+            m, _ = train.build(data, self.proto_bytes, now=NOW, scope=scope)
+            for s in m["limits"] + [m["npmReference"]["note"]]:
+                self.assertNotIn("—", s, f"{scope}: {s}")
+        m, _ = train.build(self.data, self.proto_bytes, now=NOW)
+        self.assertIn("files · bytes(파일 수 · 크기)와 testFindings 는 sdist 행에 값이 없거나 포장 형식 단서라서 입력에서 뺐다(프로토콜 2판, 결과를 보기 전 수정).", m["limits"])
+        self.assertEqual(m["npmReference"]["note"], "정상 표본 없음, 재현율만")
+
     def test_schema_keys(self):
         m, _ = train.build(self.data, self.proto_bytes, now=NOW)
         for k in ("schema", "generatedAt", "dataset", "protocol", "features", "candidates", "preferredId",

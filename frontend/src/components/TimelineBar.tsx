@@ -2,7 +2,7 @@ import { fmtMs, fmtSec, isolationMs, segmentsOf, type SegKey } from '../lib/time
 import type { Timeline } from '../lib/types';
 
 // 격리 타임라인 가로 막대(10/30 계약 §3) — 설치 시트 결과 칸 · 토폴로지 판정 카드 · 보고서 · 시연 패널 ⑤ 가 같은 부품을 쓴다.
-// 구간 4개: 탐지→판정(info) · 증거(warn) · 격리(danger) · 알림(accent), 각 ms 라벨, 합계 「격리까지 0.42초」. 없는 구간은 「—」
+// 구간 4개: 탐지→판정(info) · 증거(warn) · 격리(danger) · 알림(accent), 각 ms 라벨, 합계 「격리까지 0.42초」. 없는 구간은 빈 칸
 
 const BAR: Record<SegKey, string> = { detect: 'bg-sky-500', evidence: 'bg-amber-500', kill: 'bg-red-600', notify: 'bg-indigo-500' };
 const DOT: Record<SegKey, string> = { detect: 'bg-sky-500', evidence: 'bg-amber-500', kill: 'bg-red-600', notify: 'bg-indigo-500' };
@@ -27,7 +27,7 @@ export function TimelineBar({ timeline, compact }: { timeline: Timeline | null |
           </span>
         ))}
         <b className="num ml-auto whitespace-nowrap text-slate-900" data-part="timeline-total">
-          격리까지 {total === null ? '—' : fmtSec(total)}
+          격리까지 {total === null ? '' : fmtSec(total)}
         </b>
       </div>
     </div>

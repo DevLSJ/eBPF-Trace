@@ -6,19 +6,49 @@
 .sg-dash > * { flex: 0 0 auto; min-width: 0; }
 .sg-dash-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .sg-dash-top > .sg-dash-live { margin-left: auto; white-space: nowrap; }
+/* 11/09 G31: 머리 줄 = 신호등 · 감시 중 · 최종 갱신 · 새로고침 · 기간. 좁으면(≤1120: 1366 · 1280 창) 한 줄을 지키려고
+   「eBPF 감시 중 ·」 글자는 화면 읽기에만 남기고(신호등 「가젯 · 커널 감시 중」과 같은 뜻) 알약 · 기간 칩 좌우 여백을 8 로 */
+.sg-dash-top { container: dash-top / inline-size; }
+@container dash-top (max-width: 1120px) {
+  .sg-dash-live-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .sg-pills > a, .sg-range-chips > button { padding-inline: 8px; }
+}
 .sg-dash-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
 .sg-dash-charts { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px; }
 .sg-dash-bottom { flex: 1 1 0; min-height: 120px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .sg-dash-bottom > * { min-height: 0; }
 .sg-dash-kpis > .kpi-card { min-height: 0; }
 
+/* 11/09 G34 · G36: KPI 카드 글자 잘림 0 — 보조 · 증감 줄은 말줄임 대신 줄을 바꾸고(낱말 안에서 끊지 않음),
+   KPI 줄 폭(카드 6칸)이 좁아지면 단계 축소. 1단(≤1240: 1440 창) 여백 14 · 아이콘 28 · 값 25 / 2단(≤1100: 1366 · 1280 창 · 768 미만 2열) 아이콘 칩 숨김 · 여백 12 · 값 22 · 글자 12~12.5.
+   1920×1080 · 1366×768 · 1280×720 에서 재어 정한 값(ui-d-1109 G34) */
+.sg-dash-kpis { container: dash-kpis / inline-size; }
+.sg-dash-kpis > .kpi-card > .kpi-sub { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
+.sg-dash-kpis .kpi-delta { flex-wrap: wrap; row-gap: 0; white-space: normal; }
+.sg-dash-kpis .kpi-delta > * { white-space: nowrap; }
+@container dash-kpis (max-width: 1240px) {
+  .sg-dash-kpis > .kpi-card { padding: 14px; column-gap: 8px; }
+  .sg-dash-kpis > .kpi-card > .kpi-ico { width: 28px; height: 28px; font-size: 13px; }
+  .sg-dash-kpis .kpi-val { font-size: 25px; }
+}
+@container dash-kpis (max-width: 1100px) {
+  .sg-dash-kpis > .kpi-card { padding: 12px; row-gap: 3px; }
+  .sg-dash-kpis > .kpi-card > .kpi-ico { display: none; }
+  .sg-dash-kpis > .kpi-card > .kpi-name, .sg-dash-kpis > .kpi-card > .kpi-num { grid-column: 1 / -1; }
+  .sg-dash-kpis > .kpi-card > .kpi-name { font-size: 12.5px; }
+  .sg-dash-kpis .kpi-val { font-size: 22px; }
+  .sg-dash-kpis .kpi-unit { font-size: 12px; }
+  .sg-dash-kpis .kpi-delta, .sg-dash-kpis > .kpi-card > .kpi-sub { font-size: 12px; }
+}
+
 /* 차트 칸 — 몸통 패딩 10/16/12, 상자 높이 = --chart-h(높이 800 이하 120) */
 .sg-dash-chart-body { display: flex; flex-direction: column; gap: 6px; padding: 10px 16px 12px; }
 .sg-dash-charts .chart { height: auto; }
 .sg-dash-charts .chart-box { flex: 0 0 auto; height: var(--chart-h); }
 /* 결과(도넛) 카드: 도넛(정사각형, --chart-h) + 오른쪽 범례 5줄 · 판정 · 차단 목록 두 줄 */
+/* 11/10: 높이는 차트 높이가 최소, 범례 · 두 줄이 더 길면(낮은 화면 --chart-h 120) 카드가 그만큼 늘어난다 — 고정 높이 + 가운데 정렬이면 위로 넘쳤다 */
 .sg-res { display: flex; align-items: center; gap: 16px; min-width: 0; }
-.sg-res { height: var(--chart-h); }
+.sg-res { min-height: var(--chart-h); }
 .sg-res .donut-chart { flex: 0 0 min(var(--chart-h), 44%); height: auto; }
 .sg-res .donut-box { width: 100%; height: auto; aspect-ratio: 1 / 1; max-height: var(--chart-h); }
 .sg-res-side { flex: 1 1 auto; min-width: 0; display: grid; gap: 6px; align-content: center; }
@@ -27,10 +57,21 @@
 .sg-res-legend li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sg-res-legend li b { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
 .sg-res-legend .sw { width: 10px; height: 10px; border-radius: 3px; }
-.sg-res-line { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--text-2); }
+/* 판정 · 차단 목록: 좁으면 「…」로 숨기지 않고 단어 단위로 줄바꿈 */
+.sg-res-line { display: block; min-width: 0; word-break: keep-all; overflow-wrap: anywhere; font-size: 12.5px; line-height: 1.45; color: var(--text-2); }
 .sg-res-line b { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-.sg-res-line b.tone-danger { color: var(--danger); }
+.sg-res-line b.tone-danger { color: var(--danger-text); } /* 작은 위험 글자 = 위험 글자색(밝은 6.1 · 어두운 10.7:1, 11/10) */
 a.sg-res-line:hover { color: var(--accent); }
+/* 판정 줄의 악성 · 오탐 · 대기 링크(11/10) — 차단 목록 줄과 같은 hover */
+.sg-res-dec { color: inherit; text-decoration: none; }
+.sg-res-dec:hover { color: var(--accent); text-decoration: underline; }
+.sg-res-dec:hover b { color: inherit; }
+/* 낮은 화면(차트 120px): 범례 · 두 줄 간격을 줄여 카드가 덜 늘어나게(아래 3칸 최소 높이를 지킴) */
+@media (max-height: 800px) {
+  .sg-res-side { gap: 2px; }
+  .sg-res-legend { gap: 0; }
+  .sg-res-legend li, .sg-res-line { line-height: 1.3; }
+}
 
 /* 아래 3칸: 몸통이 남은 높이를 채우고 넘치면 그 안만 스크롤 */
 .sg-dash-fill { height: 100%; min-height: 0; overflow-y: auto; }
@@ -50,7 +91,6 @@ a.sg-res-line:hover { color: var(--accent); }
 .sg-pend-row { display: flex; align-items: center; border-bottom: 1px solid var(--line-soft); }
 .sg-pend-link { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto 12px; grid-template-rows: auto auto; column-gap: 10px; row-gap: 2px; min-height: 56px; padding: 8px 8px 8px 16px; font-size: 13px; transition: background var(--t-base) var(--ease); }
 .sg-pend-link:hover { background: var(--surface-2); }
-.sg-pend-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .sg-pend-link.bar-danger { box-shadow: inset 3px 0 0 var(--danger); }
 .sg-pend-link.bar-warn { box-shadow: inset 3px 0 0 var(--warn); }
 .sg-pend-link > .sg-pend-src { grid-row: 1 / span 2; align-self: center; }

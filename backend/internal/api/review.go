@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -42,6 +43,7 @@ func (h *handlers) routeReview(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/blocklist", h.getBlocklist)
 	mux.HandleFunc("DELETE /api/blocklist/{list}/{value...}", h.auth(h.removeBlock))
 	mux.HandleFunc("GET /api/changes", h.listChanges)
+	mux.HandleFunc("POST /api/policies/{id}/revert", h.auth(h.revertPolicy)) // 정책 되돌리기(11/09) — 변경 이력이 있어야 해 Review 와 함께
 	mux.HandleFunc("GET /api/osv", h.queryOSV)
 }
 
@@ -382,16 +384,67 @@ func (h *handlers) removeBlock(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// listChanges: GET /api/changes?rule=&kind=&offset=&limit= — 최신순, limit 기본 50 · 상한 500.
+// rule = 그 정책을 다룬 기록만(before · after 도 그 정책 값만) · kind = 종류 완전 일치.
+// offset 이 있으면 {items, total, offset, limit}(11/09 쪽 넘김), 없으면 예전처럼 배열
 func (h *handlers) listChanges(w http.ResponseWriter, r *http.Request) {
-	n := 0
-	if s := r.URL.Query().Get("limit"); s != "" {
-		var err error
-		if n, err = strconv.Atoi(s); err != nil || n <= 0 {
+	q := r.URL.Query()
+	cq := review.ChangeQuery{RuleID: q.Get("rule"), Kind: model.ChangeKind(q.Get("kind"))}
+	if s := q.Get("limit"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n <= 0 {
 			writeErr(w, http.StatusBadRequest, "limit: 양의 정수")
 			return
 		}
+		cq.Limit = n
 	}
-	writeJSON(w, http.StatusOK, h.Review.ListChanges(n))
+	paged := q.Has("offset")
+	if paged {
+		n, err := strconv.Atoi(q.Get("offset"))
+		if err != nil || n < 0 {
+			writeErr(w, http.StatusBadRequest, "offset: 0 이상 정수")
+			return
+		}
+		cq.Offset = n
+	}
+	items, total := h.Review.QueryChanges(cq)
+	if !paged {
+		writeJSON(w, http.StatusOK, items)
+		return
+	}
+	writeJSON(w, http.StatusOK, ChangesPage{Items: items, Total: total, Offset: cq.Offset, Limit: review.ChangeLimit(cq.Limit)})
+}
+
+// ChangesPage: GET /api/changes?offset=… 응답(11/09) — AuditPage 와 같은 꼴, total 은 거른 뒤 전체 수
+type ChangesPage struct {
+	Items  []model.Change `json:"items"`
+	Total  int            `json:"total"`
+	Offset int            `json:"offset"`
+	Limit  int            `json:"limit"`
+}
+
+// revertPolicy: POST /api/policies/{id}/revert {changeId, reason} — 관리자. 그 변경 직전 값으로 정책 하나 전체를 되돌린다(사유 필수).
+// 200 = 되돌린 정책(updatedAt · updatedBy 포함) · 400 본문 · 사유 · changeId · 404 변경 기록 · 409 시스템 규칙 · 되돌릴 값 없음 · 이미 그 값
+func (h *handlers) revertPolicy(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ChangeID string `json:"changeId"`
+		Reason   string `json:"reason"`
+	}
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	id := r.PathValue("id")
+	if rules.IsSystemRule(id) {
+		writeErr(w, http.StatusConflict, systemRuleMsg)
+		return
+	}
+	rule, err := h.Review.RevertPolicy(r.Context(), id, in.ChangeID, in.Reason)
+	if err != nil {
+		reviewErr(w, "revert policy", err)
+		return
+	}
+	slog.Info("policy reverted", "id", id, "change", in.ChangeID)
+	writeJSON(w, http.StatusOK, h.policyOut(rule))
 }
 
 func (h *handlers) queryOSV(w http.ResponseWriter, r *http.Request) {

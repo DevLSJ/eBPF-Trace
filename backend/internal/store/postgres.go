@@ -186,6 +186,13 @@ func auditWhere(q AuditQuery, cursor bool) (string, []any) {
 	if !q.Until.IsZero() {
 		add("ts <= $%d", q.Until)
 	}
+	if q.ByCase {
+		if len(q.CaseIDs) == 0 {
+			where = append(where, "false")
+		} else {
+			add("verdict->>'caseId' = ANY($%d)", q.CaseIDs)
+		}
+	}
 	if cursor && q.BeforeID > 0 {
 		add("id < $%d", q.BeforeID)
 	}

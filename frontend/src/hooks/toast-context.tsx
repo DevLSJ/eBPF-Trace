@@ -17,7 +17,10 @@ interface ToastItem extends ToastOptions {
   n: number;
 }
 
-export const TOAST_MS = 8000;
+// 보이는 시간(11/09 G20): 단추(action)가 있으면 9초 · 없으면 5초 — 단추를 누를 틈을 더 준다
+export const TOAST_MS = 5000;
+export const TOAST_ACTION_MS = 9000;
+const toastMs = (t: Pick<ToastOptions, 'action'>) => (t.action ? TOAST_ACTION_MS : TOAST_MS);
 const MAX = 4;
 
 const ToastContext = createContext<((text: string, o?: ToastOptions) => void) | null>(null);
@@ -51,9 +54,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 
   const arm = useCallback(
-    (id: number) => {
+    (id: number, ms: number) => {
       window.clearTimeout(timers.current.get(id));
-      timers.current.set(id, window.setTimeout(() => close(id), TOAST_MS));
+      timers.current.set(id, window.setTimeout(() => close(id), ms));
     },
     [close],
   );
@@ -63,8 +66,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       const xs = itemsRef.current;
       const same = o.key ? xs.find((x) => x.key === o.key) : undefined;
       if (same) {
-        commit(xs.map((x) => (x === same ? { ...x, ...o, text, n: x.n + 1 } : x)));
-        arm(same.id);
+        const merged = { ...same, ...o, text, n: same.n + 1 };
+        commit(xs.map((x) => (x === same ? merged : x)));
+        arm(same.id, toastMs(merged));
         return;
       }
       const id = ++seq.current;
@@ -74,7 +78,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         timers.current.delete(old.id);
       }
       commit(next.slice(-MAX));
-      arm(id);
+      arm(id, toastMs(o));
     },
     [arm, commit],
   );
@@ -87,12 +91,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={toast}>
       {children}
-      {/* 10/20: 왼쪽 아래(사이드바 w-52 바로 오른쪽) — 오른쪽 아래 도우미 버튼 · 상세 시트와 겹치지 않게(목업 결정) */}
-      <div className="pointer-events-none fixed bottom-5 left-[calc(var(--sg-sidebar-w,13rem)+1.25rem)] z-50 flex w-[min(24rem,calc(100vw-2.5rem))] flex-col gap-2" role="status" aria-live="polite" aria-label="알림">
+      {/* 10/20: 왼쪽 아래(사이드바 w-52 바로 오른쪽) — 오른쪽 아래 도우미 버튼 · 상세 시트와 겹치지 않게(목업 결정)
+          11/09 G20: 읽어 주기는 토스트마다 — 위험(격리 등 danger)은 role=alert(바로 읽음), 그 밖은 role=status(차례를 기다림).
+          들어올 때만 왼쪽 16px 에서 미끄러져 나타남(--dur-fast 120ms · --ease-enter, 사이드바 서랍과 같은 키프레임) — 동작 줄이기면 index.css 전역 규칙이 끔, 닫힘은 바로 */}
+      <div className="pointer-events-none fixed bottom-5 left-[calc(var(--sg-sidebar-w,13rem)+1.25rem)] z-50 flex w-[min(24rem,calc(100vw-2.5rem))] flex-col gap-2" data-part="toasts">
         {items.map((t) => (
           <div
             key={t.id}
             data-toast={t.key ?? ''}
+            role={t.tone === 'danger' ? 'alert' : 'status'}
+            aria-atomic="true"
+            style={{ animation: 'sg-drawer-in var(--dur-fast) var(--ease-enter) both' }}
             className={`pointer-events-auto flex items-start gap-2 rounded-lg border px-3.5 py-2.5 text-sm shadow-md ${toneStyle[t.tone ?? 'info']}`}
           >
             <span className="min-w-0 flex-1">
@@ -112,7 +121,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 {t.action.label}
               </button>
             )}
-            <button type="button" onClick={() => close(t.id)} className="shrink-0 rounded p-0.5 opacity-60 hover:opacity-100" aria-label="알림 닫기">
+            <button type="button" onClick={() => close(t.id)} className="shrink-0 rounded p-0.5 opacity-60 hover:opacity-100" aria-label="알림 닫기" title="알림 닫기">
               <X className="size-3.5" />
             </button>
           </div>

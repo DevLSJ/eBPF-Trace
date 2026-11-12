@@ -3,62 +3,121 @@ import type { DemoDecider, DemoExplain, DemoRun, DemoScenario, DemoSequence, Eve
 // 시연 페이지(R3 11/04 — 목업 shared/demo-page.js 11/04e B) 계산만 모은 곳. 화면은 DemoPage.tsx, 데이터는 useDemo.ts.
 
 export type Expect = 'isolated' | 'passed';
+// 한눈에 3줄(11/09) — 무엇을 · 잡는 규칙 · 예상 결과(개조식 명사형 종결). 규칙 이름(kebab-case)은 화면에서 코드 글꼴
+export interface Brief {
+  what: string;
+  rule: string;
+  result: string;
+}
+// 흐름 그림 대기 중 예상 경로(11/09) — 커널 이벤트 · 규칙 판정 노드의 부제
+export interface FlowHint {
+  event: string;
+  rule: string;
+}
 // [이름, 한 줄 설명, 예상 결과] — 순서는 백엔드 GET /api/demo scenarios(DEMO_SCENARIOS)와 같다
-export const SCENARIO: Record<DemoScenario, { name: string; line: string; expect: Expect; long: string }> = {
+export const SCENARIO: Record<DemoScenario, { name: string; line: string; expect: Expect; long: string; brief: Brief; flow: FlowHint }> = {
   all: {
     name: '전부 순서대로',
-    line: '아래 다섯 공격을 차례로 — 첫 격리에서 멈춤',
+    line: '아래 다섯 공격을 차례로, 첫 격리에서 멈춤',
     expect: 'isolated',
     long: '설치 샌드박스에서 다섯 가지 공격 행동을 차례로 흘립니다. 실제와 같게 첫 격리(kill)에서 멈춥니다.',
+    brief: {
+      what: '공격 5종(셸 · 리버스 셸 · IP 직접 · 도메인 · DNS 유출) 차례로 실행함',
+      rule: '첫 위반 규칙이 격리(보통 pipe-to-shell)',
+      result: '첫 격리에서 멈춤 · 남은 공격 실행 안 됨',
+    },
+    flow: { event: '실행 · 통신 · DNS 공격 5종', rule: '첫 위반 규칙' },
   },
   shell: {
     name: '외부 스크립트 실행 + 비밀 파일 접근',
     line: 'sh -c "wget … | sh" → /etc/shadow',
     expect: 'isolated',
-    long: 'post-install 단계에서 셸로 외부 스크립트를 받아 실행하고(| sh) 계정 파일을 엽니다 — 무해한 시뮬(TEST-NET 주소).',
+    long: 'post-install 단계에서 셸로 외부 스크립트를 받아 실행하고(| sh) 계정 파일을 엽니다(무해한 시뮬, TEST-NET 주소).',
+    brief: {
+      what: '셸로 외부 스크립트를 받아 바로 실행 · /etc/shadow 열기 시도함',
+      rule: 'pipe-to-shell(인자 「| sh」) · sensitive-files(계정 파일)',
+      result: '설치 끝나기 전 kill · 증거 보존됨',
+    },
+    flow: { event: 'exec sh -c "wget … | sh"', rule: 'pipe-to-shell' },
   },
   revshell: {
     name: '리버스 셸 포트 4444',
     line: 'connect 203.0.113.7:4444',
     expect: 'isolated',
     long: '리버스 셸에 흔한 포트 4444 로 나가는 연결을 엽니다(TEST-NET, 연결되지 않음).',
+    brief: {
+      what: '리버스 셸에 흔한 포트 4444 로 TEST-NET 주소에 연결 시도함',
+      rule: 'reverse-shell-ports(금지 포트 4444 · 1337 · 31337)',
+      result: '연결 시도 즉시 kill · 증거 보존됨',
+    },
+    flow: { event: 'connect 203.0.113.7:4444', rule: 'reverse-shell-ports' },
   },
   'direct-ip': {
     name: 'DNS 없이 공인 IP 접속',
     line: 'connect 203.0.113.7:443 · 도메인 조회 없음',
     expect: 'isolated',
-    long: '도메인 조회 없이 공인 IP 로 바로 붙습니다 — trace_dns 가 켜져 있으면 directIp 규칙으로 판정합니다.',
+    long: '도메인 조회 없이 공인 IP 로 바로 붙습니다. trace_dns 가 켜져 있으면 directIp 규칙으로 탐지합니다.',
+    brief: {
+      what: '도메인 조회 없이 공인 IP 203.0.113.7:443 으로 바로 연결함',
+      rule: 'sandbox-egress(directIp: kill, trace_dns 켜짐 기준)',
+      result: '연결 시도 즉시 kill · 증거 보존됨',
+    },
+    flow: { event: 'connect IP:443 · 조회 없음', rule: 'sandbox-egress' },
   },
   domain: {
     name: '예약 도메인 example.com 접속',
     line: 'dns example.com → connect :443',
     expect: 'isolated',
     long: '허용 목록 밖 예약 도메인(example.com)을 질의하고 연결합니다.',
+    brief: {
+      what: '허용 목록 밖 예약 도메인 example.com 질의 후 연결함',
+      rule: 'sandbox-dns(질의) · sandbox-egress(연결)',
+      result: '첫 위반(질의 · 연결)에서 kill · 증거 보존됨',
+    },
+    flow: { event: 'dns example.com → connect', rule: 'sandbox-dns · sandbox-egress' },
   },
   'dns-exfil': {
     name: 'DNS 질의로 데이터 실어 보내기',
     line: '48자 라벨 A 질의 + TXT 질의',
     expect: 'isolated',
     long: '긴 hex 라벨 · TXT 질의로 데이터를 실어 보내는 패턴(예약 TLD .example)입니다.',
+    brief: {
+      what: '48자 hex 라벨 · TXT 질의로 데이터 실어 보내기 시도함',
+      rule: 'sandbox-dns(라벨 40자 초과) · runtime-dns-exfil(경고)',
+      result: '질의 단계에서 kill · 연결 전 유출 차단됨',
+    },
+    flow: { event: 'dns 48자 라벨 · TXT 질의', rule: 'sandbox-dns' },
   },
   benign: {
     name: '정상 설치 대조군',
-    line: 'pip sg-demo-benign — 위반 없이 통과',
+    line: 'pip sg-demo-benign · 위반 없이 통과',
     expect: 'passed',
     long: '정상 패키지를 설치합니다. 정책에 걸리는 행동이 없어 격리 없이 「통과」로 끝나는 모습을 보여 줍니다.',
+    brief: {
+      what: '정상 패키지 sg-demo-benign 설치함',
+      rule: '걸리는 규칙 없음(모든 정책 통과)',
+      result: '위반 없이 설치 완료 · 격리 · 증거 수집 없음',
+    },
+    flow: { event: 'pip 설치 정상 동작', rule: '위반 없음' },
   },
   chain: {
     name: '연쇄 규칙(다운로드 → 연결 → 비밀 파일)',
     line: 'wget 실행 → 외부 연결 → /root/.netrc',
     expect: 'isolated',
-    long: '연쇄 규칙 chain-download-secrets(dryRun — 시연용 시험 운영)의 진행을 보여 줍니다. 기본 정책 no-shell-download 가 1단계(wget 실행)에서 먼저 격리하므로 연쇄는 1/3 에서 멈춥니다(연쇄 완성 장면은 따로 녹화).',
+    long: '연쇄 규칙 chain-download-secrets(dryRun, 시연용 시험 운영)의 진행을 보여 줍니다. 기본 정책 no-shell-download 가 1단계(wget 실행)에서 먼저 격리하므로 연쇄는 1/3 에서 멈춥니다(연쇄 완성 장면은 따로 녹화).',
+    brief: {
+      what: 'wget 실행 → 외부 연결 → /root/.netrc 읽기 차례로 시도함',
+      rule: 'no-shell-download 가 1단계(wget)에서 먼저 격리 · 연쇄 chain-download-secrets 는 dryRun',
+      result: '1단계 격리 · 연쇄 진행 1/3 에서 멈춤(완성 장면은 별도 녹화)',
+    },
+    flow: { event: 'exec wget(연쇄 1단계)', rule: 'no-shell-download' },
   },
 };
 export const EXPECT_LABEL: Record<Expect, string> = { isolated: '격리 예상', passed: '통과 예상' };
 export const STEPS = [
   ['start', '설치 시작'],
   ['events', '커널 이벤트'],
-  ['match', '규칙 판정'],
+  ['match', '정책 탐지'],
   ['evidence', '증거 수집'],
   ['outcome', '결과'],
 ] as const;
@@ -110,7 +169,7 @@ export function markParts(text: string, reason?: string | null): [string, string
 
 export type Level3 = Exclude<Level, 'normal'>;
 export const levelOfDecider = (d: Pick<DemoDecider, 'action' | 'enforced'>): Level3 => (d.action !== 'kill' ? 'alert' : d.enforced ? 'killed' : 'held');
-export const VERDICT_KO: Record<Level3, string> = { killed: '격리', held: '격리 대상(dryRun — 알림만)', alert: '경고' };
+export const VERDICT_KO: Record<Level3, string> = { killed: '격리', held: '격리 대상(시험 운영 · 경고만)', alert: '경고' };
 
 export interface DemoModel {
   // undefined = 아직 모름(판정 기다리는 중 · 정보 없음), null = 위반 없음(통과)

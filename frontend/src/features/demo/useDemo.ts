@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStream } from '../../hooks/stream-context';
-import { api, ApiError, errorText, isUnsupported } from '../../lib/api';
+import { api, ApiError, failText, isUnsupported } from '../../lib/api';
 import type { DemoRun, DemoScenario, Evidence, InstallSession, Verdict } from '../../lib/types';
 
 // 시연 페이지 데이터(R3 11/04) — 옛 대시보드 DemoPanel.tsx 의 폴링 · 실행 로직을 옮겼다.
@@ -144,11 +144,11 @@ export function useDemo(enabled: boolean) {
       if (e instanceof ApiError && e.status === 409) {
         const cur = (e.body?.running as DemoRun | undefined) ?? null;
         if (cur) adopt(cur);
-        setError({ status: 409, text: '이미 실행 중 — 끝나면 다시 시작할 수 있습니다' });
+        setError({ status: 409, text: '이미 실행 중입니다. 끝나면 다시 시작할 수 있습니다.' });
         void refresh();
       } else if (e instanceof ApiError && e.status === 503) setError({ status: 503, text: e.message || 'Docker 에 연결할 수 없습니다' });
-      else if (isUnsupported(e)) setError({ status: 404, text: '이 백엔드에는 시연 API 가 없습니다(DEMO_ENABLED 꺼짐)' });
-      else setError({ status: e instanceof ApiError ? e.status : null, text: `시연을 시작하지 못했습니다 — ${errorText(e)}` });
+      else if (isUnsupported(e)) setError({ status: 404, text: '시연 기능이 꺼져 있습니다. 서버 설정에서 시연을 켠 뒤 다시 시작하세요.' });
+      else setError({ status: e instanceof ApiError ? e.status : null, text: failText('시연을 시작하지 못했습니다.', e) });
     } finally {
       setStarting(false);
     }

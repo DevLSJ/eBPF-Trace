@@ -35,7 +35,7 @@ export function IntegrateBanner() {
     <div className="int-banner" data-part="integrate-banner" role="status">
       <Plug className="size-4 int-banner-ico" aria-hidden />
       <span className="int-banner-text">
-        <b>감시 중인 내 컨테이너 없음</b> — 라벨 한 줄(supplyguard.watch=true)로 연동 가능
+        <b>감시 중인 내 컨테이너 없음</b>, 라벨 한 줄(supplyguard.watch=true)로 연동 가능
       </span>
       <Link to="/integration" className="sg-btn sg-btn-sm sg-btn-primary int-banner-go" data-part="integrate-go">
         연동 시작하기 <ArrowRight className="size-3.5 int-banner-arrow" aria-hidden />

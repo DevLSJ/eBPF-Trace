@@ -174,7 +174,7 @@
   "preferredId": "hgb",
   "deploymentApproved": false,
   "npmReference": {
-    "note": "정상 표본 없음 — 재현율만",
+    "note": "정상 표본 없음, 재현율만",
     "rows": 297,
     "recall": {
       "rule-malicious": 0.6532,
@@ -226,13 +226,13 @@
     }
   ],
   "limits": [
-    "표본이 작다 — 시험 구간은 악성 59행 · 정상 120행(그룹 115개)뿐이라 후보 간 F1 차이 몇 %p 는 우연 범위 안일 수 있다.",
-    "악성 데이터셋(malicious-software-packages-dataset)과 입력을 만든 GuardDog 이 모두 DataDog 제작이다 — GuardDog 규칙이 이 표본에 맞춰져 있을 수 있어 규칙 · 모델 모두 낙관적이다.",
-    "정상 표본은 인기 PyPI 300개(wheel + 같은 패키지 sdist)뿐이다 — 덜 알려진 정상 패키지 · npm 정상에서의 오탐률은 재지 않았다.",
-    "모델은 운영에 적용하지 않는다(deploymentApproved=false) — 서버 판정 · kill 은 그대로 scan/verdict.go 규칙이다.",
-    "입력이 GuardDog 결과(점수 · 규칙 · 개수)라 GuardDog 이 못 보는 악성은 모델도 못 본다 — 모델은 GuardDog 신호의 재가중일 뿐이다.",
-    "같은 정상 패키지의 wheel · sdist 는 같은 구간에 묶었다 — 정상 행 수는 패키지 수의 약 2배라 정상 쪽 표본이 서로 독립이 아니다.",
-    "npm 은 정상 표본이 없어 학습에서 뺐다 — npmReference 는 PyPI 모델을 그대로 적용한 재현율(악성 297행)이고, npm 전용 규칙은 PyPI 학습 어휘에 없어 모델 입력에서 빠진다.",
-    "files · bytes(파일 수 · 크기)와 testFindings 는 입력에서 뺐다 — sdist 행에 값이 없거나 포장 형식 단서라서(프로토콜 2판, 결과를 보기 전 수정)."
+    "표본이 작다. 시험 구간은 악성 59행 · 정상 120행(그룹 115개)뿐이라 후보 간 F1 차이 몇 %p 는 우연 범위 안일 수 있다.",
+    "악성 데이터셋(malicious-software-packages-dataset)과 입력을 만든 GuardDog 이 모두 DataDog 제작이다. GuardDog 규칙이 이 표본에 맞춰져 있을 수 있어 규칙 · 모델 모두 낙관적이다.",
+    "정상 표본은 인기 PyPI 300개(wheel + 같은 패키지 sdist)뿐이다. 덜 알려진 정상 패키지 · npm 정상에서의 오탐률은 재지 않았다.",
+    "모델은 운영에 적용하지 않는다(deploymentApproved=false). 서버 판정 · kill 은 그대로 scan/verdict.go 규칙이다.",
+    "입력이 GuardDog 결과(점수 · 규칙 · 개수)라 GuardDog 이 못 보는 악성은 모델도 못 본다. 모델은 GuardDog 신호의 재가중일 뿐이다.",
+    "같은 정상 패키지의 wheel · sdist 는 같은 구간에 묶었다. 정상 행 수는 패키지 수의 약 2배라 정상 쪽 표본이 서로 독립이 아니다.",
+    "npm 은 정상 표본이 없어 학습에서 뺐다. npmReference 는 PyPI 모델을 그대로 적용한 재현율(악성 297행)이고, npm 전용 규칙은 PyPI 학습 어휘에 없어 모델 입력에서 빠진다.",
+    "files · bytes(파일 수 · 크기)와 testFindings 는 sdist 행에 값이 없거나 포장 형식 단서라서 입력에서 뺐다(프로토콜 2판, 결과를 보기 전 수정)."
   ]
 }

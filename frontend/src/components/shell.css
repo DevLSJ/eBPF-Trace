@@ -1,0 +1,115 @@
+/* 셸 배치(11/10 — 참고 사이트의 배치 원리, 값 · 원리만): 사이드바 · 본문 단 · 제목 줄.
+   색 · 그림자 · 반경 토큰 값은 index.css 그대로(이름만 쓴다). 여기에는 셸에만 쓰는 값만 두고 밝은 · 어두운(html[data-theme=dark]) 둘 다 정의한다.
+   층 밖 규칙이라 Tailwind 유틸리티보다 이긴다 — 셸 칸에만 붙는 클래스(sg-shell-* · sg-nav-* · sg-titlebar)로만 쓴다.
+   index.css 보다 먼저 실릴 수 있어(main.tsx 가 App 을 먼저 부름) index.css 의 같은 무게 규칙과 겹치면 선택자를 한 단계 좁힌다 */
+:root {
+  --shell-title-h: 53px; /* 제목 줄 · 사이드바 로고 줄 */
+  --shell-hover: rgba(15, 20, 25, 0.1); /* 사이드바 hover 알약 */
+  --shell-title-alpha: 85%; /* 제목 줄 바탕 = 바탕색 85% + 뒤 흐림 */
+}
+html[data-theme='dark'] {
+  --shell-hover: rgba(247, 249, 249, 0.1);
+}
+
+/* ── 큰 틀: [왼쪽 칸(사이드바)] [본문 단] [오른쪽 여백] ──
+   본문 단 = 최대 --content-max. 남는 폭은 왼쪽 칸 · 오른쪽 여백이 반씩 받아 사이드바와 본문 단이 함께 가운데에 오고,
+   사이드바는 왼쪽 칸의 오른쪽 끝(본문 단 바로 옆)에 붙는다. 좁으면 본문 단만 줄어든다(사이드바 폭은 그대로) */
+.sg-shell {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+.sg-shell-rail {
+  flex: 1 0 auto;
+  display: flex;
+  justify-content: flex-end;
+}
+/* 세로선은 사이드바 끝 · 화면 끝과 1px 씩 겹친다(바깥 여백 -1) — 본문(main) 폭이 옛 배치와 같다(1440 창 → 1200, 1024 → 968) */
+.sg-shell-col {
+  position: relative;
+  flex: 0 1 var(--content-max);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0 -1px;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+.sg-shell-pad {
+  flex: 1 0 0;
+}
+@media (max-width: 767px) {
+  .sg-shell-col {
+    margin: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+}
+
+/* ── 사이드바: 상자 · 테두리 없는 평평한 목록. 바탕은 페이지 바탕과 같은 색(겹쳐 뜰 때 · 서랍은 그림자만 더함) ── */
+aside.sg-side {
+  background: var(--bg);
+  border: 0;
+}
+/* 메뉴 줄: 아이콘 24 + 글자 16/500 · 지금 화면 700, hover = 알약 모양 옅은 바탕(지금 화면에도 상자 없음) */
+.sg-nav-item {
+  border-radius: 9999px;
+  font-size: var(--fs-lg);
+  transition:
+    background-color var(--dur-fast) var(--ease-color),
+    color var(--dur-fast) var(--ease-color);
+}
+.sg-nav-item:hover {
+  background-color: var(--shell-hover);
+}
+/* 지금 화면이 속한 하위 메뉴 묶음 머리는 접을 수 없어(사유 툴팁) 누를 모양을 주지 않는다 */
+.sg-nav-item.sg-nav-here:hover {
+  background-color: transparent;
+}
+/* 하위 메뉴 링크: 한 단계 작은 글자(15) — 같은 알약 */
+.sg-nav-sub {
+  font-size: 15px;
+}
+/* 길게 눌러 옮기기: 집힌 줄 · 놓일 자리 표시도 둥글게 — 한 줄(높이 40 · 48)은 알약 · 원, 하위 메뉴째 옮기는 큰 칸은 모서리만(index.css 규칙보다 한 단계 좁게) */
+aside.sg-side nav .sg-sortable > .sg-sort-marker,
+aside.sg-side nav .sg-sortable > .sg-sort-picked {
+  border-radius: 24px;
+}
+
+/* ── 제목 줄: 본문 단 맨 위 고정 · 바탕 85% 반투명 + 뒤 흐림 12 · 아래 1px 선 ──
+   768 이상은 화면 안 팝오버(종 · 계정)가 상세 시트(z 40) 위로 오게 45, 768 미만은 서랍 dim(z 40) 아래로 30 */
+.sg-titlebar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  height: var(--shell-title-h);
+  background-color: color-mix(in srgb, var(--bg) var(--shell-title-alpha), transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+@media (min-width: 768px) {
+  .sg-titlebar {
+    z-index: 45;
+  }
+}
+/* 제목 줄 아이콘 단추(메뉴 · 종 · 해/달 · 사용 안내): 작은 원(32) · 사이드바와 같은 옅은 hover */
+.sg-titlebar :is(.sg-title-icon, [data-part='bell'], [data-part='theme-toggle']) {
+  border-radius: 9999px;
+  transition: background-color var(--dur-fast) var(--ease-color), color var(--dur-fast) var(--ease-color);
+}
+.sg-titlebar :is(.sg-title-icon, [data-part='bell'], [data-part='theme-toggle']):hover {
+  background-color: var(--shell-hover);
+}
+
+@media print {
+  .sg-shell-col {
+    margin: 0;
+    border: 0;
+    max-width: none;
+  }
+  .sg-shell-rail,
+  .sg-shell-pad {
+    display: none;
+  }
+}

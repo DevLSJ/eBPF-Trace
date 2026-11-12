@@ -1,0 +1,100 @@
+/* 평가 화면(11/09 — 요점 3줄 · 쉬운 이름 · 용어 툴팁 · 자세한 표 접기). 색 · 반경 · 그림자는 토큰만 */
+
+/* 용어 단추: 글자 그대로 + 점선 밑줄(= 설명 있음). 아이콘 없음. 포커스 링만 강조 파랑 */
+.eval-term {
+  display: inline; margin: 0; padding: 0; border: 0; border-radius: 2px; background: none;
+  font: inherit; color: inherit; letter-spacing: inherit; text-align: inherit; cursor: help;
+  text-decoration: underline dotted; text-decoration-color: var(--text-3); text-decoration-thickness: 1px; text-underline-offset: 3px;
+}
+.eval-term:hover { text-decoration-color: currentColor; }
+
+/* 툴팁: 반전(잉크) 면 — 차트 툴팁(.chart-tip.tip-inverse)과 같은 색. 화면 고정 위치(넘침 칸에 잘리지 않음) */
+.eval-term-tip {
+  position: fixed; z-index: 70; display: grid; gap: 2px; width: max-content; max-width: min(300px, calc(100vw - 16px));
+  padding: 8px 10px; border-radius: var(--r-sm); background: var(--ink); color: var(--ink-text); box-shadow: var(--sh-2);
+  font-size: 12.5px; font-weight: 400; line-height: 1.5; text-align: left; word-break: keep-all; overflow-wrap: anywhere;
+}
+.eval-term-tip[hidden] { display: none; }
+.eval-term-tip > b { font-weight: 600; }
+.eval-term-tip .eval-term-easy { font-weight: 500; color: var(--ink-muted); }
+
+/* 지표 6칸 이름: 쉬운 이름이 길어 말줄임 대신 줄바꿈(단어 단위). index.css 의 .kpi-card > .kpi-name 보다 앞서게 선택자를 한 단계 높인다 */
+.kpi-card.eval-kpi > .kpi-name { white-space: normal; word-break: keep-all; line-height: 1.35; }
+
+/* 칸 머리 (?) — 용어 단추의 동그라미 모양(11/09 저녁 목록). 글자는 화면 하한 12px(--fs-xs). 누르는 칸은 바깥으로 4px 넓힌다 */
+.eval-term.eval-q {
+  position: relative; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: 4px; vertical-align: 0;
+  border: 1px solid currentColor; border-radius: 50%; color: var(--text-3); font-size: var(--fs-xs); font-weight: 700; line-height: 1; text-decoration: none;
+}
+.eval-term.eval-q::after { content: ''; position: absolute; inset: -4px; }
+.eval-term.eval-q:hover { color: var(--accent-text); }
+
+/* ── 위 3칸 + 접는 목록(11/09 저녁 — 참고 그림의 가독성 원리: 위 큰 숫자, 아래 줄마다 ▶ · 이름 · 값 · 비율 막대 · 상태 칩). 색 · 반경은 토큰만, 빨강 없음 ── */
+@media (max-width: 767px) {
+  .eval-top > [data-kpi]:last-child { grid-column: span 2; } /* 2열(종합 숫자 칸 규칙) — 셋째 칸은 두 칸 폭 */
+}
+.eval-list { --eval-cols: 14px minmax(168px, 1fr) minmax(0, 2fr) 96px; padding: 0; }
+.eval-list-head, .eval-row {
+  display: grid; grid-template-columns: var(--eval-cols); grid-template-areas: "caret name res chip"; column-gap: 16px; align-items: center; padding-inline: 20px;
+}
+/* 칸 머리: 표 머리와 같은 값(42 · 12/600 흐림 · 보조 바탕). 목록을 내려도 위에 붙는다 */
+.eval-list-head {
+  position: sticky; top: 0; z-index: 2; min-height: 42px; border-bottom: 1px solid var(--line-soft); border-radius: var(--r-md) var(--r-md) 0 0;
+  background: var(--surface-2); color: var(--text-3); font-size: var(--fs-xs); font-weight: 600;
+}
+.eval-list-head > [data-head="name"] { grid-area: name; }
+.eval-list-head > [data-head="result"] { grid-area: res; }
+.eval-list-head > [data-head="state"] { grid-area: chip; justify-self: end; }
+.eval-items { margin: 0; padding: 0; list-style: none; }
+.eval-item + .eval-item { border-top: 1px solid var(--line-soft); }
+/* 줄 머리 = 단추 하나(줄 전체를 누름). hover 는 표 행처럼 즉시. 포커스 링은 공통 링을 안쪽에(스크롤 칸이 바깥을 자른다 — 표 행과 같은 예외) */
+.eval-row {
+  position: relative; /* 화면 낭독 전용 글(.sg-sr-only · absolute)이 스크롤 칸 밖 main 을 넘치게 하지 않도록 단추 안에 가둔다 */
+  width: 100%; min-height: 64px; padding-block: 10px; margin: 0; border: 0; background: none; color: var(--text);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.eval-row:hover { background: var(--row-hover); }
+.eval-row:focus-visible { outline-offset: calc(var(--focus-ring-offset) * -1); }
+.eval-item:last-child .eval-row { border-radius: 0 0 var(--r-md) var(--r-md); }
+/* ▶ — 펼치면 90° 회전(--dur-base · --ease-move) */
+.eval-caret {
+  grid-area: caret; justify-self: center; width: 0; height: 0; border-style: solid; border-width: 5px 0 5px 7px;
+  border-color: transparent transparent transparent var(--text-2); transition: transform var(--dur-base) var(--ease-move);
+}
+.eval-row[aria-expanded="true"] .eval-caret { transform: rotate(90deg); }
+.eval-name { grid-area: name; min-width: 0; font-size: var(--fs-md); font-weight: 600; line-height: 1.4; word-break: keep-all; }
+.eval-name > .eval-group { color: var(--text-2); font-weight: 500; }
+.eval-name > :last-child { color: var(--text); }
+/* 값 · 근거 바로 옆에 막대(값과 막대를 함께 읽는다) — 남는 폭은 막대 뒤로 */
+.eval-res { grid-area: res; display: grid; grid-template-columns: minmax(0, 340px) minmax(72px, 160px); justify-content: start; column-gap: 20px; align-items: center; min-width: 0; }
+.eval-res-text { display: grid; gap: 2px; min-width: 0; }
+.eval-val { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-size: 13px; line-height: 1.45; }
+.eval-val:empty, .eval-sub:empty { display: none; }
+.eval-val b { color: var(--text); font-size: var(--fs-lg); font-weight: 700; font-variant-numeric: tabular-nums; }
+.eval-code { color: var(--text); font-family: var(--mono); font-size: 13px; }
+.eval-sub { display: block; min-width: 0; color: var(--text-3); font-size: 12.5px; line-height: 1.45; word-break: keep-all; }
+/* 비율 막대: 6px 트랙(3단 면) + 채움(강조 파랑 · 오판은 경고 노랑). 값은 글자로 따로 있어 막대는 꾸밈 */
+.eval-meter { position: relative; display: block; height: 6px; border-radius: var(--r-pill); background: var(--surface-3); overflow: hidden; }
+.eval-meter > i { position: absolute; inset-block: 0; left: 0; border-radius: inherit; background: var(--accent); }
+.eval-meter.tone-warn > i { background: var(--warn); }
+.eval-chip { grid-area: chip; justify-self: end; }
+/* 안쪽: 높이 0fr ↔ 1fr(열 때 · 닫을 때 같은 --dur-base · --ease-move). 접힌 안쪽은 전환이 끝난 뒤 visibility hidden(포커스 · 낭독에서 빠짐),
+   열림 전환이 끝나면(data-settled) 넘침을 보여 차트 툴팁이 잘리지 않게 한다 */
+.eval-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-base) var(--ease-move); }
+.eval-item[data-open="true"] > .eval-panel { grid-template-rows: 1fr; }
+.eval-panel-in { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s linear var(--dur-base); }
+.eval-item[data-open="true"] > .eval-panel > .eval-panel-in { visibility: visible; transition: visibility 0s; }
+.eval-item[data-settled] > .eval-panel > .eval-panel-in { overflow: visible; }
+.eval-panel-body { padding: 2px 20px 18px 50px; } /* 왼쪽 = 줄 안쪽 여백 20 + ▶ 14 + 칸 사이 16 — 이름 칸에 맞춘다 */
+@media (prefers-reduced-motion: reduce) {
+  .eval-panel-in { transition-delay: 0s !important; }
+}
+@media (max-width: 767px) {
+  /* 한 줄: ▶ · 이름 · 칩, 다음 줄: 값 · 근거 · 막대 */
+  .eval-row { grid-template-columns: 14px minmax(0, 1fr) auto; grid-template-areas: "caret name chip" ". res res"; row-gap: 6px; column-gap: 12px; padding-inline: 16px; }
+  .eval-res { grid-template-columns: minmax(0, 1fr) 72px; justify-content: stretch; column-gap: 12px; }
+  .eval-list-head { display: flex; gap: 16px; padding-inline: 16px; }
+  .eval-list-head > .eval-head-caret { display: none; }
+  .eval-list-head > [data-head="state"] { margin-left: auto; }
+  .eval-panel-body { padding: 2px 16px 16px; }
+}

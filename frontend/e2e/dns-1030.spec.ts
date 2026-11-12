@@ -30,12 +30,15 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     await expect(sheet.locator('[data-part="detail"]')).toHaveText('data.exfil.example (TXT)');
     await expect(sheet.locator('[data-kind-badge="dns"]')).toBeVisible();
     await expect(sheet.locator('[data-dns]')).toHaveCount(0); // connect 의 「도메인 조회」 줄은 dns 행에 없다
-    await expect(sheet).toContainText('금지 질의 유형: TXT — data.exfil.example');
+    await expect(sheet).toContainText('금지 질의 유형: data.exfil.example (TXT)');
     // 종류 필터: exec · open · connect · dns(도메인 조회)
-    const sel = page.getByLabel('종류');
-    expect(await sel.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))).toEqual(['', 'exec', 'open', 'connect', 'dns']);
-    await expect(sel.locator('option[value="dns"]')).toHaveText(/도메인 조회/);
-    await sel.selectOption('dns');
+    // 11/09 공통 Select — 첫 항목 「종류 전체」, 고르면 바로 적용(열린 슬라이드 패널은 뒤 화면을 가리므로 먼저 닫는다)
+    await closeSheet(page);
+    await page.locator('[data-filter="kind"]').click();
+    const opts = page.getByRole('listbox', { name: '종류' }).getByRole('option');
+    expect(await opts.evaluateAll((os) => os.map((o) => (o as HTMLElement).dataset.value))).toEqual(['', 'exec', 'open', 'connect', 'dns']);
+    await expect(opts.filter({ hasText: 'dns' })).toHaveText(/도메인 조회/);
+    await opts.filter({ hasText: 'dns' }).click();
     await expect(page.locator('li[data-key]')).toHaveCount(2);
     await expect(page.locator('li[data-key]').first()).toContainText(DNS_EXFIL_NAME);
     await expect(page.locator('[data-part="filter-chips"] [data-chip="kind"]')).toContainText('dns');
@@ -48,10 +51,10 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
   test('정책 템플릿 「DNS 유출 패턴 차단」 → 쉬운 설정 ①② 문구 · 칩(질의 유형 · 도메인) · 길이 칸 2개 → 고급 폼(dns 에서만) → YAML', async ({ page, backend }) => {
     void backend;
     await page.goto('/policies');
-    await page.getByRole('button', { name: '새 정책' }).click();
+    await page.getByRole('button', { name: '정책 생성' }).click(); // 11/09: 큰 2단 창
     const tpl = page.locator('[data-view="templates"] [data-template="dns-exfil"]');
     await expect(tpl).toContainText('DNS 유출 패턴 차단');
-    await expect(tpl).toContainText('긴 라벨 · 긴 이름 · TXT 질의를 알림');
+    await expect(tpl).toContainText('긴 라벨 · 긴 이름 · TXT 질의를 경고');
     await expect(tpl).toContainText('도메인 조회');
     await tpl.click();
     const ed = page.locator(ED);
@@ -78,8 +81,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     await input.press('Enter');
     expect(await chips(page, 'block')).toEqual(['host:attacker.test', 'qtype:TXT', 'qtype:ALL']);
     await expect(ed.locator('[data-chips="block"] [data-chip-error]')).toBeVisible();
-    await expect(ed.locator('[data-summary]')).toContainText('attacker.test');
-    await expect(ed.locator('[data-summary]')).toContainText('TXT');
+    await expect(ed.locator('[data-summary]')).toHaveCount(0); // 편집 탭 요약 띠 삭제(11/09 밤) — 값은 아래 고급 폼으로 확인
     // 고급 폼: 허용 도메인 · 금지 도메인 · 금지 질의 유형 · 라벨 길이 상한 · 이름 길이 상한
     await ed.locator('[data-mode="form"]').click();
     for (const label of ['허용 도메인', '금지 도메인', '금지 질의 유형', '라벨 길이 상한', '이름 길이 상한']) await expect(ed).toContainText(label);
@@ -100,7 +102,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     expect(yaml).toContain('maxNameLength: 120');
     expect(yaml).toContain('denyHosts');
     // 저장 → 규칙 모양 그대로(숫자 · 대문자)
-    await ed.getByRole('button', { name: '저장 전 확인' }).click();
+    await page.locator('dialog[data-part="policy-create"] [data-part="modal-foot"]').getByRole('button', { name: '저장 전 확인' }).click(); // 11/09: 생성 창 바닥 줄
     await page.locator(`${ED} [data-part="save-check"]`).getByRole('button', { name: '저장 후 적용' }).click();
     const saved = backend.rules.find((r) => r.id.startsWith('runtime-dns-exfil'))!;
     expect(saved).toMatchObject({ kind: 'dns', action: 'alert', denyQtypes: ['TXT', 'ALL'], denyHosts: ['attacker.test'], maxLabelLength: 40, maxNameLength: 120 });
@@ -110,12 +112,11 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     backend.enableDns();
     await page.goto('/policies?id=sandbox-dns');
     await expect(page.locator('[data-rule="runtime-dns-exfil"] [data-kind-badge="dns"]')).toHaveText('조회');
-    await expect(page.locator('[data-rule="sandbox-dns"] [data-scope="sandbox"]')).toHaveText('설치 검사 전용');
+    await expect(page.locator('[data-rule="sandbox-dns"] [data-scope="sandbox"]')).toHaveText('설치 검사'); // 11/09 적용 컨테이너 칸 용어
     const ed = page.locator(ED);
     await expect(ed.locator('[data-step="what"] input[value="dns"]')).toBeChecked();
     expect(await chips(page, 'allow')).toContain('host:pypi.org');
-    await expect(ed.locator('[data-summary]')).toContainText('설치 검사 컨테이너에서');
-    await expect(ed.locator('[data-summary]')).toContainText('격리 대상으로 표시만');
+    await expect(ed.locator('[data-summary]')).toHaveCount(0); // 편집 탭 요약 띠 삭제(11/09 밤) — 범위는 위 목록 칸으로 확인
     await ed.locator('[data-step="values"] [data-field="maxLabelLength"]').fill('99');
     await ed.getByRole('button', { name: '저장 전 확인' }).click();
     await expect(ed).toContainText('라벨 길이 상한');
@@ -128,7 +129,8 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     await page.goto('/audit');
     const dnsRows = backend.audit.filter((a) => a.event.kind === 'dns');
     expect(dnsRows.length).toBe(3);
-    await page.getByLabel('종류').selectOption('dns');
+    await page.locator('[data-filter="kind"]').click(); // 11/09 공통 Select
+    await page.getByRole('option', { name: /^dns/ }).click();
     await expect.poll(() => backend.requests.some((r) => r.path.startsWith('/audit?') && r.path.includes('kind=dns'))).toBe(true);
     await expect(page.locator('tr[data-audit]')).toHaveCount(3);
     await expect(page.locator('tr[data-audit] [data-kind-badge="dns"]')).toHaveCount(3);
@@ -142,7 +144,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     await page.getByLabel('기간 시작').fill('2020-01-01T00:00');
     await page.getByLabel('기간 끝').fill('2099-01-01T00:00');
     const dl = page.waitForEvent('download');
-    await page.locator('[data-action="export-csv"]').click();
+    await page.locator('[data-table-tools="audit"] [data-action="table-export"]').click(); // 11/09: 내보내기는 표 도구줄 하나(보이는 칸 · 종류 칸 그대로 dns)
     const file = await dl;
     const text = await (await import('node:fs/promises')).readFile(await file.path(), 'utf8');
     const lines = text.trim().split('\n');
@@ -208,7 +210,10 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
   test('도메인 판단 꺼짐: 배너 · 설정 문구에 「DNS 질의 규칙(kind: dns)」', async ({ page, backend }) => {
     backend.info.dnsResolve = 'off';
     await page.goto('/settings');
-    await expect(page.locator('[data-part="dns"]')).toContainText('DNS 질의 규칙(kind: dns)이 통과 처리됩니다');
-    await expect(page.locator('[data-banner="dns"]')).toContainText('DNS 질의 규칙(kind: dns)');
+    // 11/09 G38: 보이는 문장은 쉬운 말 — kind: dns 같은 내부 이름은 툴팁으로만
+    await expect(page.locator('[data-part="dns"]')).toContainText('DNS 질의 규칙이 통과 처리됩니다');
+    await expect(page.locator('[data-part="dns"] [title*="kind: dns"]')).toHaveCount(1);
+    await expect(page.locator('[data-banner="dns"]')).toContainText('DNS 질의 규칙');
+    await expect(page.locator('[data-banner="dns"] [title*="kind: dns"]')).toHaveCount(1);
   });
 });

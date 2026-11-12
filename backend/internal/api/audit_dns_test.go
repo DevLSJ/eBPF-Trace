@@ -14,7 +14,7 @@ func TestAuditKindDNS(t *testing.T) {
 	srv, _, mem := newServer(t, "", true)
 	ts := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 	for _, v := range []model.Verdict{
-		{Matched: true, RuleID: "runtime-dns-exfil", Action: model.ActionAlert, Reason: "금지 질의 유형: TXT — data.exfil.example",
+		{Matched: true, RuleID: "runtime-dns-exfil", Action: model.ActionAlert, Reason: "금지 질의 유형: data.exfil.example (TXT)",
 			Event: model.Event{Kind: model.KindDNS, Timestamp: ts, ContainerName: "web-api", DstHost: "data.exfil.example", Qtype: "TXT", DstIP: "127.0.0.11", DstPort: 53}},
 		{Matched: true, RuleID: "pipe-to-shell", Action: model.ActionKill, Event: model.Event{Kind: model.KindExec, Timestamp: ts, ContainerName: "web-api", Comm: "sh", Args: "sh -c x | sh"}},
 	} {

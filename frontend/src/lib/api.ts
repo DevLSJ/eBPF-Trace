@@ -6,6 +6,7 @@ import type {
   BlockList,
   Case,
   Change,
+  ChangesPage,
   ChatFacts,
   ChatLink,
   ChatRequest,
@@ -22,6 +23,7 @@ import type {
   Me,
   OsvResult,
   PolicyDefaults,
+  PolicyView,
   Preview,
   Proposal,
   Role,
@@ -34,9 +36,9 @@ import type {
   UserBrief,
   UserView,
   Verdict,
+  IntegrationContainerDetail,
   IntegrationStatus,
-  IntegrationTest,
-} from './types';
+  IntegrationTest, SGInstallSetup } from './types';
 import { readSSE } from './sse';
 
 const base = '/api';
@@ -70,22 +72,61 @@ export function setAuthHooks(h: AuthHooks | null) {
 // 새 API 가 아직 백엔드에 없을 때(라우트 없음 → 404). 그 영역만 「백엔드 미지원」으로 보이고 앱은 계속 동작한다.
 export const isUnsupported = (e: unknown) => e instanceof ApiError && e.status === 404 && !e.json;
 
+// 오류 문구(11/09 G14): 화면에는 상태 코드(「500 ·」)를 쓰지 않고 서버가 준 문장만 — 서버 문장이 없을 때만 상태별 고정 문장.
+// 요청 자체가 실패하면(네트워크 · 서버 꺼짐) 브라우저 글(「Failed to fetch」) 대신 연결 실패 고정 문장(상태 0)
+export const NET_FAIL_TEXT = '서버에 연결하지 못했습니다. 네트워크를 확인한 뒤 다시 시도하세요.';
+export function statusMessage(status: number): string {
+  if (status === 0) return NET_FAIL_TEXT;
+  if (status === 400 || status === 422) return '요청 내용을 처리하지 못했습니다. 입력한 값을 확인하세요.';
+  if (status === 401) return '로그인이 필요합니다. 다시 로그인하세요.';
+  if (status === 403) return '이 작업을 할 권한이 없습니다.';
+  if (status === 404) return '요청한 항목을 찾지 못했습니다.';
+  if (status === 408 || status === 504) return '서버 응답이 늦어 요청을 마치지 못했습니다. 잠시 뒤 다시 시도하세요.';
+  if (status === 409) return '다른 변경과 겹쳐 처리하지 못했습니다. 새로고침한 뒤 다시 시도하세요.';
+  if (status === 413) return '보낸 내용이 너무 커서 처리하지 못했습니다.';
+  if (status === 429) return '요청이 많아 처리하지 못했습니다. 잠시 뒤 다시 시도하세요.';
+  if (status === 502 || status === 503) return '서버가 응답하지 않습니다. 잠시 뒤 다시 시도하세요.';
+  if (status >= 500) return '서버에서 오류가 났습니다. 잠시 뒤 다시 시도하세요.';
+  return '요청을 처리하지 못했습니다. 잠시 뒤 다시 시도하세요.';
+}
+// 스트림을 읽는 도중 끊긴 경우처럼 send 밖에서 난 네트워크 오류도 같은 문장으로
+const isNetworkError = (e: unknown) => e instanceof TypeError && /fetch|network|load failed/i.test(e.message);
+
 export const errorText = (e: unknown) =>
-  e instanceof ApiError ? (e.status ? `${e.status} · ${e.message}` : e.message) : e instanceof Error ? e.message : String(e);
+  e instanceof ApiError ? e.message || statusMessage(e.status) : isNetworkError(e) ? NET_FAIL_TEXT : e instanceof Error ? e.message : String(e);
+
+// 실패 알림 한 줄(11/09 INTEG): 「~하지 못했습니다.」 + 이유(서버 문장 · 고정 문장) — 이유를 괄호에 넣지 않는다.
+// 서버 문장은 마침표 없이 오기도 해서 끝에 마침표를 붙이고, 할 일(todo)은 이유가 이미 「~하세요.」로 끝나면 덧붙이지 않는다(할 일 두 번 방지)
+export const sentence = (t: string) => {
+  const s = t.trim();
+  return !s || /[.!?…]$/.test(s) ? s : `${s}.`;
+};
+export function failText(head: string, e: unknown, todo = '') {
+  const why = sentence(errorText(e));
+  return [head, why, todo && !/하세요\.$/.test(why) ? todo : ''].filter(Boolean).join(' ');
+}
 
 // 쿠키 세션(sg_session, HttpOnly)만 쓴다 — Authorization 헤더를 붙이지 않는다.
 // 미들웨어는 Authorization 을 쿠키보다 먼저 보므로 옛 관리자 토큰이 남아 있으면 401 이 된다(W14).
 async function send(path: string, init: RequestInit = {}, flow = false): Promise<Response> {
-  const res = await fetch(base + path, { ...init, credentials: 'include' });
+  let res: Response;
+  try {
+    res = await fetch(base + path, { ...init, credentials: 'include' });
+  } catch (e) {
+    // 멈추기(AbortController)는 그대로 던진다 — 부르는 쪽이 signal 로 구분한다
+    if (init.signal?.aborted || (e instanceof DOMException && e.name === 'AbortError')) throw e;
+    throw new ApiError(0, NET_FAIL_TEXT);
+  }
   if (!res.ok) {
-    let msg = res.statusText;
+    // 서버 문장({error})이 없으면(텍스트 본문 · 빈 본문) 영어 상태 글(statusText) 대신 상태별 고정 문장
+    let msg = '';
     let json = false;
     let state = '';
     let body: Record<string, unknown> | null = null;
     if ((res.headers.get('Content-Type') ?? '').includes('json')) {
       try {
         const b = (await res.json()) as { error?: string; state?: string };
-        msg = b.error ?? msg;
+        msg = typeof b.error === 'string' ? b.error.trim() : '';
         state = b.state ?? '';
         json = true;
         body = b as Record<string, unknown>;
@@ -93,6 +134,7 @@ async function send(path: string, init: RequestInit = {}, flow = false): Promise
         /* 본문 없음 */
       }
     }
+    if (!msg) msg = statusMessage(res.status);
     if (!flow && json && authHooks) {
       if (res.status === 401) authHooks.unauthorized(state, msg);
       else if (res.status === 403) authHooks.forbidden(msg);
@@ -112,6 +154,8 @@ async function request<T>(path: string, init: RequestInit = {}, flow = false): P
 export interface AuditParams {
   kind?: string;
   action?: string;
+  // 판정(11/10): malicious | false_positive | pending(열린 건)
+  decision?: string;
   rule?: string;
   container?: string;
   since?: string;
@@ -139,9 +183,12 @@ export const api = {
   info: () => request<Info>('/info'),
   stats: () => request<Stats>('/stats'),
   recent: (limit = 500) => request<Verdict[]>(`/events/recent?limit=${limit}`),
-  listRules: () => request<Rule[]>('/policies'),
+  // 11/09: 정책마다 마지막 수정(updatedAt · updatedBy) — 저장할 때는 stripView 로 빼고 보낸다(백엔드가 모르는 칸을 거절)
+  listRules: () => request<PolicyView[]>('/policies'),
   exportYaml: () => request<string>('/policies/export'),
-  saveRule: (rule: Rule) => request<Rule>('/policies', json('POST', rule)),
+  saveRule: (rule: Rule) => request<PolicyView>('/policies', json('POST', rule)),
+  // 정책 되돌리기(11/09, 관리자 · 사유 필수): 그 변경 직전 값으로 정책 하나 전체 — 200 되돌린 정책 · 400 사유 · 404 기록 없음 · 409 시스템 규칙 · 만든 기록 · 이미 그 값
+  revertPolicy: (id: string, changeId: string, reason: string) => request<PolicyView>(`/policies/${enc(id)}/revert`, json('POST', { changeId, reason })),
   applyYaml: (yaml: string) =>
     request<Rule[]>('/policies', {
       method: 'PUT',
@@ -203,6 +250,8 @@ export const api = {
   blocklist: () => request<Blocklist>('/blocklist'),
   unblock: (list: BlockList, value: string, reason = '') => request<void>(`/blocklist/${list}/${enc(value)}`, json('DELETE', { reason })),
   changes: (limit = 100) => request<Change[]>(`/changes?limit=${limit}`),
+  // 변경 이력 쪽 번호(11/09) — rule = 그 정책을 다룬 기록만(전후 값도 그 정책 것만) · kind = 종류 완전 일치
+  changesPage: (p: { rule?: string; kind?: string; offset: number; limit: number }) => request<ChangesPage>(`/changes${qs(p)}`),
   osv: (ecosystem: string, name: string) => request<OsvResult>(`/osv${qs({ ecosystem, name })}`),
   // kill 직전 증거(10/20) — 컨테이너 이름 또는 ID(앞부분), 최근 것부터
   evidence: (container: string) => request<Evidence[]>(`/evidence${qs({ container })}`),
@@ -211,6 +260,9 @@ export const api = {
   demoRun: (scenario: DemoScenario) => request<DemoRun>('/demo/run', json('POST', { scenario })),
   // 연동(11/06): 환경 점검 · 감시 중 컨테이너(조회자 포함) · 연결 테스트(관리자 세션, 202 / 409 진행 중 / 503 불가)
   integration: () => request<IntegrationStatus>('/integration'),
+  integrationContainer: (id: string) => request<IntegrationContainerDetail>(`/integration/containers/${enc(id)}`),
+  // 11/09 설치 검사 「사용 방법」 — 실행 주소 · 토큰(관리자만) · 내려받기 경로
+  sginstallSetup: () => request<SGInstallSetup>('/sginstall/setup'),
   integrationTest: () => request<IntegrationTest>('/integration/test', { method: 'POST' }),
 
   // AI 도우미(10/20): POST /api/chat → SSE token… → facts → links → done | error.

@@ -175,7 +175,7 @@ func (r compiled) matchDNS(ev model.Event) (string, bool) {
 		}
 	}
 	if qtype != "" && slices.Contains(r.DenyQtypes, qtype) {
-		return "금지 질의 유형: " + qtype + " — " + name, true
+		return "금지 질의 유형: " + label, true
 	}
 	if r.MaxLabelLength > 0 {
 		if n := longestLabel(name); n > r.MaxLabelLength {

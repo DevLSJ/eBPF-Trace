@@ -12,7 +12,7 @@
    → (위반) 증거 수집(≤0.7초) → Docker kill + 웹훅/Slack 알림
    → Redis 버퍼 → WebSocket → React 대시보드 · PostgreSQL 감사 로그
 REST · WS 앞: 로그인(쿠키 세션 · 역할 · OTP) — CLI 는 Bearer ADMIN_TOKEN, sg-install 은 SANDBOX_TOKEN
-공급망 검사: GuardDog · OSV-Scanner 검사기 컨테이너 / AI 도우미: 로컬 Ollama(선택)
+공급망 검사: GuardDog · OSV-Scanner 검사기 컨테이너 / AI 도우미: Claude API(기본, 선택) · 로컬 Ollama(예비 또는 단독)
 ```
 
 | 구성 | 스택 | 위치 |
@@ -78,32 +78,49 @@ REST · WS 앞: 로그인(쿠키 세션 · 역할 · OTP) — CLI 는 Bearer ADM
 
 | 도구 | 버전 | 쓰는 곳 |
 |---|---|---|
-| Go | 1.26 이상(`backend/go.mod`) | 백엔드 · `make test` |
+| Go | 1.26 이상(`backend/go.mod`) | 백엔드 · `make test` · `make dev-mock` |
 | Node.js | 22.12 이상(`frontend/.nvmrc` = 24) | 화면 · e2e |
-| make · bash | — | 모든 명령(Windows 는 WSL2) |
-| Docker | 선택 | 공급망 검사 · `make stack-up` · `make sandbox-up`(없어도 `make dev` · `make test` 는 됨) |
+| make · bash · openssl | — | 모든 명령(Windows 는 WSL2) · `make dev` 비밀값 생성 |
+| Docker Desktop | `make dev` 에 필요 | `make dev`(실제 가젯 백엔드 · 개발 DB) · 공급망 검사 · `make stack-up` · `make sandbox-up`(없으면 `make dev-mock` · `make test` 만) |
 | Python 3 | 선택 | `make mock`(옛 목업 열람)만 |
 
 ```bash
 git clone https://github.com/DevLSJ/eBPF-Trace.git && cd eBPF-Trace
 make setup      # 도구 확인 → Go 모듈 · npm ci · Playwright chromium
-make dev        # http://127.0.0.1:5173 (admin / admin)
+make dev        # http://localhost:5173 (admin / admin, 첫 로그인에 OTP 등록) — Docker Desktop 필요
 make test       # 백엔드 vet · race 테스트 + 프론트 lint · build
 cd frontend && npx playwright test   # React e2e(가짜 백엔드)
 ```
 
-- `make dev` · `make test` 는 `frontend/node_modules` 가 없으면 먼저 `npm ci` 를 실행함
-- 저장소에 없는 것: `.env`(비밀 값 — `.env.example` 에서 만듦) · 기획 문서 · 개인 Claude 설정(공개 저장소라 넣지 않음)
+- `make dev` · `make dev-mock` · `make test` 는 `frontend/node_modules` 가 없으면 먼저 `npm ci` 를 실행함
+- 저장소에 없는 것: `.env`(비밀 값 — `.env.example` 에서 만듦) · `.env.local`(로컬 개발 비밀값 — 아래 「로컬 개발」) · 기획 문서 · 개인 Claude 설정(공개 저장소라 넣지 않음)
 
-## 빠른 시작 (로컬, 커널 없이)
+## 로컬 개발 (`make dev`)
 
-macOS/Windows 에서는 eBPF 를 못 돌리므로 `EVENT_SOURCE=mock` 이 데모 시나리오(정상 컨테이너 + 타이포스쿼팅 패키지 `pkg-reqeusts`)를 재생한다.
+Docker Desktop 안에서 실제 eBPF 가젯 백엔드 + 개발 DB 를 띄우고, 화면은 Vite :5173 이 백엔드로 넘김(`deploy/docker-compose.dev.yml`).
 
 ```bash
-make dev        # 백엔드(mock, :8000) + Vite(:5173) → http://127.0.0.1:5173
+make dev        # 이미지 빌드 → DB · 백엔드 기동 → Vite :5173. Ctrl-C 면 Vite · 백엔드 멈춤(DB 는 남김)
+make dev-logs   # 백엔드 로그
+make dev-down   # 백엔드 · DB 내림(DB 볼륨은 남김 — 지우려면 docker compose -f deploy/docker-compose.dev.yml down -v)
+make dev-mock   # Docker 없이 화면만 — mock 소스 · go run(:8000) · 메모리 저장 · OTP 끔
 ```
 
-- 로그인은 켜져 있다. 개발용 관리자 계정은 `admin` / `admin`(Makefile `DEV_ADMIN_PW`)으로 바로 대시보드에 들어간다 — `DEV_AUTH` 가 OTP 를 끄고 `AUTH_DEV_MODE=true` 로 첫 로그인 비밀번호 변경 · 라이선스 단계를 건너뛴다. `AUTH_DEV_MODE` 는 `EVENT_SOURCE=mock` 에서만 켜진다(가젯 소스면 백엔드가 시작하지 않는다). `make sandbox-up`(실제 가젯)은 개발 모드 없이 원래 단계 그대로
+| 항목 | `make dev` |
+|---|---|
+| 백엔드 | 실제 가젯(`EVENT_SOURCE=gadget`), `127.0.0.1:8000` 에만 열림 |
+| 개발 DB | Postgres `127.0.0.1:25433` · Redis `127.0.0.1:26380`(`DEV_PG_PORT` · `DEV_REDIS_PORT` 로 바꿈) |
+| 로그인 | `admin` / `admin`(비밀번호 변경 단계 없음) · 첫 로그인에 OTP 등록(QR) · 평가판 라이선스는 DB 에 한 번 등록 |
+| 감시 · 격리 | 감시 = 전체 컨테이너(자기 스택 `supplyguard-*` 제외) · 격리 = `sg-install-*` · 시연 · 라벨 `supplyguard.enforce=true` 만(그 밖은 보류) |
+| AI 도우미 | `.env.local` 의 `ANTHROPIC_API_KEY` 가 있으면 Claude, 없으면 꺼짐 |
+| 설치 검사 「사용 방법」 | 실행 주소 = `SG_INSTALL_API`(`http://127.0.0.1:8000`) |
+
+- `.env.local`(저장소 루트 · gitignore · 600): `make dev` 가 없는 `AUTH_SECRET_KEY` · `ADMIN_TOKEN` · `SANDBOX_TOKEN` 을 한 번 만들어 계속 씀. `AUTH_SECRET_KEY` 가 바뀌면 DB 의 OTP 등록을 못 읽음
+- 백엔드 코드를 고친 뒤에는 다시 `make dev`(이미지를 다시 만듦)
+- 개발 전용 로그인: `AUTH_DEV_MODE=true` 는 mock 소스에서만 켜짐 — 가젯 소스는 `LOCAL_DEV=true` 가 함께 있어야 시작함. `LOCAL_DEV` 는 `make dev` 만 켜고, 혼자서는 아무것도 바꾸지 않음. 서버 `.env` 에는 넣지 않음
+- 한계: Docker Desktop 은 fanotify 가 없어 컨테이너 발견이 docker-events — 컨테이너 시작 직후 약 0.1초 안의 동작은 놓칠 수 있음
+- `make dev-mock`: 데모 시나리오(정상 컨테이너 + 타이포스쿼팅 패키지 `pkg-reqeusts`) 재생 · `admin` / `admin` 으로 바로 대시보드(`AUTH_DEV_MODE` 로 비밀번호 변경 · 라이선스 단계 건너뜀) · 재시작마다 저장 내용 초기화. 공급망 검사는 Docker Desktop 이 켜져 있어야 하고 작업 폴더는 `.scan-work`
+- `make sandbox-up`(실제 가젯 · 감시 `sg-install-*` 만 · 메모리 저장 · 개발 로그인 없음)도 `127.0.0.1:8000` 을 씀 — `make dev` 와 함께 띄우지 않음
 - 목업: `make mock` → http://127.0.0.1:8766 (`?source=sim&as=admin` 로 로그인 건너뜀)
 
 전체 스택을 컨테이너로 보려면 (nginx 경유, 실제 Postgres·Redis):
@@ -130,7 +147,7 @@ make sandbox-down
 
 종료 코드: 0 통과 · 1 설치 실패 · 2 위반 · 3 차단 목록이라 거부 · 4 결과 확인 불가(통과로 보지 않음) · 69 연결 실패 · 77 토큰 거부.
 데모 공격 시나리오(`deploy/demo/README.md`): `SCENARIO=all|shell|revshell|direct-ip|domain|dns-exfil|udp bash deploy/demo/run-attacker.sh`.
-시연 패널: `DEMO_ENABLED=true`(`make dev` 는 켜져 있음, 운영은 끈다)면 관리자가 대시보드 「시연」 카드에서 같은 데모 패키지를 감시 컨테이너에 설치해 컨테이너 시작 → 위반 → 격리 → 판정 대기까지 단계 레일로 본다.
+시연 패널: `DEMO_ENABLED=true`(`make dev` 는 켜져 있음, 운영은 끈다)면 관리자가 「시연」 화면(`/demo`)에서 같은 데모 패키지를 감시 컨테이너에 설치해 컨테이너 시작 → 위반 → 격리 → 판정 대기까지 단계 레일로 본다.
 
 ## 운영 배포 (EC2 · VM, 실제 eBPF)
 
@@ -143,7 +160,8 @@ deploy/compose.sh pull && deploy/deploy.sh      # 백업 → 반영 → 확인 �
 deploy/compose.sh logs -f backend
 ```
 
-- AI 도우미를 켜려면 `.env` 에 `OLLAMA_URL=http://ollama:11434` 를 넣고 compose 를 `--profile ai` 로 띄운 뒤 모델을 한 번 받는다(`ollama pull qwen2.5:3b`, 메모리 4GB)
+- AI 도우미를 켜려면 `.env` 에 `ANTHROPIC_API_KEY` 를 넣는다(기본 모델 `claude-opus-5-5`, `CLAUDE_MODEL` 로 바꿈). 질문 · 최근 대화 · 서버가 조회한 사실 문장이 Anthropic API 로 나가며, 범위는 설정 → 서버 「AI 도우미」에 보인다. 로컬 `make dev` 는 저장소 루트 `.env.local` 의 키를 읽는다
+- 서버 밖으로 보내지 않으려면 `CHAT_PROVIDER=ollama` 와 `OLLAMA_URL=http://ollama:11434` 를 넣고 compose 를 `--profile ai` 로 띄운 뒤 모델을 한 번 받는다(`ollama pull qwen2.5:3b`, 메모리 4GB). 키와 `OLLAMA_URL` 이 둘 다 있으면 Ollama 는 예비
 - 알림: `NOTIFY_WEBHOOK_URL` · `NOTIFY_SLACK_URL` · `PUBLIC_URL`
 - 컨테이너 발견 `CONTAINER_DISCOVERY=auto`(fanotify 먼저, 안 되면 docker-events — 시작 직후 약 0.1초는 놓칠 수 있음)
 
@@ -193,7 +211,7 @@ cd backend && test -z "$(gofmt -l .)" && go vet ./... && GOOS=linux go vet ./...
 cd frontend && npm run lint && npm run build && npx playwright test
 ```
 
-eBPF 가젯 실행 검증은 커널이 있는 EC2/VM 에서만 한다.
+eBPF 가젯 실행 검증은 `make dev`(Docker Desktop 안 실제 가젯 — 컨테이너 시작 직후 약 0.1초를 놓칠 수 있음) 또는 커널이 있는 VM · EC2(fanotify)에서 한다.
 
 ## 문서
 
