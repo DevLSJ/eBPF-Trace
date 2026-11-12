@@ -129,6 +129,7 @@ tools/     sg-install
 - **인증**: `/health` 를 뺀 모든 화면 · API · WebSocket 은 로그인 뒤. 쓰기는 관리자 역할(조회자는 읽기 · 미리보기 · 챗봇만). `ADMIN_TOKEN` 은 CLI · 자동화용 Bearer(처리자 「cli」). `SANDBOX_TOKEN` 은 sg-install 보고만(mock 은 비어도 허용). 비밀번호 5자 이상 · 아이디와 다름, 5번 틀리면 5분 잠금. `AUTH_SECRET_KEY` 는 가젯 모드에서 필수(32자 이상)
 - 감사 처리자는 로그인 계정의 표시 이름. 적용 · 버림 · 차단 해제의 사유는 변경 이력에 남는다
 - 데모 패키지 `deploy/demo/reqeusts`는 무해 시뮬(TEST-NET 주소 · 예약 도메인만). 실제 악성 코드를 넣지 않는다
+- 평가 규칙 v2(11/12, `bench/v2/protocol.json` — 새 표본을 받기 전에 고정): 98% · 2% 는 패키지 축(정적 · LLM · 설치 행위 · ML)만. 구간 = 학습 50 · 보정 20 · 시험 20 · 예비 10, 분할 단위 = 캠페인 묶음(같은 이름 또는 256바이트 이상 같은 코드 파일), 무작위(고정 시드) · 층화. **이미 본 표본(`bench/v2/seen-groups.json`, v1 측정 + 이전 프로젝트가 규칙을 조정하며 본 것)은 학습 구간에만** — 보정 · 시험 · 예비는 처음 받는 표본만. 시험 · 예비는 받자마자 봉인(`bench/v2/split.py` 가 거부, 여는 것은 `unseal` 로 구간마다 한 번 · selection.json 커밋 뒤 · 기록은 `unseal-log.json`). 개발(표본을 보고 규칙 · 프롬프트 · 모델을 고침)은 학습 구간에서만, 운영점은 보정 구간에서 「복합 오탐률 ≤ 2% 에서 복합 탐지율 최대」(`bench/v2/metrics.py`). 층이 처리 못 한 표본도 분모에서 빼지 않는다. 층마다 입력 · 후보는 그 층의 보정 결과를 보기 전에 `bench/v2/addenda/` 에 적는다. 달성 판정 = 시험 구간 측정값(반올림 전) + 95% 윌슨 구간 병기. 시험: `python3 -B -m unittest discover -s bench/v2 -p 'test_*.py'`(make test · CI 에 있음)
 - 공급망 검사 판정(11/03, `scan/verdict.go`): **악성** = GuardDog 점수 ≥ 5 **그리고** 설치 시점 규칙(`threat-setup-*` · `npm-preinstall-script` · `network-exfil*` · `dns-exfil` · `reverse-shell` · `download-exec` · `self-propagation`) 1개 이상 · **취약** = 알려진 취약점 · **주의** = 점수 ≥ 5 인데 런타임 휴리스틱 규칙만 · 그 외 정상. 우선순위 악성 > 취약 > 주의 > 정상. 테스트 코드 탐지는 어디에도 넣지 않는다. `threat-process-hooks` 는 정상 setup.py 에도 흔해 설치 시점 규칙에서 뺐다
 
 ## 개발 프로세스

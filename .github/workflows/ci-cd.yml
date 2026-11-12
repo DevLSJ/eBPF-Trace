@@ -62,6 +62,8 @@ jobs:
             frontend/playwright-report
             frontend/test-results
           retention-days: 7
+      - name: Evaluation protocol v2 (rules match code, split and sealing)
+        run: python3 -B -m unittest discover -s bench/v2 -p 'test_*.py'
       - name: Validate compose files
         run: |
           set -euo pipefail
