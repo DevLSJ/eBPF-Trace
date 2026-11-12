@@ -227,9 +227,11 @@ def sources(update=None):
         cur.update(update)
         cur.setdefault("fetchedOn", dt.date.today().isoformat())
         os.makedirs(DATA, exist_ok=True)
-        with open(SOURCES, "w", encoding="utf-8") as f:
+        tmp = f"{SOURCES}.{os.getpid()}.part"  # 여러 단계를 함께 돌려도 반쯤 쓴 파일을 읽지 않게
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(cur, f, ensure_ascii=False, indent=1)
             f.write("\n")
+        os.replace(tmp, SOURCES)
     return cur
 
 
