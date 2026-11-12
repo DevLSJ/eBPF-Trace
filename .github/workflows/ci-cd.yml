@@ -47,6 +47,9 @@ jobs:
           npm ci
           npm run lint
           npm run build
+      # 11/12: 평가 규칙 v2 단위 시험(표준 라이브러리만 · 몇 초). e2e 앞에 둔다 — 뒤에 두면 e2e 가 실패할 때 건너뛴다
+      - name: Evaluation protocol v2 (rules match code, split and sealing)
+        run: python3 -B -m unittest discover -s bench/v2 -p 'test_*.py'
       # 10/20: React e2e(Playwright, 가짜 백엔드 — 실제 서버 없이 Vite 만 띄움). 실패하면 보고서를 올린다
       - name: Dashboard e2e
         working-directory: frontend
@@ -62,8 +65,6 @@ jobs:
             frontend/playwright-report
             frontend/test-results
           retention-days: 7
-      - name: Evaluation protocol v2 (rules match code, split and sealing)
-        run: python3 -B -m unittest discover -s bench/v2 -p 'test_*.py'
       - name: Validate compose files
         run: |
           set -euo pipefail
