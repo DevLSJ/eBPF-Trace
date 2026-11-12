@@ -581,10 +581,12 @@ class Integration(Base):
     def test_recompression_refuses_a_bomb_and_a_broken_stream(self):
         import bz2
         bomb = self.add("train", "pypi", "benign", raw=bz2.compress(b"\0" * 4096))
+        self.save()
+        with mock.patch.object(sample, "MAX_EXTRACT", 1024):   # 풀면 4096 바이트 — 낮춘 상한을 넘는다
+            self.run_ok()
         broken = self.add("train", "pypi", "benign", raw=bz2.compress(plain_tar({"a/setup.py": b"x\n"}))[:-8])
         self.save()
-        with mock.patch.object(sample, "MAX_EXTRACT", 1024):
-            self.run_ok()
+        self.run_ok()                                          # 평소 상한 — 끝이 잘린 압축
         res = self.results()
         self.assertEqual(res[bomb], {"id": bomb, "status": "skip", "why": "풀면 크기 상한 초과"})
         self.assertEqual(res[broken], {"id": broken, "status": "skip", "why": "압축을 읽지 못함"})

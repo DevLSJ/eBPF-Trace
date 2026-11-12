@@ -20,12 +20,15 @@
 error 로 남은 표본만 다시 하려면 run --retry-errors(같은 id 는 마지막 줄이 이긴다).
 """
 import argparse
+import bz2
 import collections
 import datetime as dt
+import gzip
 import importlib.machinery
 import importlib.util
 import io
 import json
+import lzma
 import os
 import re
 import sys
@@ -43,7 +46,7 @@ API_DEFAULT = "http://127.0.0.1:8000/api"
 CANDIDATES = (("S-malicious", ("malicious",)), ("S-suspicious", ("malicious", "suspicious")))
 VERDICTS = ("malicious", "suspicious", "vulnerable", "clean")
 STATUSES = ("ok", "skip", "error")
-FIELDS = ("verdict", "score", "rules", "installThreats", "threats", "capabilities", "vulns", "seconds", "engines")
+FIELDS = ("verdict", "score", "rules", "installThreats", "threats", "capabilities", "testFindings", "vulns", "seconds", "engines")
 RETRY_CODES = (0, 429, 502, 503, 504)  # 백엔드가 다시 뜨는 중 · 자리가 없음 — 기다렸다 다시 한다(v1 도구와 같은 식)
 TRIES = 6
 FORM_NOTE = {"zip": "암호 zip → 메모리에서 tar.gz 로 다시 묶음", "sdist": "sdist(.tar.gz) 그대로", "wheel": "wheel(.whl) 그대로",
@@ -129,7 +132,34 @@ def select(parts, data):
 
 
 def sample_path(data, row):
-    return os.path.join(data, "store", f"{row['id']}.{collect.EXT[row['form']]}")
+    """표본 파일 자리: store/, 없으면 sealed/<구간>/(봉인을 연 뒤의 최종 측정 — 여기까지 오는 id 는 select 가 이미 걸렀다)."""
+    name = f"{row['id']}.{collect.EXT[row['form']]}"
+    for folder in ("store",) + tuple(os.path.join("sealed", p) for p in split.SEALED):
+        path = os.path.join(data, folder, name)
+        if os.path.exists(path):
+            return path
+    return os.path.join(data, "store", name)
+
+
+def regzip(raw):
+    """bz2 · xz 로 압축한 tar → gzip 으로 다시 압축한 바이트(안의 tar 는 그대로). 그 형식이 아니면 None.
+    백엔드는 gzip tar 와 zip 만 푼다 — 그대로 올리면 정상 표본이 「검사 못 함 → 못 잡음」으로 세어져 오탐률이 낮아진다.
+    풀어서 상한(sample.MAX_EXTRACT)을 넘거나 끝까지 읽히지 않으면 ValueError(사유)."""
+    if raw[:3] == b"BZh":
+        dec = bz2.BZ2Decompressor()
+    elif raw[:6] == b"\xfd7zXZ\x00":
+        dec = lzma.LZMADecompressor()
+    else:
+        return None
+    try:
+        tar = dec.decompress(raw, max_length=sample.MAX_EXTRACT + 1)
+    except (OSError, lzma.LZMAError, EOFError):
+        raise ValueError("압축을 읽지 못함")
+    if len(tar) > sample.MAX_EXTRACT:
+        raise ValueError("풀면 크기 상한 초과")
+    if not dec.eof:
+        raise ValueError("압축을 읽지 못함")
+    return gzip.compress(tar, compresslevel=6, mtime=0)
 
 
 def upload_ext(form, raw):
@@ -156,9 +186,14 @@ def prepare(row, data):
         if packed is None:
             return None, why
         return (f"sgb-{row['id']}.tar.gz", packed[0]), None
-    if len(raw) > v1().MAX_UPLOAD:
+    try:
+        again = regzip(raw)
+    except ValueError as e:
+        return None, str(e)
+    body, ext = (raw, upload_ext(row["form"], raw)) if again is None else (again, "tar.gz")
+    if len(body) > v1().MAX_UPLOAD:
         return None, "업로드 50MB 초과"
-    return (f"sgb-{row['id']}.{upload_ext(row['form'], raw)}", raw), None
+    return (f"sgb-{row['id']}.{ext}", body), None
 
 
 def scan(api, filename, body, timeout):
