@@ -1,0 +1,35 @@
+# 평가 측정용 백엔드(평가 규칙 v2, bench/v2) — 개발 스택(supplyguard-dev)의 DB · 검사 목록과 섞이지 않게 따로 띄운다.
+#
+#   make bench-up      → http://127.0.0.1:8010 (토큰은 .env.local 의 ADMIN_TOKEN, bench/v2/run_static.py --api 로 넘긴다)
+#   make bench-down    → 내림(DB · 작업 볼륨은 남김)
+#
+# docker-compose.dev.yml 위에 겹친다. 공급망 검사(GuardDog · OSV)만 쓰므로 이벤트 소스는 mock 이고,
+# 가젯에 필요한 권한(privileged · pid: host)과 호스트 마운트를 뺀다. 남는 것은 검사기 컨테이너를 띄울 docker.sock 과 작업 볼륨뿐이다.
+# 표본 압축은 이 스택의 작업 볼륨(supplyguard-bench_scan_work) 안에서만 풀리고, 검사가 끝나면 백엔드가 지운다.
+name: supplyguard-bench
+
+services:
+  postgres:
+    ports: !override ["127.0.0.1:25434:5432"]
+
+  redis:
+    ports: !override ["127.0.0.1:26381:6379"]
+
+  backend:
+    environment:
+      EVENT_SOURCE: mock
+      ENFORCE_KILL: "false"
+      DEMO_ENABLED: "false"
+      LOCAL_DEV: "false"
+      SCAN_VOLUME: supplyguard-bench_scan_work
+      SCAN_AUTO: "off"
+      # 검사기 두 개까지 함께(각 1GB). 판정은 동시 수와 무관하다 — 측정 시간만 줄인다
+      SCAN_CONCURRENCY: "2"
+      SCAN_QUEUE: "8"
+      SG_INSTALL_API: http://127.0.0.1:8010
+    privileged: !reset false
+    pid: !reset null
+    ports: !override ["127.0.0.1:8010:8000"]
+    volumes: !override
+      - /var/run/docker.sock:/var/run/docker.sock
+      - scan_work:/scan

@@ -17,7 +17,7 @@ DEV_EVAL := EVAL_REPORTS_DIR=$(CURDIR)/bench/reports SG_INSTALL_FILE=$(CURDIR)/t
 # 저장소 안 .scan-work 를 작업 폴더로 쓰고 검사기에는 같은 폴더를 bind(SCAN_VOLUME 이 절대 경로면 bind). Docker Desktop 이 켜져 있어야 한다
 DEV_SCAN := SCAN_DIR=$(CURDIR)/.scan-work SCAN_VOLUME=$(CURDIR)/.scan-work
 
-.PHONY: setup dev dev-mock dev-down dev-logs backend frontend mock stack-up stack-down test build sandbox-up sandbox-down vm-open vm-close
+.PHONY: setup dev dev-mock dev-down dev-logs bench-up bench-down backend frontend mock stack-up stack-down test build sandbox-up sandbox-down vm-open vm-close
 
 # make dev(11/09 사용자 결정): 실제 가젯 백엔드 · 개발 DB 는 deploy/docker-compose.dev.yml. 로그인 admin/admin · OTP 켬 · 라이선스는 DB 에 한 번 등록
 COMPOSE_DEV := docker compose -f deploy/docker-compose.dev.yml
@@ -67,6 +67,22 @@ dev-down:
 
 dev-logs:
 	$(COMPOSE_DEV) logs -f --tail=100 backend
+
+## bench-up / bench-down(11/12): 평가 측정용 백엔드(127.0.0.1:8010 · 공급망 검사만 · mock 소스 · 권한 없음) — 개발 DB · 검사 목록과 따로 띄운다.
+## 표본은 bench/v2/run_static.py 가 올리고, 압축은 이 스택의 작업 볼륨 안에서만 풀린다. 내려도 DB · 볼륨은 남는다
+COMPOSE_BENCH := docker compose -f deploy/docker-compose.dev.yml -f deploy/docker-compose.bench.yml
+bench-up:
+	@docker info >/dev/null 2>&1 || { echo "Docker Desktop 이 꺼져 있습니다 — 켜고 다시 make bench-up"; exit 1; }
+	@touch .env.local && chmod 600 .env.local; for k in $(DEV_SECRETS); do grep -q "^$$k=" .env.local || echo "$$k=$$(openssl rand -hex 32)" >> .env.local; done
+	$(COMPOSE_BENCH) up -d --build --wait
+	@T=$$(grep '^ADMIN_TOKEN=' .env.local | cut -d= -f2-); \
+	  if [ "$$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $$T" http://127.0.0.1:8010/api/license)" = 404 ]; then \
+	    K=$$(openssl rand -hex 8 | tr 'a-f' '0-5' | sed 's/\(....\)/\1-/g; s/-$$//'); \
+	    curl -sf -o /dev/null -X PUT -H "Authorization: Bearer $$T" -H 'Content-Type: application/json' -d "{\"key\":\"$$K\"}" http://127.0.0.1:8010/api/license && echo "평가판 라이선스 등록(측정용 DB)"; fi
+	@echo "측정용 백엔드 준비 — http://127.0.0.1:8010 · 내림: make bench-down"
+
+bench-down:
+	$(COMPOSE_BENCH) down
 
 ## backend: mock 소스 백엔드만 (목업 '실제 백엔드' 모드가 붙을 수 있게 CORS 출처 포함)
 backend:
