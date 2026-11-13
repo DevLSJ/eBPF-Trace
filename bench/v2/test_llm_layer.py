@@ -284,7 +284,7 @@ class Staging(unittest.TestCase):
 class Cost(unittest.TestCase):
     def test_all_four_token_kinds_are_priced(self):
         u = {"inputTokens": 1000, "outputTokens": 500, "cacheReadTokens": 2000, "cacheWriteTokens": 3000}
-        self.assertAlmostEqual(L.cost_usd(OPUS, u), (1000 * 4.00 + 500 * 20.00 + 2000 * 0.20 + 3000 * 5.00) / 1e6, places=12)
+        self.assertAlmostEqual(L.cost_usd(OPUS, u), (1000 * 5.00 + 500 * 25.00 + 2000 * 0.50 + 3000 * 6.25) / 1e6, places=12)
         self.assertAlmostEqual(L.cost_usd(HAIKU, u), (1000 * 0.10 + 500 * 0.50 + 2000 * 0.01 + 3000 * 0.125) / 1e6, places=12)
 
     def test_haiku_prompt_over_100k_tokens_pays_the_higher_card(self):
@@ -295,7 +295,14 @@ class Cost(unittest.TestCase):
         self.assertAlmostEqual(L.cost_usd(HAIKU, over), (60_000 * 0.50 + 1000 * 2.50 + 30_000 * 0.05 + 10_001 * 0.625) / 1e6, places=12)
         # Opus 는 길이와 상관없이 한 요금표
         big = {"inputTokens": 500_000, "outputTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0}
-        self.assertAlmostEqual(L.cost_usd(OPUS, big), 2.0, places=12)
+        self.assertAlmostEqual(L.cost_usd(OPUS, big), 2.5, places=12)
+
+    def test_stage_two_is_opus_4_8(self):
+        # 사용자 결정(11/13): 학습 구간 20건에서 Opus 5.5 가 2단계 11건 중 9건을 refusal:cyber 로 거부 — 문서가 권하는 사이버 대체 모델
+        # Opus 4.8 을 처음부터 2단계로 고정한다(대체 기능이 아니라 고정 모델이라 평가 조건이 바뀌지 않는다)
+        self.assertEqual((L.STAGE1_MODEL, L.STAGE2_MODEL), ("claude-haiku-5-5", "claude-opus-4-8"))
+        self.assertEqual(L.PRICES["claude-opus-4-8"], [{"upTo": None, "input": 5.00, "cacheWrite5m": 6.25, "cacheRead": 0.50, "output": 25.00}])
+        self.assertNotIn("claude-opus-5-5", L.PRICES)  # 부르지 않는 모델은 값표에도 두지 않는다
 
     def test_a_model_without_a_price_is_refused(self):
         with self.assertRaises(KeyError):
