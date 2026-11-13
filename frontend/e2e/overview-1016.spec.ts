@@ -14,7 +14,7 @@ test.describe('eBPF 수집 종합', () => {
     await expect(ov.getByTestId('pending')).toBeVisible();
     const [p, k] = await Promise.all([page.getByTestId('pending').boundingBox(), ov.locator('[data-part="kpis"]').boundingBox()]);
     expect(k!.y).toBeLessThan(p!.y);
-    expect(await ov.locator('[data-range]').evaluateAll((els) => els.map((e) => [(e as HTMLElement).dataset.range, e.getAttribute('aria-pressed')]))).toEqual([
+    await expect.poll(() => ov.locator('[data-range]').evaluateAll((els) => els.map((e) => [(e as HTMLElement).dataset.range, e.getAttribute('aria-pressed')]))).toEqual([
       ['1h', 'false'],
       ['24h', 'true'],
       ['7d', 'false'],
@@ -27,10 +27,10 @@ test.describe('eBPF 수집 종합', () => {
     const s = backend.summary('24h');
     const v = (k: string) => page.locator(`${OV} [data-kpi="${k}"] [data-value]`);
     await expect(v('collected')).toHaveText(s.collected.total.toLocaleString('ko-KR'));
-    expect(num(await v('violations').textContent())).toBe(s.violations.total);
-    expect(num(await v('isolated').textContent())).toBe(s.isolatedContainers);
-    expect(num(await v('installs').textContent())).toBe(s.installs.total);
-    expect(num(await v('decided').textContent())).toBe(s.decisions.malicious + s.decisions.falsePositive);
+    await expect.poll(async () => num(await v('violations').textContent())).toBe(s.violations.total);
+    await expect.poll(async () => num(await v('isolated').textContent())).toBe(s.isolatedContainers);
+    await expect.poll(async () => num(await v('installs').textContent())).toBe(s.installs.total);
+    await expect.poll(async () => num(await v('decided').textContent())).toBe(s.decisions.malicious + s.decisions.falsePositive);
     const kinds = page.locator(`${OV} [data-kpi="collected"]`);
     for (const w of ['실행', '파일', '통신']) await expect(kinds).toContainText(w);
   });
@@ -66,7 +66,7 @@ test.describe('eBPF 수집 종합', () => {
     const s = backend.summary('24h');
     const r = page.locator(`${OV} [data-results]`);
     for (const w of ['통과', '격리', '설치 전 거부', '악성', '오탐', '차단 목록']) await expect(r).toContainText(w);
-    expect(num(await r.locator('[data-blocklist-total]').textContent())).toBe(s.blocklist.packages + s.blocklist.images + s.blocklist.hosts);
+    await expect.poll(async () => num(await r.locator('[data-blocklist-total]').textContent())).toBe(s.blocklist.packages + s.blocklist.images + s.blocklist.hosts);
   });
 
   test('기간 1시간 → 60칸(주소에 남기지 않음, 10/21), 7일 → 28칸', async ({ page, backend }) => {

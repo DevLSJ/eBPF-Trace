@@ -75,6 +75,7 @@ test.describe('설정 화면', () => {
     // 비밀번호 초기화도 확인 대화상자 → 임시 비밀번호 1회
     await v.locator('tr[data-user="viewer"]').getByRole('button', { name: '비밀번호 초기화' }).click();
     await page.locator('[data-part="confirm"]').getByRole('button', { name: '초기화' }).click();
+    await expect(page.locator('[data-part="temp-password"] [data-temp-password]')).toBeVisible(); // 응답을 받은 뒤의 비밀번호와 비교
     await expect(page.locator('[data-part="temp-password"] [data-temp-password]')).toHaveText(backend.auth.user('viewer').pw);
   });
 

@@ -197,6 +197,7 @@ test.describe('도우미 · 대응 가이드 (10/20)', () => {
     }
     const sel = page.locator(`${G} select[data-part="guide-case"]`);
     await expect(sel).toBeVisible();
+    await expect(sel.locator('option').first()).toHaveAttribute('value', made[5].id); // 마지막 새 건까지 목록에 들어온 뒤
     const opts = await sel.locator('option').evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value));
     expect(opts).toHaveLength(5);
     expect(opts[0]).toBe(made[5].id);
@@ -216,8 +217,7 @@ test.describe('도우미 · 대응 가이드 (10/20)', () => {
     await fab(page).click();
     await expect(page.locator(`${G} [data-part="setup-steps"]`)).toHaveCount(0);
     const sel = page.locator(`${G} select[data-part="guide-case"]`);
-    const opts = await sel.locator('option').evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value));
-    expect(opts).toContain('case-0002');
+    await expect.poll(() => sel.locator('option').evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value))).toContain('case-0002');
     // 기본 선택은 종결되지 않은 최근 건
     await caseShown(page, 'case-0005');
     await sel.selectOption('case-0002');

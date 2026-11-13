@@ -108,9 +108,8 @@ test.describe('A 스크롤 없는 페이지(768 이상) · 390', () => {
           await page.goto(url);
           await ready(page);
           await page.waitForTimeout(300);
-          const r = await scrollAudit(page);
-          expect(r, name).toMatchObject({ doc: 0, docW: 0, main: 0, page: 1, bad: [] });
-          expect(r.fills, `${name} 채움 칸`).toBeGreaterThan(0);
+          await expect.poll(() => scrollAudit(page), name).toMatchObject({ doc: 0, docW: 0, main: 0, page: 1, bad: [] });
+          await expect.poll(() => scrollAudit(page).then((r) => r.fills), `${name} 채움 칸`).toBeGreaterThan(0);
           if (w === 1440 && name === 'dashboard') await page.screenshot({ path: `${SCRATCH}/r1-dashboard.png` });
         }
       });

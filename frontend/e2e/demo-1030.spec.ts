@@ -37,12 +37,13 @@ test.describe('시연 패널', () => {
     // R3 11/04: 고르기 목록(select) → 시나리오 단추 8개 + 예상 결과, 기본 선택은 목업 시연 페이지처럼 shell
     const items = page.locator(`${DEMO} [data-scenario]`);
     await expect(items.first()).toBeVisible();
-    expect(await items.evaluateAll((os) => os.map((o) => (o as HTMLElement).dataset.scenario))).toEqual(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil', 'benign', 'chain']); // 11/04: 정상 대조군 · 연쇄 시연 추가
+    await expect.poll(() => items.evaluateAll((os) => os.map((o) => (o as HTMLElement).dataset.scenario))).toEqual(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil', 'benign', 'chain']); // 11/04: 정상 대조군 · 연쇄 시연 추가
     await expect(page.locator(`${DEMO} [data-scenario="shell"]`)).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator(DEMO)).toContainText('전부 순서대로');
     await page.locator(`${DEMO} [data-scenario="dns-exfil"]`).click();
     await expect(page.locator(DEMO)).toContainText('DNS 질의로 데이터 실어 보내기');
     await page.locator(DEMO).getByRole('button', { name: '시연 시작' }).click();
+    await expect.poll(() => backend.writes().some((r) => r.path === '/demo/run')).toBe(true);
     const w = backend.writes().find((r) => r.path === '/demo/run')!;
     expect(JSON.parse(w.body!)).toEqual({ scenario: 'dns-exfil' });
     expect(w.auth).toBeNull();
@@ -250,7 +251,8 @@ test.describe('건 보고서 1장', () => {
     await expect(rep.locator('[data-section="violations"] tbody tr')).toHaveCount(5);
     await expect(rep.locator('[data-section="timeline"] [data-part="timeline-total"]')).toHaveText('격리까지 0.38초');
     await page.goto('/report?case=case-0002');
-    await expect(rep.locator('[data-section="decision"]')).toContainText('악성');
+    // 보고서는 건 → 설치 → 감사 → 증거 → 제안 → 변경을 차례로 부른다 — 응답이 늦으면 5초를 넘을 수 있다
+    await expect(rep.locator('[data-section="decision"]')).toContainText('악성', { timeout: 10_000 });
     await expect(rep.locator('[data-section="decision"]')).toContainText('타이포스쿼팅');
     await expect(rep.locator('[data-section="changes"]')).toContainText('pip:colourama');
     await expect(rep.locator('[data-section="changes"]')).toContainText('cdn.colourama.test');

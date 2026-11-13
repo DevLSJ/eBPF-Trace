@@ -76,7 +76,7 @@ test.describe('공급망 검사 — 저장소 주소 확장(W4)', () => {
       await expect(page.locator('[data-toast="scan"]')).toContainText('검사 scan-0003을(를) 시작했습니다.');
       await expect(page.locator('[data-form-error]')).toHaveCount(0);
     }
-    expect(posts.map((b) => JSON.parse(b))).toEqual(good.map((g) => ({ kind: 'repo', url: g.trim() })));
+    await expect.poll(() => posts.map((b) => JSON.parse(b))).toEqual(good.map((g) => ({ kind: 'repo', url: g.trim() })));
   });
 
   test('목록 · 상세 라벨에 브랜치 · 폴더가 보인다', async ({ page, backend }) => {

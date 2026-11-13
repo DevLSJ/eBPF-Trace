@@ -9,8 +9,33 @@ interface Fixtures {
   allowConsole: (re: RegExp) => void;
 }
 
+// 느린 응답 흉내(기본 꺼짐): E2E_API_DELAY_MS=800 이면 page.route 로 가로챈 모든 요청을 그만큼 늦게 처리한다.
+// CI 에서 API 응답이 늦을 때 「한 번만 읽는 비교」가 깨지는지 로컬에서 재현하는 용도. 요청마다 한 번만 늦춘다(fallback 이어받기 포함).
+const API_DELAY_MS = Number(process.env.E2E_API_DELAY_MS) || 0;
+
+function delayRoutes(page: Page) {
+  const delayed = new WeakSet<object>();
+  const route = page.route.bind(page);
+  page.route = ((url, handler, options) =>
+    route(
+      url,
+      async (r, req) => {
+        if (!delayed.has(req)) {
+          delayed.add(req);
+          await new Promise((res) => setTimeout(res, API_DELAY_MS));
+        }
+        return handler(r, req);
+      },
+      options,
+    )) as Page['route'];
+}
+
 // 모든 시나리오: 계약 모양의 가짜 백엔드를 붙이고, 끝날 때 콘솔 오류 0 을 확인한다.
 export const test = base.extend<Fixtures & { _console: string[]; _allowed: RegExp[] }>({
+  page: async ({ page }, use) => {
+    if (API_DELAY_MS > 0) delayRoutes(page);
+    await use(page);
+  },
   _allowed: async ({}, use) => {
     await use([]);
   },
