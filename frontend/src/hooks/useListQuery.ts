@@ -123,14 +123,12 @@ export function useListQuery<F extends Record<string, string>>(o: ListQueryOptio
   const tab = id && tRaw && tabs.includes(tRaw) ? tRaw : (tabs[0] ?? null);
   const writeUrl = useCallback(
     (fn: (p: URLSearchParams) => void) =>
-      setParams(
-        (prev) => {
-          const p = new URLSearchParams(prev);
-          fn(p);
-          return p;
-        },
-        { replace: true },
-      ),
+      {
+        // 마지막으로 그린 주소(prev)가 아니라 지금 주소에서 고친다 — 탭을 누른 직후 다시 그리기 전에 ↓ 가 오면 prev 에는 탭이 없다
+        const p = new URLSearchParams(window.location.search);
+        fn(p);
+        setParams(p, { replace: true });
+      },
     [setParams],
   );
   const putTab = useCallback((p: URLSearchParams, t: string | null) => (t && t !== tabs[0] ? p.set('tab', t) : p.delete('tab')), [tabs]);
