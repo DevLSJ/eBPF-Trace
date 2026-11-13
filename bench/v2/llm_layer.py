@@ -8,7 +8,7 @@
     판정에 쓸지(보정 구간 절제에서 오탐 2% 안 탐지율 +1%p 이상일 때만) · 근거 문장용으로만 쓸지는 지표 쪽에서 정한다 — 이 도구는 둘 다 낸다.
   관문: ML 결과 파일(ml-<구간>.jsonl, 줄마다 {"id", "p"})에서 band-low <= p < band-high 인 표본만 부른다. 그 밖(ML 결과에 없는 id 포함)은
     부르지 않고 NOT_GATED 로 남긴다 — 지표에서는 「LLM 이 못 잡음」(protocol layers.missing). --gate all 은 관문 없이 모두 부른다(개발용).
-  단계형 [2026-11-12]: 먼저 Haiku 5.5 → 위험 점수 40 이상이거나 거부면 Opus 5.5 로 한 번 더.
+  단계형 [2026-11-12 · 11/13 2단계를 Opus 4.8 로]: 먼저 Haiku 5.5 → 위험 점수 40 이상이거나 거부면 Opus 4.8 로 한 번 더.
   오류: 같은 요청을 최대 3번 다시 보낸다. 그래도 실패하면 ERROR — 지표에서는 못 잡음. 거부(REFUSED)는 다시 보내지 않고,
     서버 쪽 다른 모델 대체(fallbacks)도 쓰지 않는다(배치는 fallbacks 를 받지도 않는다).
   측정은 Message Batches(가격 50%)로, 개발 중 몇 건 확인은 실시간(--mode realtime)으로.
@@ -53,10 +53,11 @@ LEDGER_PATH = split.LEDGER
 OFFICIAL_BASE_URL = "https://api.anthropic.com"
 
 STAGE1_MODEL = "claude-haiku-5-5"  # 1단계: 싸게 거른다
-STAGE2_MODEL = "claude-opus-5-5"   # 2단계: 위험해 보이는 것만 정밀하게
+STAGE2_MODEL = "claude-opus-4-8"   # 2단계: 위험해 보이는 것만 정밀하게. 11/13 사용자 결정 — 학습 20건에서 Opus 5.5 가 2단계 11건 중 9건을
+                                   # refusal:cyber 로 거부했고, 문서가 사이버 거부의 대체로 권하는 Opus 4.8 을 처음부터 고정 모델로 쓴다
 ESCALATE_SCORE = 40                # 1단계 점수가 이 이상이면 2단계(이전 프로젝트 llm_triage_threshold 와 같다)
 # effort: 두 모델 모두 기본값이 medium 이다. 기본값을 쓰되 요청에 적어 고정한다(바꾸면 캐시 키도 바뀐다).
-# 생각(thinking)은 Opus 5.5 에서 끌 수 없고 Haiku 5.5 도 기본으로 켜져 있다 — adaptive 로 두고 깊이는 effort 로만 조절한다.
+# 생각(thinking)은 Haiku 5.5 는 기본으로 켜져 있고 Opus 4.8 은 adaptive 를 적어야 켜진다 — 둘 다 adaptive 로 적고 깊이는 effort 로만 조절한다.
 EFFORT = {STAGE1_MODEL: "medium", STAGE2_MODEL: "medium"}
 MAX_TOKENS = 16000                 # 스킬의 권고 기본값. 생각 토큰도 여기에 든다 — 짧게 잡으면 답이 잘린다
 BUDGET_USD = 100.0                 # 평가 1회 상한(protocol.json layers.llm) — 사용자 결정이라 실행 옵션으로는 낮출 수만 있다
@@ -92,8 +93,8 @@ PRICES = {
         {"upTo": 100_000, "input": 0.10, "cacheWrite5m": 0.125, "cacheRead": 0.01, "output": 0.50},
         {"upTo": None, "input": 0.50, "cacheWrite5m": 0.625, "cacheRead": 0.05, "output": 2.50},
     ],
-    "claude-opus-5-5": [
-        {"upTo": None, "input": 4.00, "cacheWrite5m": 5.00, "cacheRead": 0.20, "output": 20.00},
+    "claude-opus-4-8": [  # $5 / $25(스킬 모델 표) · 캐시 읽기 0.1배 · 5분 캐시 쓰기 1.25배(스킬 prompt-caching Economics)
+        {"upTo": None, "input": 5.00, "cacheWrite5m": 6.25, "cacheRead": 0.50, "output": 25.00},
     ],
 }
 # 출력 전에 거부된 요청이 청구되는 분류(문서 「How refusals are billed」, 2026-11-12 확인 · 바뀔 수 있다). 그 밖(cyber · general_harms · 분류 없음)은
@@ -385,7 +386,7 @@ def render_user(prompt, package_text, static_summary, truncated):
 def build_request(model, prompt, user_text):
     """Messages API 요청(SDK messages.stream 의 인자 그대로 · 배치 한 건의 params 그대로).
     - 고정 시스템 프롬프트에 프롬프트 캐시(5분), 표본마다 다른 글은 user 메시지에만
-    - 출력은 구조화 출력(JSON 스키마) — Opus 5.5 는 강제 도구 사용이 400 이라 이 방식으로 받는다
+    - 출력은 구조화 출력(JSON 스키마) — 두 모델에 같은 방식(처음 고른 Opus 5.5 가 강제 도구 사용을 400 으로 막아 이 방식으로 만들었다)
     - 생각은 adaptive(끄지 않는다), 깊이는 effort 로. temperature 같은 표본 추출 값은 두 모델 모두 받지 않아 보내지 않는다
     - 거부를 다른 모델로 넘기는 서버 쪽 대체(fallbacks)는 쓰지 않는다(사용자 결정 11/13 — 거부는 REFUSED 로 남긴다. 배치는 받지도 않는다)"""
     return {
