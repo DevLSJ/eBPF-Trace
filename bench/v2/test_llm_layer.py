@@ -317,7 +317,7 @@ class Cost(unittest.TestCase):
         self.assertEqual((s1["inputTokens"], s1["outputTokens"], s1["cacheReadTokens"], s1["cacheWriteTokens"]), (900, 321, 0, 1500))
         self.assertEqual((s2["inputTokens"], s2["outputTokens"], s2["cacheReadTokens"], s2["cacheWriteTokens"]), (900, 654, 1500, 0))
         self.assertAlmostEqual(s1["costUsd"], (900 * 0.10 + 321 * 0.50 + 1500 * 0.125) / 1e6, places=8)
-        self.assertAlmostEqual(s2["costUsd"], (900 * 4.00 + 654 * 20.00 + 1500 * 0.20) / 1e6, places=8)
+        self.assertAlmostEqual(s2["costUsd"], (900 * 5.00 + 654 * 25.00 + 1500 * 0.50) / 1e6, places=8)
         self.assertAlmostEqual(row["costUsd"], s1["costUsd"] + s2["costUsd"], places=8)
         # 잡아 둔 몫은 풀리고 실제 비용만 남는다
         self.assertAlmostEqual(budget.spent, row["costUsd"], places=8)
@@ -355,7 +355,7 @@ class BudgetCap(unittest.TestCase):
         self.assertEqual(L.Budget().limit, 100.0)
 
     def test_worst_case_prices_all_input_at_the_dearest_rate_and_a_full_output(self):
-        self.assertAlmostEqual(L.worst_case_usd(OPUS, 10_000), (10_000 * 5.00 + L.MAX_TOKENS * 20.00) / 1e6, places=12)
+        self.assertAlmostEqual(L.worst_case_usd(OPUS, 10_000), (10_000 * 6.25 + L.MAX_TOKENS * 25.00) / 1e6, places=12)
         self.assertAlmostEqual(L.worst_case_usd(HAIKU, 10_000), (10_000 * 0.125 + L.MAX_TOKENS * 0.50) / 1e6, places=12)
         self.assertAlmostEqual(L.worst_case_usd(HAIKU, 100_001), (100_001 * 0.625 + L.MAX_TOKENS * 2.50) / 1e6, places=12)
 
@@ -1459,7 +1459,7 @@ class Sdk(unittest.TestCase):
         s1, s2 = row["stages"]
         self.assertEqual((s1["inputTokens"], s1["outputTokens"], s1["cacheReadTokens"], s1["cacheWriteTokens"]), (900, 321, 0, 1500))
         self.assertEqual((s2["inputTokens"], s2["outputTokens"], s2["cacheReadTokens"], s2["cacheWriteTokens"]), (900, 654, 1500, 0))
-        self.assertAlmostEqual(row["costUsd"], (900 * 0.10 + 321 * 0.50 + 1500 * 0.125 + 900 * 4.00 + 654 * 20.00 + 1500 * 0.20) / 1e6, places=8)
+        self.assertAlmostEqual(row["costUsd"], (900 * 0.10 + 321 * 0.50 + 1500 * 0.125 + 900 * 5.00 + 654 * 25.00 + 1500 * 0.50) / 1e6, places=8)
         self.assertEqual((refused["status"], refused["error"]), ("REFUSED", "refusal:cyber"))
         self.assertEqual([s.get("billed") for s in refused["stages"]], [False, False])
         self.assertEqual(counted, math.ceil(1234 * 1.05) + 256)
