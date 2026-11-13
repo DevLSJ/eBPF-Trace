@@ -494,7 +494,7 @@ class Resume(unittest.TestCase):
         # 사이에 성공이 끼면 다시 센다
         flaky = FakeClient({HAIKU: [ApiError(500), message(analysis(5)), ApiError(500), message(analysis(5))]})
         out2 = os.path.join(self.dir.name, "out2.jsonl")
-        self.assertIsNone(batch(samples(4), flaky, L.Results(out2), max_errors=2)["stopped"])
+        self.assertIsNone(batch(samples(4), flaky, L.Results(out2), max_errors=2, retries=0)["stopped"])
 
 
 class Cache(unittest.TestCase):
@@ -872,10 +872,10 @@ class Cli(CliBase):
         self.assertLess(report["unbilledRefusalUsd"], report["spentUsd"])
 
     def test_estimate_needs_no_key_and_makes_no_call(self):
-        code, out, _, make = self.run_cli(["estimate", "--input", self.inp], key=None)
+        code, out, _, make = self.run_cli(["estimate", "--input", self.inp, "--gate", "all"], key=None)
         make.assert_not_called()
         report = json.loads(out)
-        self.assertEqual((code, report["samples"]), (0, 3))
+        self.assertEqual((code, report["samples"], report["gated"]), (0, 3, 3))
         self.assertLess(report["usd"]["low"], report["usd"]["high"])
         self.assertIn("assumptions", report)
 
