@@ -97,12 +97,12 @@ test.describe('11/09 시연 — 묶음 접기', () => {
   test('묶음 3개(성격별) · 기본 모두 펼침 · 접으면 숨김 + 저장 · 새로 고침 뒤 유지 · 다시 펼침', async ({ page }) => {
     await goDemo(page);
     const groups = page.locator('[data-part="scn-groups"] [data-group]');
-    expect(await groups.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.group))).toEqual(['attack', 'network', 'control']);
-    expect(await page.locator('[data-part="scn-groups"] .scn-group-name').allTextContents()).toEqual(['공격 재현', '네트워크 · DNS', '대조군 · 연쇄']);
+    await expect.poll(() => groups.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.group))).toEqual(['attack', 'network', 'control']);
+    await expect(page.locator('[data-part="scn-groups"] .scn-group-name')).toHaveText(['공격 재현', '네트워크 · DNS', '대조군 · 연쇄']);
     const keysOf = (g: string) => group(page, g).locator('[data-scenario]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.scenario));
-    expect(await keysOf('attack')).toEqual(['all', 'shell', 'revshell']);
-    expect(await keysOf('network')).toEqual(['direct-ip', 'domain', 'dns-exfil']);
-    expect(await keysOf('control')).toEqual(['benign', 'chain']);
+    await expect.poll(() => keysOf('attack')).toEqual(['all', 'shell', 'revshell']);
+    await expect.poll(() => keysOf('network')).toEqual(['direct-ip', 'domain', 'dns-exfil']);
+    await expect.poll(() => keysOf('control')).toEqual(['benign', 'chain']);
     for (const g of ['attack', 'network', 'control']) await expect(foldBtn(page, g)).toHaveAttribute('aria-expanded', 'true');
     // 접기
     await foldBtn(page, 'network').click();
@@ -180,7 +180,7 @@ test.describe('11/09 시연 — 상세 탭 · 흐름 그림', () => {
   test('탭: 「판정 근거」(기본 — 기존 「왜」 카드) · 「흐름 그림」 전환, 패널 제목 그대로, 화살표 키로도 전환', async ({ page }) => {
     await goDemo(page);
     const tabs = page.locator('[data-part="why-tabs"] [role="tab"]');
-    expect(await tabs.allTextContents()).toEqual(['탐지 근거', '흐름 그림']);
+    await expect(tabs).toHaveText(['탐지 근거', '흐름 그림']);
     await expect(tab(page, 'why')).toHaveAttribute('aria-selected', 'true');
     await expect(tab(page, 'flow')).toHaveAttribute('aria-selected', 'false');
     await expect(page.locator('[data-part="why"]')).toBeVisible();

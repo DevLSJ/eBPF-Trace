@@ -15,7 +15,7 @@ test.describe('11/06 연동 페이지', () => {
     backend.auth.asViewer();
     await page.goto('/');
     const home = page.locator(`${NAV} [data-nav-group="home"]`);
-    expect(await home.evaluate((g) => [...g.children].map((e) => e.getAttribute('href') ?? `sub:${e.getAttribute('data-nav-sub')}`))).toEqual(['/', 'sub:integration']);
+    await expect.poll(() => home.evaluate((g) => [...g.children].map((e) => e.getAttribute('href') ?? `sub:${e.getAttribute('data-nav-sub')}`))).toEqual(['/', 'sub:integration']);
     await page.locator(`${NAV} [data-nav-sub="integration"] [data-part="subnav-toggle"]`).click(); // 11/09 밤: 묶음은 처음엔 접힘
     await page.locator(`${NAV} a[href="/integration"]`).click();
     await expect(page).toHaveURL(/\/integration$/);

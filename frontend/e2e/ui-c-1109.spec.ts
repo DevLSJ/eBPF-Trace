@@ -37,7 +37,8 @@ test.describe('G41 시각 표기 — YYYY-MM-DD HH:mm:ss', () => {
 
     await page.goto('/report?case=case-0002');
     const rep = page.getByTestId('report');
-    await expect(rep.locator('[data-section="decision"]')).toContainText(new RegExp(`· ${LOG_IN}`));
+    // 보고서는 건 → 설치 → 감사 → 증거 → 제안 → 변경을 차례로 부른다 — 응답이 늦으면 5초를 넘을 수 있다
+    await expect(rep.locator('[data-section="decision"]')).toContainText(new RegExp(`· ${LOG_IN}`), { timeout: 10_000 });
     await expect(rep.locator('[data-section="meta"]')).toContainText(new RegExp(`작성 ${LOG_IN}`));
 
     await page.goto('/policies?proposal=prop-0001');

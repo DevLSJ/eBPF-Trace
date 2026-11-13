@@ -104,8 +104,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     // 저장 → 규칙 모양 그대로(숫자 · 대문자)
     await page.locator('dialog[data-part="policy-create"] [data-part="modal-foot"]').getByRole('button', { name: '저장 전 확인' }).click(); // 11/09: 생성 창 바닥 줄
     await page.locator(`${ED} [data-part="save-check"]`).getByRole('button', { name: '저장 후 적용' }).click();
-    const saved = backend.rules.find((r) => r.id.startsWith('runtime-dns-exfil'))!;
-    expect(saved).toMatchObject({ kind: 'dns', action: 'alert', denyQtypes: ['TXT', 'ALL'], denyHosts: ['attacker.test'], maxLabelLength: 40, maxNameLength: 120 });
+    await expect.poll(() => backend.rules.find((r) => r.id.startsWith('runtime-dns-exfil'))).toMatchObject({ kind: 'dns', action: 'alert', denyQtypes: ['TXT', 'ALL'], denyHosts: ['attacker.test'], maxLabelLength: 40, maxNameLength: 120 });
   });
 
   test('정책 목록 짧은 라벨 「조회」 · dns 규칙을 열면 쉬운 설정에 값이 그대로 · 길이 칸 범위 밖은 저장 전 오류', async ({ page, backend }) => {
@@ -168,7 +167,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     const chart = page.locator('[data-section="overview"] [data-chart="collected"]');
     await expect(chart).toContainText('조회');
     // R2 11/04: 선 차트 — 조회 선 · 선 끝 라벨 「조회 N」 색이 토큰 --k-dns
-    expect(await chart.locator('path.line[data-kind="dns"]').count()).toBe(1);
+    await expect(chart.locator('path.line[data-kind="dns"]')).toHaveCount(1);
     const color = await chart.locator('[data-end-label="dns"]').evaluate((e) => getComputedStyle(e).fill);
     expect(color).toBe('rgb(251, 146, 60)'); // #fb923c
   });
