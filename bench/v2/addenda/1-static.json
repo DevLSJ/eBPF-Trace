@@ -55,14 +55,99 @@
       {
         "id": "R-score@<예산>",
         "predict": "규칙 엔진 점수(0~100) >= 임계값. 임계값은 protocol layers.budgets 대로 보정 구간에서 만든다"
+      },
+      {
+        "id": "R-precise@0",
+        "predict": "아래 규칙 목록 가운데 하나라도 strong 으로 걸림(목록 = 학습 구간 정상 표본에 strong 으로 걸린 표본 수가 0 이하인 규칙, 커밋용 CI_* · DOCKER_* · TYPO_DEP_ADDED 제외)",
+        "rules": [
+          "AST_DECODE_TO_EXEC",
+          "AST_DOWNLOAD_TO_EXEC",
+          "NPM_SELF_PUBLISH",
+          "OBF_BASE64_DECODE_EXEC",
+          "OBF_JS_OBFUSCATOR_IDENT",
+          "OBF_STRING_SPLIT_JOIN",
+          "PY_PTH_STARTUP_EXEC",
+          "SH_CRED_READ"
+        ]
+      },
+      {
+        "id": "R-precise@1",
+        "predict": "아래 규칙 목록 가운데 하나라도 strong 으로 걸림(목록 = 학습 구간 정상 표본에 strong 으로 걸린 표본 수가 1 이하인 규칙, 커밋용 CI_* · DOCKER_* · TYPO_DEP_ADDED 제외)",
+        "rules": [
+          "AST_DECODE_TO_EXEC",
+          "AST_DOWNLOAD_TO_EXEC",
+          "AST_SENSITIVE_TO_NET",
+          "INSTALL_HOOK_SHELL",
+          "INSTALL_SETUP_EXEC",
+          "NET_DNS_EXFIL",
+          "NPM_SELF_PUBLISH",
+          "OBF_BASE64_DECODE_EXEC",
+          "OBF_CHARCODE_ARITH",
+          "OBF_JS_OBFUSCATOR_IDENT",
+          "OBF_STRING_SPLIT_JOIN",
+          "PERSIST_CRON_RC",
+          "PY_PTH_STARTUP_EXEC",
+          "SH_CRED_READ",
+          "SH_HIDDEN_WRITE",
+          "SH_REVERSE_SHELL",
+          "TIME_BOMB"
+        ]
+      },
+      {
+        "id": "R-precise@3",
+        "predict": "아래 규칙 목록 가운데 하나라도 strong 으로 걸림(목록 = 학습 구간 정상 표본에 strong 으로 걸린 표본 수가 3 이하인 규칙, 커밋용 CI_* · DOCKER_* · TYPO_DEP_ADDED 제외)",
+        "rules": [
+          "AST_DECODE_TO_EXEC",
+          "AST_DOWNLOAD_TO_EXEC",
+          "AST_SENSITIVE_TO_NET",
+          "BACKDOOR_HARDCODED_AUTH",
+          "ENV_ACCESS_BULK",
+          "ENV_CHECK_EVASION",
+          "INSTALL_HOOK_SHELL",
+          "INSTALL_SETUP_EXEC",
+          "NET_DNS_EXFIL",
+          "NET_MESSENGER_C2",
+          "NET_WEBHOOK_ENDPOINT",
+          "NPM_SELF_PUBLISH",
+          "OBF_BASE64_DECODE_EXEC",
+          "OBF_CHARCODE_ARITH",
+          "OBF_HEX_ENCODED_WORD",
+          "OBF_HEX_ESCAPE_STRING",
+          "OBF_JS_OBFUSCATOR_IDENT",
+          "OBF_LONG_B64_LITERAL",
+          "OBF_STRING_SPLIT_JOIN",
+          "PERSIST_CRON_RC",
+          "PY_PTH_STARTUP_EXEC",
+          "SH_CRED_READ",
+          "SH_HIDDEN_WRITE",
+          "SH_REVERSE_SHELL",
+          "TIME_BOMB"
+        ]
       }
     ],
     "combine": "정적 층의 후보 = guarddog 쪽 후보 하나(또는 없음)와 rules 쪽 후보 하나(또는 없음)를 OR 로 묶은 것(둘 다 없음은 제외). 이름은 「S-malicious+R-strong」 꼴",
-    "order": "selection.rule 의 「후보 순서가 앞인 쪽」은 이 순서다: guarddog 만(S-malicious → S-suspicious) → rules 만(R-strong → R-score 예산이 작은 것부터) → 묶음(guarddog 순서가 먼저, 그 안에서 rules 순서)"
+    "order": "selection.rule 의 「후보 순서가 앞인 쪽」은 이 순서다: guarddog 만(S-malicious → S-suspicious) → rules 만(R-strong → R-score 예산이 작은 것부터 → R-precise@0 → @1 → @3) → 묶음(guarddog 순서가 먼저, 그 안에서 rules 순서)"
   },
   "missing": "묶기 실패 · 50MB 초과 · 검사 오류 · 시간 초과 · 엔진 오류 표본은 그 엔진이 「못 잡음」이다. 분모에서 빼지 않는다(protocol layers.missing)",
   "changes": "규칙 · 엔진 · 판정 코드를 학습 구간을 보고 고치면, 고친 판의 커밋 · 트리 해시와 사유를 아래 revisions 에 더한 뒤에만 보정 구간을 계산한다. 보정 구간 결과를 본 뒤에는 이 층의 후보 목록과 엔진을 바꾸지 않는다",
-  "revisions": [],
+  "revisions": [
+    {
+      "at": "2026-11-13 — 학습 구간 결과만 보고, 보정 구간은 어느 엔진으로도 계산하기 전",
+      "change": "rules 후보에 R-precise@0 · @1 · @3(「확정 · 신호 2단」의 확정 쪽 — 사용자 결정 11/13) 추가. 엔진 · 규칙 · 판정 코드는 바꾸지 않았다(engineTree · rulesTree 그대로)",
+      "why": "학습 구간에서 R-strong 오탐 14.65%(284/1,938) — 정상에 자주 걸리는 규칙(OBF_LONG_LINE 80 · INSTALL_HOOK_ADDED 35 · TYPO_DEP_ADDED 33 · DEP_GIT_URL 32 …)을 뺀 판. 걸러진 규칙은 판정에 쓰지 않고 ML 층(2-ml)의 특징 · LLM 관문 신호로만 쓴다. 정적 층의 주 판정은 사용자 결정(11/13)으로 ML 층이 맡고, 이 후보들은 비교 기준선이다",
+      "trainReference": {
+        "note": "학습 구간 값(개발용 · 지표 아님)",
+        "R-precise@0": "규칙만 13.0% / 0.00% · +S-malicious 74.5% / 2.12%",
+        "R-precise@1": "43.0% / 0.46% · +S-malicious 76.4% / 2.48%",
+        "R-precise@3": "59.3% / 1.14% · +S-malicious 82.1% / 2.99%"
+      },
+      "measured": {
+        "tool": "bench/v2/run_static.py sha256 f7de455d… · bench/v2/rules_layer.py sha256 90c2116c…",
+        "trainRows": 3873,
+        "guarddogUnprocessed": "skip 19(내용 없음 15 · 50MB 초과 4) · error 2(OSV 시간 초과, --retry-errors 에서도 480초 초과 — 둘 다 정상)"
+      }
+    }
+  ],
   "limits": [
     "GuardDog 과 악성 표본의 출처가 같은 회사다(protocol limits)",
     "규칙 엔진은 커밋 diff 용으로 만든 것이라 패키지 전체를 넣으면 파일당 20KB 뒤는 보지 못한다",

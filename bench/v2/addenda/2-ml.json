@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "addendum": 2,
+  "layer": "ml",
+  "protocolRevision": 2,
+  "version": "M-static v1 — 정적 신호만(설치 행위 특징은 3단계에서 revisions 로 더한다)",
+  "fixedAt": "2026-11-13 — 학습 구간 정적 결과(1-static 의 두 엔진)만 보고, 보정 구간은 어느 층으로도 계산하기 전",
+  "decision": "사용자 결정(11/13): 정적 층의 주 판정은 이 ML 이 맡는다. 규칙 엔진 · GuardDog 은 특징을 만드는 역할이고, 1-static 의 후보들은 비교 기준선이다. 대시보드에서는 그림자 모드(기록 · 경고만)로 시작한다(protocol · CLAUDE.md)",
+  "inputs": {
+    "guarddog": "bench/datasets/v2/results/static-<구간>.jsonl — bench/v2/run_static.py 결과(1-static 의 engines.guarddog · osv · backendVerdict)",
+    "rules": "bench/datasets/v2/results/rules-<구간>.jsonl — bench/v2/rules_layer.py 결과(1-static 의 engines.rules)",
+    "index": "bench/datasets/v2/index.jsonl 의 ecosystem · label · codeLines 만"
+  },
+  "features": {
+    "order": "아래 순서대로 한 줄. 어휘(규칙 이름 목록)는 학습 구간 결과에서 만들어 모델 파일에 함께 넣고, 다른 구간에서 처음 보는 이름은 버린다",
+    "rules": "규칙 엔진 어휘 V_R(학습 구간 hits 에 나온 규칙 이름, 정렬) 마다: 시험 · 문서가 아닌 파일의 hit 에 대해 min(count, 20) 의 합",
+    "guarddog": "GuardDog 어휘 V_G(학습 구간 결과 rules 에 나온 이름, 정렬) 마다: 결과 rules 에 있으면 1, 없으면 0",
+    "scalars": ["규칙 엔진 score(0~100)", "GuardDog score", "GuardDog installThreats", "ecosystem 이 npm 이면 1"],
+    "missing": "엔진이 처리하지 못한 표본(skip · error · 결과 없음)은 그 엔진의 특징을 모두 0 으로 둔다. 「처리 못 함」 표시 특징은 두지 않는다(처리 실패가 악성 신호로 학습되지 않게)",
+    "excluded": "파일 크기 · 파일 수 · 받은 형식(zip · sdist · wheel) · 이름 · 날짜 · OSV 취약점 수 · 코드 줄 수. 학습 구간 확인에서 저장 파일 크기를 넣으면 2% 오탐에서 탐지가 87.9% → 92.1% 로 올랐다 — 악성은 암호 zip, 정상은 원본이라 형식이 라벨을 드러내는 누수로 보고 뺐다. 코드 줄 수 · 코드 크기는 넣어도 88.1% 로 차이가 작아 편향 위험(정상에 큰 인기 패키지가 많음)을 피해 뺐다"
+  },
+  "model": {
+    "estimator": "sklearn.ensemble.HistGradientBoostingClassifier(max_iter=300, learning_rate=0.05, random_state=7, 나머지 기본값)",
+    "library": "scikit-learn 1.9.1(bench/requirements-ml.txt 에 고정)",
+    "trainRows": "학습 구간 전체 가운데 정상 + 코드 있는 악성(codeLines >= 1). 코드 없는 악성은 학습에서 빼고 지표에서도 따로 보고한다(protocol)",
+    "output": "악성 확률 p(소수 6자리 반올림). 모델 파일은 bench/datasets/v2/models/(git 제외), sha256 · 어휘 · 학습 행 수를 결과 메타에 남긴다"
+  },
+  "development": {
+    "where": "학습 구간 안에서만. 특징 · 설정을 바꿀 때는 StratifiedGroupKFold(5, shuffle=True, random_state=7) — 묶음은 split.json groupOf — 로 학습 구간 교차 검증 값을 보고 정한다",
+    "changes": "보정 구간을 계산하기 전에 바꾸면 아래 revisions 에 무엇 · 왜 · 교차 검증 값을 적는다. 보정 구간 결과를 본 뒤에는 특징 · 설정 · 후보를 바꾸지 않는다"
+  },
+  "candidates": [
+    {
+      "id": "M-static@<예산>",
+      "predict": "p >= 임계값. 임계값은 protocol layers.budgets 대로 보정 구간에서 만든다(예산이 작은 것부터가 후보 순서)"
+    }
+  ],
+  "missing": "두 엔진이 모두 처리하지 못한 표본도 특징이 모두 0 인 채로 p 를 받는다. 모델 파일을 읽지 못하거나 예측이 없는 표본은 이 층이 「못 잡음」이다. 분모에서 빼지 않는다(protocol layers.missing)",
+  "llmLink": "LLM 층(사용자 결정 11/13: ML 애매 구간 재판정 + 판정 근거 문장)의 관문은 이 ML 의 p 구간으로 정하고, 정의는 LLM 층 부록(3-llm)에 LLM 보정 결과를 보기 전에 적는다",
+  "trainReference": {
+    "note": "학습 구간 묶음 5겹 교차 검증(개발용 · 지표 아님). 이전 프로젝트가 본 표본이 학습 구간에 있어 낙관적일 수 있다",
+    "rows": "3,768(코드 있는 악성 1,830 · 정상 1,938) · 특징 114",
+    "atFpr": {"0.01": "탐지 84.5%", "0.02": "탐지 87.9%", "0.03": "탐지 88.9%", "0.05": "탐지 90.2%"}
+  },
+  "revisions": [],
+  "limits": [
+    "특징이 두 엔진의 출력이라 두 엔진이 모두 아무것도 내지 않은 악성(학습 구간에서 신호 없는 코드 있는 악성 118)은 이 층도 잡기 어렵다",
+    "GuardDog 과 악성 표본의 출처가 같은 회사다(protocol limits) — GuardDog 규칙 특징의 기여는 낙관적일 수 있다"
+  ]
+}
