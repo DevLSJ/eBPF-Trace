@@ -80,7 +80,7 @@ func TestPauseBeforeEvidence(t *testing.T) {
 			if c.hook {
 				d.BeforeKill = func(context.Context, string) { s.add("hook") }
 			}
-			_, err = d.KillTimed(context.Background(), id)
+			ts, err := d.KillTimed(context.Background(), id)
 			if got := s.got(); !slices.Equal(got, c.wantLog) {
 				t.Fatalf("order = %v, want %v (err=%v)", got, c.wantLog, err)
 			}
@@ -89,6 +89,20 @@ func TestPauseBeforeEvidence(t *testing.T) {
 				t.Fatalf("err = %v, want nil", err)
 			case c.wantErr != nil && !errors.Is(err, c.wantErr):
 				t.Fatalf("err = %v, want %v", err, c.wantErr)
+			}
+			// 시각: 멈춘 경우만 pausedAt(≤ 증거 시작 ≤ 증거 끝 ≤ kill), 멈추지 못하고 계속한 경우는 사유만, 이미 끝난 경우는 모두 비어 있다
+			paused := c.name == "paused"
+			if paused != !ts.PausedAt.IsZero() {
+				t.Fatalf("pausedAt = %v (case %s)", ts.PausedAt, c.name)
+			}
+			if paused && (ts.EvidenceStartedAt.Before(ts.PausedAt) || ts.EvidenceDoneAt.Before(ts.EvidenceStartedAt) || ts.KilledAt.Before(ts.EvidenceDoneAt)) {
+				t.Fatalf("times out of order: %+v", ts)
+			}
+			if wantPauseErr := c.name == "already paused" || c.name == "server error"; wantPauseErr != (ts.PauseError != "") {
+				t.Fatalf("pauseError = %q (case %s)", ts.PauseError, c.name)
+			}
+			if c.wantErr != nil && (!ts.EvidenceStartedAt.IsZero() || !ts.KilledAt.IsZero()) {
+				t.Fatalf("stopped container must have no evidence · kill times: %+v", ts)
 			}
 		})
 	}

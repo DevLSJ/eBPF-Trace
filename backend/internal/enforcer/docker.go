@@ -22,11 +22,14 @@ type Enforcer interface {
 }
 
 // Times: 격리 타임라인(10/30)에 들어가는 단계별 시각 — 해당 없으면 0 값.
-// EvidenceStartedAt · EvidenceDoneAt 는 before-kill 훅의 시작 · 끝(예산을 넘기면 예산이 다한 시점), KilledAt 은 Docker kill 응답 시각(성공했을 때만)
+// PausedAt 은 Docker pause 응답 시각(성공했을 때만, 11/16), EvidenceStartedAt · EvidenceDoneAt 는 before-kill 훅의 시작 · 끝(예산을 넘기면 예산이 다한 시점),
+// KilledAt 은 Docker kill 응답 시각(성공했을 때만). PauseError 는 pause 가 실패했지만 예전 순서(증거 → kill)로 계속한 사유
 type Times struct {
+	PausedAt          time.Time
 	EvidenceStartedAt time.Time
 	EvidenceDoneAt    time.Time
 	KilledAt          time.Time
+	PauseError        string
 }
 
 // Timed: 단계별 시각을 돌려주는 격리 수단(Docker). pipeline 은 이 인터페이스가 있으면 KillTimed 를, 없으면 Kill 을 부른다
@@ -41,8 +44,9 @@ var containerIDPattern = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
 type Docker struct {
 	client *http.Client
 	base   string
-	// BeforeKill: kill 요청 직전에 부르는 훅(증거 보존, 10/20). 선택적 — nil 이면 기존 동작 그대로.
-	// beforeKillBudget 안에 끝나지 않으면 기다리지 않고 kill 을 보낸다. 훅의 패닉은 삼킨다 (kill 이 늦어지면 안 된다).
+	// BeforeKill: kill 요청 직전에 부르는 훅(증거 보존, 10/20). 선택적 — nil 이면 pause 없이 바로 kill.
+	// 있으면 컨테이너를 먼저 pause 한 뒤 부른다(11/16). beforeKillBudget 안에 끝나지 않으면 기다리지 않고 kill 을 보낸다.
+	// 훅의 패닉은 삼킨다 (kill 이 늦어지면 안 된다). 훅은 paused 컨테이너에서 inspect · logs · diff · top · archive 만 쓴다(exec 는 409)
 	BeforeKill func(ctx context.Context, containerID string)
 }
 
@@ -79,14 +83,26 @@ func (d *Docker) Kill(ctx context.Context, containerID string) error {
 	return err
 }
 
-// KillTimed: Kill 과 같되 단계별 시각(증거 훅 시작 · 끝, kill 응답)을 함께 돌려준다 — 격리 타임라인(10/30).
-// 동작은 Kill 과 똑같다: 잘못된 id 는 요청 없이 거절, 훅은 예산 안에서만 기다리고, 그 다음 kill 요청을 보낸다
+// KillTimed: Kill 과 같되 단계별 시각(pause 응답, 증거 훅 시작 · 끝, kill 응답)을 함께 돌려준다 — 격리 타임라인(10/30).
+// 동작은 Kill 과 똑같다: 잘못된 id 는 요청 없이 거절, 훅이 있으면 먼저 pause(11/16) 한 뒤 훅을 예산 안에서만 기다리고, 그 다음 kill 요청을 보낸다
 func (d *Docker) KillTimed(ctx context.Context, containerID string) (Times, error) {
 	var ts Times
 	if !containerIDPattern.MatchString(containerID) {
 		return ts, fmt.Errorf("invalid container id %q", containerID)
 	}
 	if d.BeforeKill != nil {
+		// 증거를 모으는 동안 악성 프로세스가 계속 돌지 않게 먼저 멈춘다(11/16 사용자 결정 「먼저 멈추고 증거 수집」).
+		// 증거 훅이 없으면 멈출 이유가 없으니 바로 kill 한다(pause 왕복 약 20ms 를 아낀다)
+		switch err := d.pause(ctx, containerID); {
+		case err == nil:
+			ts.PausedAt = time.Now().UTC()
+		case errors.Is(err, ErrNotRunning), errors.Is(err, ErrNotFound):
+			return ts, err // 이미 끝난 컨테이너: 증거도 kill 도 하지 않는다(격리 아님 + 사유)
+		default:
+			// 이미 정지 · 데몬 오류 등: 예전 순서(증거 → kill)로 계속한다. paused 컨테이너도 kill 은 된다(11/16 sg-vm 실측)
+			ts.PauseError = err.Error()
+			slog.Warn("pause before evidence failed; collecting evidence without pause", "id", containerID, "err", err)
+		}
 		ts.EvidenceStartedAt = time.Now().UTC()
 		d.runBeforeKill(ctx, containerID)
 		ts.EvidenceDoneAt = time.Now().UTC()
@@ -112,6 +128,33 @@ func (d *Docker) KillTimed(ctx context.Context, containerID string) (Times, erro
 	}
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 	return ts, fmt.Errorf("docker kill: %s: %s", resp.Status, strings.TrimSpace(string(b)))
+}
+
+// pause: `POST /containers/{id}/pause`(cgroup freezer — 컨테이너 안 모든 프로세스를 그 자리에서 멈춘다).
+// 409 는 두 가지라 본문으로 가른다(11/16 sg-vm Docker 29.8 실측): 「… is not running」 = 이미 끝남(ErrNotRunning),
+// 「… is already paused」 등 = 그 밖의 오류. 404 = ErrNotFound
+func (d *Docker) pause(ctx context.Context, containerID string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.base+"/containers/"+containerID+"/pause", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := d.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("docker pause: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	msg := strings.TrimSpace(string(b))
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return ErrNotFound
+	case resp.StatusCode == http.StatusConflict && strings.Contains(msg, "not running"):
+		return ErrNotRunning
+	}
+	return fmt.Errorf("docker pause: %s: %s", resp.Status, msg)
 }
 
 // runBeforeKill: 훅을 별도 고루틴에서 돌리고 끝나거나 예산이 다할 때까지만 기다린다.

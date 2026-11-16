@@ -290,7 +290,8 @@ func (p *Pipeline) enforce(ctx context.Context, v *model.Verdict) {
 	}
 	kctx, cancel := context.WithTimeout(ctx, killTimeout)
 	defer cancel()
-	// 격리 타임라인(10/30): Docker 는 단계별 시각(증거 훅 · kill 응답)을 준다. 시각이 없는 격리 수단(mock)은 성공 시각을 kill 시각으로 쓴다
+	// 격리 타임라인(10/30): Docker 는 단계별 시각(pause · 증거 훅 · kill 응답, 11/16 pause 추가)을 준다. 시각이 없는 격리 수단(mock)은 성공 시각을 kill 시각으로 쓴다.
+	// pause 가 「이미 끝남」(409 · 404)이면 err 가 ErrNotRunning · ErrNotFound 로 와서 아래 「격리 아님 + 사유」 분기를 그대로 탄다
 	var times enforcer.Times
 	var err error
 	if te, ok := p.enforcer.(enforcer.Timed); ok {
@@ -299,6 +300,7 @@ func (p *Pipeline) enforce(ctx context.Context, v *model.Verdict) {
 		times.KilledAt = time.Now().UTC()
 	}
 	if v.Timeline != nil {
+		v.Timeline.PausedAt, v.Timeline.PauseError = stamp(times.PausedAt), times.PauseError
 		v.Timeline.EvidenceStartedAt, v.Timeline.EvidenceDoneAt, v.Timeline.KilledAt = stamp(times.EvidenceStartedAt), stamp(times.EvidenceDoneAt), stamp(times.KilledAt)
 	}
 	switch {
@@ -315,7 +317,8 @@ func (p *Pipeline) enforce(ctx context.Context, v *model.Verdict) {
 		slog.Warn("container stopped before kill", "container", v.Event.ContainerName, "id", id, "rule", v.RuleID, "err", err)
 	default:
 		v.EnforceError = err.Error()
-		slog.Error("kill failed", "container", v.Event.ContainerName, "id", id, "err", err)
+		// paused=true 면 컨테이너는 정지된 채 남는다(악성 프로세스도 멈춘 상태) — 운영자가 확인해 지운다
+		slog.Error("kill failed", "container", v.Event.ContainerName, "id", id, "err", err, "paused", !times.PausedAt.IsZero())
 	}
 	for k, m := range p.killed {
 		if time.Since(m.at) > killDedupe {

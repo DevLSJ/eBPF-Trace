@@ -143,22 +143,34 @@ func (e Event) IsDNSQuery() bool { return e.Kind == KindDNS && e.DNSName == "" &
 
 // Timeline: 격리 타임라인(10/30) — 탐지 → 판정 → 증거 → 격리 → 알림 시각(RFC3339Nano UTC). 해당 없으면 키 생략.
 //   - DetectedAt 이벤트 시각(소스) · MatchedAt 엔진 평가 완료
+//   - PausedAt Docker pause 응답 시각(11/16 — 증거 수집 전에 컨테이너를 멈춘 경우만, 옛 기록 · 증거 훅 없는 격리에는 없다)
 //   - Evidence* before-kill 훅 시작 · 끝(0.7초 예산) · KilledAt Docker kill 응답 시각 · NotifiedAt 알림 큐 투입 시각(발송 완료 아님)
+//   - PauseError pause 가 실패해 멈추지 못하고 예전 순서(증거 → kill)로 격리한 사유
 type Timeline struct {
 	DetectedAt        time.Time  `json:"detectedAt"`
 	MatchedAt         time.Time  `json:"matchedAt"`
+	PausedAt          *time.Time `json:"pausedAt,omitempty"`
 	EvidenceStartedAt *time.Time `json:"evidenceStartedAt,omitempty"`
 	EvidenceDoneAt    *time.Time `json:"evidenceDoneAt,omitempty"`
 	KilledAt          *time.Time `json:"killedAt,omitempty"`
 	NotifiedAt        *time.Time `json:"notifiedAt,omitempty"`
+	PauseError        string     `json:"pauseError,omitempty"`
 }
 
-// IsolationMs: 탐지부터 격리까지 걸린 ms (KilledAt 이 없으면 ok=false)
+// IsolationMs: 탐지부터 격리까지 걸린 ms (KilledAt 이 없으면 ok=false). 격리 지연 지표의 정의 — 정지 시각과 무관하다
 func (t Timeline) IsolationMs() (int64, bool) {
 	if t.KilledAt == nil {
 		return 0, false
 	}
 	return t.KilledAt.Sub(t.DetectedAt).Milliseconds(), true
+}
+
+// PauseMs: 탐지부터 정지(pause)까지 걸린 ms (PausedAt 이 없으면 ok=false) — 격리 지연의 보조 값(11/16)
+func (t Timeline) PauseMs() (int64, bool) {
+	if t.PausedAt == nil {
+		return 0, false
+	}
+	return t.PausedAt.Sub(t.DetectedAt).Milliseconds(), true
 }
 
 // Clone: 포인터 시각을 복사한 사본
@@ -174,7 +186,7 @@ func (t *Timeline) Clone() *Timeline {
 		v := *p
 		return &v
 	}
-	c.EvidenceStartedAt, c.EvidenceDoneAt, c.KilledAt, c.NotifiedAt = cp(t.EvidenceStartedAt), cp(t.EvidenceDoneAt), cp(t.KilledAt), cp(t.NotifiedAt)
+	c.PausedAt, c.EvidenceStartedAt, c.EvidenceDoneAt, c.KilledAt, c.NotifiedAt = cp(t.PausedAt), cp(t.EvidenceStartedAt), cp(t.EvidenceDoneAt), cp(t.KilledAt), cp(t.NotifiedAt)
 	return &c
 }
 
