@@ -163,3 +163,37 @@ func TestVerdictTimelinePause(t *testing.T) {
 		}
 	}
 }
+
+// Tier 1 — 이미 끝난 컨테이너(11/16 사용자 결정 「끝난 컨테이너도 증거는」): 격리 수단이 증거 시각과 ErrNotRunning 을 함께 주면
+// 타임라인에 증거 시작 · 끝만 남기고 정지 · kill 은 비운다. 결과는 격리 아님 + 사유, 같은 컨테이너의 잔여 이벤트는 첫 결과를 따르고 다시 부르지 않는다
+func TestVerdictTimelineExitedContainerEvidence(t *testing.T) {
+	base := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+	enf := &timedEnforcer{fakeEnforcer: fakeEnforcer{err: enforcer.ErrNotRunning}, times: enforcer.Times{
+		EvidenceStartedAt: base.Add(25 * time.Millisecond), EvidenceDoneAt: base.Add(140 * time.Millisecond),
+	}}
+	p, hub := newPipe(t, Options{EnforceKill: true}, &fakeEnforcer{})
+	p.enforcer = enf
+	ev := openEv("/etc/shadow")
+	ev.Timestamp = base
+	p.Handle(context.Background(), ev)
+	p.Handle(context.Background(), ev) // 잔여 이벤트
+	if len(enf.calls) != 1 {
+		t.Fatalf("isolation calls = %d, want 1", len(enf.calls))
+	}
+	got := hub.snapshot()
+	v := got[0]
+	tl := v.Timeline
+	if v.Enforced || v.EnforceError != enforcer.ErrNotRunning.Error() {
+		t.Fatalf("exited container is not isolated: enforced=%v err=%q", v.Enforced, v.EnforceError)
+	}
+	if tl == nil || tl.EvidenceStartedAt == nil || !tl.EvidenceStartedAt.Equal(enf.times.EvidenceStartedAt) ||
+		tl.EvidenceDoneAt == nil || !tl.EvidenceDoneAt.Equal(enf.times.EvidenceDoneAt) || tl.PausedAt != nil || tl.KilledAt != nil {
+		t.Fatalf("evidence times only: %+v", tl)
+	}
+	if _, ok := tl.IsolationMs(); ok {
+		t.Fatal("no isolation latency without a kill")
+	}
+	if r := got[1]; r.Enforced || r.EnforceError != enforcer.ErrNotRunning.Error() || r.Timeline == nil || r.Timeline.EvidenceStartedAt != nil {
+		t.Fatalf("residual event follows the first result without new evidence: enforced=%v err=%q %+v", r.Enforced, r.EnforceError, r.Timeline)
+	}
+}

