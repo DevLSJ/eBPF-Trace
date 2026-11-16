@@ -108,3 +108,58 @@ func TestAuditSavedAfterPersist(t *testing.T) {
 		t.Fatalf("audit saved: %+v", got)
 	}
 }
+
+// Tier 1 — 정지 시각(11/16 「먼저 멈추고 증거 수집」): 격리 수단이 준 pause 시각 · pause 오류를 타임라인에 그대로 옮긴다.
+// 탐지 → 정지(PauseMs)는 보조 값이고, 격리 지연(IsolationMs = 탐지 → kill)의 정의는 그대로다
+func TestVerdictTimelinePause(t *testing.T) {
+	base := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+	enf := &timedEnforcer{times: enforcer.Times{
+		PausedAt: base.Add(30 * time.Millisecond), EvidenceStartedAt: base.Add(31 * time.Millisecond),
+		EvidenceDoneAt: base.Add(330 * time.Millisecond), KilledAt: base.Add(500 * time.Millisecond),
+	}}
+	p, hub := newPipe(t, Options{EnforceKill: true}, &fakeEnforcer{})
+	p.enforcer = enf
+	ev := openEv("/etc/shadow")
+	ev.Timestamp = base
+	p.Handle(context.Background(), ev)
+	tl := hub.snapshot()[0].Timeline
+	if tl == nil || tl.PausedAt == nil || !tl.PausedAt.Equal(enf.times.PausedAt) || tl.PauseError != "" {
+		t.Fatalf("pausedAt from enforcer: %+v", tl)
+	}
+	if ms, ok := tl.PauseMs(); !ok || ms != 30 {
+		t.Fatalf("pause ms = %d %v", ms, ok)
+	}
+	if ms, ok := tl.IsolationMs(); !ok || ms != 500 {
+		t.Fatalf("isolation ms must stay detected → killed: %d %v", ms, ok)
+	}
+	// 잔여 이벤트: kill · pause 를 다시 보내지 않으므로 정지 시각도 없다
+	p.Handle(context.Background(), ev)
+	if v := hub.snapshot()[1]; !v.Enforced || v.Timeline == nil || v.Timeline.PausedAt != nil {
+		t.Fatalf("residual event: %+v", v.Timeline)
+	}
+
+	// pause 가 실패했지만(500 등) 예전 순서로 격리한 경우: 정지 시각 없음 · 사유 남음 · 격리는 성공
+	enf2 := &timedEnforcer{times: enforcer.Times{PauseError: "docker pause: 500 Internal Server Error: boom", KilledAt: base.Add(400 * time.Millisecond)}}
+	p2, hub2 := newPipe(t, Options{EnforceKill: true}, &fakeEnforcer{})
+	p2.enforcer = enf2
+	p2.Handle(context.Background(), ev)
+	v2 := hub2.snapshot()[0]
+	if !v2.Enforced || v2.Timeline == nil || v2.Timeline.PausedAt != nil || v2.Timeline.PauseError != enf2.times.PauseError {
+		t.Fatalf("pause failed, kill ok: enforced=%v %+v", v2.Enforced, v2.Timeline)
+	}
+
+	// pause 가 「이미 끝남」(409 · 404)을 돌려준 경우: 격리 아님 + 사유, 정지 · kill 시각 없음(PR #16 과 같은 방식)
+	enf3 := &timedEnforcer{fakeEnforcer: fakeEnforcer{err: enforcer.ErrNotRunning}}
+	p3, hub3 := newPipe(t, Options{EnforceKill: true}, &fakeEnforcer{})
+	p3.enforcer = enf3
+	p3.Handle(context.Background(), ev)
+	p3.Handle(context.Background(), ev) // 잔여 이벤트
+	if len(enf3.calls) != 1 {
+		t.Fatalf("isolation calls = %d, want 1", len(enf3.calls))
+	}
+	for i, v := range hub3.snapshot() {
+		if v.Enforced || v.EnforceError != enforcer.ErrNotRunning.Error() || v.Timeline == nil || v.Timeline.PausedAt != nil || v.Timeline.KilledAt != nil {
+			t.Fatalf("verdict %d after stopped container: enforced=%v err=%q %+v", i, v.Enforced, v.EnforceError, v.Timeline)
+		}
+	}
+}
