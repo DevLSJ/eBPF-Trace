@@ -31,6 +31,9 @@ export function segmentsOf(t: Timeline | null | undefined): Segment[] {
 }
 // 격리까지 = killedAt − detectedAt(없으면 null) — 격리 지연의 정의, 정지 시각과 무관
 export const isolationMs = (t: Timeline | null | undefined) => (t?.killedAt ? Math.max(0, Date.parse(t.killedAt) - Date.parse(t.detectedAt)) : null);
+// 격리 단계 시각(정지 · 증거 · 격리 중 하나라도)이 있는가 — 탐지 · 판정 시각만 있는 경고 기록은 막대를 그리지 않는다(11/16 감사 상세).
+// 이미 끝난 컨테이너는 증거 시각만 있다(격리 아님, 11/16)
+export const hasIsolationSteps = (t: Timeline | null | undefined): t is Timeline => !!t && !!(t.pausedAt || t.evidenceStartedAt || t.killedAt);
 // 정지까지 = pausedAt − detectedAt(없으면 null) — 보조 값(11/16)
 export const pauseMs = (t: Timeline | null | undefined) => (t?.pausedAt ? Math.max(0, Date.parse(t.pausedAt) - Date.parse(t.detectedAt)) : null);
 export const fmtSec = (v: number) => `${(v / 1000).toFixed(2)}초`;

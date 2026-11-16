@@ -33,9 +33,12 @@ export function TimelineBar({ timeline, compact }: { timeline: Timeline | null |
             정지까지 {fmtSec(paused)}
           </span>
         )}
-        <b className={`num whitespace-nowrap text-slate-900 ${paused === null ? 'ml-auto' : ''}`} data-part="timeline-total">
-          격리까지 {total === null ? '' : fmtSec(total)}
-        </b>
+        {/* 격리 시각이 없으면(이미 끝난 컨테이너 · 기록 없음, 11/16) 값 없는 「격리까지」 글자를 남기지 않는다 */}
+        {total === null ? null : (
+          <b className={`num whitespace-nowrap text-slate-900 ${paused === null ? 'ml-auto' : ''}`} data-part="timeline-total">
+            격리까지 {fmtSec(total)}
+          </b>
+        )}
       </div>
     </div>
   );
