@@ -577,7 +577,7 @@ test.describe('F AI 도우미 채팅 화면', () => {
       expect(r[5]).toBe('rgba(0, 0, 0, 0)'); // 말풍선 없음
     }
     // 예전 줄은 다시 움직이지 않는다(새로 붙은 두 줄만 is-new)
-    expect(await rows.evaluateAll((els) => els.map((e) => e.classList.contains('is-new')))).toEqual([false, false, true, true]);
+    await expect.poll(() => rows.evaluateAll((els) => els.map((e) => e.classList.contains('is-new')))).toEqual([false, false, true, true]);
     // 대화 칸만 스크롤, 입력칸은 패널 안 고정
     expect(await page.locator('[data-part="chat-list"]').evaluate((e) => getComputedStyle(e).overflowY)).toBe('auto');
     await page.screenshot({ path: `${SCRATCH}/r1-chat.png` });

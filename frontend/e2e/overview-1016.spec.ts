@@ -56,7 +56,7 @@ test.describe('eBPF 수집 종합', () => {
     ] as const) {
       const rows = page.locator(`${OV} [data-top="${k}"] [data-row]`);
       await expect(rows).toHaveCount(want.length);
-      expect(await rows.evaluateAll((els) => els.map((e) => [(e as HTMLElement).dataset.row, Number((e as HTMLElement).dataset.count)]))).toEqual(want);
+      await expect.poll(() => rows.evaluateAll((els) => els.map((e) => [(e as HTMLElement).dataset.row, Number((e as HTMLElement).dataset.count)]))).toEqual(want);
     }
     await expect(page.locator(`${OV} [data-top="containers"]`)).toContainText('pip ./reqeusts');
   });

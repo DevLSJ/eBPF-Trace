@@ -147,8 +147,8 @@ test.describe('평가 접는 목록(11/09 저녁)', () => {
     const q = page.locator('[data-part="eval-list-head"] [data-term]');
     await expect(q).toHaveCount(3);
     // (?) 글자도 12px 이상(화면 글자 하한 — r4-tables G)
-    expect(await q.evaluateAll((els) => els.map((e) => parseFloat(getComputedStyle(e).fontSize)))).toEqual([12, 12, 12]);
-    expect(await q.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))).toEqual(['항목 설명', '결과 설명', '상태 설명']);
+    await expect.poll(() => q.evaluateAll((els) => els.map((e) => parseFloat(getComputedStyle(e).fontSize)))).toEqual([12, 12, 12]);
+    await expect.poll(() => q.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))).toEqual(['항목 설명', '결과 설명', '상태 설명']);
     await q.nth(2).hover();
     const tip = page.locator('[role="tooltip"][data-part="term-tip"]:visible');
     await expect(tip).toHaveCount(1);

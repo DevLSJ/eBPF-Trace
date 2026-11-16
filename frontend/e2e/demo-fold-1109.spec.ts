@@ -58,7 +58,7 @@ test.describe('11/09 시연 — 한눈에 3줄', () => {
     await expect(brief).toBeVisible();
     const rows = brief.locator('[data-brief]');
     await expect(rows).toHaveCount(3);
-    expect(await rows.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.brief))).toEqual(['what', 'rule', 'result']);
+    await expect.poll(() => rows.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.brief))).toEqual(['what', 'rule', 'result']);
     expect(await brief.locator('dt').allTextContents()).toEqual(['무엇을', '잡는 규칙', '예상 결과']);
     // 열 맨 위 — 묶음 목록보다 위
     const [b, g] = await Promise.all([brief.boundingBox(), page.locator('[data-part="scn-groups"]').boundingBox()]);

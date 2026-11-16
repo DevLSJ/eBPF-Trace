@@ -149,7 +149,7 @@ test.describe('설정 화면', () => {
     await au.locator('[data-filter="action"]').click();
     const acts = page.getByRole('listbox', { name: '한 일' }).getByRole('option');
     await expect(acts).toHaveCount(AUDIT_ACTIONS.length + 1);
-    expect(await acts.evaluateAll((os) => os.map((o) => (o as HTMLElement).dataset.value).slice(1))).toEqual(AUDIT_ACTIONS);
+    await expect.poll(() => acts.evaluateAll((os) => os.map((o) => (o as HTMLElement).dataset.value).slice(1))).toEqual(AUDIT_ACTIONS);
     await page.keyboard.press('Escape');
 
     // 「더 보기」 — 마지막 행 id(51)를 before 로, 받은 수(50) < limit 이면 버튼이 사라진다

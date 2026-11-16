@@ -148,7 +148,7 @@ test.describe('상태 신호등', () => {
   test('알약 5개 · 색 규칙(초록 · 노랑 · 빨강 · 회색) · 누르면 설정 해당 탭 · 키보드', async ({ page, backend }) => {
     await page.goto('/');
     const pills = page.locator(`${PILLS} [data-pill]`);
-    expect(await pills.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.pill))).toEqual(['gadget', 'dns', 'kill', 'notify', 'license']);
+    await expect.poll(() => pills.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.pill))).toEqual(['gadget', 'dns', 'kill', 'notify', 'license']); // 11/16 PR #16 CI: 알약이 그려지기 전에 한 번만 읽어 빈 배열
     const tone = (k: string) => page.locator(`${PILLS} [data-pill="${k}"]`);
     await expect(tone('gadget')).toHaveAttribute('data-tone', 'warn'); // mock → 모의 이벤트
     await expect(tone('gadget')).toContainText('모의 이벤트');

@@ -36,7 +36,7 @@ test.describe('DNS 질의 규칙(kind: dns) — 화면', () => {
     await closeSheet(page);
     await page.locator('[data-filter="kind"]').click();
     const opts = page.getByRole('listbox', { name: '종류' }).getByRole('option');
-    expect(await opts.evaluateAll((os) => os.map((o) => (o as HTMLElement).dataset.value))).toEqual(['', 'exec', 'open', 'connect', 'dns']);
+    await expect.poll(() => opts.evaluateAll((os) => os.map((o) => (o as HTMLElement).dataset.value))).toEqual(['', 'exec', 'open', 'connect', 'dns']);
     await expect(opts.filter({ hasText: 'dns' })).toHaveText(/도메인 조회/);
     await opts.filter({ hasText: 'dns' }).click();
     await expect(page.locator('li[data-key]')).toHaveCount(2);
