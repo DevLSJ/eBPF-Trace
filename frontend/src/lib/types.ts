@@ -29,10 +29,14 @@ export interface Event {
 export interface Timeline {
   detectedAt: string;
   matchedAt: string;
+  // 11/16: 증거 수집 전에 컨테이너를 멈춘(Docker pause) 시각. 옛 기록 · pause 실패 · 증거 훅 없는 격리는 없음
+  pausedAt?: string;
   evidenceStartedAt?: string;
   evidenceDoneAt?: string;
   killedAt?: string;
   notifiedAt?: string;
+  // 11/16: pause 가 실패해 멈추지 못하고 예전 순서(증거 → 격리)로 간 사유
+  pauseError?: string;
 }
 export interface IsolationRef {
   auditId: number;
@@ -596,7 +600,8 @@ export interface Summary {
   decisions: { malicious: number; falsePositive: number; pending: number };
   blocklist: { packages: number; images: number; hosts: number };
   // 격리 지연(10/30): 범위 안 killedAt 있는 행, ms = killedAt − detectedAt. 없으면 count 0 · 나머지 null. 옛 백엔드는 없음
-  isolation?: { count: number; medianMs: number | null; p95Ms: number | null; maxMs: number | null };
+  // pause(11/16, 보조 값): pausedAt 있는 행의 pausedAt − detectedAt 같은 통계. 정지 기록이 없거나 옛 백엔드면 키 없음
+  isolation?: { count: number; medianMs: number | null; p95Ms: number | null; maxMs: number | null; pause?: { count: number; medianMs: number | null; p95Ms: number | null; maxMs: number | null } };
   // 직전 기간(R2 11/04): 바로 앞 같은 길이 기간의 같은 숫자 — KPI 증감 줄. 그 기간에 기록이 없으면 null, 옛 백엔드는 키 없음
   previous?: SummaryPrevious | null;
 }

@@ -4,7 +4,7 @@ import { fmtDateTime } from './format';
 import { SOURCE_LABEL } from './guide';
 import { sessionLabel } from './pkg';
 import { changeText, LIST_LABEL } from './proposal';
-import { fmtMs, fmtSec, isolationMs, segmentsOf } from './timeline';
+import { fmtMs, fmtSec, isolationMs, pauseMs, segmentsOf } from './timeline';
 import { caseLabel, DECISION_LABEL, detailOf, INSTALL_STATUS_LABEL, LEVEL_LABEL, levelOf, type BlockEntry, type BlockList, type Case, type Evidence, type InstallSession, type Proposal, type Timeline, type Verdict } from './types';
 
 // 건 보고서 1장(10/30 계약 §5) — 데이터 모으기 · Markdown 만들기(화면은 features/report/ReportPage.tsx)
@@ -91,13 +91,14 @@ export function summaryLines(d: ReportData): [string, string][] {
 export function reportMarkdown(d: ReportData, author: string, at = new Date()): string {
   const segs = segmentsOf(d.timeline);
   const total = isolationMs(d.timeline);
+  const paused = pauseMs(d.timeline);
   const out: string[] = [];
   out.push(`# ${d.label} 건 보고서`);
   out.push(`${SOURCE_LABEL[d.source]} · ${statusText(d)}${d.case ? ` · 건 ${d.case.id}` : ''}${d.session ? ` · 세션 ${d.session.id}` : ''}`);
   out.push('', '## 요약');
   for (const [k, v] of summaryLines(d)) out.push(`- ${k}: ${v}`);
   out.push('', '## 격리 타임라인');
-  out.push(`${segs.map((s) => `${s.label} ${fmtMs(s.ms)}`).join(' · ')} · 격리까지 ${total === null ? '' : fmtSec(total)}`);
+  out.push(`${segs.map((s) => `${s.label} ${fmtMs(s.ms)}`).join(' · ')}${paused === null ? '' : ` · 정지까지 ${fmtSec(paused)}`} · 격리까지 ${total === null ? '' : fmtSec(total)}`);
   out.push('', '## 위반', `| 시각 | 종류 | ${FIELD.policy} | 상세 | 탐지 결과 |`, '|---|---|---|---|---|');
   for (const v of d.violations) out.push(`| ${fmtDateTime(v.event.timestamp)} | ${v.event.kind} | ${v.ruleId ?? ''} | ${detailOf(v.event).replace(/\|/g, '\\|')} | ${LEVEL_LABEL[levelOf(v)]} |`);
   if (!d.violations.length) out.push('|  |  |  | 위반 없음 |  |');

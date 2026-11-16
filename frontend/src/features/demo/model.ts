@@ -114,10 +114,12 @@ export const SCENARIO: Record<DemoScenario, { name: string; line: string; expect
   },
 };
 export const EXPECT_LABEL: Record<Expect, string> = { isolated: '격리 예상', passed: '통과 예상' };
+// pause(11/16): 타임라인에 정지 시각(pausedAt)이 있을 때만 생기는 단계 — 없으면 예전 5단계 그대로(stepsOf 가 고른다)
 export const STEPS = [
   ['start', '설치 시작'],
   ['events', '커널 이벤트'],
   ['match', '정책 탐지'],
+  ['pause', '정지'],
   ['evidence', '증거 수집'],
   ['outcome', '결과'],
 ] as const;
@@ -249,6 +251,7 @@ export function stepsOf(run: DemoRun | null, m: DemoModel): Step[] {
   if (m.d) out.push({ key: 'match', at: validAt(m.tl?.matchedAt ?? m.d.event?.timestamp), state: 'done' });
   else if (m.d === null && fin) out.push({ key: 'match', at: validAt(m.evs[m.evs.length - 1]?.event.timestamp ?? run?.finishedAt), state: 'done' });
   else out.push({ key: 'match', at: null, state: m.running && m.count ? 'active' : fin ? 'done' : 'todo' });
+  if (m.tl?.pausedAt) out.push({ key: 'pause', at: validAt(m.tl.pausedAt), state: 'done' }); // 11/16 증거 수집 전 정지
   if (m.tl?.evidenceDoneAt) out.push({ key: 'evidence', at: validAt(m.tl.evidenceDoneAt), state: 'done' });
   else if (fin && m.outcome !== 'isolated') out.push({ key: 'evidence', at: null, state: 'skip' });
   else out.push({ key: 'evidence', at: null, state: fin ? 'done' : m.lv === 'killed' ? 'active' : 'todo' });
