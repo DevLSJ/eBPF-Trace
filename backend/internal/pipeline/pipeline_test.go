@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/enforcer"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/model"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/rules"
 	"github.com/DevLSJ/ebpf-supplychain-guard/backend/internal/stats"
@@ -104,6 +105,31 @@ func TestKillFailureReported(t *testing.T) {
 	p.Handle(context.Background(), openEv("/etc/shadow"))
 	if v := hub.msgs[0]; v.Enforced || v.EnforceError == "" {
 		t.Fatalf("want enforce error, got %+v", v)
+	}
+}
+
+// Tier 1 — kill 이 닿기 전에 컨테이너가 스스로 끝난 경우(Docker 409 · 404, 11/16 sg-vm ins-0131 실측):
+// 첫 판정은 격리 실패로 남고, 같은 컨테이너의 잔여 이벤트도 격리로 적지 않는다(kill 을 다시 보내지도 않는다).
+// 고치기 전에는 잔여 이벤트가 Enforced=true 로 남아 설치 세션이 「격리」인데 killedAt · isolation 이 없었다
+func TestResidualAfterNotRunningIsNotEnforced(t *testing.T) {
+	for _, kerr := range []error{enforcer.ErrNotRunning, enforcer.ErrNotFound} {
+		t.Run(kerr.Error(), func(t *testing.T) {
+			enf := &fakeEnforcer{err: kerr}
+			p, hub := newPipe(t, Options{EnforceKill: true}, enf)
+			p.Handle(context.Background(), openEv("/etc/shadow"))
+			p.Handle(context.Background(), openEv("/etc/shadow")) // 잔여 이벤트
+			if len(enf.calls) != 1 {
+				t.Fatalf("kill calls = %d, want 1 (no second kill for a stopped container)", len(enf.calls))
+			}
+			for i, v := range hub.snapshot() {
+				if v.Enforced || v.EnforceError != kerr.Error() || model.LevelOf(v) == model.LevelKilled {
+					t.Fatalf("verdict %d must not be recorded as killed: enforced=%v err=%q", i, v.Enforced, v.EnforceError)
+				}
+			}
+			if got := p.stats.Snapshot().KilledCount; got != 0 {
+				t.Fatalf("killed count = %d, want 0", got)
+			}
+		})
 	}
 }
 
