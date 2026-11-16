@@ -23,7 +23,8 @@ type Enforcer interface {
 
 // Times: 격리 타임라인(10/30)에 들어가는 단계별 시각 — 해당 없으면 0 값.
 // PausedAt 은 Docker pause 응답 시각(성공했을 때만, 11/16), EvidenceStartedAt · EvidenceDoneAt 는 before-kill 훅의 시작 · 끝(예산을 넘기면 예산이 다한 시점),
-// KilledAt 은 Docker kill 응답 시각(성공했을 때만). PauseError 는 pause 가 실패했지만 예전 순서(증거 → kill)로 계속한 사유
+// KilledAt 은 Docker kill 응답 시각(성공했을 때만). PauseError 는 pause 가 실패했지만 예전 순서(증거 → kill)로 계속한 사유.
+// 이미 끝난 컨테이너(pause 409 「not running」)는 증거 시각만 있고 PausedAt · KilledAt 은 비어 있다(11/16)
 type Times struct {
 	PausedAt          time.Time
 	EvidenceStartedAt time.Time
@@ -46,7 +47,8 @@ type Docker struct {
 	base   string
 	// BeforeKill: kill 요청 직전에 부르는 훅(증거 보존, 10/20). 선택적 — nil 이면 pause 없이 바로 kill.
 	// 있으면 컨테이너를 먼저 pause 한 뒤 부른다(11/16). beforeKillBudget 안에 끝나지 않으면 기다리지 않고 kill 을 보낸다.
-	// 훅의 패닉은 삼킨다 (kill 이 늦어지면 안 된다). 훅은 paused 컨테이너에서 inspect · logs · diff · top · archive 만 쓴다(exec 는 409)
+	// 훅의 패닉은 삼킨다 (kill 이 늦어지면 안 된다). 훅은 paused 컨테이너에서 inspect · logs · diff · top · archive 만 쓴다(exec 는 409).
+	// 이미 끝난 컨테이너에도 불린다(11/16) — 그때 top 은 409 라 프로세스 목록은 빈다
 	BeforeKill func(ctx context.Context, containerID string)
 }
 
@@ -84,7 +86,8 @@ func (d *Docker) Kill(ctx context.Context, containerID string) error {
 }
 
 // KillTimed: Kill 과 같되 단계별 시각(pause 응답, 증거 훅 시작 · 끝, kill 응답)을 함께 돌려준다 — 격리 타임라인(10/30).
-// 동작은 Kill 과 똑같다: 잘못된 id 는 요청 없이 거절, 훅이 있으면 먼저 pause(11/16) 한 뒤 훅을 예산 안에서만 기다리고, 그 다음 kill 요청을 보낸다
+// 동작은 Kill 과 똑같다: 잘못된 id 는 요청 없이 거절, 훅이 있으면 먼저 pause(11/16) 한 뒤 훅을 예산 안에서만 기다리고, 그 다음 kill 요청을 보낸다.
+// pause 가 「이미 끝남」이면 훅만 예산 안에서 돌리고 kill 없이 ErrNotRunning, 「없음」이면 훅도 없이 ErrNotFound
 func (d *Docker) KillTimed(ctx context.Context, containerID string) (Times, error) {
 	var ts Times
 	if !containerIDPattern.MatchString(containerID) {
@@ -96,8 +99,15 @@ func (d *Docker) KillTimed(ctx context.Context, containerID string) (Times, erro
 		switch err := d.pause(ctx, containerID); {
 		case err == nil:
 			ts.PausedAt = time.Now().UTC()
-		case errors.Is(err, ErrNotRunning), errors.Is(err, ErrNotFound):
-			return ts, err // 이미 끝난 컨테이너: 증거도 kill 도 하지 않는다(격리 아님 + 사유)
+		case errors.Is(err, ErrNotFound):
+			return ts, err // 컨테이너가 없다(--rm 등): 읽을 것이 없으니 증거도 kill 도 하지 않는다(격리 아님 + 사유)
+		case errors.Is(err, ErrNotRunning):
+			// 이미 끝난 컨테이너(11/16 사용자 결정 「끝난 컨테이너도 증거는」): 끝난 컨테이너도 logs · changes · archive 는 읽힌다(top 만 409, sg-vm 실측).
+			// 증거는 같은 예산 안에서 모으고 kill 은 보내지 않는다 — 결과는 그대로 격리 아님 + 사유(ErrNotRunning)
+			ts.EvidenceStartedAt = time.Now().UTC()
+			d.runBeforeKill(ctx, containerID)
+			ts.EvidenceDoneAt = time.Now().UTC()
+			return ts, err
 		default:
 			// 이미 정지 · 데몬 오류 등: 예전 순서(증거 → kill)로 계속한다. paused 컨테이너도 kill 은 된다(11/16 sg-vm 실측)
 			ts.PauseError = err.Error()
