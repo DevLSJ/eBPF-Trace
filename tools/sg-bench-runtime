@@ -11,10 +11,14 @@
   정상 설치 · 공격(샌드박스)은 섞어서, 연쇄 · 대조군은 따로 섞어서 돌린다. 매 실행 전 공급망 검사(GET /api/scans)에
   running 이 없을 때까지 기다린다(--scan-wait 초까지, 넘기면 그대로 돌리고 결과에 센다).
   지연은 감사 로그 판정의 격리 타임라인(timeline.detectedAt → killedAt, 백엔드가 적은 시각 — detectedAt 은 가젯 이벤트 수신 시각)에서 계산한다.
+  정지(11/16 백엔드부터 격리 순서 = 정지 → 증거 → kill): 보조 값 pauseMs = pausedAt − detectedAt. 단계는 겹치지 않게 판정(detectedAt → matchedAt) ·
+  정지 요청(matchedAt → pausedAt) · 증거(evidenceStartedAt → evidenceDoneAt) · 종료 요청(evidenceDoneAt → killedAt). pausedAt 이 없는 기록은
+  비우고 따로 센다(pauseMissing · pauseErrors). 격리되지 않은 탐지(이미 끝난 컨테이너 등)도 빼지 않고 센다. 스키마 2 = 1 + 정지 키(더하기만).
+  외부 알림(웹훅 · Slack)이 켜져 있으면 시작하지 않는다(판정마다 알림이 나간다) — 알려도 되면 --allow-notify.
 
   사용: tools/sg-bench-runtime [-a http://127.0.0.1] [-t ~/sg/.tokens] [-l 목록] [-o bench/reports/runtime.json]
                                [-n 10] [-c 5] [--only benign,typosquat,dns,chain] [--host-name sg-vm] [--backend-commit SHA]
-                               [--work ./.sg-bench-runtime] [--seed N] [--plan]
+                               [--work ./.sg-bench-runtime] [--seed N] [--plan] [--allow-notify]
     토큰: 환경 변수 ADMIN_TOKEN · SUPPLYGUARD_SANDBOX_TOKEN, 없으면 -t 파일의 ADMIN_TOKEN= · SANDBOX_TOKEN= 줄(값은 출력하지 않는다)
     목록: 한 줄에 「pip 이름[==버전]」 또는 「npm 이름[@버전]」. 빈 줄 · # 주석 무시
     --plan  실행하지 않고 실행 순서만 출력
@@ -248,8 +252,13 @@ class Bench:
         kills = [r for r in rows if r.get("enforced")]
         first = det[0] if det else None
         tl = (first or {}).get("timeline") or {}
-        # 격리 타임라인(killedAt)은 실제로 kill 을 부른 판정 1건에만 붙는다 — 같은 컨테이너의 뒤 판정은 enforced 만 true
-        ktl = next((r["timeline"] for r in rows if (r.get("timeline") or {}).get("killedAt")), {})
+
+        def stamped(key):
+            return next((r["timeline"] for r in rows if (r.get("timeline") or {}).get(key)), {})
+        # 격리 타임라인(killedAt)은 실제로 kill 을 부른 판정 1건에만 붙는다 — 같은 컨테이너의 뒤 판정은 enforced 만 true.
+        # 11/16 부터 순서는 정지(pausedAt) → 증거 → 격리(killedAt)이고 세 시각 모두 그 판정 1건에 붙는다.
+        # pausedAt 은 pause 가 성공했을 때만 있다(옛 판 · pause 실패 · 증거 훅 없음은 비어 있다 — 채우지 않는다)
+        ktl, ptl, etl = stamped("killedAt"), stamped("pausedAt"), stamped("evidenceDoneAt")
         return {
             "detected": bool(det),
             "rule": (first or {}).get("ruleId"),
@@ -263,6 +272,12 @@ class Bench:
             "killApiMs": ms_between(ktl.get("evidenceDoneAt"), ktl.get("killedAt")),
             "notRunning": any("not running" in (r.get("enforceError") or "") for r in rows),
             "verdicts": len(rows),
+            # 정지(11/16, 보조 값): 탐지 → 정지 응답 · 정지 요청(판정 완료 → 정지 응답)
+            "pauseMs": ms_between(ptl.get("detectedAt"), ptl.get("pausedAt")),
+            "pauseApiMs": ms_between(ptl.get("matchedAt"), ptl.get("pausedAt")),
+            "pauseError": any((r.get("timeline") or {}).get("pauseError") for r in rows),
+            "pausedNotKilled": bool(ptl) and not ktl,     # 멈췄지만 kill 이 실패(컨테이너는 정지된 채 남음)
+            "evidenceWithoutKill": bool(etl) and not ktl,  # 증거는 모았지만 kill 없음(이미 끝난 컨테이너 등)
         }
 
     def sg_install(self, eco, target):
@@ -438,25 +453,46 @@ def scenario_out(sid, runs):
            "dryRun": any(r.get("dryRun") for r in runs if r.get("detected"))}
     if sid.startswith("chain"):
         out["lastStepRan"] = sum(1 for r in runs if r.get("lastStepRan"))
-    out["samples"] = [sample(r["isolationMs"], r.get("killMatchMs"), r.get("evidenceMs"), r.get("killApiMs"))
+    out["samples"] = [sample(r["isolationMs"], r.get("killMatchMs"), r.get("evidenceMs"), r.get("killApiMs"),
+                             pause=r.get("pauseMs"), pause_api=r.get("pauseApiMs"))
                       for r in runs if r.get("isolationMs") is not None]
+    # 정지(스키마 2, 11/17): 격리된 회차(samples)의 정지 값만 분포로 — samples 에서 그대로 다시 계산된다.
+    # pausedAt 이 없는 격리 회차는 비우고 pauseMissing 으로 센다(추정 · 보간 없음)
+    out.update(pause_keys(out["samples"]))
+    out["pauseErrors"] = sum(1 for r in runs if r.get("pauseError"))
+    out["pausedNotKilled"] = sum(1 for r in runs if r.get("pausedNotKilled"))
+    out["evidenceWithoutKill"] = sum(1 for r in runs if r.get("evidenceWithoutKill"))
     return out
 
 
-def sample(latency, match, evidence, kill_api):
-    """격리된 실행 1회의 원시값(ms) — 다시 계산할 수 있게 scenarios[].samples 에 남긴다"""
-    return {"latencyMs": latency, "matchMs": match, "evidenceMs": evidence, "killApiMs": kill_api}
+def pause_keys(samples):
+    """시나리오의 정지 분포 — 격리된 회차(samples)에서만, pausedAt 이 없는 회차는 pauseMissing 으로 센다"""
+    return {"pauseLatencyMs": dist([x["pauseMs"] for x in samples if x.get("pauseMs") is not None]),
+            "pauseApiMs": dist([x["pauseApiMs"] for x in samples if x.get("pauseApiMs") is not None]),
+            "pauseMissing": sum(1 for x in samples if x.get("pauseMs") is None)}
+
+
+def sample(latency, match, evidence, kill_api, pause=None, pause_api=None):
+    """격리된 실행 1회의 원시값(ms) — 다시 계산할 수 있게 scenarios[].samples 에 남긴다.
+    단계(서로 겹치지 않음): 판정 matchMs = detectedAt → matchedAt · 정지 요청 pauseApiMs = matchedAt → pausedAt ·
+    증거 evidenceMs = evidenceStartedAt → evidenceDoneAt · 종료 요청 killApiMs = evidenceDoneAt → killedAt.
+    latencyMs = killedAt − detectedAt(격리 지연, 정의 그대로) · pauseMs = pausedAt − detectedAt(보조 값, 없으면 None)"""
+    return {"latencyMs": latency, "matchMs": match, "evidenceMs": evidence, "killApiMs": kill_api,
+            "pauseMs": pause, "pauseApiMs": pause_api}
 
 
 def add_kill_totals(report):
-    """최상위 killLatencyMs · killStagesMs — kind=attack 이고 실제로 kill 된 실행 전체(시나리오 합산)의 분포"""
+    """최상위 killLatencyMs · killStagesMs · pauseLatencyMs — kind=attack 이고 실제로 kill 된 실행 전체(시나리오 합산)의 분포.
+    옛 보고서(정지 이전)의 samples 에는 pauseMs 가 없다 — 정지는 빈 분포 + missing 으로만 나온다"""
     picked = [(s["id"], x) for s in report["scenarios"] if s.get("kind") == "attack" for x in s.get("samples") or []]
     vals = lambda k: [x[k] for _, x in picked if x.get(k) is not None]  # noqa: E731
-    lat = dist(vals("latencyMs"))
-    report["killLatencyMs"] = dict(lat or {"p50": None, "p95": None, "max": None, "n": 0},
-                                   scenarios=sorted({sid for sid, _ in picked}))
-    report["killStagesMs"] = {"match": dist(vals("matchMs")), "evidence": dist(vals("evidenceMs")),
-                              "killApi": dist(vals("killApiMs"))}
+    empty = {"p50": None, "p95": None, "max": None, "n": 0}
+    scenarios = sorted({sid for sid, _ in picked})
+    report["killLatencyMs"] = dict(dist(vals("latencyMs")) or empty, scenarios=scenarios)
+    report["killStagesMs"] = {"match": dist(vals("matchMs")), "pauseApi": dist(vals("pauseApiMs")),
+                              "evidence": dist(vals("evidenceMs")), "killApi": dist(vals("killApiMs"))}
+    report["pauseLatencyMs"] = dict(dist(vals("pauseMs")) or empty, scenarios=scenarios,
+                                    missing=sum(1 for _, x in picked if x.get("pauseMs") is None))
 
 
 def ts_plus(iso, seconds):
@@ -466,7 +502,18 @@ def ts_plus(iso, seconds):
 def rebuild(args, api):
     """다시 재지 않고 samples · 합산 키를 채운다 — 측정 창(startedAt ~ generatedAt) 안 감사 로그의 kill 판정을
     설치 세션(같은 패키지 경로)으로 시나리오에 붙이고, 기존 latencyMs 분포 · killed 수와 같을 때만 쓴다"""
-    report = json.load(open(args.rebuild))
+    with open(args.rebuild) as f:
+        report = json.load(f)
+    rebuild_report(report, api)
+    with open(os.path.abspath(args.out), "w") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    log(f"되살림 {sum(len(s['samples']) for s in report['scenarios'])}건 → {os.path.abspath(args.out)}")
+    return 0
+
+
+def rebuild_report(report, api):
+    """rebuild 의 계산부(파일 읽기 · 쓰기 없음) — report 를 고쳐 쓴다. 정지 값은 타임라인에 pausedAt 이 있을 때만 채운다"""
     since, until = ts_plus(report["startedAt"], -1), ts_plus(report["generatedAt"], 1)
     rows = api.get(f"/api/audit?limit=2000&since={since}&until={until}")
     kills = sorted((r for r in rows if (r.get("timeline") or {}).get("killedAt")), key=lambda r: r["id"])
@@ -484,7 +531,9 @@ def rebuild(args, api):
         t = r["timeline"]
         by_sid[sid].append(sample(ms_between(t["detectedAt"], t["killedAt"]), ms_between(t["detectedAt"], t.get("matchedAt")),
                                   ms_between(t.get("evidenceStartedAt"), t.get("evidenceDoneAt")),
-                                  ms_between(t.get("evidenceDoneAt"), t["killedAt"])))
+                                  ms_between(t.get("evidenceDoneAt"), t["killedAt"]),
+                                  pause=ms_between(t["detectedAt"], t.get("pausedAt")),
+                                  pause_api=ms_between(t.get("matchedAt"), t.get("pausedAt"))))
     for s in report["scenarios"]:
         got = by_sid.pop(s["id"], [])
         want = s.get("latencyMs")
@@ -493,16 +542,24 @@ def rebuild(args, api):
             raise SystemExit(f"{s['id']}: 감사 로그에서 되살린 값이 보고서와 다릅니다(격리 {s.get('killed')} · 되살림 {len(got)} · "
                              f"보고서 {want} · 되살림 {have}) — 쓰지 않고 멈춥니다")
         s["samples"] = got
+        s.update(pause_keys(got))
     if by_sid:
         raise SystemExit(f"보고서에 없는 시나리오의 kill 판정: {dict((k, len(v)) for k, v in by_sid.items())}")
     add_kill_totals(report)
     report["rebuild"] = {"at": now_iso(), "from": "감사 로그 격리 타임라인(측정 창 안 kill 판정, 설치 세션으로 시나리오 연결) — "
                                                   "다시 재지 않음, 기존 latencyMs · killed 와 일치 확인"}
-    with open(os.path.abspath(args.out), "w") as f:
-        json.dump(report, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-    log(f"되살림 {sum(len(s['samples']) for s in report['scenarios'])}건 → {os.path.abspath(args.out)}")
-    return 0
+    return report
+
+
+def notify_block_reason(info, allow):
+    """외부 알림(웹훅 · Slack)이 켜져 있으면 측정을 막는 사유 — 측정은 격리 · 경고 · 시험 운영 판정을 수십 건 만들고,
+    알림은 판정마다 나간다. --allow-notify 로만 넘긴다. 채널 주소는 출력하지 않는다(이름만)"""
+    n = (info or {}).get("notify") or {}
+    if not n.get("enabled") or allow:
+        return None
+    names = ", ".join(sorted({c.get("name") or "?" for c in n.get("channels") or []})) or "?"
+    return (f"외부 알림이 켜져 있습니다(채널 {names}) — 측정 판정마다 알림이 나갑니다. "
+            "서버 알림 설정을 비우고 다시 실행하거나, 알려도 되면 --allow-notify")
 
 
 def main():
@@ -520,6 +577,7 @@ def main():
     ap.add_argument("--scan-wait", type=int, default=240)
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--plan", action="store_true")
+    ap.add_argument("--allow-notify", action="store_true", help="외부 알림이 켜져 있어도 측정한다(기본은 멈춤)")
     ap.add_argument("--rebuild", default="", help="기존 결과 JSON — 다시 재지 않고 감사 로그에서 samples · 합산 키만 채워 -o 에 쓴다")
     args = ap.parse_args()
     if args.seed is None:
@@ -546,6 +604,10 @@ def main():
     info = api.get("/api/info")
     if info.get("source") != "gadget":
         print(f"백엔드가 가젯 소스가 아닙니다(source={info.get('source')}) — 커널 측정이 아닙니다", file=sys.stderr)
+        return 2
+    reason = notify_block_reason(info, args.allow_notify)
+    if reason:
+        print(reason, file=sys.stderr)
         return 2
     os.makedirs(os.path.expanduser(args.work), exist_ok=True)
     b = Bench(args, api, sandbox)
@@ -588,8 +650,11 @@ def main():
         "다른 커널(특히 Ubuntu 26.04 커널 7.0 에서는 이벤트 유실을 실측)이나 docker-events 발견 방식에는 그대로 옮길 수 없다.",
         "공격은 모두 무해 시뮬레이션(TEST-NET 203.0.113.7 · 예약 도메인 *.example)이다. 실제 악성 패키지의 다양한 회피 기법은 재지 않았다.",
         "지연은 백엔드가 적은 격리 타임라인(백엔드가 가젯 이벤트를 받은 시각 → Docker kill 응답 시각)이다. 이벤트 시각은 커널 시각이 아니라 수신 시각(time.Now)이라 커널 → 사용자 공간 전달 시간은 빠져 있다. kill 직전 증거 수집(최대 0.7초)이 포함된다.",
-        "짧게 끝나는 컨테이너는 증거 수집 동안 먼저 종료돼 kill 이 「container is not running」이 될 수 있다. 탐지는 성공으로, 격리(killed)는 따로 센다.",
-        "연쇄 규칙 chain-download-secrets 는 발표까지 dryRun 이라 격리 수가 0 인 것이 정상이다. 측정 동안만 no-shell-download 를 dryRun 으로 두었다"
+        "증거 훅이 있는 백엔드(11/16 이후)는 정지(Docker pause) → 증거 → kill 순서로 격리한다. 정지 지연(pauseLatencyMs)은 같은 수신 시각 → pause 응답 시각이고 "
+        "격리 지연의 보조 값이다. pausedAt 이 없는 격리(옛 판 · pause 실패)는 정지 값을 비우고 pauseMissing · pauseErrors 로 센다.",
+        "이미 끝난 컨테이너는 정지 · kill 없이 증거만 모으고 「container is not running」으로 남는다(정지 이전 판에서는 증거 수집 동안 먼저 끝나 kill 이 실패할 수 있었다). "
+        "탐지는 성공으로, 격리(killed)는 따로 센다(killNotRunning · evidenceWithoutKill).",
+        "연쇄 규칙 chain-download-secrets 는 기본 정책에서 dryRun 이라 격리 수가 0 인 것이 정상이다. 측정 동안만 no-shell-download 를 dryRun 으로 두었다"
         "(그대로면 1단계 wget 에서 먼저 격리된다).",
         "TEST-NET 목적지는 접속 실패(약 3초) 뒤에 connect 이벤트가 나와 연쇄 판정도 그만큼 늦다. 실제 도달 가능한 서버면 더 빠르다.",
         "sg-install 세션 시작 때 서버가 같은 패키지의 정적 검사를 자동 시작한다(종합 판정). 정상 설치 동안 검사기 컨테이너가 함께 돈다.",
@@ -606,13 +671,14 @@ def main():
         limits.append(f"정상 설치 {n}건은 위반 없이 설치 자체가 실패하거나 결과를 확인하지 못했다(items 의 exitCode · note). 오탐 계산에는 위반 여부만 쓴다.")
 
     report = {
-        "schema": 1,
+        "schema": 2,  # 2(11/17) = 1 + 정지 키(pauseLatencyMs · killStagesMs.pauseApi · samples[].pauseMs …) — 키는 더하기만 했다
         "generatedAt": now_iso(),
         "startedAt": started,
         "seed": args.seed,
         "host": {"name": args.host_name, "kernel": platform.release(), "discovery": info.get("discovery"),
                  "igVersion": info.get("gadgetVersion"), "backendCommit": args.backend_commit,
-                 "enforceKill": info.get("enforceKill"), "dnsResolve": info.get("dnsResolve")},
+                 "enforceKill": info.get("enforceKill"), "dnsResolve": info.get("dnsResolve"),
+                 "notifyEnabled": bool((info.get("notify") or {}).get("enabled"))},
         "benign": {"installs": len(benign), "byEcosystem": {"pip": by_eco.get("pip", 0), "npm": by_eco.get("npm", 0)},
                    "violations": len(viol),
                    "falsePositiveRate": round(len(viol) / len(benign), 4) if benign else None,
@@ -621,6 +687,10 @@ def main():
         "limits": limits,
     }
     add_kill_totals(report)
+    pz = report["pauseLatencyMs"]
+    if pz["missing"]:
+        limits.append(f"격리 {report['killLatencyMs']['n']}회 가운데 {pz['missing']}회는 pausedAt 이 없어 정지 값을 비웠다"
+                      f"(pause 실패 기록 {sum(s.get('pauseErrors', 0) for s in scen)}회). 정지 분포는 나머지 {pz['n']}회만이다.")
     if b.policy:
         report["policyChange"] = {k: b.policy.get(k) for k in ("rule", "changedAt", "restoredAt", "restoreHttp", "diffLines")}
         report["policyChange"]["dryRunDuring"] = "runtime-chain · chain-gap-control"
@@ -631,11 +701,11 @@ def main():
         f.write("\n")
     log(f"결과 {out}")
 
-    print("\n시나리오|종류|실행|탐지|격리|p50|p95|max(ms)")
+    print("\n시나리오|종류|실행|탐지|격리|p50|p95|max(ms)|정지 p50|정지 없음")
     for s in scen:
-        lat = s["latencyMs"] or {}
+        lat, pz = s["latencyMs"] or {}, s["pauseLatencyMs"] or {}
         print("|".join(map(str, [s["id"], s["kind"], s["runs"], s["detected"], s["killed"],
-                                 lat.get("p50", "-"), lat.get("p95", "-"), lat.get("max", "-")])))
+                                 lat.get("p50", "-"), lat.get("p95", "-"), lat.get("max", "-"), pz.get("p50", "-"), s["pauseMissing"]])))
     print(f"정상 설치 {len(benign)}건 · 위반 {len(viol)}건" + "".join(f"\n  - {x['ecosystem']} {x['name']}: {x['rule']}" for x in viol))
 
     ok = not viol and not interrupted
