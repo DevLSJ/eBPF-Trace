@@ -238,5 +238,28 @@ class NotifyGuard(unittest.TestCase):
         self.assertIsNone(sbr.notify_block_reason({"notify": {"enabled": True}}, True))
 
 
+class ChainPreflight(unittest.TestCase):
+    """연쇄 구간의 정책 전제를 시작 전에 본다 — 늦게(정상 설치 · 샌드박스 공격 뒤) 멈추면 보고서 없이 끝난다"""
+
+    @staticmethod
+    def pol(stage1_dry=False, chain_dry=True, drop=None):
+        rules = [{"id": "no-shell-download", "action": "kill", "dryRun": stage1_dry},
+                 {"id": "chain-download-secrets", "kind": "sequence", "action": "kill", "dryRun": chain_dry}]
+        return [r for r in rules if r["id"] != drop]
+
+    def test_ok_like_1104(self):
+        self.assertIsNone(sbr.chain_preflight(self.pol()))
+
+    def test_stage1_already_dry_run(self):
+        self.assertIn("no-shell-download", sbr.chain_preflight(self.pol(stage1_dry=True)))
+
+    def test_chain_rule_enforcing_would_mix_isolation_samples(self):
+        self.assertIn("chain-download-secrets", sbr.chain_preflight(self.pol(chain_dry=False)))
+
+    def test_missing_rules(self):
+        self.assertIn("no-shell-download", sbr.chain_preflight(self.pol(drop="no-shell-download")))
+        self.assertIn("chain-download-secrets", sbr.chain_preflight(self.pol(drop="chain-download-secrets")))
+
+
 if __name__ == "__main__":
     unittest.main()
