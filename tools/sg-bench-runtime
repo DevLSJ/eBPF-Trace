@@ -23,7 +23,8 @@
     목록: 한 줄에 「pip 이름[==버전]」 또는 「npm 이름[@버전]」. 빈 줄 · # 주석 무시
     --plan  실행하지 않고 실행 순서만 출력
     --rebuild 결과.json  다시 재지 않고, 그 측정 창의 감사 로그에서 실행별 원시값(samples)과 합산 키(killLatencyMs · killStagesMs)를 채운다
-  종료 코드: 0 측정 완료(정상 설치 위반 0 · 대조군 탐지 0 · 정책 원복 확인) · 1 측정은 끝났지만 위 조건 중 하나 실패 · 2 사용 오류
+  종료 코드: 0 측정 완료(정상 설치 위반 0 · 대조군 탐지 0 · 정책 원복 확인) · 1 측정은 끝났지만 위 조건 중 하나 실패 · 2 사용 오류 · 시작 전 점검 실패
+    (가젯 아님 · 외부 알림 켜짐 · 연쇄 정책 전제: no-shell-download 격리 · chain-download-secrets dryRun)
   출력 JSON 은 수치와 공개 인기 패키지 이름만 담는다(토큰 · 컨테이너 로그 원문 없음).
 """
 import argparse
@@ -551,6 +552,24 @@ def rebuild_report(report, api):
     return report
 
 
+def chain_preflight(policies):
+    """연쇄 구간의 정책 전제(11/04 와 같은 구성) — 어긋나면 사유, 맞으면 None. 시작 전에 본다(연쇄는 샌드박스 구간 뒤라
+    그때 멈추면 보고서 없이 끝난다). no-shell-download 는 격리(dryRun 아님)여야 측정 동안만 dryRun 으로 바꿀 수 있고,
+    chain-download-secrets 는 dryRun 이어야 연쇄의 격리가 격리 지연 표본(kind=attack)에 섞이지 않는다"""
+    by_id = {r.get("id"): r for r in policies or []}
+    stage1, chain = by_id.get(STAGE1_RULE), by_id.get(CHAIN_RULE)
+    if stage1 is None:
+        return f"정책 {STAGE1_RULE} 이 없습니다"
+    if stage1.get("dryRun"):
+        return f"{STAGE1_RULE} 이 이미 dryRun 입니다 — 다른 작업이 바꾼 상태일 수 있어 멈춥니다"
+    if chain is None:
+        return f"정책 {CHAIN_RULE} 이 없습니다"
+    if not chain.get("dryRun"):
+        return (f"{CHAIN_RULE} 이 dryRun 이 아닙니다 — 연쇄 실행이 격리돼 격리 지연 표본에 섞입니다(11/04 와 다른 구성). "
+                "정책을 확인하거나 --only 에서 chain 을 빼세요")
+    return None
+
+
 def notify_block_reason(info, allow):
     """외부 알림(웹훅 · Slack)이 켜져 있으면 측정을 막는 사유 — 측정은 격리 · 경고 · 시험 운영 판정을 수십 건 만들고,
     알림은 판정마다 나간다. --allow-notify 로만 넘긴다. 채널 주소는 출력하지 않는다(이름만)"""
@@ -610,6 +629,11 @@ def main():
         print(reason, file=sys.stderr)
         return 2
     os.makedirs(os.path.expanduser(args.work), exist_ok=True)
+    if phase_b:
+        reason = chain_preflight(api.get("/api/policies"))
+        if reason:
+            print(reason, file=sys.stderr)
+            return 2
     b = Bench(args, api, sandbox)
     started = now_iso()
     log(f"시작 seed={args.seed} · 정상 {sum(1 for k, _ in phase_a if k == 'benign')} · 샌드박스 공격 "
@@ -694,6 +718,7 @@ def main():
     if b.policy:
         report["policyChange"] = {k: b.policy.get(k) for k in ("rule", "changedAt", "restoredAt", "restoreHttp", "diffLines")}
         report["policyChange"]["dryRunDuring"] = "runtime-chain · chain-gap-control"
+        report["policyChange"]["chainRuleDryRun"] = True  # chain_preflight 가 시작 전에 확인
     out = os.path.abspath(args.out)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w") as f:
