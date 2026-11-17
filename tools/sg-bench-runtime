@@ -14,6 +14,7 @@
   정지(11/16 백엔드부터 격리 순서 = 정지 → 증거 → kill): 보조 값 pauseMs = pausedAt − detectedAt. 단계는 겹치지 않게 판정(detectedAt → matchedAt) ·
   정지 요청(matchedAt → pausedAt) · 증거(evidenceStartedAt → evidenceDoneAt) · 종료 요청(evidenceDoneAt → killedAt). pausedAt 이 없는 기록은
   비우고 따로 센다(pauseMissing · pauseErrors). 격리되지 않은 탐지(이미 끝난 컨테이너 등)도 빼지 않고 센다. 스키마 2 = 1 + 정지 키(더하기만).
+  정책 원복 확인은 내용만 비교한다(저장 메타 updatedAt · updatedBy 제외 → diffLines, 메타가 바뀐 정책은 policyChange.metaChangedRules).
   외부 알림(웹훅 · Slack)이 켜져 있으면 시작하지 않는다(판정마다 알림이 나간다) — 알려도 되면 --allow-notify.
 
   사용: tools/sg-bench-runtime [-a http://127.0.0.1] [-t ~/sg/.tokens] [-l 목록] [-o bench/reports/runtime.json]
@@ -400,17 +401,38 @@ class Bench:
         after = self.policies()
         with open(self.policy["backup"]) as f:
             before = json.load(f)
-        a = json.dumps(after, ensure_ascii=False, indent=1, sort_keys=True).splitlines()
-        b = json.dumps(before, ensure_ascii=False, indent=1, sort_keys=True).splitlines()
-        diff = [d for d in difflib.unified_diff(b, a, lineterm="", n=0) if d[:1] in "+-" and d[:3] not in ("+++", "---")]
-        self.policy.update(restoredAt=now_iso(), restoreHttp=code, diffLines=len(diff))
+        d = policy_restore_diff(before, after)
+        diff = d["lines"]
+        self.policy.update(restoredAt=now_iso(), restoreHttp=code, diffLines=len(diff),
+                           metaChanged=bool(d["metaChangedRules"]), metaChangedRules=d["metaChangedRules"])
         after_path = os.path.join(self.work, "policies-after-chain.json")
         with open(after_path, "w") as f:
             json.dump(after, f, ensure_ascii=False, indent=1, sort_keys=True)
-        log(f"정책 {STAGE1_RULE} 원복 HTTP {code} · 백업과 차이 {len(diff)}줄 (원복 뒤 {after_path})")
+        log(f"정책 {STAGE1_RULE} 원복 HTTP {code} · 백업과 내용 차이 {len(diff)}줄"
+            f"{' · 저장 메타만 바뀐 정책 ' + ', '.join(d['metaChangedRules']) if d['metaChangedRules'] else ''} (원복 뒤 {after_path})")
         if diff:
             for d in diff[:20]:
                 log("    " + d)
+
+
+# 서버가 정책을 저장할 때 붙이는 메타(11/09 변경 이력) — 원복하면 늘 바뀌므로 내용 비교에서 뺀다
+POLICY_META_KEYS = ("updatedAt", "updatedBy")
+
+
+def policy_restore_diff(before, after):
+    """원복 비교: {"lines": 정책 내용(메타 제외)의 차이 줄, "metaChangedRules": 메타만 · 또는 메타도 바뀐 정책 id(정렬)}.
+    내용 차이(dryRun 이 안 돌아옴 · 조건 값 · 정책 추가 · 삭제)는 lines 에 남아 종료 코드 1 이 된다"""
+    def content(rs):
+        return [{k: v for k, v in r.items() if k not in POLICY_META_KEYS} for r in rs or []]
+
+    def meta(rs):
+        return {r.get("id"): {k: r.get(k) for k in POLICY_META_KEYS} for r in rs or []}
+    a = json.dumps(content(after), ensure_ascii=False, indent=1, sort_keys=True).splitlines()
+    b = json.dumps(content(before), ensure_ascii=False, indent=1, sort_keys=True).splitlines()
+    lines = [d for d in difflib.unified_diff(b, a, lineterm="", n=0) if d[:1] in "+-" and d[:3] not in ("+++", "---")]
+    mb, ma = meta(before), meta(after)
+    changed = sorted(i for i in set(mb) & set(ma) if mb[i] != ma[i])
+    return {"lines": lines, "metaChangedRules": changed}
 
 
 def build_plan(args, items):
@@ -716,7 +738,8 @@ def main():
         limits.append(f"격리 {report['killLatencyMs']['n']}회 가운데 {pz['missing']}회는 pausedAt 이 없어 정지 값을 비웠다"
                       f"(pause 실패 기록 {sum(s.get('pauseErrors', 0) for s in scen)}회). 정지 분포는 나머지 {pz['n']}회만이다.")
     if b.policy:
-        report["policyChange"] = {k: b.policy.get(k) for k in ("rule", "changedAt", "restoredAt", "restoreHttp", "diffLines")}
+        report["policyChange"] = {k: b.policy.get(k) for k in ("rule", "changedAt", "restoredAt", "restoreHttp", "diffLines",
+                                                               "metaChanged", "metaChangedRules")}
         report["policyChange"]["dryRunDuring"] = "runtime-chain · chain-gap-control"
         report["policyChange"]["chainRuleDryRun"] = True  # chain_preflight 가 시작 전에 확인
     out = os.path.abspath(args.out)
