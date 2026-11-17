@@ -261,5 +261,52 @@ class ChainPreflight(unittest.TestCase):
         self.assertIn("chain-download-secrets", sbr.chain_preflight(self.pol(drop="chain-download-secrets")))
 
 
+class PolicyRestoreDiff(unittest.TestCase):
+    """연쇄 구간 뒤 원복 비교 — 정책 내용만 비교하고, 서버가 저장 때 붙이는 메타(updatedAt · updatedBy)는 따로 센다"""
+
+    @staticmethod
+    def policies():
+        return [{"id": "no-shell-download", "kind": "exec", "action": "kill", "dryRun": False,
+                 "denyArgs": ["wget", "curl"]},
+                {"id": "chain-download-secrets", "kind": "sequence", "action": "kill", "dryRun": True,
+                 "updatedAt": "2026-11-09T01:00:00Z", "updatedBy": "admin"}]
+
+    def test_meta_only_like_1117(self):
+        # 11/17 sg-vm: 백업에는 메타가 없던 no-shell-download 가 원복 저장으로 updatedAt · updatedBy 를 얻었다(차이 4줄)
+        before, after = self.policies(), self.policies()
+        after[0].update(updatedAt="2026-11-17T00:28:31.691315975Z", updatedBy="cli")
+        d = sbr.policy_restore_diff(before, after)
+        self.assertEqual(d["lines"], [])
+        self.assertEqual(d["metaChangedRules"], ["no-shell-download"])
+
+    def test_meta_value_changed_only(self):
+        before, after = self.policies(), self.policies()
+        after[1].update(updatedAt="2026-11-17T00:28:31Z", updatedBy="cli")
+        d = sbr.policy_restore_diff(before, after)
+        self.assertEqual(d["lines"], [])
+        self.assertEqual(d["metaChangedRules"], ["chain-download-secrets"])
+
+    def test_dry_run_not_restored_is_a_content_diff(self):
+        before, after = self.policies(), self.policies()
+        after[0].update(dryRun=True, updatedAt="2026-11-17T00:28:31Z", updatedBy="cli")
+        d = sbr.policy_restore_diff(before, after)
+        self.assertTrue(d["lines"])
+        self.assertTrue(any('"dryRun": true' in x for x in d["lines"]))
+        self.assertEqual(d["metaChangedRules"], ["no-shell-download"])
+
+    def test_condition_value_changed_is_a_content_diff(self):
+        before, after = self.policies(), self.policies()
+        after[0]["denyArgs"] = ["wget"]
+        d = sbr.policy_restore_diff(before, after)
+        self.assertTrue(d["lines"])
+        self.assertEqual(d["metaChangedRules"], [])
+
+    def test_identical(self):
+        self.assertEqual(sbr.policy_restore_diff(self.policies(), self.policies()), {"lines": [], "metaChangedRules": []})
+
+    def test_policy_removed_is_a_content_diff(self):
+        self.assertTrue(sbr.policy_restore_diff(self.policies(), self.policies()[:1])["lines"])
+
+
 if __name__ == "__main__":
     unittest.main()
