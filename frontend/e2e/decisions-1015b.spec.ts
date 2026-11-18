@@ -105,8 +105,8 @@ test.describe('계약 추가 (10/15)', () => {
     await page.goto('/topology?container=pkg-reqeusts&node=c%3Apkg-reqeusts');
     await page.getByTestId('topology-decision').getByRole('button', { name: '오탐' }).click();
     await page.locator('dialog[data-part="confirm"] [data-confirm="ok"]').click(); // W18: 확인 대화상자
+    await expect.poll(() => backend.proposals[0]?.changes).toContainEqual({ op: 'except', ruleId: 'egress-allowlist', field: 'allowCidrs', value: '203.0.113.7/32' });
     const p = backend.proposals[0];
-    expect(p.changes).toContainEqual({ op: 'except', ruleId: 'egress-allowlist', field: 'allowCidrs', value: '203.0.113.7/32' });
     expect(p.changes.some((c) => c.op === 'except' && c.ruleId === 'reverse-shell-ports')).toBe(false);
     await page.goto(`/policies?proposal=${p.id}`);
     await expect(page.getByTestId('proposal-changes')).toContainText('egress-allowlist 허용 대역 += 203.0.113.7/32');

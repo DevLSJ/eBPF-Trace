@@ -188,3 +188,20 @@ test.describe('11/10 감시 중 컨테이너 상세 시트', () => {
     expect(await dashes(page)).toEqual([]);
   });
 });
+
+test('탭을 누른 직후(다시 그리기 전) ↓ 로 다음 행 — 탭이 유지된다', async ({ page, backend }) => {
+  seedLookalikes(backend);
+  await page.goto('/integration/watch');
+  await ready(page);
+  await row(page, 'web-api').focus();
+  await page.keyboard.press('Enter');
+  const sheet = page.locator(SHEET);
+  await expect(sheet.locator('h2')).toHaveText('web-api');
+  // 탭 클릭과 ↓ 를 같은 JS 틱에서 — React 가 탭 변경을 그리기 전에 다음 행을 연다(부하 큰 CI 에서 생기는 순서)
+  await sheet.locator('[role="tab"][data-tab="events"]').evaluate((tab) => {
+    (tab as HTMLElement).click();
+    tab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  });
+  await expect(page).toHaveURL(/id=c-worker&tab=events$/);
+  await expect(sheet.locator('[role="tab"][aria-selected="true"]')).toHaveText('최근 이벤트');
+});

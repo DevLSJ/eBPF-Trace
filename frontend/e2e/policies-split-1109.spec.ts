@@ -168,17 +168,17 @@ test.describe('③ 정책 목록 표', () => {
     await expect(search).toHaveAttribute('placeholder', '정책 ID · 설명');
     await search.fill('자격');
     await search.press('Enter');
-    expect(await ids()).toEqual(['sensitive-files']);
+    await expect.poll(ids).toEqual(['sensitive-files']);
     await search.fill('');
     await search.press('Enter');
     await expect(page.locator('[data-filter="rkind"]')).toHaveText('종류 전체');
     await pick(page, 'rkind', '종류', '실행');
-    expect(await ids()).toEqual(['no-shell-download', 'pipe-to-shell']);
+    await expect.poll(ids).toEqual(['no-shell-download', 'pipe-to-shell']);
     await pick(page, 'act', '판정', '사용 안 함');
-    expect(await ids()).toEqual(['pipe-to-shell']);
+    await expect.poll(ids).toEqual(['pipe-to-shell']);
     await page.locator('[data-action="clear-conditions"]').click();
     await pick(page, 'scope', '적용 범위', '설치 검사');
-    expect(await ids()).toEqual(['sandbox-egress', 'sandbox-secrets']);
+    await expect.poll(ids).toEqual(['sandbox-egress', 'sandbox-secrets']);
     await expect(page).toHaveURL(/\/policies$/);
     await page.locator('[data-action="clear-conditions"]').click();
     await expect(page.locator(`${T} tbody tr`)).toHaveCount(backend.rules.length);
@@ -367,6 +367,7 @@ test.describe('⑤ 정책 생성 2단 창', () => {
 
     await save.click();
     await main.locator('[data-part="save-check"]').getByRole('button', { name: '저장 후 적용' }).click();
+    await expect.poll(() => backend.writes().some((r) => r.method === 'POST' && r.path === '/policies')).toBe(true);
     const w = backend.writes().find((r) => r.method === 'POST' && r.path === '/policies')!;
     const body = JSON.parse(w.body!) as Record<string, unknown>;
     expect(body.containers).toEqual(['web-api', 'pkg-*']);
@@ -435,7 +436,7 @@ test.describe('⑥ 차단 목록 · 변경 이력 페이지', () => {
     await expect(page.getByRole('button', { name: /^되돌리기/ })).toHaveCount(0);
     await expect(page.locator('[data-part="screen-note"]')).toHaveText('되돌리기는 정책 상세의 변경 이력에서 합니다.');
     await pick(page, 'kind', '종류', '제안 적용');
-    expect(await t.locator('tbody tr[data-change]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.change))).toEqual(['chg-0001', 'chg-0013']); // 시각 내림차순(chg-0001 이 더 최근)
+    await expect.poll(() => t.locator('tbody tr[data-change]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.change))).toEqual(['chg-0001', 'chg-0013']); // 시각 내림차순(chg-0001 이 더 최근)
     await t.locator('tr[data-change="chg-0013"] td[data-col="target"]').getByRole('link', { name: 'egress-allowlist' }).click();
     await expect(page).toHaveURL(/\/policies\?id=egress-allowlist&tab=changes$/);
     await expect(page.locator(SHEET).getByRole('tab', { name: /^변경 이력/ })).toHaveAttribute('aria-selected', 'true');

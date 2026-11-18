@@ -96,8 +96,7 @@ test.describe('R3 시연 페이지 — 시나리오 · 흐름 · 「왜」', () 
   test('시나리오 8개(백엔드 순서) · 예상 결과 배지 · 고르면 설명 · 시작 → POST {scenario}', async ({ page, backend }) => {
     backend.demoStepMs = 5000;
     await goDemo(page);
-    const keys = await page.locator('[data-scenario]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.scenario));
-    expect(keys).toEqual(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil', 'benign', 'chain']);
+    await expect.poll(() => page.locator('[data-scenario]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.scenario))).toEqual(['all', 'shell', 'revshell', 'direct-ip', 'domain', 'dns-exfil', 'benign', 'chain']);
     const exp = await page
       .locator('[data-scenario]')
       .evaluateAll((els) =>
@@ -115,6 +114,7 @@ test.describe('R3 시연 페이지 — 시나리오 · 흐름 · 「왜」', () 
     await expect(desc).toContainText('no-shell-download');
     await page.locator('[data-scenario="dns-exfil"]').click();
     await page.locator('[data-action="demo-run"]').click();
+    await expect.poll(() => backend.writes().some((r) => r.path === '/demo/run')).toBe(true);
     const w = backend.writes().find((r) => r.path === '/demo/run')!;
     expect(JSON.parse(w.body!)).toEqual({ scenario: 'dns-exfil' });
     await expect(outcome(page)).toHaveAttribute('data-outcome', 'running');

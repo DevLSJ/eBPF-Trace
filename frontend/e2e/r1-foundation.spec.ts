@@ -108,9 +108,8 @@ test.describe('A 스크롤 없는 페이지(768 이상) · 390', () => {
           await page.goto(url);
           await ready(page);
           await page.waitForTimeout(300);
-          const r = await scrollAudit(page);
-          expect(r, name).toMatchObject({ doc: 0, docW: 0, main: 0, page: 1, bad: [] });
-          expect(r.fills, `${name} 채움 칸`).toBeGreaterThan(0);
+          await expect.poll(() => scrollAudit(page), name).toMatchObject({ doc: 0, docW: 0, main: 0, page: 1, bad: [] });
+          await expect.poll(() => scrollAudit(page).then((r) => r.fills), `${name} 채움 칸`).toBeGreaterThan(0);
           if (w === 1440 && name === 'dashboard') await page.screenshot({ path: `${SCRATCH}/r1-dashboard.png` });
         }
       });
@@ -578,7 +577,7 @@ test.describe('F AI 도우미 채팅 화면', () => {
       expect(r[5]).toBe('rgba(0, 0, 0, 0)'); // 말풍선 없음
     }
     // 예전 줄은 다시 움직이지 않는다(새로 붙은 두 줄만 is-new)
-    expect(await rows.evaluateAll((els) => els.map((e) => e.classList.contains('is-new')))).toEqual([false, false, true, true]);
+    await expect.poll(() => rows.evaluateAll((els) => els.map((e) => e.classList.contains('is-new')))).toEqual([false, false, true, true]);
     // 대화 칸만 스크롤, 입력칸은 패널 안 고정
     expect(await page.locator('[data-part="chat-list"]').evaluate((e) => getComputedStyle(e).overflowY)).toBe('auto');
     await page.screenshot({ path: `${SCRATCH}/r1-chat.png` });

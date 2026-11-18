@@ -424,7 +424,7 @@ test.describe('C 감사 로그 쪽 번호', () => {
     await expect(sheet).toBeVisible();
     await expect(sheet).toContainText(`감사 기록 #${target}`);
     await expect(page.locator(`tr[data-audit="${target}"]`)).toHaveCount(0); // 1쪽에는 없다
-    expect(
+    await expect.poll(() =>
       backend.requests.some(
         (r) =>
           r.path.startsWith('/audit?') &&
@@ -543,7 +543,7 @@ test.describe('E 평가 — 위 3칸 고정, 몸통(목록)만 스크롤', () =>
     await page.waitForTimeout(100);
     expect(await body.evaluate((e) => e.scrollTop)).toBeGreaterThan(0);
     expect(await page.locator('[data-part="eval-top"]').evaluate((e) => e.getBoundingClientRect().top)).toBeCloseTo(top0, 0);
-    expect(await page.locator('[data-part="eval-top"] [data-sort-id]').count()).toBe(3);
+    await expect(page.locator('[data-part="eval-top"] [data-sort-id]')).toHaveCount(3);
     const sa = await scrollAudit(page);
     expect(sa).toMatchObject({ doc: 0, main: 0, bad: [] });
     await page.screenshot({ path: `${SCRATCH}/r4-evaluation.png` });
@@ -568,9 +568,8 @@ test.describe('F 9개 화면 — 문서 · main 스크롤 0, 스크롤은 채움
           await page.goto(name === 'installs' ? '/installs?status=all' : url);
           await ready(page);
           await page.waitForTimeout(250);
-          const r = await scrollAudit(page);
-          expect(r, name).toMatchObject({ doc: 0, docW: 0, main: 0, bad: [] });
-          expect(r.fills, `${name} 채움 칸`).toBeGreaterThan(0);
+          await expect.poll(() => scrollAudit(page), name).toMatchObject({ doc: 0, docW: 0, main: 0, bad: [] });
+          await expect.poll(() => scrollAudit(page).then((r) => r.fills), `${name} 채움 칸`).toBeGreaterThan(0);
         }
       });
     });

@@ -163,6 +163,7 @@ test.describe('11/04 종합 판정 — 설치 한 건에 런타임 + 정적 결�
       delete s.scanSkip;
     }
     await allRows(page);
+    await expect(page.locator('tr[data-install] [data-static]')).toHaveCount(8); // 「전체」 목록이 다 온 뒤
     const marks = await page.locator('tr[data-install] [data-static]').evaluateAll((els) => els.map((e) => [e.getAttribute('data-static'), e.textContent, e.getAttribute('title')]));
     expect(marks.length).toBe(8);
     expect(marks.every(([k, t, ti]) => k === 'none' && t === '' && ti === null), JSON.stringify(marks)).toBe(true);
@@ -178,7 +179,7 @@ test.describe('11/04 종합 판정 — 설치 한 건에 런타임 + 정적 결�
   test('⑥ 시트가 열리면 「걸린 시간」 열을 숨기고(상세에 같은 값), 닫으면 다시 보인다 — 1440 에서 표가 가로로 넘치지 않는다', async ({ page, backend }) => {
     void backend;
     await allRows(page);
-    expect(await visibleHeads(page)).toContain('걸린 시간');
+    await expect.poll(() => visibleHeads(page)).toContain('걸린 시간');
     await row(page, 'ins-0010').click();
     await expect(sheet(page)).toBeVisible();
     await expect.poll(() => visibleHeads(page)).not.toContain('걸린 시간');
@@ -195,11 +196,12 @@ test.describe('11/04 종합 판정 — 설치 한 건에 런타임 + 정적 결�
   test('⑦ 빨간 행 = 런타임 격리 · 경고 또는 정적 악성', async ({ page, backend }) => {
     backend.staticMalicious();
     await allRows(page);
-    const danger = await page.locator('tr[data-install]').evaluateAll((els) =>
-      // R4 11/04: 3px 막대는 행의 첫 칸에(목업 11/04e tr.needs-action td:first-child)
-      Object.fromEntries(els.map((e) => [e.getAttribute('data-install'), e.getAttribute('data-danger') === 'true' && getComputedStyle((e as HTMLTableRowElement).cells[0]).boxShadow.includes('inset')])),
-    );
-    expect(danger).toEqual({
+    const danger = () =>
+      page.locator('tr[data-install]').evaluateAll((els) =>
+        // R4 11/04: 3px 막대는 행의 첫 칸에(목업 11/04e tr.needs-action td:first-child)
+        Object.fromEntries(els.map((e) => [e.getAttribute('data-install'), e.getAttribute('data-danger') === 'true' && getComputedStyle((e as HTMLTableRowElement).cells[0]).boxShadow.includes('inset')])),
+      );
+    await expect.poll(danger).toEqual({
       'ins-0014': true, // 통과 + 정적 악성
       'ins-0013': false,
       'ins-0012': true, // 격리
