@@ -1,0 +1,886 @@
+{
+  "schema": 2,
+  "generatedAt": "2026-11-17T00:28:31Z",
+  "startedAt": "2026-11-17T00:18:28Z",
+  "seed": 37154547,
+  "host": {
+    "name": "sg-vm",
+    "kernel": "5.15.0-203-generic",
+    "discovery": "fanotify",
+    "igVersion": "v0.56.1",
+    "backendCommit": "71944fa30195dc04946651708ac11901e5feae31",
+    "enforceKill": true,
+    "dnsResolve": "ok",
+    "notifyEnabled": false
+  },
+  "benign": {
+    "installs": 50,
+    "byEcosystem": {
+      "pip": 35,
+      "npm": 15
+    },
+    "violations": 0,
+    "falsePositiveRate": 0.0,
+    "items": [
+      {
+        "ecosystem": "pip",
+        "name": "typing-extensions",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.6,
+        "exitCode": 0,
+        "events": 1744
+      },
+      {
+        "ecosystem": "pip",
+        "name": "attrs",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.5,
+        "exitCode": 0,
+        "events": 1810
+      },
+      {
+        "ecosystem": "npm",
+        "name": "express",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.3,
+        "exitCode": 0,
+        "events": 4546
+      },
+      {
+        "ecosystem": "pip",
+        "name": "flask",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.6,
+        "exitCode": 0,
+        "events": 2302
+      },
+      {
+        "ecosystem": "pip",
+        "name": "pyyaml",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1797
+      },
+      {
+        "ecosystem": "pip",
+        "name": "numpy",
+        "result": "pass",
+        "rule": null,
+        "seconds": 5.6,
+        "exitCode": 0,
+        "events": 3481
+      },
+      {
+        "ecosystem": "pip",
+        "name": "psutil",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.8,
+        "exitCode": 0,
+        "events": 1771
+      },
+      {
+        "ecosystem": "pip",
+        "name": "pytest",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.0,
+        "exitCode": 0,
+        "events": 3250
+      },
+      {
+        "ecosystem": "pip",
+        "name": "aiohttp",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.1,
+        "exitCode": 0,
+        "events": 2339
+      },
+      {
+        "ecosystem": "npm",
+        "name": "sharp",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.6,
+        "exitCode": 0,
+        "events": 3720
+      },
+      {
+        "ecosystem": "pip",
+        "name": "pillow",
+        "result": "pass",
+        "rule": null,
+        "seconds": 5.5,
+        "exitCode": 0,
+        "events": 2068
+      },
+      {
+        "ecosystem": "pip",
+        "name": "uvicorn",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.2,
+        "exitCode": 0,
+        "events": 2017
+      },
+      {
+        "ecosystem": "pip",
+        "name": "jinja2",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.2,
+        "exitCode": 0,
+        "events": 1852
+      },
+      {
+        "ecosystem": "npm",
+        "name": "uuid",
+        "result": "pass",
+        "rule": null,
+        "seconds": 2.7,
+        "exitCode": 0,
+        "events": 3470
+      },
+      {
+        "ecosystem": "npm",
+        "name": "react-dom",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 3514
+      },
+      {
+        "ecosystem": "pip",
+        "name": "six",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1745
+      },
+      {
+        "ecosystem": "pip",
+        "name": "certifi",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.0,
+        "exitCode": 0,
+        "events": 1759
+      },
+      {
+        "ecosystem": "npm",
+        "name": "moment",
+        "result": "pass",
+        "rule": null,
+        "seconds": 2.8,
+        "exitCode": 0,
+        "events": 3956
+      },
+      {
+        "ecosystem": "pip",
+        "name": "redis",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.4,
+        "exitCode": 0,
+        "events": 2100
+      },
+      {
+        "ecosystem": "pip",
+        "name": "boto3",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.3,
+        "exitCode": 0,
+        "events": 4461
+      },
+      {
+        "ecosystem": "pip",
+        "name": "idna",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.0,
+        "exitCode": 0,
+        "events": 1775
+      },
+      {
+        "ecosystem": "pip",
+        "name": "rich",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.8,
+        "exitCode": 0,
+        "events": 3369
+      },
+      {
+        "ecosystem": "pip",
+        "name": "python-dateutil",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 2502
+      },
+      {
+        "ecosystem": "pip",
+        "name": "fastapi",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.2,
+        "exitCode": 0,
+        "events": 2896
+      },
+      {
+        "ecosystem": "pip",
+        "name": "protobuf",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.2,
+        "exitCode": 0,
+        "events": 1916
+      },
+      {
+        "ecosystem": "pip",
+        "name": "packaging",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.0,
+        "exitCode": 0,
+        "events": 1810
+      },
+      {
+        "ecosystem": "pip",
+        "name": "httpx",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.3,
+        "exitCode": 0,
+        "events": 2283
+      },
+      {
+        "ecosystem": "pip",
+        "name": "pyjwt",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.0,
+        "exitCode": 0,
+        "events": 1778
+      },
+      {
+        "ecosystem": "npm",
+        "name": "lodash",
+        "result": "pass",
+        "rule": null,
+        "seconds": 2.8,
+        "exitCode": 0,
+        "events": 4462
+      },
+      {
+        "ecosystem": "npm",
+        "name": "esbuild",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.3,
+        "exitCode": 0,
+        "events": 3536
+      },
+      {
+        "ecosystem": "npm",
+        "name": "chalk",
+        "result": "pass",
+        "rule": null,
+        "seconds": 2.6,
+        "exitCode": 0,
+        "events": 3423
+      },
+      {
+        "ecosystem": "pip",
+        "name": "pandas",
+        "result": "pass",
+        "rule": null,
+        "seconds": 9.3,
+        "exitCode": 0,
+        "events": 8715
+      },
+      {
+        "ecosystem": "pip",
+        "name": "django",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.5,
+        "exitCode": 0,
+        "events": 7400
+      },
+      {
+        "ecosystem": "pip",
+        "name": "charset-normalizer",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.2,
+        "exitCode": 0,
+        "events": 1785
+      },
+      {
+        "ecosystem": "npm",
+        "name": "vue",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.8,
+        "exitCode": 0,
+        "events": 4216
+      },
+      {
+        "ecosystem": "pip",
+        "name": "cryptography",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.6,
+        "exitCode": 0,
+        "events": 2154
+      },
+      {
+        "ecosystem": "pip",
+        "name": "werkzeug",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.2,
+        "exitCode": 0,
+        "events": 1938
+      },
+      {
+        "ecosystem": "pip",
+        "name": "urllib3",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1849
+      },
+      {
+        "ecosystem": "pip",
+        "name": "click",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1793
+      },
+      {
+        "ecosystem": "pip",
+        "name": "sqlalchemy",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.4,
+        "exitCode": 0,
+        "events": 2555
+      },
+      {
+        "ecosystem": "pip",
+        "name": "tqdm",
+        "result": "pass",
+        "rule": null,
+        "seconds": 4.2,
+        "exitCode": 0,
+        "events": 1840
+      },
+      {
+        "ecosystem": "pip",
+        "name": "pydantic",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.8,
+        "exitCode": 0,
+        "events": 2189
+      },
+      {
+        "ecosystem": "pip",
+        "name": "gunicorn",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.1,
+        "exitCode": 0,
+        "events": 1957
+      },
+      {
+        "ecosystem": "npm",
+        "name": "commander",
+        "result": "pass",
+        "rule": null,
+        "seconds": 2.8,
+        "exitCode": 0,
+        "events": 3423
+      },
+      {
+        "ecosystem": "npm",
+        "name": "axios",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.2,
+        "exitCode": 0,
+        "events": 4048
+      },
+      {
+        "ecosystem": "npm",
+        "name": "react",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.0,
+        "exitCode": 0,
+        "events": 3438
+      },
+      {
+        "ecosystem": "pip",
+        "name": "requests",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.4,
+        "exitCode": 0,
+        "events": 2101
+      },
+      {
+        "ecosystem": "npm",
+        "name": "typescript",
+        "result": "pass",
+        "rule": null,
+        "seconds": 3.9,
+        "exitCode": 0,
+        "events": 4020
+      },
+      {
+        "ecosystem": "npm",
+        "name": "debug",
+        "result": "pass",
+        "rule": null,
+        "seconds": 2.7,
+        "exitCode": 0,
+        "events": 3431
+      },
+      {
+        "ecosystem": "npm",
+        "name": "dayjs",
+        "result": "pass",
+        "rule": null,
+        "seconds": 2.9,
+        "exitCode": 0,
+        "events": 3862
+      }
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "sandbox-typosquat",
+      "label": "설치 샌드박스 · 타이포스쿼팅",
+      "kind": "attack",
+      "runs": 10,
+      "detected": 10,
+      "killed": 10,
+      "rule": "pipe-to-shell",
+      "latencyMs": {
+        "p50": 284.9,
+        "p95": 382.0,
+        "max": 382.0,
+        "n": 10
+      },
+      "matchLatencyMs": {
+        "p50": 0.0,
+        "p95": 0.1,
+        "max": 0.1,
+        "n": 10
+      },
+      "evidenceMs": {
+        "p50": 123.5,
+        "p95": 189.6,
+        "max": 189.6,
+        "n": 10
+      },
+      "killApiMs": {
+        "p50": 149.9,
+        "p95": 190.5,
+        "max": 190.5,
+        "n": 10
+      },
+      "detectedByRule": {
+        "pipe-to-shell": 10
+      },
+      "killedByRule": {
+        "pipe-to-shell": 10
+      },
+      "detectedNotKilled": 0,
+      "killNotRunning": 0,
+      "dryRun": false,
+      "samples": [
+        {
+          "latencyMs": 382.0,
+          "matchMs": 0.1,
+          "evidenceMs": 189.6,
+          "killApiMs": 173.9,
+          "pauseMs": 18.4,
+          "pauseApiMs": 18.3
+        },
+        {
+          "latencyMs": 303.1,
+          "matchMs": 0.0,
+          "evidenceMs": 135.1,
+          "killApiMs": 149.9,
+          "pauseMs": 18.1,
+          "pauseApiMs": 18.1
+        },
+        {
+          "latencyMs": 304.3,
+          "matchMs": 0.0,
+          "evidenceMs": 137.2,
+          "killApiMs": 145.5,
+          "pauseMs": 21.6,
+          "pauseApiMs": 21.5
+        },
+        {
+          "latencyMs": 284.9,
+          "matchMs": 0.0,
+          "evidenceMs": 107.2,
+          "killApiMs": 159.6,
+          "pauseMs": 18.2,
+          "pauseApiMs": 18.1
+        },
+        {
+          "latencyMs": 271.2,
+          "matchMs": 0.1,
+          "evidenceMs": 96.8,
+          "killApiMs": 156.5,
+          "pauseMs": 17.9,
+          "pauseApiMs": 17.8
+        },
+        {
+          "latencyMs": 283.8,
+          "matchMs": 0.1,
+          "evidenceMs": 132.9,
+          "killApiMs": 131.7,
+          "pauseMs": 19.2,
+          "pauseApiMs": 19.1
+        },
+        {
+          "latencyMs": 304.0,
+          "matchMs": 0.0,
+          "evidenceMs": 129.3,
+          "killApiMs": 155.1,
+          "pauseMs": 19.6,
+          "pauseApiMs": 19.5
+        },
+        {
+          "latencyMs": 331.5,
+          "matchMs": 0.0,
+          "evidenceMs": 123.5,
+          "killApiMs": 190.5,
+          "pauseMs": 17.5,
+          "pauseApiMs": 17.5
+        },
+        {
+          "latencyMs": 267.8,
+          "matchMs": 0.1,
+          "evidenceMs": 103.8,
+          "killApiMs": 146.5,
+          "pauseMs": 17.4,
+          "pauseApiMs": 17.3
+        },
+        {
+          "latencyMs": 266.2,
+          "matchMs": 0.0,
+          "evidenceMs": 102.3,
+          "killApiMs": 146.3,
+          "pauseMs": 17.6,
+          "pauseApiMs": 17.6
+        }
+      ],
+      "pauseLatencyMs": {
+        "p50": 18.1,
+        "p95": 21.6,
+        "max": 21.6,
+        "n": 10
+      },
+      "pauseApiMs": {
+        "p50": 18.1,
+        "p95": 21.5,
+        "max": 21.5,
+        "n": 10
+      },
+      "pauseMissing": 0,
+      "pauseErrors": 0,
+      "pausedNotKilled": 0,
+      "evidenceWithoutKill": 0
+    },
+    {
+      "id": "sandbox-dns-exfil",
+      "label": "설치 샌드박스 · DNS 유출 질의",
+      "kind": "attack",
+      "runs": 10,
+      "detected": 10,
+      "killed": 10,
+      "rule": "sandbox-dns",
+      "latencyMs": {
+        "p50": 275.1,
+        "p95": 399.8,
+        "max": 399.8,
+        "n": 10
+      },
+      "matchLatencyMs": {
+        "p50": 0.1,
+        "p95": 0.1,
+        "max": 0.1,
+        "n": 10
+      },
+      "evidenceMs": {
+        "p50": 109.7,
+        "p95": 207.6,
+        "max": 207.6,
+        "n": 10
+      },
+      "killApiMs": {
+        "p50": 153.7,
+        "p95": 170.5,
+        "max": 170.5,
+        "n": 10
+      },
+      "detectedByRule": {
+        "sandbox-dns": 10
+      },
+      "killedByRule": {
+        "sandbox-dns": 10
+      },
+      "detectedNotKilled": 0,
+      "killNotRunning": 0,
+      "dryRun": false,
+      "samples": [
+        {
+          "latencyMs": 335.8,
+          "matchMs": 0.1,
+          "evidenceMs": 159.2,
+          "killApiMs": 156.9,
+          "pauseMs": 19.6,
+          "pauseApiMs": 19.6
+        },
+        {
+          "latencyMs": 260.6,
+          "matchMs": 0.1,
+          "evidenceMs": 113.2,
+          "killApiMs": 130.7,
+          "pauseMs": 16.7,
+          "pauseApiMs": 16.6
+        },
+        {
+          "latencyMs": 279.4,
+          "matchMs": 0.1,
+          "evidenceMs": 102.1,
+          "killApiMs": 160.1,
+          "pauseMs": 17.2,
+          "pauseApiMs": 17.1
+        },
+        {
+          "latencyMs": 275.1,
+          "matchMs": 0.0,
+          "evidenceMs": 99.6,
+          "killApiMs": 158.8,
+          "pauseMs": 16.8,
+          "pauseApiMs": 16.7
+        },
+        {
+          "latencyMs": 269.8,
+          "matchMs": 0.1,
+          "evidenceMs": 109.7,
+          "killApiMs": 140.5,
+          "pauseMs": 19.6,
+          "pauseApiMs": 19.5
+        },
+        {
+          "latencyMs": 269.9,
+          "matchMs": 0.0,
+          "evidenceMs": 104.8,
+          "killApiMs": 148.1,
+          "pauseMs": 17.0,
+          "pauseApiMs": 16.9
+        },
+        {
+          "latencyMs": 266.1,
+          "matchMs": 0.0,
+          "evidenceMs": 93.5,
+          "killApiMs": 156.6,
+          "pauseMs": 16.0,
+          "pauseApiMs": 16.0
+        },
+        {
+          "latencyMs": 399.8,
+          "matchMs": 0.0,
+          "evidenceMs": 207.6,
+          "killApiMs": 170.5,
+          "pauseMs": 21.7,
+          "pauseApiMs": 21.6
+        },
+        {
+          "latencyMs": 286.9,
+          "matchMs": 0.1,
+          "evidenceMs": 115.9,
+          "killApiMs": 153.7,
+          "pauseMs": 17.3,
+          "pauseApiMs": 17.2
+        },
+        {
+          "latencyMs": 288.2,
+          "matchMs": 0.1,
+          "evidenceMs": 119.9,
+          "killApiMs": 151.5,
+          "pauseMs": 16.8,
+          "pauseApiMs": 16.7
+        }
+      ],
+      "pauseLatencyMs": {
+        "p50": 17.0,
+        "p95": 21.7,
+        "max": 21.7,
+        "n": 10
+      },
+      "pauseApiMs": {
+        "p50": 16.9,
+        "p95": 21.6,
+        "max": 21.6,
+        "n": 10
+      },
+      "pauseMissing": 0,
+      "pauseErrors": 0,
+      "pausedNotKilled": 0,
+      "evidenceWithoutKill": 0
+    },
+    {
+      "id": "runtime-chain",
+      "label": "런타임 · 연쇄(다운로드 → 외부 연결 → 자격 증명 파일)",
+      "kind": "attack",
+      "runs": 10,
+      "detected": 10,
+      "killed": 0,
+      "rule": "chain-download-secrets",
+      "latencyMs": null,
+      "matchLatencyMs": {
+        "p50": 0.1,
+        "p95": 0.8,
+        "max": 0.8,
+        "n": 10
+      },
+      "evidenceMs": null,
+      "killApiMs": null,
+      "detectedByRule": {
+        "chain-download-secrets": 10
+      },
+      "killedByRule": {},
+      "detectedNotKilled": 10,
+      "killNotRunning": 0,
+      "dryRun": true,
+      "samples": [],
+      "pauseLatencyMs": null,
+      "pauseApiMs": null,
+      "pauseMissing": 0,
+      "pauseErrors": 0,
+      "pausedNotKilled": 0,
+      "evidenceWithoutKill": 0
+    },
+    {
+      "id": "chain-gap-control",
+      "label": "런타임 · 연쇄 대조군(마지막 단계 11초 뒤, 창 밖)",
+      "kind": "control",
+      "runs": 5,
+      "detected": 0,
+      "killed": 0,
+      "rule": "chain-download-secrets",
+      "latencyMs": null,
+      "matchLatencyMs": null,
+      "evidenceMs": null,
+      "killApiMs": null,
+      "detectedByRule": {},
+      "killedByRule": {},
+      "detectedNotKilled": 0,
+      "killNotRunning": 0,
+      "dryRun": false,
+      "lastStepRan": 5,
+      "samples": [],
+      "pauseLatencyMs": null,
+      "pauseApiMs": null,
+      "pauseMissing": 0,
+      "pauseErrors": 0,
+      "pausedNotKilled": 0,
+      "evidenceWithoutKill": 0
+    }
+  ],
+  "limits": [
+    "표본이 작다(정상 설치 50건 · 공격 시나리오별 10회 · 대조군 5회). p95 는 가장 가까운 순위 방식이라 10회면 사실상 최댓값이고, 오탐률 0 은 「이 표본에서 0」일 뿐이다.",
+    "단일 호스트 측정: sg-vm(커널 5.15.0-203-generic · 발견 fanotify · IG v0.56.1). 다른 커널(특히 Ubuntu 26.04 커널 7.0 에서는 이벤트 유실을 실측)이나 docker-events 발견 방식에는 그대로 옮길 수 없다.",
+    "공격은 모두 무해 시뮬레이션(TEST-NET 203.0.113.7 · 예약 도메인 *.example)이다. 실제 악성 패키지의 다양한 회피 기법은 재지 않았다.",
+    "지연은 백엔드가 적은 격리 타임라인(백엔드가 가젯 이벤트를 받은 시각 → Docker kill 응답 시각)이다. 이벤트 시각은 커널 시각이 아니라 수신 시각(time.Now)이라 커널 → 사용자 공간 전달 시간은 빠져 있다. kill 직전 증거 수집(최대 0.7초)이 포함된다.",
+    "증거 훅이 있는 백엔드(11/16 이후)는 정지(Docker pause) → 증거 → kill 순서로 격리한다. 정지 지연(pauseLatencyMs)은 같은 수신 시각 → pause 응답 시각이고 격리 지연의 보조 값이다. pausedAt 이 없는 격리(옛 판 · pause 실패)는 정지 값을 비우고 pauseMissing · pauseErrors 로 센다.",
+    "이미 끝난 컨테이너는 정지 · kill 없이 증거만 모으고 「container is not running」으로 남는다(정지 이전 판에서는 증거 수집 동안 먼저 끝나 kill 이 실패할 수 있었다). 탐지는 성공으로, 격리(killed)는 따로 센다(killNotRunning · evidenceWithoutKill).",
+    "연쇄 규칙 chain-download-secrets 는 기본 정책에서 dryRun 이라 격리 수가 0 인 것이 정상이다. 측정 동안만 no-shell-download 를 dryRun 으로 두었다(그대로면 1단계 wget 에서 먼저 격리된다).",
+    "TEST-NET 목적지는 접속 실패(약 3초) 뒤에 connect 이벤트가 나와 연쇄 판정도 그만큼 늦다. 실제 도달 가능한 서버면 더 빠르다.",
+    "sg-install 세션 시작 때 서버가 같은 패키지의 정적 검사를 자동 시작한다(종합 판정). 정상 설치 동안 검사기 컨테이너가 함께 돈다.",
+    "정상 설치는 인기 패키지 최신 버전만 쟀다. puppeteer 처럼 설치 중 허용 목록 밖에서 바이너리를 받는 패키지는 기본 목록에서 뺐다(11/03 실측: sandbox-egress 로 격리).",
+    "엔진은 TCP 와 DNS(53 · 5353)만 관찰한다. 일반 UDP 유출은 이 표의 탐지율에 들어가지 않는다."
+  ],
+  "killLatencyMs": {
+    "p50": 283.8,
+    "p95": 382.0,
+    "max": 399.8,
+    "n": 20,
+    "scenarios": [
+      "sandbox-dns-exfil",
+      "sandbox-typosquat"
+    ]
+  },
+  "killStagesMs": {
+    "match": {
+      "p50": 0.0,
+      "p95": 0.1,
+      "max": 0.1,
+      "n": 20
+    },
+    "pauseApi": {
+      "p50": 17.6,
+      "p95": 21.5,
+      "max": 21.6,
+      "n": 20
+    },
+    "evidence": {
+      "p50": 113.2,
+      "p95": 189.6,
+      "max": 207.6,
+      "n": 20
+    },
+    "killApi": {
+      "p50": 153.7,
+      "p95": 173.9,
+      "max": 190.5,
+      "n": 20
+    }
+  },
+  "pauseLatencyMs": {
+    "p50": 17.6,
+    "p95": 21.6,
+    "max": 21.7,
+    "n": 20,
+    "scenarios": [
+      "sandbox-dns-exfil",
+      "sandbox-typosquat"
+    ],
+    "missing": 0
+  },
+  "policyChange": {
+    "rule": "no-shell-download",
+    "changedAt": "2026-11-17T00:25:30Z",
+    "restoredAt": "2026-11-17T00:28:31Z",
+    "restoreHttp": 200,
+    "diffLines": 4,
+    "dryRunDuring": "runtime-chain · chain-gap-control",
+    "chainRuleDryRun": true
+  }
+}
