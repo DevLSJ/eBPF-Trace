@@ -11,6 +11,8 @@ mock/screenshots/
 .DS_Store
 ._*
 docs/
+# 학위논문 원고 · 조판 결과는 저장소에 올리지 않는다(11/18)
+논문/
 .claude/worktrees/
 # 공급망 검사 실측(11/04): 데이터셋 · 원시 결과는 커밋하지 않는다 — bench/reports/ 의 수치만
 bench/raw/

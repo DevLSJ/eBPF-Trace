@@ -290,7 +290,7 @@ test.describe('제목 줄', () => {
     const head = page.locator(HEAD);
     const before = await box(head);
     const fill = page.getByTestId('pending').locator('[data-fill]').first();
-    expect(await fill.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(true);
+    await expect.poll(() => fill.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(true);
     await fill.evaluate((e) => (e.scrollTop = e.scrollHeight));
     await fill.hover();
     await page.mouse.wheel(0, 400);
@@ -366,6 +366,7 @@ test.describe('넘침 0 · KPI · 「—」', () => {
             expect(await shellDashes(page), name).toEqual([]);
             if (name === 'dashboard' && w === 1280) {
               // 대시보드 KPI 잘림 0: 카드 안 넘침 없음 · 숫자가 카드 안 · 화면 안
+              await expect.poll(() => page.locator('[data-part="dashboard"] [data-kpi]').count()).toBeGreaterThanOrEqual(4);
               const bad = await page.evaluate(() =>
                 Array.from(document.querySelectorAll('[data-part="dashboard"] [data-kpi]')).flatMap((k) => {
                   const e = k as HTMLElement;
@@ -379,7 +380,6 @@ test.describe('넘침 0 · KPI · 「—」', () => {
                 }),
               );
               expect(bad).toEqual([]);
-              expect(await page.locator('[data-part="dashboard"] [data-kpi]').count()).toBeGreaterThanOrEqual(4);
             }
           }
         });

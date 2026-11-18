@@ -132,10 +132,10 @@ test.describe('11/10 용어 — 탐지 · 판정 · 경고', () => {
     await expect(ed.getByText('소문자·숫자·하이픈')).toBeVisible();
     const kind = ed.locator('select[data-field="kind"] option');
     await expect(kind).toHaveText(['exec(실행)', 'open(파일)', 'connect(통신)', 'dns(조회)']);
-    expect(await kind.evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value))).toEqual(['exec', 'open', 'connect', 'dns']);
+    await expect.poll(() => kind.evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value))).toEqual(['exec', 'open', 'connect', 'dns']);
     const action = ed.locator('select[data-field="action"] option');
     await expect(action).toHaveText(['alert(경고)', 'kill(격리)']);
-    expect(await action.evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value))).toEqual(['alert', 'kill']);
+    await expect.poll(() => action.evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value))).toEqual(['alert', 'kill']);
     await expect(ed.locator('select[data-field="directIp"] option')).toHaveText(['(비움)', 'allow(통과)', 'alert(경고)', 'kill(격리)']);
     await expect(page.getByRole('switch').locator('xpath=..')).toContainText('시험 운영');
     expect(await allText(ed)).not.toContain('알림');

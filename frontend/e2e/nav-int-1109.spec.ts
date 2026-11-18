@@ -209,10 +209,10 @@ test.describe('② 사이드바 그룹 접고 펴기', () => {
     backend.enableDemo();
     await page.goto('/');
     const home = page.locator(`${NAV} [data-nav-group="home"]`);
-    expect(await home.evaluate((g) => [...g.children].map((e) => e.getAttribute('href') ?? `sub:${e.getAttribute('data-nav-sub')}`))).toEqual(['/', 'sub:integration', '/demo']);
+    await expect.poll(() => home.evaluate((g) => [...g.children].map((e) => e.getAttribute('href') ?? `sub:${e.getAttribute('data-nav-sub')}`))).toEqual(['/', 'sub:integration', '/demo']);
     const links = sub(page, 'integration').locator('[data-part="subnav"] a');
     await expect(links).toHaveText(['연동', '환경 점검', '감시 중 컨테이너']);
-    expect(await links.evaluateAll((els) => els.map((e) => e.getAttribute('href')))).toEqual(['/integration', '/integration/env', '/integration/watch']);
+    await expect.poll(() => links.evaluateAll((els) => els.map((e) => e.getAttribute('href')))).toEqual(['/integration', '/integration/env', '/integration/watch']);
     await expect(toggle(page, 'integration')).toContainText('연동');
     await expect(toggle(page, 'policies')).toContainText('정책');
   });
