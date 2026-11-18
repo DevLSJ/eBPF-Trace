@@ -45,12 +45,12 @@ class World:
 
 
 class Candidates(unittest.TestCase):
-    def test_score_candidates_use_the_v2_budgets_on_the_main_rows(self):
+    def test_score_candidates_use_the_v2_budgets_and_a_tenth_of_a_percent_on_the_main_rows(self):
         w = World()
         main = metrics.main_rows(w.rows)
         ml = select3.candidates("ml", "M-static", main, w.ml)
         self.assertEqual([(c["name"], c["threshold"]) for c in ml],
-                         [("M-static@0.0", 0.9995), ("M-static@0.0025", 0.998), ("M-static@0.005", 0.995),
+                         [("M-static@0.0", 0.9995), ("M-static@0.001", 0.999), ("M-static@0.0025", 0.998), ("M-static@0.005", 0.995),
                           ("M-static@0.01", 0.99), ("M-static@0.015", 0.985), ("M-static@0.02", 0.98)])
         llm = select3.candidates("llm", "L", main, w.llm)
         self.assertEqual([(c["name"], c["threshold"]) for c in llm], [("L@0.005", 90)])
