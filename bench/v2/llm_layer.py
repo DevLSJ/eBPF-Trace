@@ -244,6 +244,26 @@ def hold_for_call(budget, client, request, batch=False):
     return None
 
 
+def hold_for_pair(budget, client, first, second, batch=False):
+    """표본 하나를 시작하기 전에 1단계와 2단계(올라갈 경우) 최악 몫을 함께 잡는다 → 잡은 금액 또는 None(v3 앞쪽부터 자르기).
+    바이트 수 어림으로 먼저 보고, 모자라면 토큰을 세어 다시 본다."""
+    def worst(request, tokens):
+        return worst_case_usd(request["model"], tokens, request["max_tokens"], batch)
+
+    loose = worst(first, bound_input_tokens(first)) + worst(second, bound_input_tokens(second))
+    if budget.hold(loose):
+        return loose
+    counted = [counted_input_tokens(client, r) for r in (first, second)]
+    if None not in counted:
+        tight = worst(first, counted[0]) + worst(second, counted[1])
+        if tight < loose and budget.hold(tight):
+            return tight
+    return None
+
+
+CUT_NOTE = "앞쪽부터 자르기: 해시 순서에서 앞 표본의 최악 몫을 잡지 못해 그 뒤는 부르지 않았다"
+
+
 # ── 관문 · 봉인(순수) ──
 
 def gated(p, low, high):
@@ -807,13 +827,22 @@ def _final_by_model(stages):
     return {s["model"]: s["status"] for s in stages}
 
 
+def skipped_row(sample_id, sample, prompt, gate, p, max_chars, batch=False):
+    """앞쪽부터 자르기로 부르지 않은 표본의 줄(SKIPPED_BUDGET · 비용 0)."""
+    row, _ = prepare(sample_id, sample["text"], sample.get("static") or {}, prompt, max_chars)
+    assemble(row, [_stage(STAGE1_MODEL, "SKIPPED_BUDGET", error=CUT_NOTE, batch=batch)], {})
+    row.update(gate=gate.config(), mlP=p)
+    return row
+
+
 def run_realtime(samples, *, results, client, budget, cache, prompt, gate, max_chars=MAX_TEXT_CHARS, limit=None,
-                 max_errors=MAX_ERRORS_IN_A_ROW, retries=MAX_RETRIES, progress=None, statuses=DONE):
+                 max_errors=MAX_ERRORS_IN_A_ROW, retries=MAX_RETRIES, progress=None, statuses=DONE, strict_order=False):
     """표본을 차례로 실시간 분석해 결과 파일에 덧붙인다(개발 중 몇 건 확인용 — 측정은 run_batches).
     끝난 id(statuses)는 건너뛰고, 관문 밖은 NOT_GATED 로 적는다. 한 모델이 max_errors 표본 잇달아(다시 시도까지 마친 최종 상태로)
     실패하면 멈춘다 — 2단계가 계속 실패하는데 1단계 결과만으로 끝까지 가는 일을 막는다.
+    strict_order(v3): 표본을 시작하기 전에 1 · 2단계 최악 몫을 함께 잡을 수 있는지 보고, 처음으로 잡지 못한 표본부터 뒤는 모두 SKIPPED_BUDGET.
     → {"made": 새로 쓴 줄 수, "stopped": 멈춘 사유 또는 None, "failing": 잇달아 실패한 모델 또는 None}"""
-    made, streak, stopped, failing, called = 0, {}, None, None, 0
+    made, streak, stopped, failing, called, cut = 0, {}, None, None, 0, False
     for sample in samples:
         sample_id = sample["id"]
         if results.done(sample_id, statuses):
@@ -825,6 +854,16 @@ def run_realtime(samples, *, results, client, budget, cache, prompt, gate, max_c
         if limit is not None and called >= limit:
             stopped = f"--limit {limit}"
             break
+        if strict_order:
+            head, user_text = prepare(sample_id, sample["text"], sample.get("static") or {}, prompt, max_chars)
+            if cache is None or cache.get(head["cacheKey"]) is None:
+                held = None if cut else hold_for_pair(budget, client, build_request(STAGE1_MODEL, prompt, user_text),
+                                                      build_request(STAGE2_MODEL, prompt, user_text))
+                if held is None:
+                    cut = True
+                    made += 1 if results.add_unless_repeat(skipped_row(sample_id, sample, prompt, gate, p, max_chars)) else 0
+                    continue
+                budget.settle(held, 0.0)  # 잡을 수 있음을 확인했다 — 단계마다 다시 잡는다(남은 돈이 두 단계 몫 이상이다)
         row = analyze_one(sample_id, sample["text"], sample.get("static") or {}, client=client, budget=budget, cache=cache,
                           prompt=prompt, max_chars=max_chars, retries=retries)
         row.update(gate=gate.config(), mlP=p)
@@ -918,7 +957,8 @@ def _chunks(planned):
 
 
 def run_batches(samples, *, results, client, budget, cache, prompt, gate, state_path, wait=True, poll=BATCH_POLL_SECONDS,
-                sleep=time.sleep, max_chars=MAX_TEXT_CHARS, limit=None, retries=MAX_RETRIES, statuses=DONE, progress=None):
+                sleep=time.sleep, max_chars=MAX_TEXT_CHARS, limit=None, retries=MAX_RETRIES, statuses=DONE, progress=None,
+                strict_order=False):
     """Message Batches 로 표본을 분석해 결과 파일에 덧붙인다(측정 기본 경로).
 
     한 차례 = (받지 않은 배치 가운데 끝난 것을 받는다) → (단계가 끝난 작업을 결과 줄로 쓴다) → (다음 단계 요청을 모아 예산을 잡고 제출한다).
@@ -926,6 +966,8 @@ def run_batches(samples, *, results, client, budget, cache, prompt, gate, state_
     단계 규칙은 실시간과 같다(next_model): Haiku → (점수 40 이상 · 거부) Opus, ERROR(오류 · 취소 · 만료 결과)는 다음 배치에서 같은 요청을 다시.
     예산은 제출할 때 배치 가격으로 가장 나쁜 경우를 잡고(받지 않은 배치 몫은 다시 열어도 잡혀 있다) 받을 때 실제 비용으로 푼다.
     wait=False 면 제출 · 받기를 한 번씩 하고 아직 끝나지 않은 배치가 있으면 돌아온다(다시 부르면 같은 배치 id 로 이어 받는다).
+    strict_order(v3): 아직 시작하지 않은 표본은 1단계와 2단계 최악 몫을 함께 잡아야 시작하고, 처음으로 잡지 못한 표본부터 뒤(입력 순서)는
+    이번 실행에서 모두 SKIPPED_BUDGET — 뒤의 작은 표본을 건너뛰어 부르지 않는다. 함께 잡은 2단계 몫은 1단계 결과를 받을 때 풀려 2단계에 쓰인다.
     → {"made": 새로 쓴 줄 수, "pending": 받지 않은 배치가 남았는지, "submitted": 이번에 제출한 배치 수, "stopped": 사유 또는 None}"""
     state = BatchState(state_path, {"gate": gate.config(), "pipeline": PIPELINE, "promptSha256": prompt["sha256"]})
     state.drop_written(results)
@@ -1009,6 +1051,8 @@ def run_batches(samples, *, results, client, budget, cache, prompt, gate, state_
             if progress:
                 progress()
 
+    cut = [False]
+
     def plan():
         busy = state.pending_keys()
         planned, skipped = [], 0
@@ -1020,10 +1064,18 @@ def run_batches(samples, *, results, client, budget, cache, prompt, gate, state_
             if model is None:
                 continue
             request = build_request(model, prompt, item["userText"])
-            held = hold_for_call(budget, client, request, batch=True)
+            start = strict_order and not work["stages"]  # 이 표본의 첫 호출
+            if start and cut[0]:
+                held = None
+            elif start:
+                held = hold_for_pair(budget, client, request, build_request(STAGE2_MODEL, prompt, item["userText"]), batch=True)
+                cut[0] = held is None
+            else:
+                held = hold_for_call(budget, client, request, batch=True)
             attempt = sum(1 for s in work["stages"] if s["model"] == model)
             if held is None:
-                stage = _stage(model, "SKIPPED_BUDGET", error=f"상한 ${budget.limit:g} 을 넘을 수 있어 부르지 않았다", batch=True)
+                note = CUT_NOTE if start else f"상한 ${budget.limit:g} 을 넘을 수 있어 부르지 않았다"
+                stage = _stage(model, "SKIPPED_BUDGET", error=note, batch=True)
                 stage["attempt"] = attempt
                 work["stages"].append(stage)
                 skipped += 1
@@ -1225,7 +1277,8 @@ def cmd_run(args):
 
     if args.mode == "realtime":
         done = run_realtime(read_input(args.input), results=results, client=client, budget=budget, cache=cache, prompt=prompt, gate=gate,
-                            max_chars=args.max_chars, limit=args.limit, retries=args.retries, progress=progress, statuses=statuses)
+                            max_chars=args.max_chars, limit=args.limit, retries=args.retries, progress=progress, statuses=statuses,
+                            strict_order=args.strict_order)
         print(_status_line(results, budget, len(ids)), file=sys.stderr)
         if done["failing"]:
             print(f"멈췄다: {done['stopped']} — 결과 파일의 error 를 보고 고친 뒤 다시 돌리면 이어서 한다", file=sys.stderr)
@@ -1233,7 +1286,7 @@ def cmd_run(args):
         return 0
     done = run_batches(read_input(args.input), results=results, client=client, budget=budget, cache=cache, prompt=prompt, gate=gate,
                        state_path=state_path, wait=not args.no_wait, poll=args.poll, max_chars=args.max_chars, limit=args.limit,
-                       retries=args.retries, statuses=statuses, progress=progress)
+                       retries=args.retries, statuses=statuses, progress=progress, strict_order=args.strict_order)
     print(_status_line(results, budget, len(ids)), file=sys.stderr)
     if done["stopped"]:
         print(f"멈췄다: {done['stopped']} — 고친 뒤 다시 돌리면 이어서 한다", file=sys.stderr)
@@ -1270,6 +1323,8 @@ def main(argv=None):
     run.add_argument("--limit", type=int, help="이번 실행에서 새로 부르는 표본(작업) 수 상한(적은 표본으로 먼저 돌려 볼 때)")
     run.add_argument("--retries", type=int, default=MAX_RETRIES, help=f"ERROR 때 같은 요청을 더 보내는 횟수(기본 · 최대 {MAX_RETRIES})")
     run.add_argument("--state", help="배치 상태 파일(기본 <out>.batches.json)")
+    run.add_argument("--strict-order", action="store_true",
+                     help="상한 끝자락을 앞쪽부터 자른다: 1 · 2단계 최악 몫을 함께 잡지 못한 첫 표본부터 뒤는 모두 SKIPPED_BUDGET(v3)")
     run.add_argument("--reuse", nargs="+", help="답을 다시 쓸 결과 파일(v3: v2 보정 측정 결과). 같은 표본 · 같은 캐시 키의 OK · REFUSED · CACHED 만, 비용 0")
     run.add_argument("--no-wait", action="store_true", help="배치를 제출만 하고 돌아온다(종료 코드 4). 다시 돌리면 같은 배치 id 로 이어 받는다")
     run.add_argument("--poll", type=float, default=BATCH_POLL_SECONDS, help="배치 상태를 묻는 간격(초)")
