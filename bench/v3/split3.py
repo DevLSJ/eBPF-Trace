@@ -21,7 +21,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 V2 = os.path.join(os.path.dirname(HERE), "v2")
 sys.path.insert(0, V2)
+sys.path.insert(0, HERE)
 import collect  # noqa: E402
+import guard  # noqa: E402
 import rules_layer  # noqa: E402
 import run_static  # noqa: E402
 import split  # noqa: E402
@@ -49,11 +51,18 @@ def v2_data_dir():
     return os.path.abspath(os.environ.get("SG_BENCH_V2_DATA") or DEFAULT_V2_DATA)
 
 
+def check_folders(data, v2_data):
+    """guard.check — v2 데이터 폴더가 있고, v3 데이터 폴더가 그것과 (파일 동일성으로) 겹치지 않을 때만."""
+    try:
+        guard.check(data, v2_data)
+    except guard.GuardError as e:
+        raise Stop(str(e)) from None
+
+
 def data_dir():
-    """v3 데이터 폴더. v2 데이터 폴더와 같으면 거부한다 — v2 표본 · 결과를 덮어쓰지 않게."""
+    """v3 데이터 폴더. v2 데이터 폴더가 없거나 v2 와 같은 곳 · 그 안이면 거부한다 — v2 표본 · 결과를 덮어쓰지 않게."""
     data = os.path.abspath(os.environ.get("SG_BENCH_DATA") or DEFAULT_DATA)
-    if os.path.realpath(data) == os.path.realpath(v2_data_dir()):
-        raise Stop(f"v3 데이터 폴더가 v2 데이터 폴더와 같다({data}) — SG_BENCH_DATA 를 확인하라")
+    check_folders(data, v2_data_dir())
     return data
 
 
@@ -213,7 +222,10 @@ def build(new_rows, v2_rows, v2_split, seen, *, protocol_bytes=b"", v2_split_byt
 
 
 def build_file(*, out=SPLIT3, new_index, v2_index, v2_split_path=V2_SPLIT, seen_path=V2_SEEN, protocol_path=PROTOCOL3, source=""):
-    """파일에서 읽어 split.json 을 한 번 쓴다. 이미 있으면 FileExistsError(다시 만들지 않는다 — protocol revisions)."""
+    """파일에서 읽어 split.json 을 한 번 쓴다. 이미 있으면 FileExistsError(다시 만들지 않는다 — protocol revisions).
+    출처(source — collect3.py source-line)는 꼭 준다."""
+    if not (source or "").strip():
+        raise ValueError("출처(--source)가 비었다 — python3 -B bench/v3/collect3.py source-line 의 한 줄을 준다")
     if os.path.exists(out):
         raise FileExistsError(f"{out} 이 이미 있다 — v3 분할은 한 번만 만든다")
     with open(v2_split_path, "rb") as f:
@@ -240,8 +252,7 @@ def seal(sp, data, v2_data, new_rows, v2_rows):
     """분할 뒤 한 번(다시 해도 같다): 새 시험 · 예비 표본 파일을 store/ → sealed/<구간>/ 으로 옮기고, v2 표본은 v2 파일을 가리키는
     상대 링크를 둔다(대상 파일은 열지 않고 있는지만 본다). 그다음 분할에 든 표본의 합친 색인 index.jsonl(round = v2 · v3)을 쓴다.
     빠진 파일이 하나라도 있으면 아무것도 바꾸지 않고 Stop."""
-    if os.path.realpath(data) == os.path.realpath(v2_data):
-        raise Stop("v3 데이터 폴더가 v2 데이터 폴더와 같다")
+    check_folders(data, v2_data)
     v2_by_id = {r["id"]: r for r in v2_rows}
     new_by_id = {r["id"]: r for r in new_rows}
     plan, missing = [], []
@@ -294,15 +305,16 @@ def seal(sp, data, v2_data, new_rows, v2_rows):
 # ── v2 결과 옮기기 ──
 
 READERS = (("static", run_static.read_results), ("rules", rules_layer.read_results))
+INHERIT_PARTS = ("train", "calibration")  # 옮기는 구간 — 시험 · 예비 결과 파일은 있어도 건드리지 않는다
 
 
 def inherit_results(sp, v2_assignments, v2_data, data):
     """v2 결과 파일(results/<static|rules>-<구간>.jsonl)의 줄 가운데, v3 에서도 같은 구간인 v2 표본의 마지막 줄을 v3 결과 파일에 덧붙인다
-    (이미 있는 id 는 건너뛴다 — 다시 해도 같다). 규칙 엔진 표식(.meta.json)은 v3 쪽에 없으면 옮기고, 있는데 엔진이 다르면 Stop.
-    → {"<종류>-<구간>": 옮긴 줄 수} (v2 결과 파일이 있는 것만)."""
+    (이미 있는 id 는 건너뛴다 — 다시 해도 같다). 학습 · 보정 구간만(INHERIT_PARTS). 규칙 엔진 표식(.meta.json)은 v3 쪽에 없으면 옮기고,
+    있는데 엔진이 다르면 Stop. → {"<종류>-<구간>": 옮긴 줄 수} (v2 결과 파일이 있는 것만)."""
     out = {}
     for kind, read in READERS:
-        for part in split.PARTS:
+        for part in INHERIT_PARTS:
             src = os.path.join(v2_data, "results", f"{kind}-{part}.jsonl")
             if not os.path.exists(src):
                 continue
@@ -423,12 +435,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="새 색인 + v2 분할 → bench/v3/split.json(한 번만)")
-    b.add_argument("--source", default="", help="데이터 출처 · 커밋 · 받은 날(그대로 기록)")
+    b.add_argument("--source", required=True, help="데이터 출처 한 줄 — collect3.py source-line 의 출력(비면 거부)")
     b.add_argument("--new-index", help="새 표본 색인(기본 <데이터>/index-new.jsonl)")
     b.add_argument("--v2-index", help="v2 색인(기본 <v2 데이터>/index.jsonl)")
     b.set_defaults(fn=cmd_build)
     sub.add_parser("seal", help="새 시험 · 예비 파일 봉인 · v2 파일 링크 · 합친 색인").set_defaults(fn=cmd_seal)
-    sub.add_parser("inherit-results", help="v2 학습 · 보정 결과 줄을 v3 결과 파일로").set_defaults(fn=cmd_inherit)
+    sub.add_parser("inherit-results", help="v2 학습 · 보정 결과 줄을 v3 결과 파일로(시험 · 예비는 옮기지 않는다)").set_defaults(fn=cmd_inherit)
     sub.add_parser("status", help="구간별 수 · 봉인 상태").set_defaults(fn=cmd_status)
     u = sub.add_parser("unseal", help="시험 구간을 한 번 연다(예비는 열지 않는다)")
     u.add_argument("part", choices=("test",))
