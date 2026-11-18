@@ -5,7 +5,8 @@
 악성은 암호 zip 그대로 저장하고 메모리에서 글로만 읽는다. 어떤 파일도 실행하지 않는다. v2 데이터 폴더는 읽기만 한다.
 결과는 bench/datasets/v3/(git 추적 제외): store/ · meta/<단계>.jsonl · sources.json · cache/ · index-new.jsonl
 
-  python3 -B bench/v3/collect3.py malicious --eco pypi       # v2 가 받지 않은 zip 전부
+  python3 -B bench/v3/collect3.py precheck --eco pypi        # 트리만 받아 v2 경로 · 이름이 새 트리에 있는 비율(90% 미만이면 멈춤), journal 에 쓰지 않음
+  python3 -B bench/v3/collect3.py malicious --eco pypi       # v2 가 받지 않은 zip 전부(같은 점검을 먼저 한다)
   python3 -B bench/v3/collect3.py malicious --eco npm        # v2 가 훑지 않은 이름마다 최신 zip, 상한 없음
   python3 -B bench/v3/collect3.py plan                       # 악성 총수 → 정상 몫을 meta/benign-plan.json 에 한 번 고정
   python3 -B bench/v3/collect3.py benign --eco pypi --kind popular        # 인기 먼저(모자라면 롱테일로 넘김)
@@ -15,10 +16,14 @@
   python3 -B bench/v3/collect3.py index                      # → index-new.jsonl(새 표본만)
   python3 -B bench/v3/collect3.py source-line                # split3.py build --source 에 넘길 한 줄
   python3 -B bench/v3/collect3.py prune                      # 분할 · 봉인 뒤: 분할에 들지 않은 새 표본 파일 · 복제본 · 캐시 삭제(v2 링크는 그대로)
+  python3 -B bench/v3/collect3.py summary                    # 분할 뒤: bench/v3/collection.json(출처 · 단계별 수 · 해시, 표본 내용 없음)
   python3 -B bench/v3/collect3.py status
 """
 import argparse
+import collections
+import contextlib
 import dataclasses
+import fcntl
 import hashlib
 import json
 import os
@@ -39,6 +44,8 @@ V2_BENIGN = 3876
 SEED = split3.SEED
 TOP_PAGES = 60        # npm 인기 순위 쪽 수 기본 상한(v2 와 같다) — --top-pages 로 바꾸고 쓴 값을 남긴다
 SLACK = 400           # npm 인기 목록을 몫보다 넉넉히 받는 여유(v2 와 같다)
+MIN_COVERAGE = 0.9    # 새 트리에 v2 경로 · 이름이 이보다 적게 있으면 폴더 형식이 바뀐 것으로 보고 멈춘다(넘기는 인자 없음)
+COLLECTION = os.path.join(HERE, "collection.json")
 
 
 # ── 순수 함수(시험 대상) ──
@@ -81,6 +88,80 @@ def malicious_targets(eco, entries, rec):
         return sorted(fresh, key=lambda e: e["path"])
     latest = collect.latest_per_name([e for e in fresh if e["name"] not in rec.npm_names])
     return [latest[n] for n in collect.hash_order(SEED, eco, latest)]
+
+
+def coverage(eco, entries, rec):
+    """(새 트리에 있는 수, v2 기록 수). PyPI: v2 가 받은(기록한) zip 경로 가운데 새 트리에 있는 경로. npm: v2 가 훑은 이름 가운데 새 트리에 있는 이름."""
+    if eco == "pypi":
+        want, have = rec.paths.get("pypi", set()), {e["path"] for e in entries}
+    else:
+        want, have = rec.npm_names, {e["name"] for e in entries}
+    return sum(1 for x in want if x in have), len(want)
+
+
+def precheck(eco, entries, rec):
+    """받기 전에 새 트리의 폴더 형식이 v2 때와 같은지 본다 — 비율이 MIN_COVERAGE 미만이거나 견줄 v2 기록이 없으면 Stop. → 비율."""
+    have, total = coverage(eco, entries, rec)
+    if total == 0:
+        raise collect.Stop(f"악성 {eco}: 견줄 v2 수집 기록이 없다 — SG_BENCH_V2_DATA 를 확인하라")
+    ratio = have / total
+    print(f"악성 {eco} 사전 점검: v2 {'경로' if eco == 'pypi' else '이름'} {have:,}/{total:,} 이 새 트리에 있다({ratio:.1%})", flush=True)
+    if ratio < MIN_COVERAGE:
+        raise collect.Stop(f"악성 {eco}: 새 트리에 v2 {'경로' if eco == 'pypi' else '이름'}가 {ratio:.1%} 만 있다(기준 {MIN_COVERAGE:.0%}) — "
+                           "폴더 형식이 바뀐 것으로 보고 아무것도 받지 않았다")
+    return ratio
+
+
+@contextlib.contextmanager
+def malicious_lock(data):
+    """악성 단계(precheck 포함)는 같은 DataDog 복제본을 쓰므로 한 번에 하나만 — 다른 단계가 잡고 있으면 Stop."""
+    os.makedirs(data, exist_ok=True)
+    f = open(os.path.join(data, "malicious.lock"), "a")
+    try:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise collect.Stop("다른 악성 단계(또는 precheck)가 돌고 있다 — 악성 단계는 차례로만 돌린다") from None
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+    finally:
+        f.close()
+
+
+def source_line(s):
+    """split3.py build --source 에 넘길 한 줄 — 커밋 · 목록 해시는 전체, 커밋 시각은 초까지."""
+    d, top, names, npm_top, npm_names = s["datadog"], s["pypiTop"], s["pypiNames"], s.get("npmTop", {}), s["npmNames"]
+    return (f"DataDog {d['commit']}({d['committedAt']}) · top-pypi {top['sha256']}({top.get('lastUpdate')}) · "
+            f"pypi 이름 {names['sha256']} · npm 인기 {npm_top.get('names')}개 {npm_top.get('pages')}쪽(상한 {npm_top.get('maxPages')}) · "
+            f"npm 이름 {npm_names['package']} {npm_names['sha256']} · 받은 날 {s['fetchedOn']}")
+
+
+def collection_summary(sources, journals, plan, index, sp, split_sha):
+    """bench/v3/collection.json 내용(dict) — 출처 · 단계별 시도 · 남김 · 버림 사유 · 용량 · 해시만. 이름 · 경로 · 표본 내용은 넣지 않는다.
+    journals = {단계: {기록 키: 기록}}, index = {"rows", "sha256"}(index-new.jsonl), sp = bench/v3/split.json."""
+    steps = {}
+    for step, rows in journals.items():
+        kept = [r["row"] for r in rows.values() if r.get("status") == "kept"]
+        skipped = collections.Counter(r.get("why", r.get("status")) for r in rows.values() if r.get("status") != "kept")
+        steps[step] = {"tried": len(rows), "kept": len(kept), "megabytes": round(sum(r.get("bytes", 0) for r in kept) / (1 << 20)),
+                       "noCode": sum(1 for r in kept if r.get("codeLines", 0) == 0),
+                       "unreadable": sum(1 for r in kept if r.get("indexError")),
+                       "forms": dict(sorted(collections.Counter(r.get("form") for r in kept).items())), "skipped": dict(sorted(skipped.items()))}
+    keep = ("datadog", "fetchedOn", "pypiTop", "pypiNames", "npmTop", "npmNames")
+    return {
+        "schema": 1,
+        "purpose": "평가 규칙 v3 새 표본 수집 요약. 표본 파일 · 색인은 bench/datasets/v3/(git 추적 제외)에 있고, 여기에는 출처 · 수 · 해시만 남긴다",
+        "sources": {k: sources[k] for k in keep if k in sources},
+        "plan": {k: v for k, v in plan.items() if k != "malicious"},
+        "steps": steps,
+        "index": index,
+        "split": {"sha256": split_sha, **{k: sp.get(k) for k in ("v2Kept", "newKept", "kept", "duplicatesDropped", "excludedRows",
+                                                                 "inherited", "groups", "largestGroups", "counts", "newCounts")}},
+        "notes": ["시험 · 예비로 간 새 표본 파일은 분할 직후 sealed/ 로 옮겼고 검사 · 풀기를 하지 않았다. v2 표본은 v2 폴더를 가리키는 링크다",
+                  "정상 표본은 받은 날의 가장 최근 판이라 같은 명령으로 다시 받아도 같은 파일이 아니다. 재현은 이 수집본(색인 해시)으로 한다"],
+    }
 
 
 def malicious_total(v2_malicious, new_rows, v2_rows):
@@ -163,16 +244,28 @@ def _file_sha(path):
 
 # ── 단계 ──
 
+def cmd_precheck(args):
+    """트리만 받아 형식을 점검한다(journal 에 쓰지 않는다). 처음 부르면 DataDog 커밋이 그날의 최신으로 고정된다(sources.json)."""
+    with malicious_lock(collect.DATA):
+        rec, _ = load_v2_record(split3.v2_data_dir())
+        precheck(args.eco, collect.datadog_entries(args.eco), rec)
+
+
 def cmd_malicious(args):
-    rec, _ = load_v2_record(split3.v2_data_dir())
     eco = args.eco
-    targets = malicious_targets(eco, collect.datadog_entries(eco), rec)
-    j = collect.journal(f"malicious-{eco}")
-    print(f"악성 {eco}: 대상 {len(targets):,}(v2 수집 기록 {len(rec.paths[eco]):,}건 · v2 지문 {len(rec.prints[eco]):,}개와 겹치면 버림)", flush=True)
-    collect.collect_malicious(eco, targets, j, known_ids=rec.ids, known_prints=rec.prints[eco], dedupe=(eco == "npm"))
-    datadog = collect.sources({}).get("datadog") or {}
-    _write(_meta(f"malicious-{eco}.done.json"), {"targets": len(targets), "kept": len(j.kept()), "records": len(j.rows),
-                                                 "datadogCommit": datadog.get("commit"), "journalSha256": _file_sha(j.path)})
+    with malicious_lock(collect.DATA):
+        rec, _ = load_v2_record(split3.v2_data_dir())
+        entries = collect.datadog_entries(eco)
+        ratio = precheck(eco, entries, rec)  # 형식이 바뀌었으면 여기서 멈춘다 — journal 은 아직 없다
+        targets = malicious_targets(eco, entries, rec)
+        j = collect.journal(f"malicious-{eco}")
+        print(f"악성 {eco}: 대상 {len(targets):,}(v2 수집 기록 {len(rec.paths[eco]):,}건 · v2 지문 {len(rec.prints[eco]):,}개와 겹치면 버림)",
+              flush=True)
+        collect.collect_malicious(eco, targets, j, known_ids=rec.ids, known_prints=rec.prints[eco], dedupe=(eco == "npm"))
+        datadog = collect.sources({}).get("datadog") or {}
+        _write(_meta(f"malicious-{eco}.done.json"), {"targets": len(targets), "kept": len(j.kept()), "records": len(j.rows),
+                                                     "coverage": round(ratio, 6), "datadogCommit": datadog.get("commit"),
+                                                     "journalSha256": _file_sha(j.path)})
 
 
 def cmd_plan(_args):
@@ -235,7 +328,20 @@ def cmd_index(_args):
 
 
 def cmd_source_line(_args):
-    collect.cmd_source_line(None)
+    print(source_line(collect.sources({})))
+
+
+def cmd_summary(_args):
+    if not os.path.exists(split3.SPLIT3):
+        raise collect.Stop("bench/v3/split.json 이 없다 — 분할 뒤에 요약한다")
+    with open(split3.SPLIT3, encoding="utf-8") as f:
+        sp = json.load(f)
+    journals = {step: collect.journal(step).rows for step in collect.STEPS}
+    index_path = collect.INDEX
+    index = {"rows": len(split.read_jsonl(index_path)), "sha256": _file_sha(index_path)}
+    got = collection_summary(collect.sources({}), journals, _plan(), index, sp, _file_sha(split3.SPLIT3))
+    _write(COLLECTION, got)
+    print(f"bench/v3/collection.json 을 썼다 — 단계 {len(got['steps'])} · 새 표본 {sp.get('newKept')} · 커밋하라")
 
 
 def cmd_status(_args):
@@ -276,16 +382,17 @@ def cmd_prune(_args):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    m = sub.add_parser("malicious")
-    m.add_argument("--eco", required=True, choices=split.ECOSYSTEMS)
-    m.set_defaults(fn=cmd_malicious)
+    for name, fn in (("malicious", cmd_malicious), ("precheck", cmd_precheck)):
+        m = sub.add_parser(name)
+        m.add_argument("--eco", required=True, choices=split.ECOSYSTEMS)
+        m.set_defaults(fn=fn)
     b = sub.add_parser("benign")
     b.add_argument("--eco", required=True, choices=split.ECOSYSTEMS)
     b.add_argument("--kind", required=True, choices=("popular", "longTail"))
     b.add_argument("--top-pages", type=int, default=TOP_PAGES, help=f"npm 인기 순위 쪽 수 상한(기본 {TOP_PAGES})")
     b.set_defaults(fn=cmd_benign)
     for name, fn in (("plan", cmd_plan), ("index", cmd_index), ("source-line", cmd_source_line), ("prune", cmd_prune),
-                     ("status", cmd_status)):
+                     ("status", cmd_status), ("summary", cmd_summary)):
         sub.add_parser(name).set_defaults(fn=fn)
     args = ap.parse_args(argv)
     try:
