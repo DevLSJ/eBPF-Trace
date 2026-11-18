@@ -59,9 +59,9 @@ type Pipeline struct {
 	notifier notify.Notifier
 
 	persist  chan model.Verdict
-	killed   map[string]time.Time // 컨테이너 ID → 격리 시각 (중복 kill 방지)
-	lc       labelCache           // 컨테이너 ID → 라벨(scope.go)
-	observer func(model.Event)    // 감시 대상 이벤트 관찰(연동 연결 테스트, scope.go)
+	killed   map[string]killMark // 컨테이너 ID → 격리 요청 결과 (중복 kill 방지)
+	lc       labelCache          // 컨테이너 ID → 라벨(scope.go)
+	observer func(model.Event)   // 감시 대상 이벤트 관찰(연동 연결 테스트, scope.go)
 
 	rateSec   int64
 	rateCount int
@@ -85,7 +85,7 @@ func New(opt Options, engine *rules.Engine, enf enforcer.Enforcer, hub Broadcast
 		resolver: resolver,
 		opt:      opt, engine: engine, enforcer: enf, hub: hub, stats: agg, audit: audit, buffer: buffer,
 		persist: make(chan model.Verdict, persistQueue),
-		killed:  map[string]time.Time{},
+		killed:  map[string]killMark{},
 	}
 }
 
@@ -282,8 +282,10 @@ func (p *Pipeline) enforce(ctx context.Context, v *model.Verdict) {
 		return
 	}
 	id := v.Event.ContainerID
-	if at, ok := p.killed[id]; ok && time.Since(at) < killDedupe {
-		v.Enforced = true // 이미 격리 요청을 보낸 컨테이너의 잔여 이벤트
+	if m, ok := p.killed[id]; ok && time.Since(m.at) < killDedupe {
+		// 이미 격리 요청을 보낸 컨테이너의 잔여 이벤트: kill 을 다시 보내지 않고 첫 결과를 그대로 적는다.
+		// 스스로 먼저 끝난 컨테이너(409 · 404)는 격리가 아니다 (11/16 sg-vm ins-0131)
+		v.Enforced, v.EnforceError = m.err == "", m.err
 		return
 	}
 	kctx, cancel := context.WithTimeout(ctx, killTimeout)
@@ -302,23 +304,30 @@ func (p *Pipeline) enforce(ctx context.Context, v *model.Verdict) {
 	switch {
 	case err == nil:
 		v.Enforced = true
-		p.killed[id] = time.Now()
+		p.killed[id] = killMark{at: time.Now()}
 		p.engine.Forget(id) // 격리한 컨테이너의 연쇄 상태를 버린다
 		p.stats.Killed(id, v.Event.ContainerName)
 		slog.Warn("container killed", "container", v.Event.ContainerName, "id", id, "rule", v.RuleID, "reason", v.Reason)
 	case errors.Is(err, enforcer.ErrNotRunning), errors.Is(err, enforcer.ErrNotFound):
-		p.killed[id] = time.Now()
-		p.engine.Forget(id) // 이미 멈춘 컨테이너 — 연쇄 상태도 버린다
 		v.EnforceError = err.Error()
+		p.killed[id] = killMark{at: time.Now(), err: v.EnforceError}
+		p.engine.Forget(id) // 이미 멈춘 컨테이너 — 연쇄 상태도 버린다
+		slog.Warn("container stopped before kill", "container", v.Event.ContainerName, "id", id, "rule", v.RuleID, "err", err)
 	default:
 		v.EnforceError = err.Error()
 		slog.Error("kill failed", "container", v.Event.ContainerName, "id", id, "err", err)
 	}
-	for k, at := range p.killed {
-		if time.Since(at) > killDedupe {
+	for k, m := range p.killed {
+		if time.Since(m.at) > killDedupe {
 			delete(p.killed, k)
 		}
 	}
+}
+
+// killMark: 컨테이너에 보낸 격리 요청의 결과. err 가 비면 kill 성공, 아니면 이미 멈춘 컨테이너(ErrNotRunning · ErrNotFound)의 사유
+type killMark struct {
+	at  time.Time
+	err string
 }
 
 // allowNormal: 정상 이벤트는 초당 NormalEventRate개까지만 스트리밍한다 (위반은 항상).
