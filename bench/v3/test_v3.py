@@ -143,7 +143,7 @@ class Inherit(unittest.TestCase):
     def test_seen_name_goes_to_train_and_seen_plus_a_held_out_link_is_left_out(self):
         seen_new = row(20_020, name="old-favourite")
         cal = in_part(self.v2_rows, self.v2, "calibration")
-        both = row(20_021, name="also-seen", files=[cal["codeFiles"][0]])
+        both = row(20_021, name="also-seen", files=[cal["codeFiles"][0], {"sha256": h("both-own"), "bytes": 700}])  # 지문은 다르게
         seen = {split.name_group("pypi", "old-favourite"), split.name_group("pypi", "also-seen")}
         sp = build3(corpus(10_000, 40) + [seen_new, both], self.v2_rows, self.v2, seen)
         self.assertEqual(sp["assignments"][seen_new["id"]], "train")
@@ -219,7 +219,8 @@ class BuildFile(unittest.TestCase):
                 split3.build_file(out=out, **kw)
             with open(out, "rb") as f:
                 self.assertEqual(f.read(), first)
-            self.assertEqual(json.loads(first)["v2SplitSha256"], hashlib.sha256(open(paths["v2split.json"], "rb").read()).hexdigest())
+            with open(paths["v2split.json"], "rb") as f:
+                self.assertEqual(json.loads(first)["v2SplitSha256"], hashlib.sha256(f.read()).hexdigest())
 
 
 class Seal(unittest.TestCase):
@@ -322,7 +323,8 @@ class Unseal(unittest.TestCase):
         with self.assertRaises(split.SealedError):
             self.unseal("test", dirty=True)
         entry = self.unseal("test")
-        sp = json.load(open(self.paths["split.json"]))
+        with open(self.paths["split.json"]) as f:
+            sp = json.load(f)
         v2_test = [i for i, p in self.v2["assignments"].items() if p == "test"]
         new_test = [i for i, p in sp["assignments"].items() if p == "test" and i not in self.v2["assignments"]]
         self.assertEqual(entry["rows"], {"v2": len(v2_test), "new": len(new_test)})
