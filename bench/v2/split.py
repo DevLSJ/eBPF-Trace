@@ -26,11 +26,14 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-PROTOCOL = os.path.join(HERE, "protocol.json")
+# 규약 폴더(규약 · 분할 · 선택 · 봉인 기록). 기본은 이 폴더(v2). 평가 규칙 v3 의 진입점(bench/v3/run.py)이 bench/v3 으로 바꿔
+# 층 도구(run_static · rules_layer · static_ml · llm_input · llm_layer)를 v3 분할로 돌린다. seen 목록은 늘 v2 것이다
+RULES = os.environ.get("SG_BENCH_RULES") or HERE
+PROTOCOL = os.path.join(RULES, "protocol.json")
 SEEN = os.path.join(HERE, "seen-groups.json")
-SPLIT = os.path.join(HERE, "split.json")
-SELECTION = os.path.join(HERE, "selection.json")
-LEDGER = os.path.join(HERE, "unseal-log.json")
+SPLIT = os.path.join(RULES, "split.json")
+SELECTION = os.path.join(RULES, "selection.json")
+LEDGER = os.path.join(RULES, "unseal-log.json")
 
 SEED = 20261112
 PARTS = ("train", "calibration", "test", "reserve")
@@ -105,10 +108,19 @@ def dedupe(rows):
     return kept, dropped
 
 
-def campaign_groups(rows):
+def link_keys(row, benign_files):
+    """묶음을 잇는 근거 키: 같은 생태계의 이름 묶음, 악성이면 MIN_LINK_BYTES 이상이고 benign_files 에 없는 코드 파일."""
+    keys = [("name", row["ecosystem"], name_group(row["ecosystem"], row["name"]))]
+    if row["label"] == "malicious":
+        keys += [("file", row["ecosystem"], f["sha256"]) for f in row["codeFiles"]
+                 if f["bytes"] >= MIN_LINK_BYTES and f["sha256"] not in benign_files]
+    return keys
+
+
+def campaign_groups(rows, benign_files=None):
     """{id: 묶음 이름}. 같은 생태계에서 이름이 같으면 한 묶음(라벨이 달라도).
-    악성끼리는 MIN_LINK_BYTES 이상인 코드 파일 해시가 같아도 한 묶음 — 정상 표본에도 있는 파일은 근거로 쓰지 않는다.
-    묶음 이름 = 묶음에서 가장 작은 id."""
+    악성끼리는 MIN_LINK_BYTES 이상인 코드 파일 해시가 같아도 한 묶음 — 정상 표본에도 있는 파일은 근거로 쓰지 않는다
+    (benign_files 를 주면 그 집합, 없으면 rows 의 정상 표본 파일). 묶음 이름 = 묶음에서 가장 작은 id."""
     parent = {r["id"]: r["id"] for r in rows}
 
     def find(x):
@@ -122,14 +134,11 @@ def campaign_groups(rows):
         if a != b:
             parent[max(a, b)] = min(a, b)
 
-    benign_files = {f["sha256"] for r in rows if r["label"] == "benign" for f in r["codeFiles"]}
+    if benign_files is None:
+        benign_files = {f["sha256"] for r in rows if r["label"] == "benign" for f in r["codeFiles"]}
     owner = {}
     for r in sorted(rows, key=lambda r: r["id"]):
-        keys = [("name", r["ecosystem"], name_group(r["ecosystem"], r["name"]))]
-        if r["label"] == "malicious":
-            keys += [("file", r["ecosystem"], f["sha256"]) for f in r["codeFiles"]
-                     if f["bytes"] >= MIN_LINK_BYTES and f["sha256"] not in benign_files]
-        for k in keys:
+        for k in link_keys(r, benign_files):
             if k in owner:
                 union(owner[k], r["id"])
             else:
@@ -237,11 +246,23 @@ def select_ids(split, parts, ledger):
     return sorted(i for i, p in split["assignments"].items() if p in want)
 
 
+def _never_unseal(split_bytes):
+    """분할 파일의 neverUnseal 목록. 읽히지 않는 바이트면 빈 목록(v2 분할에는 그 칸이 없다)."""
+    try:
+        doc = json.loads(split_bytes)
+    except ValueError:
+        return []
+    return list(doc.get("neverUnseal") or []) if isinstance(doc, dict) else []
+
+
 def unseal(part, reason, *, split_bytes, protocol_bytes, selection_path=SELECTION, ledger_path=LEDGER,
-           head="", dirty=False, now=None):
-    """봉인 구간을 한 번 연다. 기록을 ledger 에 더하고 그 항목을 돌려준다."""
+           head="", dirty=False, now=None, extra=None):
+    """봉인 구간을 한 번 연다. 기록을 ledger 에 더하고 그 항목을 돌려준다.
+    분할 파일의 neverUnseal 에 든 구간은 열지 않는다(v3 의 예비 구간). extra 는 기록에 덧붙이는 칸(v3 의 출신별 수)."""
     if part not in SEALED:
         raise ValueError(f"{part} 는 봉인 구간이 아니다")
+    if part in _never_unseal(split_bytes):
+        raise SealedError(f"{part} 구간은 이 규약에서 열지 않는다(분할 파일 neverUnseal)")
     if not reason.strip():
         raise ValueError("여는 사유를 적어야 한다")
     ledger = read_ledger(ledger_path)
@@ -263,6 +284,7 @@ def unseal(part, reason, *, split_bytes, protocol_bytes, selection_path=SELECTIO
         "splitSha256": sha256(split_bytes),
         "selectionSha256": selection_sha,
         "gitHead": head,
+        **(extra or {}),
     }
     ledger.append(entry)
     with open(ledger_path, "w", encoding="utf-8") as f:
@@ -282,7 +304,14 @@ def _git(*args):
     return subprocess.run(["git", "-C", ROOT, *args], capture_output=True, text=True).stdout.strip()
 
 
+def _v2_only(what):
+    """v2 규약 폴더가 아닐 때(SG_BENCH_RULES) 분할 만들기 · 봉인 열기를 막는다 — v3 는 bench/v3/split3.py 가 한다."""
+    if os.path.realpath(RULES) != os.path.realpath(HERE):
+        sys.exit(f"거부: 규약 폴더가 {RULES} 다 — 이 도구의 {what}은 v2 전용이다. v3 는 bench/v3/split3.py 를 쓴다")
+
+
 def cmd_build(args):
+    _v2_only("분할 만들기")
     if os.path.exists(SPLIT) and not args.force:
         sys.exit("bench/v2/split.json 이 이미 있다 — 분할은 한 번만 만든다(규칙 revisions). 정말 다시 만들려면 --force 와 사유 기록")
     seen_bytes = _read(SEEN)
@@ -294,12 +323,12 @@ def cmd_build(args):
 LONG_KEYS = ("duplicates", "assignments", "groupOf")
 
 
-def write_split(result, path):
-    """split.json — 요약은 줄을 나눠 읽기 쉽게, 긴 표(LONG_KEYS)는 한 줄씩."""
-    head = {k: v for k, v in result.items() if k not in LONG_KEYS}
+def write_split(result, path, long_keys=LONG_KEYS):
+    """split.json — 요약은 줄을 나눠 읽기 쉽게, 긴 표(long_keys)는 한 줄씩."""
+    head = {k: v for k, v in result.items() if k not in long_keys}
     with open(path, "w", encoding="utf-8") as f:
         f.write(json.dumps(head, ensure_ascii=False, indent=1)[:-2])  # 끝의 "\n}" 를 떼고 긴 표를 잇는다
-        for k in LONG_KEYS:
+        for k in long_keys:
             f.write(",\n " + json.dumps(k) + ": " + json.dumps(result[k], ensure_ascii=False, separators=(",", ":")))
         f.write("\n}\n")
 
@@ -317,6 +346,7 @@ def cmd_status(_args):
 
 
 def cmd_unseal(args):
+    _v2_only("봉인 열기")
     dirty = bool(_git("status", "--porcelain", "--", "bench", "backend", "tools"))
     try:
         entry = unseal(args.part, args.reason, split_bytes=_read(SPLIT), protocol_bytes=_read(PROTOCOL),

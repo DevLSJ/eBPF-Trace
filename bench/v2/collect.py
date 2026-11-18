@@ -336,16 +336,32 @@ def journal(step):
     return Journal(os.path.join(META, step + ".jsonl"))
 
 
+def datadog_entries(eco):
+    """고정한 커밋의 그 생태계 표본 zip 항목들(parse_datadog_path + blob 해시 oid)."""
+    return [dict(e, oid=oid) for oid, path in datadog_tree() for e in [parse_datadog_path(path)] if e and e["ecosystem"] == eco]
+
+
 def cmd_malicious(args):
     eco = args.eco
-    entries = [dict(e, oid=oid) for oid, path in datadog_tree() for e in [parse_datadog_path(path)] if e and e["ecosystem"] == eco]
+    entries = datadog_entries(eco)
     j = journal(f"malicious-{eco}")
     if eco == "pypi":
-        targets, keep_max, scan_max = sorted(entries, key=lambda e: e["path"]), None, None
+        collect_malicious(eco, sorted(entries, key=lambda e: e["path"]), j)
     else:
         latest = latest_per_name(entries)
-        targets, keep_max, scan_max = [latest[n] for n in hash_order(split.SEED, eco, latest)], NPM_KEEP, NPM_SCAN_MAX
-    prints = {split.fingerprint(r): r["id"] for r in j.kept() if split.fingerprint(r)}
+        collect_malicious(eco, [latest[n] for n in hash_order(split.SEED, eco, latest)], j, keep_max=NPM_KEEP, scan_max=NPM_SCAN_MAX,
+                          dedupe=True)
+
+
+def collect_malicious(eco, targets, j, *, keep_max=None, scan_max=None, known_ids=None, known_prints=None, dedupe=False):
+    """targets 를 차례로 받아 색인 줄을 j 에 적는다. keep_max · scan_max = 남길 수 · 훑을 수 상한(없으면 끝까지).
+    같은 파일(이미 남긴 id 또는 known_ids)은 버리고, 지문이 known_prints(지문 → id) 와 같으면 버린다.
+    dedupe 면 이번에 남긴 지문끼리도 버린다(훑는 순서가 먼저인 것이 남는다 — v2 npm). v3 는 known_* 에 v2 색인을 넘긴다."""
+    known_ids = known_ids or set()
+    prints = dict(known_prints or {})
+    for r in j.kept():
+        if dedupe and split.fingerprint(r):
+            prints.setdefault(split.fingerprint(r), r["id"])
     ids = {r["id"] for r in j.kept()}
     scanned = 0  # 순서대로 훑은 이름 수 — 이미 기록한 것도 센다(이어 받아도 같은 자리에서 멈춘다)
     for start in range(0, len(targets), BATCH):
@@ -366,14 +382,14 @@ def cmd_malicious(args):
             row = sample.build_row(data, ecosystem=eco, label="malicious", name=e["name"], version=e["version"], date=e["date"],
                                    source="datadog:" + e["kind"], form="zip")
             fp = split.fingerprint(row)
-            if row["id"] in ids:
+            if row["id"] in ids or row["id"] in known_ids:
                 j.add(e["path"], status="duplicate", duplicateOf=row["id"], why="같은 파일")
-            elif keep_max is not None and fp and fp in prints:
+            elif fp and fp in prints:
                 j.add(e["path"], status="duplicate", duplicateOf=prints[fp], why="같은 지문")
             else:
                 store(data, "zip")
                 ids.add(row["id"])
-                if fp:
+                if fp and dedupe:
                     prints.setdefault(fp, row["id"])
                 j.add(e["path"], status="kept", row=row)
         drop_packs(packs)
@@ -395,10 +411,10 @@ def top_pypi():
     return [r["project"] for r in d["rows"]]
 
 
-def top_npm(n):
-    """월간 다운로드 순서 이름(@types/* 제외)을 n 개 넘게 — 쪽마다 캐시한다(서버가 느리다)."""
+def top_npm(n, max_pages=60):
+    """월간 다운로드 순서 이름(@types/* 제외)을 n 개 넘게, 많아야 max_pages 쪽 — 쪽마다 캐시한다(서버가 느리다)."""
     names, page = [], 1
-    while len(names) < n and page <= 60:
+    while len(names) < n and page <= max_pages:
         raw = cached(f"top-npm-{page:02d}.json", lambda: http(TOP_NPM_URL.format(page=page), timeout=600, compressed=True)[0])
         rows = json.loads(raw)
         if not rows:
@@ -488,7 +504,6 @@ def cmd_benign(args):
     eco, kind = args.eco, args.kind
     quota = benign_quota(n_malicious(eco))[kind]
     j = journal(f"benign-{eco}-{kind}")
-    candidate = candidate_pypi if eco == "pypi" else candidate_npm
     # 인기 목록은 두 단계가 같은 것을 쓴다: PyPI 는 순위표 전체, npm 은 인기 몫 + 여유 400(버려지는 후보 몫)
     popular = top_pypi() if eco == "pypi" else top_npm(benign_quota(n_malicious(eco))["popular"] + 400)
     if kind == "popular":
@@ -496,11 +511,19 @@ def cmd_benign(args):
     else:
         popular_set = {split.norm_name(eco, n) for n in popular}
         order = hash_order(split.SEED, eco, pypi_names() if eco == "pypi" else npm_names())
+    collect_benign(eco, kind, quota, order, popular_set, j)
+
+
+def collect_benign(eco, kind, quota, order, popular_set, j, *, candidate=None, skip=frozenset(), allow_short=False):
+    """order 의 이름을 차례로 보며 조건을 채우는 정상 표본을 quota 개까지 받는다 → {"kept": 남긴 수, "exhausted": 목록을 다 훑었는지}.
+    skip = 조회하지 않고 건너뛸 정규화 이름(v3: v2 색인에 있는 이름). 다 훑어도 모자라면 Stop — allow_short 면 멈추지 않고 돌려준다
+    (v3 인기 단계: 모자란 수는 롱테일로 넘긴다)."""
+    candidate = candidate or (candidate_pypi if eco == "pypi" else candidate_npm)
     kept_ids = {r["id"] for r in j.kept()}
     for i, name in enumerate(order):
         if len(kept_ids) >= quota:
             break
-        if name in j:
+        if name in j or (skip and split.norm_name(eco, name) in skip):
             continue
         check_disk()
         data, info = candidate(name, long_tail=(kind == "longTail"), popular_set=popular_set)
@@ -517,9 +540,10 @@ def cmd_benign(args):
         if len(j.rows) % 100 == 0:
             print(f"정상 {eco} {kind}: 후보 {i + 1} · 남김 {len(kept_ids)}/{quota}", flush=True)
         time.sleep(0.03)
-    if len(kept_ids) < quota:
+    if len(kept_ids) < quota and not allow_short:
         raise Stop(f"정상 {eco} {kind}: 후보가 모자란다(남김 {len(kept_ids)}/{quota})")
     print(f"정상 {eco} {kind} 끝: 남김 {len(kept_ids)}/{quota} · 기록 {len(j.rows)}")
+    return {"kept": len(kept_ids), "exhausted": len(kept_ids) < quota}
 
 
 STEPS = [f"malicious-{e}" for e in split.ECOSYSTEMS] + [f"benign-{e}-{k}" for e in split.ECOSYSTEMS for k in ("popular", "longTail")]
