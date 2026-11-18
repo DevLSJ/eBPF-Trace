@@ -33,6 +33,7 @@ import {
   type Level3,
   type Outcome,
   type Step,
+  type StepKey,
 } from './model';
 import { useDemo, type DemoError } from './useDemo';
 import './demo.css';
@@ -40,7 +41,8 @@ import './demo.css';
 // 「시연」 페이지(R3 11/04 — 목업 #/demo, shared/demo-page.js 11/04e B). 녹화 대본 장면 2~4 용, 1920×1080 한 화면(안쪽 스크롤 없이).
 //   노출: 관리자 + /api/info.demo — 아니면 사이드바에 메뉴가 없고, 주소로 들어오면 안내만
 //   왼쪽 = 한눈에 3줄(11/09 — 무엇을 · 잡는 규칙 · 예상 결과) + 시나리오 8개를 묶음 3개로(접기 · 펼치기, 고른 시나리오 묶음은 늘 펼침) + 예상 결과 + 실행(동시 1개 · 90초 — 실행 중이면 잠김 + 이유, 409 「이미 실행 중」)
-//   가운데 = 실시간 5단계(설치 시작 → 커널 이벤트 → 규칙 판정 → 증거 수집 → 결과), 단계마다 도착 시각 · 직전 대비 +N ms
+//   가운데 = 실시간 5단계(설치 시작 → 커널 이벤트 → 규칙 판정 → 증거 수집 → 결과), 단계마다 도착 시각 · 직전 대비 +N ms.
+//            11/16: 타임라인에 정지 시각이 있으면 규칙 판정과 증거 수집 사이에 「정지」(증거 수집 전 실행 멈춤)
 //   오른쪽 = 탭 2개(11/09): 「판정 근거」(기본) = 「왜」 카드: 무엇을 · 왜(규칙 · 판정 · 조건 · 원문 강조 — CodeWindow · 연쇄 진행) · 어떻게(증거 3종 · 증거 ms · 탐지→kill ms) + 건 보고서 · 정책 링크
 //          「흐름 그림」 = FlowHero 세로 — 대기 중 예상 경로 자동 재생, 실행 중 실제 단계, 끝나면 결과 톤에서 멈춤(flow.ts)
 //   필드가 없으면 그 칸만 「정보 없음」. 첫 위반이 와도 설치 시트로 옮기지 않는다
@@ -255,7 +257,8 @@ function ErrorBand({ error }: { error: DemoError }) {
   );
 }
 
-// ── 가운데: 실시간 5단계 ──
+// ── 가운데: 실시간 5단계(정지 시각이 있으면 「정지」를 더해 6단계, 11/16) ──
+const STEP_LABEL = Object.fromEntries(STEPS) as Record<StepKey, string>;
 const OUTCOME_STEP: Record<Outcome, (run: DemoRun) => string> = {
   running: () => '',
   isolated: (r) => `[격리] 컨테이너 kill${r.exitCode != null ? `(종료 코드 ${r.exitCode})` : ''}`,
@@ -302,10 +305,20 @@ function FlowCol({ run, m, steps, now, loadError }: { run: DemoRun | null; m: De
           );
         if (m.d === null && fin) return <span className="tone-ok">[통과] 설치 중 행동에 위반 사항 없음</span>;
         return fin ? <None /> : <span className="text-text-3">탐지 기다리는 중</span>;
+      case 'pause': {
+        // 11/16: 증거 수집 전에 컨테이너를 멈춘 시각(pausedAt 이 있을 때만 이 단계가 생긴다)
+        const pzMs = msBetween(m.tl?.detectedAt, m.tl?.pausedAt);
+        return <span>[정지] 증거 수집 전 실행 멈춤{pzMs !== null ? ` · 탐지→정지 ${fmtNum(pzMs)} ms` : ''}</span>;
+      }
       case 'evidence': {
         if (s.state === 'skip') return <span className="text-text-3">{m.d ? '[건너뜀] 격리하지 않아 모으지 않음' : '[건너뜀] 위반 없음'}</span>;
         const evMs = msBetween(m.tl?.evidenceStartedAt, m.tl?.evidenceDoneAt);
-        if (m.tl?.evidenceDoneAt) return <span>로그 · 파일 변경 · 프로세스 보존됨({evMs !== null ? `${fmtNum(evMs)} ms` : '시간 정보 없음'})</span>;
+        if (m.tl?.evidenceDoneAt)
+          return (
+            <span>
+              {m.tl.pausedAt ? '정지 상태에서 ' : ''}로그 · 파일 변경 · 프로세스 보존됨({evMs !== null ? `${fmtNum(evMs)} ms` : '시간 정보 없음'})
+            </span>
+          );
         return fin ? <None /> : null;
       }
       case 'outcome':
@@ -318,8 +331,9 @@ function FlowCol({ run, m, steps, now, loadError }: { run: DemoRun | null; m: De
         <div className="demo-col-body" data-fill="">
           {loadError ? <LoadError error={loadError} what="시연 상태" compact /> : null}
           <ol className="flow" data-part="demo-steps">
-            {STEPS.map(([k, ko], i) => {
-              const s = steps.find((x) => x.key === k)!;
+            {steps.map((s, i) => {
+              const k = s.key;
+              const ko = STEP_LABEL[k];
               const b = body(s);
               return (
                 <li key={k} data-step={k} data-state={s.state} data-at={s.at ?? ''} data-delta-ms={s.delta === null ? '' : String(s.delta)}>

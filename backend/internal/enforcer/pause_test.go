@@ -1,0 +1,163 @@
+package enforcer
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+// pauseServer: Docker Engine API 흉내 — pause · kill 요청을 순서대로 적고, pause 응답 코드 · 본문은 정해 둔 대로 돌려준다.
+// 응답 본문은 11/16 sg-vm(Docker 29.8 · API 1.56) 실측 문장 그대로
+type pauseServer struct {
+	mu        sync.Mutex
+	log       []string
+	pauseCode int
+	pauseBody string
+}
+
+func (s *pauseServer) add(x string) {
+	s.mu.Lock()
+	s.log = append(s.log, x)
+	s.mu.Unlock()
+}
+
+func (s *pauseServer) got() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.log)
+}
+
+func (s *pauseServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/pause"):
+		s.add("pause")
+		w.WriteHeader(s.pauseCode)
+		if s.pauseBody != "" {
+			_, _ = w.Write([]byte(s.pauseBody))
+		}
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/kill"):
+		s.add("kill")
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+// Tier 1 — 격리 순서(11/16 사용자 결정 「먼저 멈추고 증거 수집」): 증거 훅이 있으면 ① Docker pause → ② 증거 → ③ kill.
+// pause 가 409 「not running」이면 컨테이너가 이미 끝났으니 kill 은 보내지 않지만 증거는 예산 안에서 모은다(11/16 사용자 결정 「끝난 컨테이너도 증거는」 —
+// 끝난 컨테이너도 logs · changes · archive 는 200, top 만 409, sg-vm 실측). 결과는 그대로 격리 아님 + 사유(ErrNotRunning).
+// pause 가 404 면 컨테이너가 없어 읽을 것이 없으니 증거도 kill 도 하지 않는다(ErrNotFound).
+// 그 밖의 pause 실패(이미 정지 409 · 500)는 예전 순서(증거 → kill)로 계속한다. 증거 훅이 없으면 pause 없이 바로 kill
+func TestPauseBeforeEvidence(t *testing.T) {
+	cases := []struct {
+		name      string
+		code      int
+		body      string
+		hook      bool
+		wantLog   []string
+		wantErr   error
+		wantNoErr bool
+	}{
+		{name: "paused", code: http.StatusNoContent, hook: true, wantLog: []string{"pause", "hook", "kill"}, wantNoErr: true},
+		{name: "not running", code: http.StatusConflict, body: `{"message":"container 0123 is not running"}`, hook: true, wantLog: []string{"pause", "hook"}, wantErr: ErrNotRunning},
+		{name: "not found", code: http.StatusNotFound, body: `{"message":"No such container: 0123"}`, hook: true, wantLog: []string{"pause"}, wantErr: ErrNotFound},
+		{name: "already paused", code: http.StatusConflict, body: `{"message":"container 0123 is already paused"}`, hook: true, wantLog: []string{"pause", "hook", "kill"}, wantNoErr: true},
+		{name: "server error", code: http.StatusInternalServerError, body: `{"message":"boom"}`, hook: true, wantLog: []string{"pause", "hook", "kill"}, wantNoErr: true},
+		{name: "no hook", code: http.StatusNoContent, wantLog: []string{"kill"}, wantNoErr: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := &pauseServer{pauseCode: c.code, pauseBody: c.body}
+			srv := httptest.NewServer(s)
+			defer srv.Close()
+			d, err := NewDocker("tcp://" + strings.TrimPrefix(srv.URL, "http://"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.hook {
+				d.BeforeKill = func(context.Context, string) { s.add("hook") }
+			}
+			ts, err := d.KillTimed(context.Background(), id)
+			if got := s.got(); !slices.Equal(got, c.wantLog) {
+				t.Fatalf("order = %v, want %v (err=%v)", got, c.wantLog, err)
+			}
+			switch {
+			case c.wantNoErr && err != nil:
+				t.Fatalf("err = %v, want nil", err)
+			case c.wantErr != nil && !errors.Is(err, c.wantErr):
+				t.Fatalf("err = %v, want %v", err, c.wantErr)
+			}
+			// 시각: 멈춘 경우만 pausedAt(≤ 증거 시작 ≤ 증거 끝 ≤ kill), 멈추지 못하고 계속한 경우는 사유만,
+			// 이미 끝난 경우는 증거 시각만(정지 · kill 없음), 없는 컨테이너는 모두 비어 있다
+			paused := c.name == "paused"
+			if paused != !ts.PausedAt.IsZero() {
+				t.Fatalf("pausedAt = %v (case %s)", ts.PausedAt, c.name)
+			}
+			if paused && (ts.EvidenceStartedAt.Before(ts.PausedAt) || ts.EvidenceDoneAt.Before(ts.EvidenceStartedAt) || ts.KilledAt.Before(ts.EvidenceDoneAt)) {
+				t.Fatalf("times out of order: %+v", ts)
+			}
+			if wantPauseErr := c.name == "already paused" || c.name == "server error"; wantPauseErr != (ts.PauseError != "") {
+				t.Fatalf("pauseError = %q (case %s)", ts.PauseError, c.name)
+			}
+			switch c.name {
+			case "not running":
+				if ts.EvidenceStartedAt.IsZero() || ts.EvidenceDoneAt.Before(ts.EvidenceStartedAt) || !ts.PausedAt.IsZero() || !ts.KilledAt.IsZero() {
+					t.Fatalf("exited container: evidence times only, no pause · kill: %+v", ts)
+				}
+			case "not found":
+				if ts != (Times{}) {
+					t.Fatalf("missing container must have no times at all: %+v", ts)
+				}
+			}
+		})
+	}
+}
+
+// Tier 1 — 끝난 컨테이너의 증거도 같은 예산(beforeKillBudget)을 지킨다: 훅이 ctx 를 무시하고 멈춰 있어도
+// 예산 뒤에 돌아오고(kill 은 보내지 않는다), 훅이 패닉해도 KillTimed 는 ErrNotRunning 으로 끝난다
+func TestExitedContainerEvidenceBudget(t *testing.T) {
+	for _, mode := range []string{"stuck", "panic"} {
+		t.Run(mode, func(t *testing.T) {
+			s := &pauseServer{pauseCode: http.StatusConflict, pauseBody: `{"message":"container 0123 is not running"}`}
+			srv := httptest.NewServer(s)
+			defer srv.Close()
+			d, err := NewDocker("tcp://" + strings.TrimPrefix(srv.URL, "http://"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			release := make(chan struct{})
+			defer close(release)
+			d.BeforeKill = func(context.Context, string) {
+				s.add("hook")
+				if mode == "panic" {
+					panic("top 409")
+				}
+				<-release // ctx 를 무시한다
+			}
+			start := time.Now()
+			ts, err := d.KillTimed(context.Background(), id)
+			elapsed := time.Since(start)
+			if !errors.Is(err, ErrNotRunning) {
+				t.Fatalf("err = %v, want ErrNotRunning", err)
+			}
+			if elapsed > beforeKillBudget+300*time.Millisecond {
+				t.Fatalf("took %v, budget %v", elapsed, beforeKillBudget)
+			}
+			if got := s.got(); !slices.Equal(got, []string{"pause", "hook"}) {
+				t.Fatalf("requests = %v, want pause then hook only (no kill)", got)
+			}
+			if ts.EvidenceStartedAt.IsZero() || ts.EvidenceDoneAt.Before(ts.EvidenceStartedAt) || !ts.PausedAt.IsZero() || !ts.KilledAt.IsZero() {
+				t.Fatalf("times: %+v", ts)
+			}
+			if mode == "stuck" && ts.EvidenceDoneAt.Sub(ts.EvidenceStartedAt) < beforeKillBudget-50*time.Millisecond {
+				t.Fatalf("stuck hook must be waited for up to the budget: %v", ts.EvidenceDoneAt.Sub(ts.EvidenceStartedAt))
+			}
+		})
+	}
+}

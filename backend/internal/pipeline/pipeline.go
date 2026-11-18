@@ -290,7 +290,9 @@ func (p *Pipeline) enforce(ctx context.Context, v *model.Verdict) {
 	}
 	kctx, cancel := context.WithTimeout(ctx, killTimeout)
 	defer cancel()
-	// 격리 타임라인(10/30): Docker 는 단계별 시각(증거 훅 · kill 응답)을 준다. 시각이 없는 격리 수단(mock)은 성공 시각을 kill 시각으로 쓴다
+	// 격리 타임라인(10/30): Docker 는 단계별 시각(pause · 증거 훅 · kill 응답, 11/16 pause 추가)을 준다. 시각이 없는 격리 수단(mock)은 성공 시각을 kill 시각으로 쓴다.
+	// pause 가 「이미 끝남」(409 · 404)이면 err 가 ErrNotRunning · ErrNotFound 로 와서 아래 「격리 아님 + 사유」 분기를 그대로 탄다.
+	// 409(끝났지만 남아 있음)는 증거 시각도 함께 오므로(11/16) 아래에서 타임라인에 그대로 옮긴다 — 정지 · kill 시각은 비어 있다
 	var times enforcer.Times
 	var err error
 	if te, ok := p.enforcer.(enforcer.Timed); ok {
@@ -299,6 +301,7 @@ func (p *Pipeline) enforce(ctx context.Context, v *model.Verdict) {
 		times.KilledAt = time.Now().UTC()
 	}
 	if v.Timeline != nil {
+		v.Timeline.PausedAt, v.Timeline.PauseError = stamp(times.PausedAt), times.PauseError
 		v.Timeline.EvidenceStartedAt, v.Timeline.EvidenceDoneAt, v.Timeline.KilledAt = stamp(times.EvidenceStartedAt), stamp(times.EvidenceDoneAt), stamp(times.KilledAt)
 	}
 	switch {
@@ -312,10 +315,12 @@ func (p *Pipeline) enforce(ctx context.Context, v *model.Verdict) {
 		v.EnforceError = err.Error()
 		p.killed[id] = killMark{at: time.Now(), err: v.EnforceError}
 		p.engine.Forget(id) // 이미 멈춘 컨테이너 — 연쇄 상태도 버린다
-		slog.Warn("container stopped before kill", "container", v.Event.ContainerName, "id", id, "rule", v.RuleID, "err", err)
+		slog.Warn("container stopped before kill", "container", v.Event.ContainerName, "id", id, "rule", v.RuleID, "err", err,
+			"evidence", !times.EvidenceDoneAt.IsZero()) // 끝난 컨테이너는 증거를 모았는지(11/16), 없는 컨테이너는 false
 	default:
 		v.EnforceError = err.Error()
-		slog.Error("kill failed", "container", v.Event.ContainerName, "id", id, "err", err)
+		// paused=true 면 컨테이너는 정지된 채 남는다(악성 프로세스도 멈춘 상태) — 운영자가 확인해 지운다
+		slog.Error("kill failed", "container", v.Event.ContainerName, "id", id, "err", err, "paused", !times.PausedAt.IsZero())
 	}
 	for k, m := range p.killed {
 		if time.Since(m.at) > killDedupe {

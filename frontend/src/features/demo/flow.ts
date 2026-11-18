@@ -59,13 +59,15 @@ export function liveFlow(run: DemoRun, m: DemoModel, steps: Step[]): { nodes: Fl
   else match = { id: 'match', title: '정책 탐지', sub: fin ? '정보 없음' : '탐지 기다리는 중', point: fin ? '탐지 정보 없음' : '정책 탐지 기다리는 중' };
 
   const evMs = msBetween(m.tl?.evidenceStartedAt, m.tl?.evidenceDoneAt);
+  // 11/16: 정지 시각이 있으면 증거는 컨테이너를 멈춘 뒤 모은 것(정지 단계는 노드를 따로 두지 않고 증거 노드 문구로)
+  const paused = !!m.tl?.pausedAt;
   let evidence: FlowNode;
   if (m.tl?.evidenceDoneAt)
     evidence = {
       id: 'evidence',
       title: '증거 수집',
-      sub: evMs !== null ? `${fmtNum(evMs)} ms` : '시간 정보 없음',
-      point: `kill 직전 로그 · 파일 변경 · 프로세스 보존됨${evMs !== null ? `(${fmtNum(evMs)} ms)` : ''}`,
+      sub: evMs !== null ? `${paused ? '정지 후 ' : ''}${fmtNum(evMs)} ms` : '시간 정보 없음',
+      point: `${paused ? '컨테이너 정지 뒤' : 'kill 직전'} 로그 · 파일 변경 · 프로세스 보존됨${evMs !== null ? `(${fmtNum(evMs)} ms)` : ''}`,
     };
   else if (st('evidence') === 'skip')
     evidence = { id: 'evidence', title: '증거 수집', sub: '건너뜀', point: m.d ? '격리하지 않아 증거 수집 건너뜀' : '위반 없어 증거 수집 건너뜀' };
@@ -95,7 +97,8 @@ export function liveFlow(run: DemoRun, m: DemoModel, steps: Step[]): { nodes: Fl
     evidence,
     { id: 'outcome', title: o.title, sub: ocSub[oc], tone: o.tone, point: o.point },
   ];
-  const states = steps.map((s) => STATE[s.state]);
+  // 노드는 단계 키로 짝짓는다 — 정지 단계(11/16)는 노드가 없어 빠진다
+  const states = nodes.map((n) => STATE[st(n.id as Step['key'])]);
   // 끝나면 결과 노드를 켠(on) 채 멈춘다 — 결과 톤 테두리 · 그림자
   if (fin) states[states.length - 1] = 'on';
   return { nodes, states };

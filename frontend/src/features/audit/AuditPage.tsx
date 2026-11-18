@@ -12,6 +12,8 @@ import { FilterBar, SearchField } from '../../components/list/SearchField';
 import { ScreenNote } from '../../components/ScreenNote';
 import { Select } from '../../components/Select';
 import { TableToolbar } from '../../components/TableToolbar';
+import { TimelineBar } from '../../components/TimelineBar';
+import { hasIsolationSteps } from '../../lib/timeline';
 import { ScreenHead } from '../../components/ScreenHead';
 import { GridCells, SortHead, StatusPill, TablePager, TableScroll } from '../../components/DataTable';
 import { actionTone } from '../../lib/actionTone';
@@ -581,6 +583,12 @@ function AuditDetail({ a, c }: { a: AuditEntry; c: Case | undefined }) {
           <dd className="font-mono text-xs break-all">{a.event.imageName}</dd>
         </dl>
       </Section>
+      {/* 격리 타임라인(11/16) — 설치 시트 · 건 보고서와 같은 부품. 격리 단계 시각이 있는 기록만(경고 · 옛 기록은 칸 자체가 없음) */}
+      {hasIsolationSteps(a.timeline) && (
+        <Section title="격리 타임라인" testId="audit-timeline">
+          <TimelineBar timeline={a.timeline} />
+        </Section>
+      )}
       <PolicyStarts event={a.event} ruleId={a.ruleId} />
       <Section title="판정">
         {!a.caseId ? (

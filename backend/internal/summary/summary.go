@@ -70,12 +70,14 @@ type Top struct {
 	Level     model.Level `json:"level"`
 }
 
-// Isolation: 격리 지연(10/30) — 범위 안에서 killedAt 이 있는 감사 로그 행의 killedAt − detectedAt(ms). 없으면 count 0 · 나머지 null
+// Isolation: 격리 지연(10/30) — 범위 안에서 killedAt 이 있는 감사 로그 행의 killedAt − detectedAt(ms). 없으면 count 0 · 나머지 null.
+// Pause(11/16, 보조 값): pausedAt 이 있는 행의 pausedAt − detectedAt(ms) 같은 통계 — 정지 기록이 없으면 키 생략
 type Isolation struct {
-	Count    int    `json:"count"`
-	MedianMs *int64 `json:"medianMs"`
-	P95Ms    *int64 `json:"p95Ms"`
-	MaxMs    *int64 `json:"maxMs"`
+	Count    int        `json:"count"`
+	MedianMs *int64     `json:"medianMs"`
+	P95Ms    *int64     `json:"p95Ms"`
+	MaxMs    *int64     `json:"maxMs"`
+	Pause    *Isolation `json:"pause,omitempty"`
 }
 
 type Summary struct {
@@ -230,7 +232,7 @@ func (s *Service) violations(ctx context.Context, out *Summary, from, end time.T
 	}
 	q := store.AuditQuery{Since: from, Until: end, Limit: store.MaxAuditLimit}
 	scanned := 0
-	var isolationMs []int64
+	var isolationMs, pauseMs []int64
 	for scanned < auditScan {
 		rows, err := s.audit.QueryAudit(ctx, q)
 		if err != nil {
@@ -263,6 +265,9 @@ func (s *Service) violations(ctx context.Context, out *Summary, from, end time.T
 				if ms, ok := a.Timeline.IsolationMs(); ok {
 					isolationMs = append(isolationMs, ms)
 				}
+				if ms, ok := a.Timeline.PauseMs(); ok {
+					pauseMs = append(pauseMs, ms)
+				}
 			}
 			if a.RuleID != "" {
 				bump(byRule, a.RuleID, l)
@@ -283,6 +288,10 @@ func (s *Service) violations(ctx context.Context, out *Summary, from, end time.T
 	}
 	out.IsolatedContainers = len(isolated)
 	out.Isolation = isolationStats(isolationMs)
+	if len(pauseMs) > 0 {
+		pz := isolationStats(pauseMs)
+		out.Isolation.Pause = &pz
+	}
 	top := func(m map[string]*acc, rule bool) []Top {
 		xs := make([]Top, 0, len(m))
 		for k, a := range m {

@@ -126,3 +126,31 @@ func TestEventJSONDNS(t *testing.T) {
 		t.Fatal("DNSDetail")
 	}
 }
+
+// 격리 타임라인 정지 시각(11/16): JSON 키 pausedAt · pauseError(없으면 생략), Clone 은 정지 시각도 따로 복사한다.
+// PauseMs = 탐지 → 정지(보조 값), 정지 시각이 없으면 ok=false
+func TestTimelinePausedAt(t *testing.T) {
+	det := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+	p := det.Add(25 * time.Millisecond)
+	tl := &Timeline{DetectedAt: det, MatchedAt: det.Add(time.Millisecond), PausedAt: &p}
+	if s := mustJSON(t, tl); !strings.Contains(s, `"pausedAt":"2026-11-16T09:00:00.025Z"`) || strings.Contains(s, "pauseError") {
+		t.Fatalf("json: %s", s)
+	}
+	if s := mustJSON(t, Timeline{DetectedAt: det, PauseError: "docker pause: boom"}); strings.Contains(s, "pausedAt") || !strings.Contains(s, `"pauseError":"docker pause: boom"`) {
+		t.Fatalf("pause failed: %s", s)
+	}
+	if s := mustJSON(t, Timeline{DetectedAt: det}); strings.Contains(s, "pause") {
+		t.Fatalf("old timeline must omit pause keys: %s", s)
+	}
+	c := tl.Clone()
+	*c.PausedAt = c.PausedAt.Add(time.Hour)
+	if !tl.PausedAt.Equal(p) {
+		t.Fatal("clone must copy pausedAt")
+	}
+	if ms, ok := tl.PauseMs(); !ok || ms != 25 {
+		t.Fatalf("pause ms = %d %v", ms, ok)
+	}
+	if _, ok := (Timeline{DetectedAt: det}).PauseMs(); ok {
+		t.Fatal("no pausedAt → no pause ms")
+	}
+}

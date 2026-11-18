@@ -51,9 +51,11 @@ func TestDockerKillBeforeKillHook(t *testing.T) {
 	var mu sync.Mutex
 	var killedAt []time.Time
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		killedAt = append(killedAt, time.Now())
-		mu.Unlock()
+		if strings.HasSuffix(r.URL.Path, "/kill") { // 훅이 있으면 pause 도 온다(11/16) — kill 만 센다
+			mu.Lock()
+			killedAt = append(killedAt, time.Now())
+			mu.Unlock()
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()

@@ -175,6 +175,49 @@ func TestIsolationStats(t *testing.T) {
 	}
 }
 
+// 탐지 → 정지(11/16, 보조 값): pausedAt 이 있는 행만 isolation.pause 에 센다. 격리 지연(탐지 → kill)의 정의 · JSON 은 그대로이고,
+// 정지 기록이 하나도 없으면 pause 키를 생략한다(옛 기록 · 옛 화면 호환)
+func TestIsolationPauseStats(t *testing.T) {
+	ctx := t.Context()
+	now := time.Date(2026, 11, 16, 9, 30, 0, 0, time.UTC)
+	mem := store.NewMemory()
+	save := func(ago, pausedAfter, killedAfter time.Duration) {
+		t.Helper()
+		det := now.Add(-ago)
+		k := det.Add(killedAfter)
+		tl := &model.Timeline{DetectedAt: det, MatchedAt: det.Add(time.Millisecond), KilledAt: &k}
+		if pausedAfter > 0 {
+			p := det.Add(pausedAfter)
+			tl.PausedAt = &p
+		}
+		v := model.Verdict{Matched: true, RuleID: "sensitive-files", Action: model.ActionKill, Enforced: true, Timeline: tl,
+			Event: model.Event{Kind: model.KindOpen, ContainerName: "pkg-x", Timestamp: det, Path: "/etc/shadow"}}
+		if _, err := mem.SaveAudit(ctx, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save(10*time.Minute, 20*time.Millisecond, 400*time.Millisecond)
+	save(9*time.Minute, 40*time.Millisecond, 600*time.Millisecond)
+	save(8*time.Minute, 0, 900*time.Millisecond) // 옛 순서(정지 없음) — 격리 지연에만
+	svc := New(mem, mem, fakeReview{})
+	svc.now = func() time.Time { return now }
+	s, err := svc.Build(ctx, "24h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Isolation.Count != 3 || *s.Isolation.MedianMs != 600 {
+		t.Fatalf("isolation (detected → killed) must not change: %+v", s.Isolation)
+	}
+	pz := s.Isolation.Pause
+	if pz == nil || pz.Count != 2 || pz.MedianMs == nil || *pz.MedianMs != 30 || *pz.MaxMs != 40 {
+		t.Fatalf("pause: %+v", pz)
+	}
+	b, _ := json.Marshal(s)
+	if !strings.Contains(string(b), `"isolation":{"count":3,"medianMs":600,"p95Ms":900,"maxMs":900,"pause":{"count":2,"medianMs":30,"p95Ms":40,"maxMs":40}}`) {
+		t.Fatalf("isolation json: %s", b)
+	}
+}
+
 // R2 11/04: previous — 바로 앞 같은 길이 기간(KPI 증감 줄). 기존 필드 이름 · 계산 그대로, 경계 시각은 지금 기간 쪽.
 // 직전 기간에 저장된 기록(수집량 · 감사 로그 · 설치 세션 · 판정)이 하나도 없으면 null
 func TestPrevious(t *testing.T) {
