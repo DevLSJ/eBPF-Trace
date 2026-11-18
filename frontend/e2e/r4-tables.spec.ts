@@ -438,7 +438,9 @@ test.describe('C 감사 로그 쪽 번호', () => {
 
   test('필터를 바꾸면 이전 행을 둔 채 2px 진행 띠 · 첫 로딩 스켈레톤 · 첫 쪽부터', async ({ page, backend }) => {
     backend.seedAudit(40);
-    backend.auditDelayMs = 700;
+    // 진행 띠는 재조회가 300ms 넘게 걸릴 때만 보인다(useBusy). 700ms 면 보이는 창이 400ms 뿐이라, 느린 환경에서는
+    // 클릭이 늦게 끝나 그 창을 놓쳤다(11/12 CI · 로컬 부하 30번 중 6번). 창을 1.7초로 넓힌다
+    backend.auditDelayMs = 2000;
     await page.goto('/audit');
     await expect(page.locator('[data-part="skeleton"]')).toBeVisible();
     await expect(page.locator('table[data-table="audit"] tbody tr')).toHaveCount(20);
@@ -450,7 +452,7 @@ test.describe('C 감사 로그 쪽 번호', () => {
     await page.getByRole('option', { name: '격리 (kill)' }).click();
     await expect(busy).toBeVisible();
     await expect(page.locator('table[data-table="audit"] tbody tr')).toHaveCount(20); // 이전 행 유지
-    await expect(busy).toBeHidden({ timeout: 3000 });
+    await expect(busy).toBeHidden({ timeout: 6000 });
     await expect(page.locator('[data-table-foot="audit"] [data-part="range"]')).toHaveText(/ 1\/\d+ 페이지$/);
     const q = backend.requests.filter((r) => r.path.startsWith('/audit?') && r.path.includes('action=kill')).map((r) => new URLSearchParams(r.path.split('?')[1]));
     expect(q.some((x) => x.get('offset') === '0')).toBe(true);

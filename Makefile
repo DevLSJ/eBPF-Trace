@@ -91,6 +91,7 @@ test:
 	@test -d frontend/node_modules || { echo "frontend 의존성이 없어 먼저 설치합니다(npm ci)"; cd frontend && npm ci --no-audit --no-fund; }
 	cd backend && go vet ./... && GOOS=linux go vet ./... && go test -race ./...
 	cd frontend && npm run lint && npm run build
+	python3 -B -m unittest discover -s bench/v2 -p 'test_*.py'
 
 build:
 	$(COMPOSE_MOCK) build

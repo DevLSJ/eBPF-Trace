@@ -42,7 +42,8 @@ test.describe('대시보드 — 지금 처리할 일이 있나?', () => {
     await page.goto('/');
     const ov = page.locator('[data-section="overview"]');
     await expect(ov).toContainText('감시 중');
-    expect(await ov.locator('[data-chart="violations"] [data-bucket]').count()).toBeGreaterThanOrEqual(5);
+    // 막대는 요약 응답이 온 뒤에 그려진다 — 한 번만 읽으면 느린 환경에서 0 이다(11/12 CI)
+    await expect.poll(() => ov.locator('[data-chart="violations"] [data-bucket]').count()).toBeGreaterThanOrEqual(5);
     // 위험 점수 · 실시간 피드 · 최근 설치 전체 목록은 없다(다른 탭과 중복)
     await expect(page.getByText('위험 점수')).toHaveCount(0);
     await expect(page.getByText('실시간 이벤트 피드')).toHaveCount(0);
