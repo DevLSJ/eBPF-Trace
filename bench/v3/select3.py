@@ -4,7 +4,8 @@
 
   bench/.venv/bin/python -B bench/v3/select3.py gate                       # v3 학습 구간 겹 밖 예측 → 관문 경계(JSON)
   python3 -B bench/v3/select3.py llm-budget --part calibration             # → 45
-  python3 -B bench/v3/select3.py llm-budget --part test                    # → 100 − 보정에서 쓴 돈(다시 쓴 v2 답은 0)
+  python3 -B bench/v3/select3.py llm-budget --part test                    # → 100 − 보정에서 쓴 돈(잃은 배치 포함, 다시 쓴 v2 답은 0)
+  python3 -B bench/v3/select3.py check-engines --parts train calibration   # 옮겨 쓴 v2 결과와 새로 잰 결과의 검사기 판이 같은지
   python3 -B bench/v3/select3.py select --llm <out-calibration.jsonl> [--write]   # 보정 구간 → bench/v3/selection.json
   python3 -B bench/v3/select3.py measure --llm <out-test.jsonl> --json <보고 파일>  # 시험 구간(개봉 뒤) — 주 · 보조 운영점 · 기준선
 
@@ -12,6 +13,7 @@
 층이 처리하지 못한 표본(점수 없음 · 관문 밖 · 예산 건너뜀 · 오류)은 그 층이 못 잡은 것으로 센다 — 분모에서 빼지 않는다.
 """
 import argparse
+import collections
 import hashlib
 import json
 import os
@@ -28,6 +30,9 @@ import split  # noqa: E402
 import split3  # noqa: E402
 import static_ml  # noqa: E402
 
+# 점수형 후보의 예산 격자: v2 부록 격자 ∪ {0.001}(규약 rev 2 — 보조 운영점이 「오탐 0」 후보로 굳지 않게). 주 · 보조가 같은 격자를 쓴다
+BUDGETS = tuple(sorted(set(metrics.FPR_BUDGETS) | {0.001}))
+TOTAL_BUDGET = 100.0
 PRIMARY_FPR = 0.02
 SECONDARY_FPR = 0.001
 INCLUSION_POINTS = 100   # LLM 을 판정에 넣는 기준: 탐지 수가 악성 분모의 1/100(= 1%p) 이상 늘어야 한다(3-llm)
@@ -40,8 +45,8 @@ LAYERS = (("ml", "M-static"), ("llm", "L"))
 # ── 후보 · 판정(순수) ──
 
 def candidates(layer, prefix, main, scores):
-    """점수형 층의 후보(protocol layers.budgets — v2 metrics.budget_points 그대로). main = 주 지표 줄(정상 + 코드 있는 악성)."""
-    pts = metrics.budget_points([scores.get(r["id"]) for r in main], metrics.labels(main))
+    """점수형 층의 후보(규약 rev 2 layers.budgets = BUDGETS, 계산은 v2 metrics.budget_points 그대로). main = 주 지표 줄(정상 + 코드 있는 악성)."""
+    pts = metrics.budget_points([scores.get(r["id"]) for r in main], metrics.labels(main), budgets=BUDGETS)
     out = []
     for name, threshold in pts:
         budget = float(name[len("fpr<="):])
@@ -120,6 +125,8 @@ def _subset(main, y, pred, keep):
 def measure(rows, scores, selection, *, v2_ids=None):
     """구간 줄 + 층 점수 + 선택 → 보고(dict). 운영점마다 주 지표(95% 윌슨 구간 · 달성 여부) · 생태계별 · 출신별(v2 · 새 표본) ·
     코드 없는 악성 · 정상 인기 / 롱테일 · 발견 연도별 · 절제. 달성 판정은 주 운영점으로만."""
+    if uses_llm(selection) and "llm" not in scores:
+        raise ValueError("선택에 LLM 층이 있다 — 그 구간 LLM 결과 파일(--llm) 없이 재지 않는다")
     main = metrics.main_rows(rows)
     y = metrics.labels(main)
     no_code = [r for r in rows if r["label"] == "malicious" and not metrics.analyzable(r)]
@@ -152,6 +159,57 @@ def measure(rows, scores, selection, *, v2_ids=None):
         out[key] = rep
     out["goal"] = {"point": "primary", "met": bool(out["primary"] and out["primary"]["main"]["met"])}
     return out
+
+
+def uses_llm(selection):
+    return any("llm" in ((selection.get(k) or {}).get("points") or {}) for k in ("primary", "secondary"))
+
+
+def gates_of(results_rows):
+    """LLM 결과 줄들의 관문 설정(중복 없이) — 한 결과 파일에는 하나여야 한다."""
+    seen = {}
+    for row in results_rows.values():
+        g = row.get("gate")
+        seen.setdefault(json.dumps(g, sort_keys=True), g)
+    return list(seen.values())
+
+
+def check_inputs(selection, *, split_sha, ml_model_sha, ml_file_sha, llm_gates):
+    """측정 입력이 선택 때와 같은지: 분할 파일 해시 · ML 모델 해시, 그리고 선택에 LLM 이 있으면 그 구간 LLM 결과의 관문(아래 · 위 경계는
+    보정 때와 같고, ML 해시는 이번 구간 ML 예측 파일). 다르면 ValueError(무엇이 다른지)."""
+    inp = selection.get("inputs") or {}
+    bad = []
+    if inp.get("splitSha256") != split_sha:
+        bad.append(f"split.json 이 선택 때와 다르다({str(inp.get('splitSha256'))[:12]} → {str(split_sha)[:12]})")
+    if inp.get("mlModelSha256") != ml_model_sha:
+        bad.append(f"ML 모델이 선택 때와 다르다({str(inp.get('mlModelSha256'))[:12]} → {str(ml_model_sha)[:12]})")
+    if uses_llm(selection):
+        want = inp.get("llmGate") or {}
+        if llm_gates is None:
+            bad.append("선택에 LLM 층이 있는데 LLM 결과 파일이 없다")
+        elif len(llm_gates) != 1:
+            bad.append(f"LLM 결과 파일에 관문이 {len(llm_gates)}가지다")
+        else:
+            g = llm_gates[0] or {}
+            if (g.get("low"), g.get("high")) != (want.get("low"), want.get("high")):
+                bad.append(f"LLM 관문 경계가 보정 때와 다르다([{want.get('low')}, {want.get('high')}) → [{g.get('low')}, {g.get('high')}))")
+            if g.get("mlSha256") != ml_file_sha:
+                bad.append("LLM 관문의 ML 결과 파일이 이번 구간 ML 예측과 다르다")
+    if bad:
+        raise ValueError(" · ".join(bad))
+
+
+def engine_check(rows, gd, v2_ids):
+    """정적 검사기 판(결과 줄의 engines — GuardDog · OSV-Scanner 판)이 하나뿐이면 None, 둘 이상이면 {"v2": {판: 수}, "new": {판: 수}}.
+    v2 = 옮겨 쓴 v2 표본 줄, new = 새로 잰 줄. 처리하지 못한 줄(engines 없음)은 세지 않는다."""
+    seen = {"v2": collections.Counter(), "new": collections.Counter()}
+    for r in rows:
+        res = gd.get(r["id"])
+        if res and res.get("engines"):
+            seen["v2" if r["id"] in v2_ids else "new"][json.dumps(res["engines"], sort_keys=True)] += 1
+    if len(set(seen["v2"]) | set(seen["new"])) <= 1:
+        return None
+    return {k: dict(sorted(v.items())) for k, v in seen.items()}
 
 
 def precise_lists(path=STATIC_ADDENDUM):
@@ -196,17 +254,33 @@ def gate_bounds(oof, y, low=GATE_LOW, high_budget=GATE_HIGH_BUDGET):
 
 
 def llm_budget(part, calibration_spent):
-    """LLM 상한(USD): 보정 45, 시험 55 + 보정에서 남은 돈. 예비는 없다."""
+    """LLM 상한(USD): 보정 45, 시험 = 100 − 보정에서 쓴 돈(0 아래면 0). 보정이 45 안이면 55 + 남은 돈과 같고, 잃은 배치 몫으로
+    보정이 45 를 넘었어도 보정 + 시험 합계는 100 을 넘지 않는다. 예비는 없다."""
     if part == "calibration":
         return CAL_BUDGET
     if part == "test":
-        return TEST_BUDGET + max(0.0, CAL_BUDGET - calibration_spent)
+        return max(0.0, TOTAL_BUDGET - calibration_spent)
     raise ValueError(f"{part} 구간에는 LLM 예산이 없다")
 
 
 def calibration_spent(path):
-    """보정 결과 파일의 v3 비용(다시 쓴 v2 답은 0 으로 적혀 있다). 파일이 없으면 0."""
-    return llm_layer.Results(path).spent if os.path.exists(path) else 0.0
+    """보정에서 v3 가 쓴 돈 = 결과 파일의 누적 비용(다시 쓴 v2 답은 0) + 배치 상태 파일(<결과>.batches.json)의 잃은 배치 몫(lostUsd)과
+    아직 결과 줄로 쓰지 않은 작업의 단계 비용. 결과 파일이 없거나, 읽지 못한 줄이 있거나(비용을 모른다), 받지 않은 배치가 남았으면 ValueError."""
+    if not os.path.exists(path):
+        raise ValueError(f"보정 LLM 결과 파일이 없다({path}) — 쓴 돈을 모르면 시험 상한을 정하지 않는다")
+    results = llm_layer.Results(path)
+    if results.torn:
+        raise ValueError(f"보정 LLM 결과 파일에 읽지 못한 줄이 {results.torn}개 있다 — 그 호출의 비용을 모른다")
+    spent = results.spent
+    state = path + ".batches.json"
+    if os.path.exists(state):
+        with open(state, encoding="utf-8") as f:
+            data = json.load(f)
+        if any(not b.get("collected") for b in data.get("batches", [])):
+            raise ValueError("보정에 받지 않은 배치가 남았다 — 보정을 마친 뒤 시험 상한을 정한다")
+        spent += (data.get("lostUsd") or 0.0) + sum(s.get("costUsd") or 0.0 for w in (data.get("work") or {}).values()
+                                                    for s in w.get("stages") or [])
+    return spent
 
 
 def llm_scores(results_rows):
@@ -233,12 +307,33 @@ def _part_scores(data, part, llm_path):
     ml_path = static_ml.predictions_path(os.path.join(data, "results"), part)
     if not os.path.exists(ml_path):
         raise ValueError(f"{part} 구간 ML 예측이 없다({ml_path}) — run.py static_ml predict --parts {part}")
+    meta_path = os.path.splitext(ml_path)[0] + ".meta.json"
+    if not os.path.exists(meta_path):
+        raise ValueError(f"{part} 구간 ML 예측의 메타가 없다({meta_path}) — run.py static_ml predict 로 다시 만든다")
+    with open(meta_path, encoding="utf-8") as f:
+        model_sha = json.load(f).get("modelSha256")
     scores = {"ml": static_ml.read_predictions(ml_path)}
-    inputs = {"ml": _file_sha(ml_path)}
+    inputs = {"ml": _file_sha(ml_path), "mlModelSha256": model_sha}
+    gates = None
     if llm_path:
-        scores["llm"] = llm_scores(llm_layer.Results(llm_path).rows)
+        rows = llm_layer.Results(llm_path).rows
+        scores["llm"] = llm_scores(rows)
         inputs["llm"] = _file_sha(llm_path)
-    return scores, inputs
+        gates = gates_of(rows)
+    return scores, inputs, gates
+
+
+def _v2_ids():
+    with open(split3.V2_SPLIT, encoding="utf-8") as f:
+        return set(json.load(f)["assignments"])
+
+
+def _check_engines(data, sp, ledger, parts):
+    rows, gd, _ = static_ml.load_part(data, sp, ledger, parts)
+    bad = engine_check(rows, gd, _v2_ids())
+    if bad:
+        raise ValueError("정적 검사기 판이 섞였다(옮겨 쓴 v2 결과 · 새로 잰 결과): " + json.dumps(bad, ensure_ascii=False))
+    return rows
 
 
 def cmd_gate(_args):
@@ -255,10 +350,25 @@ def cmd_budget(args):
     print(f"{llm_budget(args.part, spent):.2f}")
 
 
+def cmd_check_engines(args):
+    data, sp, ledger = _context()
+    rows, gd, _ = static_ml.load_part(data, sp, ledger, args.parts)
+    bad = engine_check(rows, gd, _v2_ids())
+    if bad:
+        sys.exit("멈춤: 정적 검사기 판이 섞였다 — " + json.dumps(bad, ensure_ascii=False))
+    one = {json.dumps(gd[r["id"]]["engines"], sort_keys=True) for r in rows if (gd.get(r["id"]) or {}).get("engines")}
+    print(f"{' · '.join(args.parts)} 구간 정적 결과 {sum(1 for r in rows if r['id'] in gd):,}줄 · 검사기 판 하나: {', '.join(one) or '아직 없음'}")
+
+
 def cmd_select(args):
     data, sp, ledger = _context()
-    rows, _, _ = static_ml.load_part(data, sp, ledger, ["calibration"])
-    scores, inputs = _part_scores(data, "calibration", args.llm)
+    rows = _check_engines(data, sp, ledger, ["train", "calibration"])
+    rows = [r for r in rows if sp["assignments"][r["id"]] == "calibration"]
+    scores, inputs, gates = _part_scores(data, "calibration", args.llm)
+    if gates is not None:
+        if len(gates) != 1 or (gates[0] or {}).get("mlSha256") != inputs["ml"]:
+            raise ValueError("보정 LLM 결과의 관문이 하나가 아니거나, 그 ML 해시가 보정 ML 예측 파일과 다르다")
+        inputs["llmGate"] = {k: gates[0].get(k) for k in ("low", "high")}
     sel = make_selection(rows, scores)
     sel["inputs"] = {"splitSha256": _file_sha(split3.SPLIT3), "protocolSha256": _file_sha(split3.PROTOCOL3), **inputs}
     p, s = sel["primary"], sel["secondary"]
@@ -279,9 +389,10 @@ def cmd_measure(args):
     with open(split3.SELECTION3, encoding="utf-8") as f:
         sel = json.load(f)
     rows, gd, ru = static_ml.load_part(data, sp, ledger, [args.part])  # 봉인이면 SealedError
-    scores, inputs = _part_scores(data, args.part, args.llm)
-    with open(split3.V2_SPLIT, encoding="utf-8") as f:
-        v2_ids = set(json.load(f)["assignments"])
+    _check_engines(data, sp, ledger, sorted({args.part, "calibration"}))
+    scores, inputs, gates = _part_scores(data, args.part, args.llm)
+    check_inputs(sel, split_sha=_file_sha(split3.SPLIT3), ml_model_sha=inputs["mlModelSha256"], ml_file_sha=inputs["ml"], llm_gates=gates)
+    v2_ids = _v2_ids()
     main = metrics.main_rows(rows)
     base = baselines(main, gd, ru)
     rep = measure(rows, scores, sel, v2_ids=v2_ids)
@@ -310,6 +421,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("gate", help="학습 구간 겹 밖 예측 → LLM 관문 경계").set_defaults(fn=cmd_gate)
+    e = sub.add_parser("check-engines", help="옮겨 쓴 v2 결과와 새로 잰 결과의 정적 검사기 판 대조")
+    e.add_argument("--parts", nargs="+", default=["train", "calibration"], choices=split.PARTS)
+    e.set_defaults(fn=cmd_check_engines)
     b = sub.add_parser("llm-budget", help="구간의 LLM 상한(USD)")
     b.add_argument("--part", required=True, choices=("calibration", "test"))
     b.add_argument("--calibration-results", help="보정 LLM 결과 파일(기본 <데이터>/llm/out-calibration.jsonl)")
