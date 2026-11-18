@@ -248,9 +248,9 @@ def folds(y, groups):
     return [(list(tr), list(te)) for tr, te in skf.split([[0]] * len(y), y, groups)]
 
 
-def cross_validate(rows, gd, ru, group_of, budgets=CV_BUDGETS):
-    """학습 구간 묶음 5겹 교차 검증. 어휘는 학습 구간 전체에서 한 번(부록 trainReference 와 같은 식).
-    겹 밖 예측을 모아 예산마다 metrics.budget_points 의 임계값 → 탐지 · 오탐."""
+def oof_predictions(rows, gd, ru, group_of):
+    """학습 구간 묶음 5겹 교차 검증의 겹 밖 예측 → (학습 행, 라벨, p 목록 — 학습 행 순서). 어휘는 학습 구간 전체에서 한 번.
+    v3 는 이 예측으로 LLM 관문 경계를 다시 정한다(3-llm 의 방법)."""
     vocab = build_vocab(rows, gd, ru)
     main = training_rows(rows)
     y = metrics.labels(main)
@@ -261,13 +261,21 @@ def cross_validate(rows, gd, ru, group_of, budgets=CV_BUDGETS):
         model.fit(X[tr], [y[i] for i in tr])
         for i, p in zip(te, _p(model, X[te])):
             oof[i] = p
+    return main, y, oof
+
+
+def cross_validate(rows, gd, ru, group_of, budgets=CV_BUDGETS):
+    """학습 구간 묶음 5겹 교차 검증. 어휘는 학습 구간 전체에서 한 번(부록 trainReference 와 같은 식).
+    겹 밖 예측을 모아 예산마다 metrics.budget_points 의 임계값 → 탐지 · 오탐."""
+    main, y, oof = oof_predictions(rows, gd, ru, group_of)
+    features = len(feature_names(build_vocab(rows, gd, ru)))
     at = []
     for b in budgets:
         pts = metrics.budget_points(oof, y, budgets=(b,))
         t = pts[0][1] if pts else None
         flags = metrics.score_flags(oof, t) if t is not None else [False] * len(y)
         at.append({"budget": b, "threshold": t, **metrics.summary(y, flags)})
-    return {"rows": {"total": len(main), "malicious": sum(y), "benign": len(y) - sum(y)}, "features": X.shape[1],
+    return {"rows": {"total": len(main), "malicious": sum(y), "benign": len(y) - sum(y)}, "features": features,
             "folds": CV_FOLDS, "atFpr": at}
 
 

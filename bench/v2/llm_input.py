@@ -57,6 +57,11 @@ def file_sha(path):
         return sha256_bytes(f.read())
 
 
+def call_order_key(seed, sample_id):
+    """부르는 순서(v3): sha256("<seed>:llm:<표본 id>") — 라벨 · 점수와 무관한 고정 순서. 비용 상한에 걸려도 한쪽 라벨로 치우치지 않는다."""
+    return sha256_bytes(f"{seed}:llm:{sample_id}".encode())
+
+
 # ── 표본 → 파일 목록(규칙 엔진과 같은 기준) ──
 
 def order_key(path):
@@ -230,8 +235,9 @@ def _write_private(path, text):
 # ── 만들기 ──
 
 def build(data, *, part, out, ml=None, band_low=None, band_high=None, limit=None, split_path=None, ledger_path=None, root=None,
-          progress=None):
+          progress=None, order_seed=None):
     """구간의 표본(관문을 주면 ML 확률 [band_low, band_high) 인 것만, limit 는 그 가운데 앞 N개)을 입력 JSONL 로. → 메타(dict).
+    줄 순서는 select_ids 순서(id 순), order_seed 를 주면 call_order_key 순서(v3 — limit 도 그 순서의 앞 N개).
     출력 경로 · 봉인 · 관문 인자를 표본을 읽기 전에 본다. 읽지 못하거나 색인과 다른 표본은 쓰지 않고 사유별로 센다."""
     check_out_path(out, root)
     with open(split_path or split.SPLIT, encoding="utf-8") as f:
@@ -246,6 +252,8 @@ def build(data, *, part, out, ml=None, band_low=None, band_high=None, limit=None
         probs, ml_sha = llm_layer.read_ml(ml)
         gate = llm_layer.Gate("ml", band_low, band_high, probs, ml_sha)
         rows = [r for r in rows if gate.check(r["id"])[0]]
+    if order_seed is not None:
+        rows = sorted(rows, key=lambda r: call_order_key(order_seed, r["id"]))
     if limit:
         rows = rows[:limit]
     gd_path, ru_path = run_static.results_path(data, part), rules_layer.results_path(data, part)
@@ -288,6 +296,8 @@ def build(data, *, part, out, ml=None, band_low=None, band_high=None, limit=None
             "chars": count["chars"], "skipped": dict(sorted(skipped.items())), "gate": gate.config(), "limit": limit,
             "fileCap": rules_layer.FILE_CAP, "textLimit": TEXT_LIMIT, "staticResultsSha256": file_sha(gd_path),
             "rulesResultsSha256": file_sha(ru_path)}
+    if order_seed is not None:
+        meta["orderSeed"] = order_seed
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     _write_private(out, "".join(lines))
     _write_private(os.path.splitext(out)[0] + ".meta.json", json.dumps(meta, ensure_ascii=False, indent=1) + "\n")
@@ -300,7 +310,7 @@ def cmd_build(args):
             print(f"  {n:,}/{total:,}", file=sys.stderr, flush=True)
 
     meta = build(args.data, part=args.part, out=args.out, ml=args.ml, band_low=args.band_low, band_high=args.band_high,
-                 limit=args.limit, progress=progress)
+                 limit=args.limit, progress=progress, order_seed=args.order_seed)
     print(f"{args.part} 구간 · 고른 표본 {meta['selected']:,} → 행 {meta['rows']:,} · 파일 {meta['files']:,}"
           f"(20KB 잘림 {meta['truncatedFiles']:,} · 글 아님 {meta['binaryFiles']:,} · 큰 파일 {meta['largeFiles']:,}) · "
           f"{TEXT_LIMIT:,}자에서 잘린 행 {meta['rowsOverLimit']:,} · 건너뜀 {sum(meta['skipped'].values()):,}")
@@ -319,6 +329,7 @@ def main(argv=None):
     b.add_argument("--band-low", type=float, help="관문 아래 경계(포함)")
     b.add_argument("--band-high", type=float, help="관문 위 경계(제외)")
     b.add_argument("--limit", type=int, help="관문 뒤 select_ids 순서로 앞에서 N개만")
+    b.add_argument("--order-seed", type=int, help="줄 순서를 sha256(\"<시드>:llm:<id>\") 순으로(v3 — 비용 상한에 걸려도 라벨과 무관하게)")
     b.set_defaults(fn=cmd_build)
     args = ap.parse_args(argv)
     try:

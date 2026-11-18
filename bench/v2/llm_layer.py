@@ -105,6 +105,8 @@ USAGE_KEYS = ("inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteToken
 # 다시 돌릴 때 건너뛰는 상태. ERROR · SKIPPED_BUDGET 은 다시 해 본다 — 단 봉인 구간(연 뒤의 최종 측정)에서는 ERROR 도 끝난 것이다
 # (같은 요청 3번 다시 시도까지 마친 결과를 다시 돌려 바꾸지 않는다).
 DONE = ("OK", "REFUSED", "CACHED", "NOT_GATED")
+# 다른 결과 파일에서 다시 쓸 수 있는 「답」(v3 --reuse). 오류 · 예산 건너뜀 · 관문 밖은 답이 아니다
+REUSABLE = ("OK", "REFUSED", "CACHED")
 
 # 출력 스키마 — 이전 프로젝트(Supply Chain Watch) LlmAnalysis + 판정 근거 문장(rationale_ko, 11/13). API 의 구조화 출력(output_config.format)이 모양을 강제한다.
 # 구조화 출력이 받지 않는 제약(숫자 범위 · 글 길이 · 배열 개수 상한)은 넣지 않고 validate_analysis 에서 본다.
@@ -746,6 +748,44 @@ class Results:
         return {r["cacheKey"]: r for r in self.rows.values() if r.get("status") in ("OK", "CACHED") and r.get("cacheKey")}
 
 
+# ── 다른 결과 파일의 답 다시 쓰기(v3) ──
+
+def read_reuse(paths):
+    """다시 쓸 결과 파일들 → ({id: 마지막 줄}, 파일 sha256). 마지막 줄의 상태가 REUSABLE 인 id 만. 같은 id 는 뒤 파일이 이긴다."""
+    rows, digests = {}, []
+    for path in paths:
+        with open(path, "rb") as f:
+            digests.append(hashlib.sha256(f.read()).hexdigest())
+        rows.update({i: row for i, row in Results(path).rows.items() if row.get("status") in REUSABLE})
+    sha = digests[0] if len(digests) == 1 else hashlib.sha256("\n".join(digests).encode()).hexdigest()
+    return rows, sha
+
+
+def reused_row(row, prev, source):
+    """prev(다른 결과 파일의 답)를 이 실행의 줄로 — 비용 0 · 단계 기록 없음. 처음 낸 비용 · 단계는 reusedFrom 에 남긴다."""
+    return {**prev, "gate": row.get("gate"), "mlP": row.get("mlP"), "costUsd": 0.0, "stages": [],
+            "reusedFrom": {"source": source, "id": prev["id"], "costUsd": prev.get("costUsd") or 0.0, "stages": prev.get("stages") or []}}
+
+
+def apply_reuse(samples, *, results, reuse, gate, prompt, max_chars=MAX_TEXT_CHARS, statuses=DONE, source=""):
+    """부르기 전에, 관문 안이고 아직 끝나지 않은 표본 가운데 reuse({id: 줄})에 같은 캐시 키(프롬프트 · 입력 글 · 모델 구성)의 답이 있는 것을
+    결과 파일에 옮겨 적는다(비용 0) → 옮긴 수. 입력이 다르거나 답이 아니면(오류 · 예산 건너뜀) 옮기지 않고 부르게 둔다."""
+    made = 0
+    for sample in samples:
+        prev = reuse.get(sample["id"])
+        if prev is None or prev.get("status") not in REUSABLE or results.done(sample["id"], statuses):
+            continue
+        go, p = gate.check(sample["id"])
+        if not go:
+            continue
+        row, _ = prepare(sample["id"], sample["text"], sample.get("static") or {}, prompt, max_chars)
+        if prev.get("cacheKey") != row["cacheKey"]:
+            continue
+        results.add(reused_row({**row, "gate": gate.config(), "mlP": p}, prev, source))
+        made += 1
+    return made
+
+
 def read_input(path):
     """입력 JSONL 을 한 줄씩. 한 줄 = {"id": 글, "text": 글, "static": {…}(없어도 된다)}. 모양이 다르면 ValueError(몇째 줄인지)."""
     with open(path, encoding="utf-8") as f:
@@ -1168,8 +1208,13 @@ def cmd_run(args):
     budget = Budget(args.budget, results.spent)
     if results.torn:
         print(f"주의: 결과 파일에 읽지 못한 줄 {results.torn}개 — 그 호출의 비용은 누적에 없다", file=sys.stderr)
-    cache = None if args.no_cache else results.cache()
     statuses = done_statuses(args.part)
+    if args.reuse:
+        reuse, reuse_sha = read_reuse(args.reuse)
+        moved = apply_reuse(read_input(args.input), results=results, reuse=reuse, gate=gate, prompt=prompt, max_chars=args.max_chars,
+                            statuses=statuses, source=f"{os.path.basename(args.reuse[0])}@{reuse_sha[:12]}")
+        print(f"다시 쓴 답 {moved:,}건(비용 0 · 파일 {reuse_sha[:12]})", file=sys.stderr)
+    cache = None if args.no_cache else results.cache()
     client = make_client(key)
     seen = [0]
 
@@ -1225,6 +1270,7 @@ def main(argv=None):
     run.add_argument("--limit", type=int, help="이번 실행에서 새로 부르는 표본(작업) 수 상한(적은 표본으로 먼저 돌려 볼 때)")
     run.add_argument("--retries", type=int, default=MAX_RETRIES, help=f"ERROR 때 같은 요청을 더 보내는 횟수(기본 · 최대 {MAX_RETRIES})")
     run.add_argument("--state", help="배치 상태 파일(기본 <out>.batches.json)")
+    run.add_argument("--reuse", nargs="+", help="답을 다시 쓸 결과 파일(v3: v2 보정 측정 결과). 같은 표본 · 같은 캐시 키의 OK · REFUSED · CACHED 만, 비용 0")
     run.add_argument("--no-wait", action="store_true", help="배치를 제출만 하고 돌아온다(종료 코드 4). 다시 돌리면 같은 배치 id 로 이어 받는다")
     run.add_argument("--poll", type=float, default=BATCH_POLL_SECONDS, help="배치 상태를 묻는 간격(초)")
     run.set_defaults(fn=cmd_run)
