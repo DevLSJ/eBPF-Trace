@@ -108,6 +108,7 @@ test:
 	cd backend && go vet ./... && GOOS=linux go vet ./... && go test -race ./...
 	cd frontend && npm run lint && npm run build
 	python3 -B -m unittest discover -s bench/v2 -p 'test_*.py'
+	python3 -B -m unittest discover -s bench/v3 -p 'test_*.py'
 
 build:
 	$(COMPOSE_MOCK) build
