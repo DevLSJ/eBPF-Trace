@@ -16,6 +16,7 @@
 import argparse
 import datetime as dt
 import email.utils
+import fcntl
 import gzip
 import hashlib
 import io
@@ -37,7 +38,8 @@ sys.path.insert(0, HERE)
 import sample  # noqa: E402
 import split  # noqa: E402
 
-DATA = os.environ.get("SG_BENCH_DATA") or os.path.join(split.ROOT, "bench", "datasets", "v2")
+DEFAULT_DATA = os.path.join(split.ROOT, "bench", "datasets", "v2")
+DATA = os.environ.get("SG_BENCH_DATA") or DEFAULT_DATA
 STORE = os.path.join(DATA, "store")
 SEALED_DIR = os.path.join(DATA, "sealed")
 META = os.path.join(DATA, "meta")
@@ -238,20 +240,32 @@ def store(data, form):
     return path
 
 
-def sources(update=None):
-    cur = {}
+def _read_sources():
     if os.path.exists(SOURCES):
         with open(SOURCES, encoding="utf-8") as f:
-            cur = json.load(f)
-    if update:
-        cur.update(update)
-        cur.setdefault("fetchedOn", dt.date.today().isoformat())
-        os.makedirs(DATA, exist_ok=True)
-        tmp = f"{SOURCES}.{os.getpid()}.part"  # 여러 단계를 함께 돌려도 반쯤 쓴 파일을 읽지 않게
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(cur, f, ensure_ascii=False, indent=1)
-            f.write("\n")
-        os.replace(tmp, SOURCES)
+            return json.load(f)
+    return {}
+
+
+def sources(update=None):
+    """sources.json 을 읽는다(update 를 주면 더해 쓴다). 쓰기는 읽기-고치기-쓰기 전체를 파일 잠금(fcntl) 안에서 하고 원자적으로 바꾼다 —
+    여러 단계가 함께 돌아도 서로의 키를 덮지 않게(반쯤 쓴 파일도 읽지 않는다)."""
+    if not update:
+        return _read_sources()
+    os.makedirs(DATA, exist_ok=True)
+    with open(SOURCES + ".lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            cur = _read_sources()
+            cur.update(update)
+            cur.setdefault("fetchedOn", dt.date.today().isoformat())
+            tmp = f"{SOURCES}.{os.getpid()}.part"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(cur, f, ensure_ascii=False, indent=1)
+                f.write("\n")
+            os.replace(tmp, SOURCES)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
     return cur
 
 
@@ -636,6 +650,33 @@ def cmd_status(_args):
               f"읽기 실패 {sum(1 for r in kept if r.get('indexError')):3d} · 버림 {json.dumps(why, ensure_ascii=False)}")
 
 
+V3_MARKERS = ("index-new.jsonl", os.path.join("meta", "benign-plan.json"), os.path.join("meta", "malicious-pypi.done.json"),
+              os.path.join("meta", "malicious-npm.done.json"))
+
+
+def _same_place(a, b):
+    if os.path.exists(a) and os.path.exists(b):
+        return os.path.samefile(a, b)
+    return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
+
+
+def v3_guard(data=None, environ=None):
+    """이 v2 명령(collect.py 직접 실행)이 v3 데이터 폴더를 대상으로 하면 그 사유, 아니면 None. 막는 경우:
+    폴더에 v3 표식(index-new.jsonl · meta/benign-plan.json · meta/malicious-*.done.json)이 있음 · 규약 폴더(SG_BENCH_RULES)가 v2 가 아님 ·
+    v2 기본 폴더가 아닌데 v3 진입점(SG_BENCH_V3_ENTRY=1)을 거치지 않음. 환경 변수가 없는 v2 기본 동작은 그대로 통과한다."""
+    data = data or DATA
+    environ = os.environ if environ is None else environ
+    for marker in V3_MARKERS:
+        if os.path.exists(os.path.join(data, marker)):
+            return f"데이터 폴더({data})에 v3 표식 {marker} 이 있다 — v3 수집은 bench/v3/collect3.py 로 한다"
+    rules = environ.get("SG_BENCH_RULES")
+    if rules and not _same_place(rules, split.HERE):
+        return f"규약 폴더(SG_BENCH_RULES={rules})가 v2 가 아니다 — v3 는 bench/v3/collect3.py · split3.py 를 쓴다"
+    if not _same_place(data, DEFAULT_DATA) and environ.get("SG_BENCH_V3_ENTRY") != "1":
+        return f"데이터 폴더({data})가 v2 기본 폴더가 아니다 — SG_BENCH_DATA 를 비우고 돌리거나, v3 는 bench/v3/collect3.py 를 쓴다"
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -649,6 +690,9 @@ def main():
     for name, fn in (("index", cmd_index), ("source-line", cmd_source_line), ("seal", cmd_seal), ("prune", cmd_prune), ("status", cmd_status)):
         sub.add_parser(name).set_defaults(fn=fn)
     args = ap.parse_args()
+    why = v3_guard()
+    if why:
+        sys.exit(f"거부: {why}")
     try:
         args.fn(args)
     except Stop as e:
