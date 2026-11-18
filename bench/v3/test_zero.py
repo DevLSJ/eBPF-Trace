@@ -68,7 +68,8 @@ class ZeroSteps(unittest.TestCase):
         """npm 수집 흉내: 대상마다 색인 줄 하나(표본은 받지 않는다)."""
         for k, e in enumerate(targets):
             data = f"fake-npm-{k}".encode()          # 무해한 가짜 바이트 — 색인 id 는 이 바이트의 해시
-            r = dict(corpus(50_000 + 10 * k, 1)[2], id=collect.sample.sample_id(data), name=e["name"])   # npm 악성 줄 하나
+            r = dict(corpus(50_000 + 10 * k, 1)[2], id=collect.sample.sample_id(data), name=e["name"],
+                     bytes=len(data), version="")   # npm 악성 줄 하나
             collect.store(data, "zip")
             j.add(e["path"], status="kept", row=r)
 

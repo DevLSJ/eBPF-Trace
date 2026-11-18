@@ -242,6 +242,11 @@ def _file_sha(path):
         return hashlib.sha256(f.read()).hexdigest()
 
 
+def _journal_sha(path):
+    """수집 기록의 해시. 한 줄도 쓰지 않은 단계(대상 0건)는 파일이 없다 — 빈 기록의 해시(sha256 of b"")로 적는다."""
+    return _file_sha(path) if os.path.exists(path) else hashlib.sha256(b"").hexdigest()
+
+
 # ── 단계 ──
 
 def cmd_precheck(args):
@@ -265,7 +270,7 @@ def cmd_malicious(args):
         datadog = collect.sources({}).get("datadog") or {}
         _write(_meta(f"malicious-{eco}.done.json"), {"targets": len(targets), "kept": len(j.kept()), "records": len(j.rows),
                                                      "coverage": round(ratio, 6), "datadogCommit": datadog.get("commit"),
-                                                     "journalSha256": _file_sha(j.path)})
+                                                     "journalSha256": _journal_sha(j.path)})
 
 
 def cmd_plan(_args):
