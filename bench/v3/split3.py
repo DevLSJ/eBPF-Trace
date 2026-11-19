@@ -251,10 +251,15 @@ def _place(root, part, name, sealed):
 def seal(sp, data, v2_data, new_rows, v2_rows):
     """분할 뒤 한 번(다시 해도 같다): 새 시험 · 예비 표본 파일을 store/ → sealed/<구간>/ 으로 옮기고, v2 표본은 v2 파일을 가리키는
     상대 링크를 둔다(대상 파일은 열지 않고 있는지만 본다). 그다음 분할에 든 표본의 합친 색인 index.jsonl(round = v2 · v3)을 쓴다.
-    빠진 파일이 하나라도 있으면 아무것도 바꾸지 않고 Stop."""
+    빠진 파일이 하나라도 있으면 아무것도 바꾸지 않고 Stop.
+    새로 받은 파일이 v2 표본과 같은 파일(같은 id — 분할이 「v2 같은 파일」로 버린 줄)이면 store/ 의 그 사본은 지운다: 분할은 v2 표본으로만
+    세고 v2 파일은 그대로 있으며, 두면 봉인 구간(v2 시험 · 예비)과 같은 파일이 봉인 밖에 남는다. id 는 파일 내용의 해시이고 색인 단계가
+    저장한 파일과 맞춰 보았으므로 사본을 열어 견주지 않는다."""
     check_folders(data, v2_data)
     v2_by_id = {r["id"]: r for r in v2_rows}
     new_by_id = {r["id"]: r for r in new_rows}
+    copies = {os.path.join(data, "store", f"{i}.{collect.EXT[new_by_id[i]['form']]}")
+              for i in sp["assignments"] if i in v2_by_id and i in new_by_id}
     plan, missing = [], []
     for i, part in sorted(sp["assignments"].items()):
         r = v2_by_id.get(i) or new_by_id.get(i)
@@ -280,7 +285,14 @@ def seal(sp, data, v2_data, new_rows, v2_rows):
             continue
         want = os.path.relpath(src, os.path.dirname(place))
         if os.path.lexists(place) and not (os.path.islink(place) and os.readlink(place) == want):
+            if place in copies and not os.path.islink(place):
+                continue  # 링크 자리에 있는 것은 치울 새 사본이다(v2 학습 · 보정 표본과 같은 파일)
             raise Stop(f"링크 자리에 다른 파일이 있다: {place} — 아무것도 바꾸지 않았다")
+    removed = 0
+    for copy in sorted(copies):
+        if os.path.isfile(copy) and not os.path.islink(copy):
+            os.remove(copy)
+            removed += 1
     moved = {p: 0 for p in sp["sealed"]}
     linked = {"store": 0, "sealed": 0}
     for kind, src, place, part in plan:
@@ -299,7 +311,7 @@ def seal(sp, data, v2_data, new_rows, v2_rows):
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
     os.replace(index + ".part", index)
-    return {"moved": moved, "linked": linked, "index": len(rows)}
+    return {"moved": moved, "linked": linked, "index": len(rows), "removed": removed}
 
 
 # ── v2 결과 옮기기 ──
@@ -398,7 +410,8 @@ def cmd_seal(_args):
     sp = _read_split()
     got = seal(sp, data, v2_data, split.read_jsonl(os.path.join(data, "index-new.jsonl")), split.read_jsonl(os.path.join(v2_data, "index.jsonl")))
     print("봉인(새 표본 파일 옮김): " + " · ".join(f"{p} {n:,}" for p, n in got["moved"].items())
-          + f" · v2 링크 store {got['linked']['store']:,} · sealed {got['linked']['sealed']:,} · 합친 색인 {got['index']:,}줄")
+          + f" · v2 링크 store {got['linked']['store']:,} · sealed {got['linked']['sealed']:,} · 합친 색인 {got['index']:,}줄"
+          + f" · v2 표본과 같은 새 사본 지움 {got['removed']:,}")
 
 
 def cmd_inherit(_args):
