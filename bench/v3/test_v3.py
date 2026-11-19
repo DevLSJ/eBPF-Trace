@@ -282,6 +282,44 @@ class Seal(unittest.TestCase):
         with self.assertRaises(split3.Stop):
             split3.seal(self.sp, self.data, self.v2_data, self.new, self.v2_rows)
 
+    def twin_world(self, part):
+        """v2 의 <part> 구간 표본과 같은 파일(같은 id)을 새로 받은 경우: 분할은 그 줄을 버리고(v2 같은 파일) v2 표본으로만 세지만,
+        받은 파일은 새 표본 폴더 store/ 에 있다(2026-11-19 실제 분할에서 v2 시험 구간 표본 1개가 그랬다)."""
+        twin = in_part(self.v2_rows, self.v2, part, eco="npm", label="benign")
+        new = self.new + [dict(twin)]
+        sp = build3(new, self.v2_rows, self.v2)
+        self.assertEqual(sp["duplicatesDropped"]["v2 같은 파일"], 1)
+        self.assertEqual(sp["assignments"][twin["id"]], part)
+        self.put(os.path.join(self.data, "store"), twin, b"v2-" + twin["id"].encode())
+        return new, sp, f"{twin['id']}.{collect.EXT[twin['form']]}"
+
+    def test_seal_removes_a_received_copy_of_a_v2_held_out_sample_from_the_store(self):
+        new, sp, name = self.twin_world("test")
+        before = self.snapshot(self.v2_data)
+        got = split3.seal(sp, self.data, self.v2_data, new, self.v2_rows)
+        self.assertFalse(os.path.lexists(os.path.join(self.data, "store", name)))  # 봉인 구간과 같은 파일이 봉인 밖에 남지 않는다
+        self.assertTrue(os.path.islink(os.path.join(self.data, "sealed", "test", name)))
+        self.assertEqual(self.snapshot(self.v2_data), before)
+        self.assertEqual(got["removed"], 1)
+        self.assertEqual(split3.seal(sp, self.data, self.v2_data, new, self.v2_rows)["removed"], 0)  # 다시 해도 같다
+
+    def test_seal_replaces_a_received_copy_of_a_v2_open_sample_with_the_link(self):
+        new, sp, name = self.twin_world("train")
+        before = self.snapshot(self.v2_data)
+        got = split3.seal(sp, self.data, self.v2_data, new, self.v2_rows)
+        self.assertTrue(os.path.islink(os.path.join(self.data, "store", name)))
+        self.assertEqual(self.snapshot(self.v2_data), before)
+        self.assertEqual(got["removed"], 1)
+        self.assertEqual(split3.seal(sp, self.data, self.v2_data, new, self.v2_rows)["removed"], 0)
+
+    def test_seal_still_refuses_an_unknown_file_in_a_link_place(self):
+        r = next(r for r in self.v2_rows if self.v2["assignments"][r["id"]] == "train")
+        self.put(os.path.join(self.data, "store"), r, b"other")  # 새 색인에 없는 파일이 v2 링크 자리에 있다
+        with self.assertRaises(split3.Stop):
+            split3.seal(self.sp, self.data, self.v2_data, self.new, self.v2_rows)
+        with open(os.path.join(self.data, "store", f"{r['id']}.{collect.EXT[r['form']]}"), "rb") as f:
+            self.assertEqual(f.read(), b"other")
+
     def test_sealed_parts_are_refused_by_the_v2_guard(self):
         with self.assertRaises(split.SealedError):
             split.select_ids(self.sp, ["test"], [])
