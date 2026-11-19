@@ -382,6 +382,37 @@ class Run(Corpus):
         self.run_ok()
         self.assertEqual(sorted(self.results()), self.train)
 
+    def test_answer_sent_before_the_upload_finished_is_read_and_recorded_as_a_skip(self):
+        """2026-11-19 v3 측정: 47MB sdist 가 풀면 200MB 를 넘어 백엔드가 400 으로 먼저 답하고 연결을 끊었는데, 올리던 쪽은 끊김(응답 0)만
+        보고 「백엔드가 받지 않는다」로 멈춰 같은 표본을 되풀이했다. 먼저 온 답을 읽어 표본 탓(400)이면 건너뜀으로 남기고 다음으로 간다."""
+        stuck = self.b1
+        self.answers[stuck] = (0, {"error": "<urlopen error [Errno 32] Broken pipe>"})
+        asked = []
+
+        def early(api, filename, body):
+            asked.append(filename)
+            return 400, {"error": "풀었을 때 200MB 를 넘습니다"}
+
+        with mock.patch.object(run_static, "early_answer", early):
+            self.run_ok()
+        res = self.results()
+        self.assertEqual(sorted(res), self.train)                        # 멈추지 않고 끝까지 간다
+        self.assertEqual(res[stuck], {"id": stuck, "status": "skip", "why": "풀면 200MB 초과"})
+        self.assertEqual(self.api.calls[stuck], 1)                       # 같은 표본을 되풀이해 올리지 않는다
+        self.assertEqual(asked, [f"sgb-{stuck}.tar.gz"])                 # 끊긴 표본에만 묻는다
+
+    def test_no_early_answer_keeps_the_old_wait_and_stop(self):
+        stuck = self.b1
+        self.answers[stuck] = (0, {"error": "connection refused"})
+        with mock.patch.object(run_static, "early_answer", lambda api, filename, body: (0, None)):
+            with open(os.path.join(self.tmp, "tokens"), "w") as f:
+                f.write(f"ADMIN_TOKEN={TOKEN}\n")
+            code, text = self.cli("run", "--token-file", os.path.join(self.tmp, "tokens"))
+        self.assertEqual(code, 1)
+        self.assertIn("멈춤", text)
+        self.assertNotIn(stuck, self.results())
+        self.assertEqual(self.api.calls[stuck], run_static.TRIES)
+
     def test_wrong_address_or_server_error_stops_instead_of_filling_the_file_with_errors(self):
         for code in (404, 500):
             for sid in self.train:
@@ -430,6 +461,77 @@ class Run(Corpus):
         self.assertEqual(sorted(self.results()), self.train[:2])
         self.run_ok()
         self.assertEqual(sorted(self.results()), self.train)
+
+
+class EarlyAnswer(unittest.TestCase):
+    """early_answer(): 올리는 중에 서버가 먼저 답하고 끊었을 때 그 답을 읽는다 — 가짜 연결로(네트워크 없음)."""
+
+    class Api:
+        base = "http://127.0.0.1:8010/api"
+        h = {"Authorization": "Bearer " + TOKEN}
+
+    def conn(self, *, send_error=None, answer=None, read_error=None):
+        made = []
+
+        class Response:
+            status = answer[0] if answer else None
+
+            def read(self):
+                return answer[1]
+
+        class Conn:
+            def __init__(self, netloc, timeout=None):
+                self.netloc, self.closed, self.sent = netloc, False, None
+                made.append(self)
+
+            def request(self, method, path, body=None, headers=None):
+                self.sent = (method, path, body, headers)
+                if send_error:
+                    raise send_error
+
+            def getresponse(self):
+                if read_error:
+                    raise read_error
+                return Response()
+
+            def close(self):
+                self.closed = True
+
+        return Conn, made
+
+    def ask(self, **kw):
+        Conn, made = self.conn(**kw)
+        with mock.patch.object(run_static.http.client, "HTTPConnection", Conn):
+            got = run_static.early_answer(self.Api(), "sgb-0123456789abcdef.tar.gz", b"BODY" * 1000)
+        return got, made
+
+    def test_reads_the_answer_after_the_send_broke(self):
+        body = json.dumps({"error": "풀었을 때 200MB 를 넘습니다"}, ensure_ascii=False).encode()
+        got, made = self.ask(send_error=BrokenPipeError(32, "Broken pipe"), answer=(400, body))
+        self.assertEqual(got, (400, {"error": "풀었을 때 200MB 를 넘습니다"}))
+        method, path, sent, headers = made[0].sent
+        self.assertEqual((made[0].netloc, method, path), ("127.0.0.1:8010", "POST", "/api/scans"))
+        self.assertEqual(headers["Authorization"], "Bearer " + TOKEN)
+        self.assertTrue(headers["Content-Type"].startswith("multipart/form-data; boundary="))
+        self.assertIn(b'filename="sgb-0123456789abcdef.tar.gz"', sent)
+        self.assertIn(b"BODY" * 1000, sent)
+        self.assertTrue(made[0].closed)
+
+    def test_answer_after_a_whole_send_is_returned_as_it_is(self):
+        got, _ = self.ask(answer=(202, b'{"id": "scan-0001"}'))
+        self.assertEqual(got, (202, {"id": "scan-0001"}))
+        got, _ = self.ask(answer=(413, b"not json"))
+        self.assertEqual(got, (413, None))
+
+    def test_no_answer_is_zero(self):
+        for kw in ({"send_error": ConnectionRefusedError(61, "refused"), "read_error": ConnectionResetError(54, "reset")},
+                   {"send_error": BrokenPipeError(32, "Broken pipe"), "read_error": run_static.http.client.RemoteDisconnected("closed")}):
+            got, made = self.ask(**kw)
+            self.assertEqual(got, (0, None))
+            self.assertTrue(made[0].closed)
+
+    def test_an_api_without_an_address_is_not_asked(self):
+        self.assertEqual(run_static.early_answer(object(), "sgb-0123456789abcdef.tar.gz", b"x"), (0, None))
 
 
 class Token(Corpus):
