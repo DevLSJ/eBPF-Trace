@@ -1,0 +1,228 @@
+{
+ "schema": 1,
+ "purpose": "평가 규칙 v3 새 표본 수집 요약. 표본 파일 · 색인은 bench/datasets/v3/(git 추적 제외)에 있고, 여기에는 출처 · 수 · 해시만 남긴다",
+ "sources": {
+  "datadog": {
+   "url": "https://github.com/DataDog/malicious-software-packages-dataset",
+   "commit": "72c723be547033c558244520524b117c8d71663b",
+   "committedAt": "2026-11-05T09:52:48+01:00"
+  },
+  "fetchedOn": "2026-11-18",
+  "pypiTop": {
+   "url": "https://hugovk.github.io/top-pypi-packages/top-pypi-packages-30-days.min.json",
+   "sha256": "3e958a64ebe1de0b6a4ab4c6b465d481f350fd1dfa926c639add36eb34dabc1e",
+   "rows": 15000,
+   "lastUpdate": "2026-11-01 06:41:05"
+  },
+  "pypiNames": {
+   "url": "https://pypi.org/simple/",
+   "sha256": "92d204c2920522af99c838ce80e5462060d10d69abf667318e652fccf54ef2ab",
+   "count": 943796
+  },
+  "npmTop": {
+   "url": "https://packages.ecosyste.ms/api/v1/registries/npmjs.org/packages?sort=downloads&order=desc&per_page=100&page={page}",
+   "pages": 60,
+   "names": 5766,
+   "maxPages": 60,
+   "asked": 10937
+  },
+  "npmNames": {
+   "package": "all-the-package-names@2.0.2629",
+   "sha256": "d94400a792b0292d091691c7695874f0bd006cb6db0178c243d8bccda4b59901",
+   "count": 4699002
+  }
+ },
+ "plan": {
+  "total": 40000,
+  "maliciousTotal": 9961,
+  "benignTotal": 30039,
+  "v2Benign": 3876,
+  "newBenign": 26163,
+  "pypi": {
+   "popular": 6541,
+   "longTail": 6541
+  },
+  "npm": {
+   "popular": 6541,
+   "longTail": 6540
+  }
+ },
+ "steps": {
+  "malicious-pypi": {
+   "tried": 0,
+   "kept": 0,
+   "megabytes": 0,
+   "noCode": 0,
+   "unreadable": 0,
+   "forms": {},
+   "skipped": {}
+  },
+  "malicious-npm": {
+   "tried": 10835,
+   "kept": 6085,
+   "megabytes": 3877,
+   "noCode": 418,
+   "unreadable": 1,
+   "forms": {
+    "zip": 6085
+   },
+   "skipped": {
+    "같은 지문": 4750
+   }
+  },
+  "benign-pypi-popular": {
+   "tried": 6666,
+   "kept": 6541,
+   "megabytes": 8192,
+   "noCode": 167,
+   "unreadable": 7,
+   "forms": {
+    "sdist": 6192,
+    "wheel": 349
+   },
+   "skipped": {
+    "50MB 초과": 119,
+    "받을 파일 없음": 5,
+    "없음": 1
+   }
+  },
+  "benign-pypi-longTail": {
+   "tried": 9606,
+   "kept": 6541,
+   "megabytes": 3848,
+   "noCode": 141,
+   "unreadable": 2,
+   "forms": {
+    "sdist": 5896,
+    "wheel": 645
+   },
+   "skipped": {
+    "50MB 초과": 44,
+    "받을 파일 없음": 128,
+    "없음": 312,
+    "인기 묶음": 141,
+    "첫 출시 1년 미만": 2440
+   }
+  },
+  "benign-npm-popular": {
+   "tried": 4733,
+   "kept": 4724,
+   "megabytes": 2211,
+   "noCode": 139,
+   "unreadable": 2,
+   "forms": {
+    "tarball": 4724
+   },
+   "skipped": {
+    "50MB 초과": 5,
+    "없음": 4
+   }
+  },
+  "benign-npm-longTail": {
+   "tried": 11585,
+   "kept": 8357,
+   "megabytes": 3036,
+   "noCode": 734,
+   "unreadable": 4,
+   "forms": {
+    "tarball": 8357
+   },
+   "skipped": {
+    "50MB 초과": 19,
+    "MAL- 권고 있음": 354,
+    "같은 파일": 3,
+    "게시 중이 아님": 188,
+    "보안 자리표시 패키지": 158,
+    "없음": 190,
+    "인기 묶음": 17,
+    "첫 출시 1년 미만": 2299
+   }
+  }
+ },
+ "index": {
+  "rows": 32248,
+  "sha256": "fb5a96fc14782004d43a07096150b9f446aab56f7a0b52bfe26c1b283b96e8af"
+ },
+ "split": {
+  "sha256": "05de8405ba260577c5badf64bae905f749cadaac2cb6873adc7c82f19caeccf3",
+  "v2Kept": 7752,
+  "newKept": 31660,
+  "kept": 39412,
+  "duplicatesDropped": {
+   "v2 같은 파일": 1,
+   "v2 지문": 0,
+   "새 표본끼리 지문": 0
+  },
+  "excludedRows": 587,
+  "inherited": {
+   "train": 573,
+   "calibration": 34,
+   "test": 175,
+   "reserve": 32
+  },
+  "groups": 37612,
+  "largestGroups": [
+   103,
+   82,
+   75,
+   60,
+   59
+  ],
+  "counts": {
+   "pypi:malicious": {
+    "train": 936,
+    "calibration": 378,
+    "test": 375,
+    "reserve": 187
+   },
+   "pypi:benign": {
+    "train": 7479,
+    "calibration": 2991,
+    "test": 2991,
+    "reserve": 1497
+   },
+   "npm:malicious": {
+    "train": 3884,
+    "calibration": 1382,
+    "test": 1527,
+    "reserve": 708
+   },
+   "npm:benign": {
+    "train": 7573,
+    "calibration": 3004,
+    "test": 3000,
+    "reserve": 1500
+   }
+  },
+  "newCounts": {
+   "pypi:malicious": {
+    "train": 0,
+    "calibration": 0,
+    "test": 0,
+    "reserve": 0
+   },
+   "pypi:benign": {
+    "train": 6542,
+    "calibration": 2616,
+    "test": 2616,
+    "reserve": 1308
+   },
+   "npm:malicious": {
+    "train": 2885,
+    "calibration": 982,
+    "test": 1126,
+    "reserve": 508
+   },
+   "npm:benign": {
+    "train": 6572,
+    "calibration": 2604,
+    "test": 2601,
+    "reserve": 1300
+   }
+  }
+ },
+ "notes": [
+  "시험 · 예비로 간 새 표본 파일은 분할 직후 sealed/ 로 옮겼고 검사 · 풀기를 하지 않았다. v2 표본은 v2 폴더를 가리키는 링크다",
+  "정상 표본은 받은 날의 가장 최근 판이라 같은 명령으로 다시 받아도 같은 파일이 아니다. 재현은 이 수집본(색인 해시)으로 한다"
+ ]
+}
