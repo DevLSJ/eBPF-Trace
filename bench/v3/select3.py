@@ -346,7 +346,10 @@ def cmd_gate(_args):
 
 
 def cmd_budget(args):
-    spent = calibration_spent(args.calibration_results or os.path.join(split3.data_dir(), "llm", "out-calibration.jsonl"))
+    # 보정 상한(45)은 보정에서 쓴 돈과 무관하다 — 결과 파일이 아직 없는 첫 호출 전에도 답한다. 쓴 돈은 시험 상한에만 든다
+    spent = 0.0
+    if args.part != "calibration":
+        spent = calibration_spent(args.calibration_results or os.path.join(split3.data_dir(), "llm", "out-calibration.jsonl"))
     print(f"{llm_budget(args.part, spent):.2f}")
 
 
