@@ -24,6 +24,8 @@ import bz2
 import collections
 import datetime as dt
 import gzip
+import hashlib
+import http.client
 import importlib.machinery
 import importlib.util
 import io
@@ -33,6 +35,7 @@ import os
 import re
 import sys
 import time
+import urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -196,12 +199,48 @@ def prepare(row, data):
     return (f"sgb-{row['id']}.{ext}", body), None
 
 
+def early_answer(api, filename, body, timeout=300):
+    """올리는 중에 서버가 먼저 답하고 연결을 끊었을 때의 그 답 → (응답 코드, JSON 또는 None). 답을 받지 못하면 (0, None).
+    백엔드는 올라오는 파일을 받으면서 푼다. 풀다가 거절하면(풀면 200MB 초과 · 파일 수 초과 — 400) 본문을 다 받기 전에 답하고 끊는데,
+    v1 도구의 upload(urllib)는 보내다 끊기면 답을 읽지 않고 응답 0 만 돌려준다. 작은 파일은 다 보낸 뒤라 답이 읽히지만 큰 파일은 그렇지 않다
+    (2026-11-19: 47MB sdist). 같은 요청을 한 번 더 보내 끊긴 뒤에도 답을 읽는다 — 주소 · 토큰은 api(v1 API)의 것을 그대로 쓴다."""
+    base, headers = getattr(api, "base", None), getattr(api, "h", None)
+    if not base or not headers:
+        return 0, None
+    url = urllib.parse.urlsplit(base.rstrip("/") + "/scans")
+    b = "sgbench" + hashlib.sha256(body).hexdigest()[:16]
+    data = (f"--{b}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
+            f"Content-Type: application/octet-stream\r\n\r\n").encode() + body + f"\r\n--{b}--\r\n".encode()
+    conn = (http.client.HTTPSConnection if url.scheme == "https" else http.client.HTTPConnection)(url.netloc, timeout=timeout)
+    try:
+        try:
+            conn.request("POST", url.path, data, {**headers, "Content-Type": "multipart/form-data; boundary=" + b})
+        except OSError:
+            pass  # 보내다 끊겼다 — 서버가 먼저 보낸 답이 있는지 본다
+        try:
+            res = conn.getresponse()
+            raw = res.read()
+        except (OSError, http.client.HTTPException):
+            return 0, None
+        try:
+            return res.status, json.loads(raw or b"null")
+        except ValueError:
+            return res.status, None
+    finally:
+        conn.close()
+
+
 def scan(api, filename, body, timeout):
     """한 표본을 올려 검사시킨다 → 결과 줄의 칸(id 빼고).
     시작 단계에서 표본 탓인 응답은 400 · 413 뿐이다(backend scan.Service.start). 그 밖의 실패(닿지 않음 · 토큰 거부 · 없는 주소 · 서버 오류)는
-    표본의 결과가 아니므로 기록하지 않고 Stop — 원인을 고친 뒤 다시 돌리면 그 표본부터 이어진다."""
+    표본의 결과가 아니므로 기록하지 않고 Stop — 원인을 고친 뒤 다시 돌리면 그 표본부터 이어진다.
+    응답 0(끊김)이면 서버가 먼저 보낸 답이 있는지 early_answer 로 한 번 묻고, 있으면 그 답으로 판단한다."""
     for attempt in range(TRIES):
         code, resp = api.upload(filename, body)
+        if code == 0:
+            early = early_answer(api, filename, body)
+            if early[0]:
+                code, resp = early
         if code not in RETRY_CODES:
             break
         if attempt + 1 < TRIES:
