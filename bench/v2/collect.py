@@ -32,6 +32,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from http.client import HTTPException  # 아래의 함수 http() 가 모듈 이름 http 를 가리므로 이름만 들여온다
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -203,7 +204,8 @@ def http(url, *, data=None, headers=None, max_bytes=None, timeout=120, tries=4, 
             if e.code in (404, 410):
                 return None, None
             last = f"HTTP {e.code}"
-        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, HTTPException, EOFError) as e:
+            # HTTPException = 읽는 중 끊김(IncompleteRead) · 깨진 응답 줄, EOFError = 잘린 gzip 본문 — 둘 다 OSError 가 아니다
             last = type(e).__name__
         time.sleep(2 ** attempt)
     raise Stop(f"네트워크 오류({last}) — 다시 돌리면 이어서 한다: {url[:80]}")
