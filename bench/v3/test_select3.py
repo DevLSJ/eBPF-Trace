@@ -171,6 +171,25 @@ class Budget(unittest.TestCase):
                                                                                  "reusedFrom": {"costUsd": 3.0}}])
             self.assertEqual(select3.calibration_spent(path), 1.25)
 
+    def _printed(self, part, path):
+        import argparse
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            select3.cmd_budget(argparse.Namespace(part=part, calibration_results=path))
+        return out.getvalue().strip()
+
+    def test_calibration_limit_is_known_before_any_calibration_call(self):
+        # 보정 상한은 보정 결과와 무관한 45 — 결과 파일이 아직 없을 때(첫 호출 전 · 부록 3-llm 을 적을 때)에도 답해야 한다
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self._printed("calibration", os.path.join(d, "llm", "out-calibration.jsonl")), "45.00")
+
+    def test_test_limit_still_refuses_without_the_calibration_results(self):
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(ValueError):
+                self._printed("test", os.path.join(d, "llm", "out-calibration.jsonl"))
+
 
 class Gate(unittest.TestCase):
     def test_upper_bound_is_the_quarter_percent_point_of_out_of_fold_predictions(self):
