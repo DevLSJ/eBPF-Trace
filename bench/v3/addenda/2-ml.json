@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "addendum": 2,
+  "layer": "ml",
+  "protocolRevision": 2,
+  "fixedAt": "2026-11-20 08:34 — v3 학습 구간으로 다시 학습한 직후. 보정 구간 예측 · 관문 계산 · LLM 호출은 아직 하지 않았다",
+  "inherits": {"file": "bench/v2/addenda/2-ml.json", "sha256": "ca1bbba5814b0036e598d445bfbc00727ed091c181086fb69ce60d3660a5c314", "what": "특징 · 모델 설정 · 학습 행 규칙 · 결측 처리 · 후보 정의는 그대로"},
+  "changed": "학습 표본만 바뀐다 — v3 학습 구간 전체(정상 + 코드 있는 악성)로 다시 학습했다(protocol layers.ml)",
+  "trained": {
+    "tool": "bench/v2/static_ml.py train(bench/v3/run.py 경유) · 저장소 커밋 fc97771",
+    "model": "bench/datasets/v3/models/static-ml.pkl",
+    "sha256": "0973ae736564e93267e86f8c2b768c9646fb6005edc369197d151054ae20d186",
+    "trainRows": {"total": 19544, "malicious": 4492, "benign": 15052, "noCodeMaliciousLeftOut": 328},
+    "coverage": {"rows": 19872, "guarddogOk": 19831, "rulesOk": 19863},
+    "featureCount": 124,
+    "vocab": {"rules": 66, "guarddog": 54},
+    "estimator": {"name": "HistGradientBoostingClassifier", "params": {"max_iter": 300, "learning_rate": 0.05, "random_state": 7}},
+    "sklearn": "1.9.1", "numpy": "2.5.4", "python": "3.14.6"
+  },
+  "inputs": {
+    "bench/datasets/v3/results/static-train.jsonl": "e85eb1e9e4ed6040bf309f96c037c5b89f13bdf6a2d09145823628c542184d80",
+    "bench/datasets/v3/results/rules-train.jsonl": "b73416c7e07a7d8edf8bb67621df86e46e7d2476f338bf5fe99d5de458100fa0",
+    "bench/v3/split.json": "05de8405ba260577c5badf64bae905f749cadaac2cb6873adc7c82f19caeccf3"
+  },
+  "trainReference": {"note": "v3 학습 구간 묶음 5겹 교차 검증(개발용 · 지표 아님)", "printed": [
+    "정적 ML 층 · 학습 구간 묶음 5겹 교차 검증(개발용 · 지표 아님) · 행 19,544(코드 있는 악성 4,492 · 정상 15,052) · 특징 124",
+    "오탐 예산    임계값  탐지율   95% 구간  오탐률   잡음  오탐",
+    "     0.01  0.484663  86.18%  85.1~87.2   1.00%  3,871   150",
+    "     0.02  0.251764  88.36%  87.4~89.3   2.00%  3,969   301",
+    "     0.03  0.160604  89.49%  88.6~90.4   3.00%  4,020   451",
+    "     0.05  0.101736  90.58%  89.7~91.4   5.00%  4,069   752"
+  ]}
+}
