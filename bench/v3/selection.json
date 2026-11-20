@@ -1,0 +1,183 @@
+{
+ "schema": 1,
+ "rows": {
+  "total": 7755,
+  "main": 7633,
+  "malicious": 1638,
+  "benign": 5995
+ },
+ "candidates": {
+  "ml": [
+   {
+    "layer": "ml",
+    "name": "M-static@0.0",
+    "budget": 0.0,
+    "threshold": 0.998662
+   },
+   {
+    "layer": "ml",
+    "name": "M-static@0.001",
+    "budget": 0.001,
+    "threshold": 0.955424
+   },
+   {
+    "layer": "ml",
+    "name": "M-static@0.0025",
+    "budget": 0.0025,
+    "threshold": 0.903981
+   },
+   {
+    "layer": "ml",
+    "name": "M-static@0.005",
+    "budget": 0.005,
+    "threshold": 0.734436
+   },
+   {
+    "layer": "ml",
+    "name": "M-static@0.01",
+    "budget": 0.01,
+    "threshold": 0.537776
+   },
+   {
+    "layer": "ml",
+    "name": "M-static@0.015",
+    "budget": 0.015,
+    "threshold": 0.375212
+   },
+   {
+    "layer": "ml",
+    "name": "M-static@0.02",
+    "budget": 0.02,
+    "threshold": 0.27655
+   }
+  ],
+  "llm": [
+   {
+    "layer": "llm",
+    "name": "L@0.0",
+    "budget": 0.0,
+    "threshold": 90
+   },
+   {
+    "layer": "llm",
+    "name": "L@0.001",
+    "budget": 0.001,
+    "threshold": 88
+   },
+   {
+    "layer": "llm",
+    "name": "L@0.0025",
+    "budget": 0.0025,
+    "threshold": 74
+   },
+   {
+    "layer": "llm",
+    "name": "L@0.005",
+    "budget": 0.005,
+    "threshold": 72
+   },
+   {
+    "layer": "llm",
+    "name": "L@0.01",
+    "budget": 0.01,
+    "threshold": 58
+   },
+   {
+    "layer": "llm",
+    "name": "L@0.015",
+    "budget": 0.015,
+    "threshold": 38
+   }
+  ]
+ },
+ "llmInclusion": {
+  "included": true,
+  "gain": 0.029304029304029304,
+  "rule": "보정 구간 오탐 <= 0.02 에서 ML 만의 운영점보다 탐지율 +0.01 이상(3-llm)",
+  "mlOnly": {
+   "tp": 1477,
+   "fn": 161,
+   "fp": 119,
+   "tn": 5876,
+   "detection": 0.9017,
+   "fpr": 0.0198,
+   "precision": 0.9254,
+   "f1": 0.9134
+  },
+  "withLlm": {
+   "tp": 1525,
+   "fn": 113,
+   "fp": 105,
+   "tn": 5890,
+   "detection": 0.931,
+   "fpr": 0.0175,
+   "precision": 0.9356,
+   "f1": 0.9333
+  }
+ },
+ "primary": {
+  "maxFpr": 0.02,
+  "points": {
+   "llm": {
+    "layer": "llm",
+    "name": "L@0.01",
+    "budget": 0.01,
+    "threshold": 58
+   },
+   "ml": {
+    "layer": "ml",
+    "name": "M-static@0.01",
+    "budget": 0.01,
+    "threshold": 0.537776
+   }
+  },
+  "calibration": {
+   "tp": 1525,
+   "fn": 113,
+   "fp": 105,
+   "tn": 5890,
+   "detection": 0.931,
+   "fpr": 0.0175,
+   "precision": 0.9356,
+   "f1": 0.9333
+  }
+ },
+ "secondary": {
+  "maxFpr": 0.001,
+  "points": {
+   "llm": {
+    "layer": "llm",
+    "name": "L@0.0",
+    "budget": 0.0,
+    "threshold": 90
+   },
+   "ml": {
+    "layer": "ml",
+    "name": "M-static@0.001",
+    "budget": 0.001,
+    "threshold": 0.955424
+   }
+  },
+  "calibration": {
+   "tp": 1415,
+   "fn": 223,
+   "fp": 5,
+   "tn": 5990,
+   "detection": 0.8639,
+   "fpr": 0.0008,
+   "precision": 0.9965,
+   "f1": 0.9254
+  }
+ },
+ "inputs": {
+  "splitSha256": "05de8405ba260577c5badf64bae905f749cadaac2cb6873adc7c82f19caeccf3",
+  "protocolSha256": "dc797a28508dfb59d79b8573e3d89f72d969f3f9b2a6d47cf4cd2c0997e4e2bf",
+  "ml": "0bcc4e635bf7756b79ad2fe3e1cead523d55b23aaa6f240ef9e6d27e5e452b9b",
+  "mlModelSha256": "0973ae736564e93267e86f8c2b768c9646fb6005edc369197d151054ae20d186",
+  "llm": "9ea0d25e7d62f0167a627d8f3b570e0e852f513cf58f90e105a1a05115c78887",
+  "llmGate": {
+   "low": 0.02,
+   "high": 0.91764
+  }
+ }
+}
