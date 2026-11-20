@@ -1,0 +1,671 @@
+{
+ "rows": {
+  "total": 7755,
+  "main": 7633,
+  "malicious": 1638,
+  "benign": 5995,
+  "noCodeMalicious": 122
+ },
+ "primary": {
+  "maxFpr": 0.02,
+  "points": {
+   "llm": {
+    "name": "L@0.01",
+    "threshold": 58
+   },
+   "ml": {
+    "name": "M-static@0.01",
+    "threshold": 0.537776
+   }
+  },
+  "main": {
+   "tp": 1525,
+   "fn": 113,
+   "fp": 105,
+   "tn": 5890,
+   "detection": 0.931,
+   "fpr": 0.0175,
+   "precision": 0.9356,
+   "f1": 0.9333,
+   "detectionCi95": [
+    0.9177,
+    0.9423
+   ],
+   "fprCi95": [
+    0.0145,
+    0.0212
+   ],
+   "met": false
+  },
+  "byEcosystem": {
+   "pypi": {
+    "tp": 339,
+    "fn": 29,
+    "fp": 16,
+    "tn": 2975,
+    "detection": 0.9212,
+    "fpr": 0.0053,
+    "precision": 0.9549,
+    "f1": 0.9378,
+    "detectionCi95": [
+     0.8891,
+     0.9446
+    ],
+    "fprCi95": [
+     0.0033,
+     0.0087
+    ],
+    "met": false
+   },
+   "npm": {
+    "tp": 1186,
+    "fn": 84,
+    "fp": 89,
+    "tn": 2915,
+    "detection": 0.9339,
+    "fpr": 0.0296,
+    "precision": 0.9302,
+    "f1": 0.932,
+    "detectionCi95": [
+     0.9188,
+     0.9463
+    ],
+    "fprCi95": [
+     0.0241,
+     0.0363
+    ],
+    "met": false
+   }
+  },
+  "noCode": {
+   "rows": 122,
+   "detected": 4
+  },
+  "benignBySource": {
+   "longTail": {
+    "flagged": 84,
+    "rows": 3431,
+    "rate": 0.0245,
+    "ci95": [
+     0.0198,
+     0.0302
+    ]
+   },
+   "popular": {
+    "flagged": 21,
+    "rows": 2564,
+    "rate": 0.0082,
+    "ci95": [
+     0.0054,
+     0.0125
+    ]
+   }
+  },
+  "byYear": {
+   "2022": {
+    "detected": 24,
+    "rows": 25,
+    "detection": 0.96
+   },
+   "2023": {
+    "detected": 195,
+    "rows": 200,
+    "detection": 0.975
+   },
+   "2024": {
+    "detected": 217,
+    "rows": 230,
+    "detection": 0.9435
+   },
+   "2025": {
+    "detected": 786,
+    "rows": 813,
+    "detection": 0.9668
+   },
+   "2026": {
+    "detected": 303,
+    "rows": 370,
+    "detection": 0.8189
+   }
+  },
+  "ablation": {
+   "alone": {
+    "llm": {
+     "tp": 135,
+     "fn": 1503,
+     "fp": 49,
+     "tn": 5946,
+     "detection": 0.0824,
+     "fpr": 0.0082,
+     "precision": 0.7337,
+     "f1": 0.1482,
+     "detectionCi95": [
+      0.0701,
+      0.0967
+     ],
+     "fprCi95": [
+      0.0062,
+      0.0108
+     ],
+     "met": false
+    },
+    "ml": {
+     "tp": 1446,
+     "fn": 192,
+     "fp": 59,
+     "tn": 5936,
+     "detection": 0.8828,
+     "fpr": 0.0098,
+     "precision": 0.9608,
+     "f1": 0.9201,
+     "detectionCi95": [
+      0.8663,
+      0.8975
+     ],
+     "fprCi95": [
+      0.0076,
+      0.0127
+     ],
+     "met": false
+    }
+   },
+   "cumulative": [
+    {
+     "through": "llm",
+     "tp": 135,
+     "fn": 1503,
+     "fp": 49,
+     "tn": 5946,
+     "detection": 0.0824,
+     "fpr": 0.0082,
+     "precision": 0.7337,
+     "f1": 0.1482,
+     "detectionCi95": [
+      0.0701,
+      0.0967
+     ],
+     "fprCi95": [
+      0.0062,
+      0.0108
+     ],
+     "met": false
+    },
+    {
+     "through": "ml",
+     "tp": 1525,
+     "fn": 113,
+     "fp": 105,
+     "tn": 5890,
+     "detection": 0.931,
+     "fpr": 0.0175,
+     "precision": 0.9356,
+     "f1": 0.9333,
+     "detectionCi95": [
+      0.9177,
+      0.9423
+     ],
+     "fprCi95": [
+      0.0145,
+      0.0212
+     ],
+     "met": false
+    }
+   ]
+  },
+  "byOrigin": {
+   "v2": {
+    "tp": 687,
+    "fn": 46,
+    "fp": 15,
+    "tn": 760,
+    "detection": 0.9372,
+    "fpr": 0.0194,
+    "precision": 0.9786,
+    "f1": 0.9575,
+    "detectionCi95": [
+     0.9173,
+     0.9526
+    ],
+    "fprCi95": [
+     0.0118,
+     0.0317
+    ],
+    "met": false
+   },
+   "new": {
+    "tp": 838,
+    "fn": 67,
+    "fp": 90,
+    "tn": 5130,
+    "detection": 0.926,
+    "fpr": 0.0172,
+    "precision": 0.903,
+    "f1": 0.9143,
+    "detectionCi95": [
+     0.907,
+     0.9413
+    ],
+    "fprCi95": [
+     0.014,
+     0.0211
+    ],
+    "met": false
+   }
+  }
+ },
+ "secondary": {
+  "maxFpr": 0.001,
+  "points": {
+   "llm": {
+    "name": "L@0.0",
+    "threshold": 90
+   },
+   "ml": {
+    "name": "M-static@0.001",
+    "threshold": 0.955424
+   }
+  },
+  "main": {
+   "tp": 1415,
+   "fn": 223,
+   "fp": 5,
+   "tn": 5990,
+   "detection": 0.8639,
+   "fpr": 0.0008,
+   "precision": 0.9965,
+   "f1": 0.9254,
+   "detectionCi95": [
+    0.8464,
+    0.8796
+   ],
+   "fprCi95": [
+    0.0004,
+    0.002
+   ],
+   "met": false
+  },
+  "byEcosystem": {
+   "pypi": {
+    "tp": 324,
+    "fn": 44,
+    "fp": 0,
+    "tn": 2991,
+    "detection": 0.8804,
+    "fpr": 0.0,
+    "precision": 1.0,
+    "f1": 0.9364,
+    "detectionCi95": [
+     0.8433,
+     0.9097
+    ],
+    "fprCi95": [
+     0.0,
+     0.0013
+    ],
+    "met": false
+   },
+   "npm": {
+    "tp": 1091,
+    "fn": 179,
+    "fp": 5,
+    "tn": 2999,
+    "detection": 0.8591,
+    "fpr": 0.0017,
+    "precision": 0.9954,
+    "f1": 0.9222,
+    "detectionCi95": [
+     0.8388,
+     0.8771
+    ],
+    "fprCi95": [
+     0.0007,
+     0.0039
+    ],
+    "met": false
+   }
+  },
+  "noCode": {
+   "rows": 122,
+   "detected": 0
+  },
+  "benignBySource": {
+   "longTail": {
+    "flagged": 3,
+    "rows": 3431,
+    "rate": 0.0009,
+    "ci95": [
+     0.0003,
+     0.0026
+    ]
+   },
+   "popular": {
+    "flagged": 2,
+    "rows": 2564,
+    "rate": 0.0008,
+    "ci95": [
+     0.0002,
+     0.0028
+    ]
+   }
+  },
+  "byYear": {
+   "2022": {
+    "detected": 24,
+    "rows": 25,
+    "detection": 0.96
+   },
+   "2023": {
+    "detected": 192,
+    "rows": 200,
+    "detection": 0.96
+   },
+   "2024": {
+    "detected": 205,
+    "rows": 230,
+    "detection": 0.8913
+   },
+   "2025": {
+    "detected": 735,
+    "rows": 813,
+    "detection": 0.9041
+   },
+   "2026": {
+    "detected": 259,
+    "rows": 370,
+    "detection": 0.7
+   }
+  },
+  "ablation": {
+   "alone": {
+    "llm": {
+     "tp": 91,
+     "fn": 1547,
+     "fp": 0,
+     "tn": 5995,
+     "detection": 0.0556,
+     "fpr": 0.0,
+     "precision": 1.0,
+     "f1": 0.1053,
+     "detectionCi95": [
+      0.0455,
+      0.0677
+     ],
+     "fprCi95": [
+      0.0,
+      0.0006
+     ],
+     "met": false
+    },
+    "ml": {
+     "tp": 1324,
+     "fn": 314,
+     "fp": 5,
+     "tn": 5990,
+     "detection": 0.8083,
+     "fpr": 0.0008,
+     "precision": 0.9962,
+     "f1": 0.8925,
+     "detectionCi95": [
+      0.7885,
+      0.8266
+     ],
+     "fprCi95": [
+      0.0004,
+      0.002
+     ],
+     "met": false
+    }
+   },
+   "cumulative": [
+    {
+     "through": "llm",
+     "tp": 91,
+     "fn": 1547,
+     "fp": 0,
+     "tn": 5995,
+     "detection": 0.0556,
+     "fpr": 0.0,
+     "precision": 1.0,
+     "f1": 0.1053,
+     "detectionCi95": [
+      0.0455,
+      0.0677
+     ],
+     "fprCi95": [
+      0.0,
+      0.0006
+     ],
+     "met": false
+    },
+    {
+     "through": "ml",
+     "tp": 1415,
+     "fn": 223,
+     "fp": 5,
+     "tn": 5990,
+     "detection": 0.8639,
+     "fpr": 0.0008,
+     "precision": 0.9965,
+     "f1": 0.9254,
+     "detectionCi95": [
+      0.8464,
+      0.8796
+     ],
+     "fprCi95": [
+      0.0004,
+      0.002
+     ],
+     "met": false
+    }
+   ]
+  },
+  "byOrigin": {
+   "v2": {
+    "tp": 639,
+    "fn": 94,
+    "fp": 1,
+    "tn": 774,
+    "detection": 0.8718,
+    "fpr": 0.0013,
+    "precision": 0.9984,
+    "f1": 0.9308,
+    "detectionCi95": [
+     0.8456,
+     0.894
+    ],
+    "fprCi95": [
+     0.0002,
+     0.0073
+    ],
+    "met": false
+   },
+   "new": {
+    "tp": 776,
+    "fn": 129,
+    "fp": 4,
+    "tn": 5216,
+    "detection": 0.8575,
+    "fpr": 0.0008,
+    "precision": 0.9949,
+    "f1": 0.9211,
+    "detectionCi95": [
+     0.8332,
+     0.8787
+    ],
+    "fprCi95": [
+     0.0003,
+     0.002
+    ],
+    "met": false
+   }
+  }
+ },
+ "goal": {
+  "point": "primary",
+  "met": false
+ },
+ "baselines": {
+  "S-malicious": {
+   "tp": 1220,
+   "fn": 418,
+   "fp": 167,
+   "tn": 5828,
+   "detection": 0.7448,
+   "fpr": 0.0279,
+   "precision": 0.8796,
+   "f1": 0.8066,
+   "detectionCi95": [
+    0.7231,
+    0.7653
+   ],
+   "fprCi95": [
+    0.024,
+    0.0323
+   ],
+   "met": false
+  },
+  "S-suspicious": {
+   "tp": 1423,
+   "fn": 215,
+   "fp": 280,
+   "tn": 5715,
+   "detection": 0.8687,
+   "fpr": 0.0467,
+   "precision": 0.8356,
+   "f1": 0.8518,
+   "detectionCi95": [
+    0.8515,
+    0.8842
+   ],
+   "fprCi95": [
+    0.0416,
+    0.0523
+   ],
+   "met": false
+  },
+  "R-strong": {
+   "tp": 1499,
+   "fn": 139,
+   "fp": 814,
+   "tn": 5181,
+   "detection": 0.9151,
+   "fpr": 0.1358,
+   "precision": 0.6481,
+   "f1": 0.7588,
+   "detectionCi95": [
+    0.9007,
+    0.9277
+   ],
+   "fprCi95": [
+    0.1273,
+    0.1447
+   ],
+   "met": false
+  },
+  "R-precise@0": {
+   "tp": 171,
+   "fn": 1467,
+   "fp": 23,
+   "tn": 5972,
+   "detection": 0.1044,
+   "fpr": 0.0038,
+   "precision": 0.8814,
+   "f1": 0.1867,
+   "detectionCi95": [
+    0.0905,
+    0.1201
+   ],
+   "fprCi95": [
+    0.0026,
+    0.0058
+   ],
+   "met": false
+  },
+  "R-precise@1": {
+   "tp": 705,
+   "fn": 933,
+   "fp": 80,
+   "tn": 5915,
+   "detection": 0.4304,
+   "fpr": 0.0133,
+   "precision": 0.8981,
+   "f1": 0.5819,
+   "detectionCi95": [
+    0.4066,
+    0.4545
+   ],
+   "fprCi95": [
+    0.0107,
+    0.0166
+   ],
+   "met": false
+  },
+  "R-precise@3": {
+   "tp": 971,
+   "fn": 667,
+   "fp": 129,
+   "tn": 5866,
+   "detection": 0.5928,
+   "fpr": 0.0215,
+   "precision": 0.8827,
+   "f1": 0.7093,
+   "detectionCi95": [
+    0.5688,
+    0.6163
+   ],
+   "fprCi95": [
+    0.0181,
+    0.0255
+   ],
+   "met": false
+  }
+ },
+ "part": "calibration",
+ "inputs": {
+  "selectionSha256": "e8e4e5695b3e68aac7605038dd8827f12d8662a5681b81e451a77148573c6366",
+  "splitSha256": "05de8405ba260577c5badf64bae905f749cadaac2cb6873adc7c82f19caeccf3",
+  "ml": "0bcc4e635bf7756b79ad2fe3e1cead523d55b23aaa6f240ef9e6d27e5e452b9b",
+  "mlModelSha256": "0973ae736564e93267e86f8c2b768c9646fb6005edc369197d151054ae20d186",
+  "llm": "9ea0d25e7d62f0167a627d8f3b570e0e852f513cf58f90e105a1a05115c78887"
+ },
+ "split": {
+  "kept": 39412,
+  "newKept": 31660,
+  "inherited": {
+   "train": 573,
+   "calibration": 34,
+   "test": 175,
+   "reserve": 32
+  },
+  "excludedRows": 587,
+  "duplicatesDropped": {
+   "v2 같은 파일": 1,
+   "v2 지문": 0,
+   "새 표본끼리 지문": 0
+  },
+  "groups": 37612
+ },
+ "llm": {
+  "rows": 3090,
+  "status": {
+   "OK": 3090
+  },
+  "spentUsd": 16.84143565,
+  "budgetUsd": 100.0,
+  "unbilledRefusalUsd": 0.0,
+  "callsWithUnknownCost": 0,
+  "calls": {
+   "claude-haiku-5-5": 2635,
+   "claude-opus-4-8": 292
+  },
+  "batchCalls": 2927,
+  "tokens": {
+   "inputTokens": 34019098,
+   "outputTokens": 3113391,
+   "cacheReadTokens": 9869268,
+   "cacheWriteTokens": 234736
+  },
+  "tornLines": 0,
+  "reused": 456
+ }
+}
