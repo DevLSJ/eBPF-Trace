@@ -1,0 +1,20 @@
+[
+ {
+  "part": "test",
+  "at": "2026-11-20T03:12:04Z",
+  "reason": "v3 최종 측정",
+  "protocolSha256": "dc797a28508dfb59d79b8573e3d89f72d969f3f9b2a6d47cf4cd2c0997e4e2bf",
+  "splitSha256": "05de8405ba260577c5badf64bae905f749cadaac2cb6873adc7c82f19caeccf3",
+  "selectionSha256": "e8e4e5695b3e68aac7605038dd8827f12d8662a5681b81e451a77148573c6366",
+  "gitHead": "83c4121f72a8e017fd4c10aa829a2a161866539a",
+  "rules": "v3",
+  "rows": {
+   "v2": 1550,
+   "new": 6343
+  },
+  "listSha256": {
+   "v2": "1118aada5a1162cfe7907d56ae70f5551586986d260761d84c7048f889ab94db",
+   "new": "fb0933f855d1d66dbb0fc411f89a2008800a5caf4caf1a505cacc880a2f57d3b"
+  }
+ }
+]
