@@ -70,11 +70,20 @@ class SplitHooks(unittest.TestCase):
 
     def test_v2_build_and_unseal_commands_refuse_the_v3_rules_folder(self):
         env = {**os.environ, "SG_BENCH_RULES": HERE}
+        ledger = os.path.join(HERE, "unseal-log.json")     # 2026-11-20 에 split3.py 로 시험 구간을 연 뒤로는 이 파일이 있다
+
+        def state():
+            if not os.path.exists(ledger):
+                return None
+            with open(ledger, "rb") as f:
+                return f.read()
+
+        before = state()
         for argv in (["build", "--index", "/nonexistent/index.jsonl"], ["unseal", "test", "--reason", "x"]):
             r = subprocess.run([sys.executable, "-B", os.path.join(V2, "split.py"), *argv], env=env, capture_output=True, text=True)
             self.assertNotEqual(r.returncode, 0)
             self.assertIn("split3.py", r.stderr)
-        self.assertFalse(os.path.exists(os.path.join(HERE, "unseal-log.json")))
+        self.assertEqual(state(), before)                  # v2 명령은 v3 원장을 만들지도 고치지도 않는다
 
 
 class SplitUnseal(unittest.TestCase):
