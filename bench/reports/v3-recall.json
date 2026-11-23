@@ -1,0 +1,109 @@
+{
+  "addendum": "4-recall",
+  "byKind": {
+    "benign": {
+      "primaryUnstable": 0,
+      "rows": 92,
+      "secondaryUnstable": 0
+    },
+    "codeMalicious": {
+      "primaryUnstable": 0,
+      "rows": 5,
+      "secondaryUnstable": 0
+    },
+    "noCodeMalicious": {
+      "primaryUnstable": 0,
+      "rows": 3,
+      "secondaryUnstable": 0
+    }
+  },
+  "decision": {
+    "primary": {
+      "allFlagged": 3,
+      "differsFromOriginal": 0,
+      "noneFlagged": 97,
+      "originalFlagged": 3,
+      "pairAgreement": [
+        100,
+        100,
+        100
+      ],
+      "perRunDiffersFromOriginal": [
+        0,
+        0,
+        0
+      ],
+      "threshold": 58,
+      "unstable": 0
+    },
+    "secondary": {
+      "allFlagged": 2,
+      "differsFromOriginal": 0,
+      "noneFlagged": 98,
+      "originalFlagged": 2,
+      "pairAgreement": [
+        100,
+        100,
+        100
+      ],
+      "perRunDiffersFromOriginal": [
+        0,
+        0,
+        0
+      ],
+      "threshold": 90,
+      "unstable": 0
+    }
+  },
+  "escalation": {
+    "originalEscalated": 9,
+    "perRun": [
+      12,
+      11,
+      11
+    ],
+    "unstable": 6
+  },
+  "inputs": {
+    "originalSha256": "9ea0d25e7d62f0167a627d8f3b570e0e852f513cf58f90e105a1a05115c78887",
+    "runsSha256": [
+      "954365b24e2dd7594cbba04bfa02c69eab942f7ed9ce20c10f2c6aae63a0ffce",
+      "21335f72a6d5bb4e1bc538a2af276eef9bee331b00bf047af85738b64f6d10fe",
+      "6d5d75e0dbd820eacb0904f6ae51d7db4fa0b9fa1d75162e5a0057f7f6c36339"
+    ],
+    "selectionSha256": "e8e4e5695b3e68aac7605038dd8827f12d8662a5681b81e451a77148573c6366",
+    "subsetSha256": "1d33eb8739cf81257e514776cd360eec12386b424f5fe6a83ce85a4aee5f7e9e"
+  },
+  "part": "calibration",
+  "rows": 100,
+  "runs": 3,
+  "schema": 1,
+  "score": {
+    "complete": 100,
+    "meanSd": 1.164366798632838,
+    "originalInsideRange": 73,
+    "ranges": {
+      "max": 30,
+      "median": 0,
+      "p90": 6,
+      "zero": 52
+    }
+  },
+  "seed": "20261123:recall",
+  "spentUsd": [
+    0.95213913,
+    0.92977964,
+    0.95387364
+  ],
+  "status": [
+    {
+      "OK": 100
+    },
+    {
+      "OK": 100
+    },
+    {
+      "OK": 100
+    }
+  ]
+}
